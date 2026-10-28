@@ -51,9 +51,15 @@ interface PlainLine {
   quantity: number;
 }
 
-/** The ISMS reference is the idempotency key: it is what the lookup in `postSapDocument` matches on. */
-function header(ismsRef: string) {
-  return { U_ISMS_PO_No: ismsRef, Comments: `ISMS ${ismsRef}` };
+/**
+ * The ISMS reference is the idempotency key: it is what the lookup in `postSapDocument` matches on.
+ * `remarks` replaces the default Comments, e.g. to name the original ITR or SO.
+ */
+function header(ismsRef: string, remarks?: string) {
+  return {
+    U_ISMS_PO_No: ismsRef,
+    Comments: remarks ? fitSapText(remarks, ORDER_DOC_TEXT_LIMITS.comments) : `ISMS ${ismsRef}`,
+  };
 }
 
 function serialPayload(line: SapSerialLine) {
@@ -204,13 +210,14 @@ export function buildSoBody(
 
 export function buildItBody(i: {
   ismsRef: string;
+  remarks?: string;
   fromWhs: string;
   toWhs: string;
   baseItrEntry?: number;
   lines: SapSerialLine[];
 }): Record<string, unknown> {
   return {
-    ...header(i.ismsRef),
+    ...header(i.ismsRef, i.remarks),
     FromWarehouse: i.fromWhs,
     ToWarehouse: i.toWhs,
     StockTransferLines: i.lines.map((l) => ({
@@ -236,9 +243,10 @@ function buildBasedDocumentBody(
   baseType: number,
   baseEntry: number,
   lines: SapSerialLine[],
+  remarks?: string,
 ): Record<string, unknown> {
   return {
-    ...header(ismsRef),
+    ...header(ismsRef, remarks),
     CardCode: cardCode,
     DocumentLines: lines.map((l) => ({
       ItemCode: l.itemCode,
@@ -252,12 +260,24 @@ function buildBasedDocumentBody(
 
 export function buildReturnBody(i: {
   ismsRef: string;
+  remarks?: string;
   cardCode: string;
   whs: string;
   baseDrEntry: number;
   lines: SapSerialLine[];
 }): Record<string, unknown> {
-  return buildBasedDocumentBody(i.ismsRef, i.cardCode, i.whs, BASE_TYPE_DR, i.baseDrEntry, i.lines);
+  return buildBasedDocumentBody(i.ismsRef, i.cardCode, i.whs, BASE_TYPE_DR, i.baseDrEntry, i.lines, i.remarks);
+}
+
+/** Comments on the IT / Return an approved delivery return posts: names the original ITR or SO. */
+export function deliveryReturnRemarks(i: {
+  requestNo: string;
+  orderDocType: "ITR" | "SO";
+  orderDocNum: number | null;
+  reason: string;
+}): string {
+  const original = i.orderDocNum != null ? `${i.orderDocType} ${i.orderDocNum}` : `${i.orderDocType} (no number)`;
+  return `Return of ${original} · ISMS ${i.requestNo} · ${i.reason}`;
 }
 
 interface SapDocumentResponse {

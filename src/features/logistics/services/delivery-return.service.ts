@@ -46,6 +46,11 @@ export const deliveryReturnReasonSchema = z
   .trim()
   .min(1, "Enter the reason for the return")
   .max(RETURN_REASON_MAX, `The reason can be up to ${RETURN_REASON_MAX} characters`);
+/** Ticked units to return; omitted or null returns every unit still in transit. */
+export const deliveryReturnSerialIdsSchema = z
+  .array(z.string().min(1))
+  .min(1, "Tick the units to return")
+  .nullish();
 export const deliveryReturnDecisionSchema = z.object({
   action: z.enum(["APPROVE", "REJECT"]),
   note: z.string().max(RETURN_REASON_MAX, `The note can be up to ${RETURN_REASON_MAX} characters`).nullish(),
@@ -174,10 +179,10 @@ async function postToSap(actor: PostingActor, request: { id: string; requestNo: 
 }
 
 export const deliveryReturnService = {
-  /** Operator asks to send every in-transit unit back. Units stay DIT until the return completes. */
+  /** Operator asks to send in-transit units back (all, or the ticked ones). Units stay DIT until the return completes. */
   async request(
     actor: PostingActor,
-    input: { deliveryId: string; reason: string },
+    input: { deliveryId: string; reason: string; serialNumberIds?: string[] | null },
   ): Promise<{ id: string; requestNo: string }> {
     requireCapability(actor, "canRequestDeliveryReturn");
     const reason = cleanText(input.reason);
@@ -196,6 +201,7 @@ export const deliveryReturnService = {
       delivery,
       openReturn,
       new Set(openTransfers.map((row) => row.serialNumberId)),
+      input.serialNumberIds ?? null,
     );
     if (!plan.ok) throw new Error(plan.error);
     const sapReady = planReturnSapReady(delivery);

@@ -12,7 +12,6 @@ import { PulloutRequestDialog } from "@/app/(app)/logistics/_components/pullout-
 import { TransferRequestDialog } from "@/app/(app)/logistics/_components/transfer-request-dialog";
 import {
   DeliveryReturnCell,
-  DeliveryReturnRequestDialog,
   DeliveryReturnReviewDialog,
   type LatestDeliveryReturn,
   type ReturnTarget,
@@ -73,8 +72,6 @@ interface OpsPanelProps {
     toBranch: { name: string };
   }[];
   pullouts: { id: string; statusCode: StatusCodeRef; branch: { name: string } }[];
-  /** Shows Transfer actions in the receive dialog. */
-  canCreateDeliveryTransfer?: boolean;
   canRequestDeliveryReturn?: boolean;
   canApproveDeliveryReturn?: boolean;
 }
@@ -102,14 +99,12 @@ export function OpsPanel({
   transfers,
   pullouts,
   currentUserName = "",
-  canCreateDeliveryTransfer = false,
   canRequestDeliveryReturn = false,
   canApproveDeliveryReturn = false,
 }: OpsPanelProps) {
   const router = useRouter();
   const [transferOpen, setTransferOpen] = useState(false);
   const [pulloutOpen, setPulloutOpen] = useState(false);
-  const [returnRequestTarget, setReturnRequestTarget] = useState<ReturnTarget | null>(null);
   const [returnReviewTarget, setReturnReviewTarget] = useState<ReturnTarget | null>(null);
   const [receiveTarget, setReceiveTarget] = useState<ReceiveTarget | null>(null);
   const [deliverySelection, setDeliverySelection] = useState<RowSelectionState>({});
@@ -218,14 +213,14 @@ export function OpsPanel({
           const receivable = RECEIVABLE_DELIVERY_CODES.has(delivery.statusCode.code);
           const latestReturn = delivery.returnRequests[0];
           const returnOpen = isReturnOpen(latestReturn);
-          const target = { id: delivery.id, deliveryNo: delivery.deliveryNo, branchName: delivery.branch.name };
+          const target = {
+            id: delivery.id,
+            deliveryNo: delivery.deliveryNo,
+            branchName: delivery.branch.name,
+            sapDocType: delivery.order?.sapDocType ?? null,
+          };
           return (
             <div className="flex flex-wrap justify-end gap-2">
-              {receivable && !returnOpen && canRequestDeliveryReturn ? (
-                <Button size="sm" variant="outline" onClick={() => setReturnRequestTarget(target)}>
-                  Request return
-                </Button>
-              ) : null}
               {latestReturn?.status === "PENDING_APPROVAL" && canApproveDeliveryReturn ? (
                 <Button size="sm" onClick={() => setReturnReviewTarget(target)}>
                   Review return
@@ -412,14 +407,7 @@ export function OpsPanel({
         onReceived={() => router.refresh()}
         loadLines={listDeliveryReceiptLinesAction}
         accept={acceptDeliveryAction}
-        canTransfer={canCreateDeliveryTransfer}
-      />
-
-      <DeliveryReturnRequestDialog
-        target={returnRequestTarget}
-        onClose={() => setReturnRequestTarget(null)}
-        onDone={() => router.refresh()}
-        submit={requestDeliveryReturnAction}
+        requestReturn={canRequestDeliveryReturn ? requestDeliveryReturnAction : undefined}
       />
 
       <DeliveryReturnReviewDialog

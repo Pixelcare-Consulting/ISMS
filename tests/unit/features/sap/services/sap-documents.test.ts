@@ -8,6 +8,7 @@ import {
   buildSoBody,
   fitSapText,
   buildReturnBody,
+  deliveryReturnRemarks,
   postSapDocument,
 } from "@/features/sap/services/sap-documents";
 import { sapServiceLayerClient } from "@/features/sap/services/sap-service-layer-client";
@@ -53,6 +54,21 @@ describe("SAP document builders", () => {
       lines: [{ itemCode: "X", serialNos: ["S1"], baseEntry: 9, baseLine: 0 }],
     }) as Body;
     expect(body.DocumentLines[0].BaseType).toBe(15);
+  });
+
+  it("a delivery return names the original ITR / SO in Comments and keeps the ISMS ref as the key", () => {
+    const remarks = deliveryReturnRemarks({ requestNo: "RTN-1", orderDocType: "SO", orderDocNum: 5512, reason: "Defective" });
+    expect(remarks).toBe("Return of SO 5512 · ISMS RTN-1 · Defective");
+    const body = buildItBody({
+      ismsRef: "RTN-1",
+      remarks: deliveryReturnRemarks({ requestNo: "RTN-1", orderDocType: "ITR", orderDocNum: 88, reason: "x".repeat(400) }),
+      fromWhs: "A",
+      toWhs: "B",
+      lines: [{ itemCode: "X", serialNos: ["SN1"] }],
+    }) as Body;
+    expect(body.U_ISMS_PO_No).toBe("RTN-1");
+    expect(String(body.Comments).startsWith("Return of ITR 88 · ISMS RTN-1")).toBe(true);
+    expect(String(body.Comments).length).toBeLessThanOrEqual(254);
   });
 });
 

@@ -15,6 +15,7 @@ import {
   buildItBody,
   buildItrBody,
   buildReturnBody,
+  deliveryReturnRemarks,
   buildSoBody,
   postSapDocument,
   type SapSerialLine,
@@ -116,6 +117,7 @@ async function postDeliveryReturn(
     where: { id: returnId, tenantId },
     select: {
       requestNo: true,
+      reason: true,
       status: true,
       sapDocNo: true,
       lines: {
@@ -128,7 +130,7 @@ async function postDeliveryReturn(
           drNo: true,
           sourceWarehouse: { select: { code: true } },
           branch: { select: { sapCode: true, dealer: { select: { sapCode: true } } } },
-          order: { select: { sapDocType: true } },
+          order: { select: { sapDocType: true, sapDocNum: true } },
         },
       },
     },
@@ -154,6 +156,12 @@ async function postDeliveryReturn(
   }));
 
   const kind = returnKind(docType);
+  const remarks = deliveryReturnRemarks({
+    requestNo: request.requestNo,
+    orderDocType: docType,
+    orderDocNum: delivery.order?.sapDocNum ?? null,
+    reason: request.reason,
+  });
   let body: Record<string, unknown>;
   if (docType === "SO") {
     if (delivery.sapDocEntry == null) throw new Error("Delivery has no DR in SAP");
@@ -162,6 +170,7 @@ async function postDeliveryReturn(
     const drNo = delivery.drNo ?? String(delivery.sapDocEntry);
     body = buildReturnBody({
       ismsRef: request.requestNo,
+      remarks,
       cardCode,
       whs: toWhs,
       baseDrEntry: delivery.sapDocEntry,
@@ -171,6 +180,7 @@ async function postDeliveryReturn(
     if (!delivery.branch.sapCode) throw new Error("Branch has no SAP warehouse code");
     body = buildItBody({
       ismsRef: request.requestNo,
+      remarks,
       fromWhs: delivery.branch.sapCode,
       toWhs,
       lines: groupSerialsBySku(serials),

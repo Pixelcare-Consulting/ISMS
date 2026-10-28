@@ -23,6 +23,7 @@ import {
   deliveryReturnCancelNoteSchema,
   deliveryReturnDecisionSchema,
   deliveryReturnReasonSchema,
+  deliveryReturnSerialIdsSchema,
   deliveryReturnService,
   type DeliveryReturnDetail,
 } from "@/features/logistics/services/delivery-return.service";
@@ -931,12 +932,14 @@ function revalidateDeliveryReturn() {
   revalidatePath("/inventory");
 }
 
-export async function requestDeliveryReturnAction(deliveryId: string, reason: unknown) {
+export async function requestDeliveryReturnAction(deliveryId: string, reason: unknown, serialNumberIds?: unknown) {
   const session = await requireAnyPermission([LOGISTICS_DELIVERY_RETURN_REQUEST]);
   const parsed = deliveryReturnReasonSchema.safeParse(reason);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Enter the reason for the return" };
+  const units = deliveryReturnSerialIdsSchema.safeParse(serialNumberIds);
+  if (!units.success) return { error: units.error.issues[0]?.message ?? "Tick the units to return" };
   try {
-    const row = await deliveryReturnService.request(postingActor(session), { deliveryId, reason: parsed.data });
+    const row = await deliveryReturnService.request(postingActor(session), { deliveryId, reason: parsed.data, serialNumberIds: units.data });
     revalidateDelivery(deliveryId);
     return { success: true as const, id: row.id, requestNo: row.requestNo };
   } catch (error) {

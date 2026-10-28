@@ -81,3 +81,11 @@ export function sapTransferNotPostedMessage(sapError: string | null): string {
     ? `SAP transfer not posted yet: ${sapError}. Use Retry SAP posting below.`
     : "SAP transfer not posted yet. Use Retry SAP posting below.";
 }
+
+/**
+ * What ISMS calls a delivery return request: an outright (SO) delivery posts a
+ * SAP Return, a consignment (ITR) one an IT back to the warehouse.
+ */
+export function returnRequestTerm(sapDocType: "ITR" | "SO" | null | undefined): string {
+  return sapDocType === "ITR" ? "transfer request" : "return request";
+}

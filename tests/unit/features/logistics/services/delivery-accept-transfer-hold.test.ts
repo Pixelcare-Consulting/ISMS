@@ -16,6 +16,7 @@ jest.mock("@/lib/database/client", () => {
       branchInventory: { findMany: jest.fn() },
       deliveryTransferLine: { findMany: jest.fn() },
       deliveryReturnRequest: { count: jest.fn() },
+      deliveryReturnLine: { findMany: jest.fn() },
       $transaction: jest.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)),
     },
   };
@@ -66,6 +67,7 @@ beforeEach(() => {
     { serialNumberId: "s3", statusCode: { code: "DIT" } },
   ]);
   mockPrisma.deliveryTransferLine.findMany.mockResolvedValue([]);
+  mockPrisma.deliveryReturnLine.findMany.mockResolvedValue([]);
   mockTx.deliveryTransferLine.findMany.mockResolvedValue([]);
   mockTx.branchInventory.updateMany.mockResolvedValue({ count: 1 });
   mockTx.branchDelivery.updateMany.mockResolvedValue({ count: 1 });

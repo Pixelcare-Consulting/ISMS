@@ -45,23 +45,43 @@ export async function txWorkflowCodeId(tx: PostingDb, tenantId: string, code: st
 }
 
 /**
- * Closes the delivery after its return completed (R8b). Read under the row
- * lock: `partial` means some units reached stock (accepted or received on a
- * unit transfer), so it becomes accepted; `pending` means none did, so rejected.
+ * Re-derives the delivery status after its return completed (R8b), under the
+ * row lock and after the returned units left the branch. Call it once the
+ * request is COMPLETED, so its lines count as returned.
  */
 export async function settleDeliveryAfterReturn(
   tx: PostingDb,
   tenantId: string,
   deliveryId: string,
-): Promise<"accepted" | "rejected"> {
+): Promise<"accepted" | "partial" | "rejected"> {
   await lockDeliveryRow(tx, tenantId, deliveryId);
   const delivery = await tx.branchDelivery.findFirst({
     where: { id: deliveryId, tenantId },
-    select: { acceptedAt: true, statusCodeId: true, statusCode: { select: { code: true } } },
+    select: {
+      branchId: true,
+      acceptedAt: true,
+      statusCodeId: true,
+      statusCode: { select: { code: true } },
+      lines: { select: { serialNumberId: true } },
+    },
   });
   if (!delivery) throw new Error("Delivery not found");
-  const next = planReturnSettle(delivery.statusCode.code);
+  const serialIds = delivery.lines.map((line) => line.serialNumberId);
+  const [stillInTransit, returned] = await Promise.all([
+    tx.branchInventory.count({
+      where: { tenantId, branchId: delivery.branchId, serialNumberId: { in: serialIds }, statusCode: { code: "DIT" } },
+    }),
+    tx.deliveryReturnLine.count({
+      where: { serialNumberId: { in: serialIds }, returnRequest: { tenantId, deliveryId, status: "COMPLETED" } },
+    }),
+  ]);
+  const next = planReturnSettle({
+    status: delivery.statusCode.code,
+    stillInTransit,
+    allReturned: returned >= serialIds.length,
+  });
   if (!next) throw new Error("Only a dispatched delivery still pending acceptance can be returned");
+  if (next === delivery.statusCode.code) return next;
 
   const nextCodeId = await txWorkflowCodeId(tx, tenantId, next);
   const claimed = await tx.branchDelivery.updateMany({

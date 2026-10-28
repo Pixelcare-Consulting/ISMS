@@ -45,7 +45,6 @@ export interface ReturnTarget {
 }
 
 type Failure = { error: string };
-type RequestResult = { success: true; requestNo: string } | Failure;
 type LoadResult = { success: true; detail: DeliveryReturnDetail | null } | Failure;
 type OutcomeResult = ({ success: true } & DeliveryReturnOutcome) | Failure;
 
@@ -79,109 +78,39 @@ function toastOutcome(outcome: DeliveryReturnOutcome) {
   }
 }
 
-export function DeliveryReturnRequestDialog({
-  target,
-  onClose,
-  onDone,
-  submit,
+/** Required return reason for the receive dialog's return step. */
+export function ReturnReasonField({
+  value,
+  error,
+  onChange,
 }: {
-  target: ReturnTarget | null;
-  onClose: () => void;
-  onDone: () => void;
-  submit: (deliveryId: string, reason: string) => Promise<RequestResult>;
-}) {
-  return (
-    <Dialog
-      open={target !== null}
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-    >
-      <DialogContent className="sm:max-w-lg">
-        {target ? (
-          <RequestBody key={target.id} target={target} onClose={onClose} onDone={onDone} submit={submit} />
-        ) : null}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function RequestBody({
-  target,
-  onClose,
-  onDone,
-  submit,
-}: {
-  target: ReturnTarget;
-  onClose: () => void;
-  onDone: () => void;
-  submit: (deliveryId: string, reason: string) => Promise<RequestResult>;
+  value: string;
+  error: string | null;
+  onChange: (value: string) => void;
 }) {
   const reasonId = useId();
-  const [reason, setReason] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
-  const trimmed = reason.trim();
-
-  function send() {
-    if (!trimmed) {
-      setError("Enter the reason for the return");
-      return;
-    }
-    startTransition(async () => {
-      const result = await submit(target.id, trimmed);
-      if ("error" in result) {
-        setError(result.error);
-        return;
-      }
-      toast.success(`Return ${result.requestNo} sent for approval.`);
-      onDone();
-      onClose();
-    });
-  }
-
   return (
-    <>
-      <DialogHeader>
-        <DialogTitle>Request return of {target.deliveryNo}</DialogTitle>
-        <DialogDescription>
-          Every unit still in transit to {target.branchName} goes back to the warehouse it was dispatched from, once
-          the return is approved and posted to SAP. Until then the units stay pending acceptance.
-        </DialogDescription>
-      </DialogHeader>
-      <div className="space-y-2">
-        <Label htmlFor={reasonId}>Reason</Label>
-        <Textarea
-          id={reasonId}
-          value={reason}
-          maxLength={TEXT_MAX}
-          rows={4}
-          required
-          aria-invalid={error ? true : undefined}
-          aria-describedby={`${reasonId}-hint`}
-          onChange={(event) => {
-            setReason(event.target.value);
-            if (error) setError(null);
-          }}
-        />
-        <div id={`${reasonId}-hint`} className="flex justify-between gap-2 text-xs">
-          <span className={error ? "text-destructive" : "text-muted-foreground"} role={error ? "alert" : undefined}>
-            {error ?? "Required."}
-          </span>
-          <span className="tabular-nums text-muted-foreground">
-            {reason.length}/{TEXT_MAX}
-          </span>
-        </div>
+    <div className="space-y-2">
+      <Label htmlFor={reasonId}>Reason</Label>
+      <Textarea
+        id={reasonId}
+        value={value}
+        maxLength={TEXT_MAX}
+        rows={4}
+        required
+        aria-invalid={error ? true : undefined}
+        aria-describedby={`${reasonId}-hint`}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <div id={`${reasonId}-hint`} className="flex justify-between gap-2 text-xs">
+        <span className={error ? "text-destructive" : "text-muted-foreground"} role={error ? "alert" : undefined}>
+          {error ?? "Required."}
+        </span>
+        <span className="tabular-nums text-muted-foreground">
+          {value.length}/{TEXT_MAX}
+        </span>
       </div>
-      <DialogFooter className="flex-wrap gap-2">
-        <Button variant="outline" className="max-sm:h-11" disabled={pending} onClick={onClose}>
-          Cancel
-        </Button>
-        <Button className="max-sm:h-11" disabled={pending || !trimmed} onClick={send}>
-          {pending ? "Sending…" : "Request return"}
-        </Button>
-      </DialogFooter>
-    </>
+    </div>
   );
 }
 

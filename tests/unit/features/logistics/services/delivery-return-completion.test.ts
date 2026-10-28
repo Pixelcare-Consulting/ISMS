@@ -4,7 +4,8 @@ jest.mock("@/lib/database/client", () => {
     deliveryReturnRequest: { findFirst: jest.fn(), updateMany: jest.fn() },
     deliveryTransferLine: { findMany: jest.fn() },
     branchDelivery: { findFirst: jest.fn(), updateMany: jest.fn() },
-    branchInventory: { deleteMany: jest.fn() },
+    branchInventory: { deleteMany: jest.fn(), count: jest.fn() },
+    deliveryReturnLine: { count: jest.fn() },
     warehouseInventory: { createMany: jest.fn() },
     serialNumber: { updateMany: jest.fn() },
     serialNumberHistory: { createMany: jest.fn() },
@@ -48,6 +49,16 @@ function approvedRequest(status = "APPROVED") {
   };
 }
 
+function deliveryRow(code: string, acceptedAt: Date | null = null) {
+  return {
+    branchId: "b1",
+    acceptedAt,
+    statusCodeId: `id-${code}`,
+    statusCode: { code },
+    lines: [{ serialNumberId: "s2" }, { serialNumberId: "s3" }],
+  };
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockTx.deliveryReturnRequest.findFirst.mockResolvedValue(approvedRequest());
@@ -57,12 +68,11 @@ beforeEach(() => {
   ]);
   mockTx.branchInventory.deleteMany.mockResolvedValue({ count: 2 });
   mockTx.deliveryReturnRequest.updateMany.mockResolvedValue({ count: 1 });
-  mockTx.branchDelivery.findFirst.mockResolvedValue({
-    acceptedAt: null,
-    statusCodeId: "id-pending",
-    statusCode: { code: "pending" },
-  });
+  mockTx.branchDelivery.findFirst.mockResolvedValue(deliveryRow("pending"));
   mockTx.branchDelivery.updateMany.mockResolvedValue({ count: 1 });
+  // After the delete: nothing left in transit, both delivery units on completed returns.
+  mockTx.branchInventory.count.mockResolvedValue(0);
+  mockTx.deliveryReturnLine.count.mockResolvedValue(2);
   mockTx.deliveryTransferLine.findMany.mockResolvedValue([]);
   mockTx.reasonStatusCode.findFirst.mockImplementation(async ({ where }: { where: { code: string } }) => ({
     id: `id-${where.code}`,
@@ -111,9 +121,8 @@ describe("completeDeliveryReturn", () => {
 
   it("accepts a partial delivery and stamps acceptedAt (R8b)", async () => {
     mockTx.branchDelivery.findFirst.mockResolvedValue({
-      acceptedAt: null,
-      statusCodeId: "id-partial",
-      statusCode: { code: "partial" },
+      ...deliveryRow("partial"),
+      lines: [{ serialNumberId: "s1" }, { serialNumberId: "s2" }, { serialNumberId: "s3" }],
     });
     const result = await completeDeliveryReturn(input);
     expect(result).toEqual({ deliveryStatus: "accepted" });
@@ -125,12 +134,25 @@ describe("completeDeliveryReturn", () => {
 
   it("keeps an existing acceptedAt on a partial delivery (R8b)", async () => {
     mockTx.branchDelivery.findFirst.mockResolvedValue({
-      acceptedAt: new Date("2026-10-01"),
-      statusCodeId: "id-partial",
-      statusCode: { code: "partial" },
+      ...deliveryRow("partial", new Date("2026-10-01")),
+      lines: [{ serialNumberId: "s1" }, { serialNumberId: "s2" }, { serialNumberId: "s3" }],
     });
     await completeDeliveryReturn(input);
     expect(mockTx.branchDelivery.updateMany.mock.calls[0][0].data).toEqual({ statusCodeId: "id-accepted" });
+  });
+
+  it("a return of ticked units leaves the delivery partial while others are still in transit", async () => {
+    mockTx.branchDelivery.findFirst.mockResolvedValue({
+      ...deliveryRow("pending"),
+      lines: [{ serialNumberId: "s1" }, { serialNumberId: "s2" }, { serialNumberId: "s3" }],
+    });
+    mockTx.branchInventory.count.mockResolvedValue(1);
+    const result = await completeDeliveryReturn(input);
+    expect(result).toEqual({ deliveryStatus: "partial" });
+    expect(mockTx.branchDelivery.updateMany).toHaveBeenCalledWith({
+      where: { id: "del1", tenantId: "t1", statusCodeId: "id-pending" },
+      data: { statusCodeId: "id-partial" },
+    });
   });
 
   it("refuses when a return serial is on an open unit transfer, before moving stock", async () => {

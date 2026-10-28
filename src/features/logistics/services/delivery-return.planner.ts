@@ -3,10 +3,11 @@ import type { DeliveryReturnStatus, SapOrderDocType } from "@prisma/client";
 import type { DeliveryPostingView, PlanFailure } from "@/features/logistics/services/delivery-posting.planner";
 
 /**
- * Full return of a dispatched delivery's in-transit units. The operator
- * requests it, an approver decides, and only after SAP has the IT or Return do
- * the units go back: to the warehouse location they were dispatched from, or,
- * for a unit dispatched from SAP's placement, to the source warehouse per SAP.
+ * Return of a dispatched delivery's in-transit units: all of them, or the ones
+ * the branch ticked. The operator requests it, an approver (TL) decides, and
+ * only after SAP has the IT (consignment) or Return (outright) do the units go
+ * back: to the warehouse location they were dispatched from, or, for a unit
+ * dispatched from SAP's placement, to the source warehouse per SAP.
  */
 
 /** A request in either status still holds the delivery: one open request per delivery (partial unique index). */
@@ -23,6 +24,8 @@ export function planReturnRequest(
   openReturn: boolean,
   /** DIT units held by a pending or approved unit-transfer line. */
   onOpenTransfer: ReadonlySet<string> = new Set(),
+  /** Units to return; null returns every unit still in transit. */
+  requestedSerialIds: readonly string[] | null = null,
 ): { ok: true; lines: ReturnLinePlan[] } | PlanFailure {
   if (d.status !== "pending" && d.status !== "partial") {
     return { ok: false, error: "Only a dispatched delivery still pending acceptance can be returned" };
@@ -31,11 +34,24 @@ export function planReturnRequest(
 
   const inTransit = d.lines.filter((line) => line.branchStatus === "DIT");
   if (inTransit.length === 0) return { ok: false, error: "No units are in transit on this delivery" };
-  if (inTransit.some((line) => onOpenTransfer.has(line.serialNumberId))) {
+
+  let returning = inTransit;
+  if (requestedSerialIds !== null) {
+    const requested = new Set(requestedSerialIds);
+    if (requested.size === 0) return { ok: false, error: "Tick the units to return" };
+    if (requested.size !== requestedSerialIds.length) {
+      return { ok: false, error: "A unit was listed twice on the return" };
+    }
+    returning = inTransit.filter((line) => requested.has(line.serialNumberId));
+    if (returning.length !== requested.size) {
+      return { ok: false, error: "Some units are not in transit on this delivery" };
+    }
+  }
+  if (returning.some((line) => onOpenTransfer.has(line.serialNumberId))) {
     return { ok: false, error: RETURN_ON_TRANSFER_ERROR };
   }
 
-  const lines: ReturnLinePlan[] = inTransit.map((line) => ({
+  const lines: ReturnLinePlan[] = returning.map((line) => ({
     serialNumberId: line.serialNumberId,
     warehouseLocationToId: line.warehouseLocationFromId,
   }));
@@ -89,15 +105,20 @@ export function planReturnDecision(
 }
 
 /**
- * Delivery status once a return completes (R8b). Every in-transit unit went
- * back, so the delivery closes: `partial` (some units already reached stock)
- * becomes accepted, `pending` (none did) becomes rejected. Anything else is
- * not a delivery a return can complete on.
+ * Delivery status once a return completes (R8b). Units still in transit keep
+ * the delivery open as partial. Otherwise it closes: rejected when every unit
+ * went back on a return, accepted when any reached stock or left on a unit
+ * transfer. Anything but pending or partial is not a delivery a return can
+ * complete on.
  */
-export function planReturnSettle(status: string): "accepted" | "rejected" | null {
-  if (status === "partial") return "accepted";
-  if (status === "pending") return "rejected";
-  return null;
+export function planReturnSettle(input: {
+  status: string;
+  stillInTransit: number;
+  allReturned: boolean;
+}): "accepted" | "partial" | "rejected" | null {
+  if (input.status !== "pending" && input.status !== "partial") return null;
+  if (input.stillInTransit > 0) return "partial";
+  return input.allReturned ? "rejected" : "accepted";
 }
 
 export function nextReturnNo(): string {

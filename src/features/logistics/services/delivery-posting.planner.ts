@@ -144,19 +144,22 @@ export function assertExclusiveClaim(actual: number, expected: number, message: 
 }
 
 /** Where a dispatched unit stands, as the receive dialog groups it. */
-export type DeliveryReceiptLineState = "IN_TRANSIT" | "ON_TRANSFER" | "RECEIVED" | "TRANSFERRED";
+export type DeliveryReceiptLineState = "IN_TRANSIT" | "ON_TRANSFER" | "RECEIVED" | "TRANSFERRED" | "RETURNED";
 
 /**
  * DIT units are in transit (or held by an open unit transfer). A unit that is no
- * longer at the delivery branch and was received on one of this delivery's unit
- * transfers left by transfer; anything else reached the branch.
+ * longer at the delivery branch left by transfer when one of this delivery's unit
+ * transfers received it, or by return when a completed return took it; anything
+ * else reached the branch.
  */
 export function receiptLineState(input: {
   branchStatus: string | null;
   onOpenTransfer: boolean;
   receivedOnTransfer: boolean;
+  returned?: boolean;
 }): DeliveryReceiptLineState {
   if (input.branchStatus === "DIT") return input.onOpenTransfer ? "ON_TRANSFER" : "IN_TRANSIT";
   if (input.branchStatus === null && input.receivedOnTransfer) return "TRANSFERRED";
+  if (input.branchStatus === null && input.returned) return "RETURNED";
   return "RECEIVED";
 }

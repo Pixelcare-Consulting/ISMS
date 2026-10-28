@@ -73,6 +73,25 @@ describe("planReturnRequest", () => {
     }
   });
 
+  it("returns only the ticked units", () => {
+    const plan = planReturnRequest(delivery(), false, new Set(), ["s3"]);
+    expect(plan).toEqual({ ok: true, lines: [{ serialNumberId: "s3", warehouseLocationToId: "loc-2" }] });
+  });
+
+  it("a ticked unit on an open transfer blocks; an unticked one does not", () => {
+    expect(planReturnRequest(delivery(), false, new Set(["s3"]), ["s3"]).ok).toBe(false);
+    expect(planReturnRequest(delivery(), false, new Set(["s3"]), ["s2"]).ok).toBe(true);
+  });
+
+  it("refuses ticked units that are not in transit, duplicates, or none", () => {
+    expect(planReturnRequest(delivery(), false, new Set(), ["s1"])).toEqual({
+      ok: false,
+      error: "Some units are not in transit on this delivery",
+    });
+    expect(planReturnRequest(delivery(), false, new Set(), ["s2", "s2"]).ok).toBe(false);
+    expect(planReturnRequest(delivery(), false, new Set(), [])).toEqual({ ok: false, error: "Tick the units to return" });
+  });
+
   it("refuses when nothing is in transit", () => {
     const d = delivery({
       lines: [{ serialNumberId: "s1", warehouseLocationFromId: "loc-1", branchStatus: "STK" }],
@@ -99,17 +118,25 @@ describe("planReturnDecision", () => {
 });
 
 describe("planReturnSettle (R8b)", () => {
-  it("pending (nothing reached stock) becomes rejected", () => {
-    expect(planReturnSettle("pending")).toBe("rejected");
+  it("every unit went back on a return: rejected", () => {
+    for (const status of ["pending", "partial"]) {
+      expect(planReturnSettle({ status, stillInTransit: 0, allReturned: true })).toBe("rejected");
+    }
   });
 
-  it("partial (some units reached stock) becomes accepted", () => {
-    expect(planReturnSettle("partial")).toBe("accepted");
+  it("nothing left in transit and some units reached stock: accepted", () => {
+    expect(planReturnSettle({ status: "partial", stillInTransit: 0, allReturned: false })).toBe("accepted");
+  });
+
+  it("units still in transit keep the delivery open as partial", () => {
+    for (const status of ["pending", "partial"]) {
+      expect(planReturnSettle({ status, stillInTransit: 2, allReturned: false })).toBe("partial");
+    }
   });
 
   it("no other status can be settled by a return", () => {
     for (const status of ["approved", "accepted", "rejected", "requested"]) {
-      expect(planReturnSettle(status)).toBeNull();
+      expect(planReturnSettle({ status, stillInTransit: 0, allReturned: true })).toBeNull();
     }
   });
 });

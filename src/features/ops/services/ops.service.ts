@@ -43,7 +43,7 @@ export const opsService = {
     });
   },
 
-  requestDeliveryReturn(actor: PostingActor, input: { deliveryId: string; reason: string }) {
+  requestDeliveryReturn(actor: PostingActor, input: { deliveryId: string; reason: string; serialNumberIds?: string[] | null }) {
     return deliveryReturnService.request(actor, input);
   },
 

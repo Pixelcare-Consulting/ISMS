@@ -16,7 +16,8 @@ export const DELIVERY_RETURN_ENTITY = "DeliveryReturnRequest";
 /**
  * Local half of an approved return, run once SAP has the document. One
  * transaction: the in-transit branch rows go, each unit lands at the warehouse
- * location it was dispatched from, the request completes and the delivery closes.
+ * location it was dispatched from, the request completes and the delivery settles
+ * (closed, or still partial while other units are in transit).
  *
  * A unit dispatched from SAP's placement has no location. It gets no ISMS stock row:
  * it is linked back to the delivery's source warehouse as SAP now holds it, so dispatch
@@ -30,7 +31,7 @@ export async function completeDeliveryReturn(input: {
   returnId: string;
   kind: DeliveryReturnSapKind;
   sapDocNo: string;
-}): Promise<{ deliveryStatus: "accepted" | "rejected" } | null> {
+}): Promise<{ deliveryStatus: "accepted" | "partial" | "rejected" } | null> {
   const { tenantId, returnId } = input;
   return prisma.$transaction(async (tx) => {
     const request = await tx.deliveryReturnRequest.findFirst({

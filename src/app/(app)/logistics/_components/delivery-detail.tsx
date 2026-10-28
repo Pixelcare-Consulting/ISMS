@@ -19,7 +19,6 @@ import {
   type ReceiveTarget,
 } from "@/app/(app)/logistics/_components/delivery-receive-dialog";
 import {
-  DeliveryReturnRequestDialog,
   DeliveryReturnReviewDialog,
   type ReturnTarget,
   type ReviewReturnActions,
@@ -257,7 +256,6 @@ export function DeliveryDetailView({
 }) {
   const router = useRouter();
   const [receiveTarget, setReceiveTarget] = useState<ReceiveTarget | null>(null);
-  const [returnRequestTarget, setReturnRequestTarget] = useState<ReturnTarget | null>(null);
   const [returnReviewTarget, setReturnReviewTarget] = useState<ReturnTarget | null>(null);
 
   const code = detail.status.code;
@@ -294,14 +292,6 @@ export function DeliveryDetailView({
         }
         actions={
           <>
-            {dispatched && !returnOpen && capabilities.canRequestDeliveryReturn ? (
-              <Button
-                variant="outline"
-                onClick={() => setReturnRequestTarget(returnTarget)}
-              >
-                Request return
-              </Button>
-            ) : null}
             {latestReturn?.status === "PENDING_APPROVAL" && capabilities.canApproveDeliveryReturn ? (
               <Button onClick={() => setReturnReviewTarget(returnTarget)}>
                 Review return
@@ -316,7 +306,9 @@ export function DeliveryDetailView({
                 Retry SAP posting
               </Button>
             ) : null}
-            {dispatched && !returnOpen && capabilities.canAcceptDelivery ? (
+            {dispatched &&
+            !returnOpen &&
+            (capabilities.canAcceptDelivery || capabilities.canRequestDeliveryReturn) ? (
               <Button
                 className="bg-emerald-600 text-white hover:bg-emerald-700"
                 onClick={() =>
@@ -324,6 +316,7 @@ export function DeliveryDetailView({
                     id: detail.id,
                     deliveryNo: detail.deliveryNo,
                     branchName: detail.branch.name,
+                    sapDocType: detail.order?.sapDocType ?? null,
                   })
                 }
               >
@@ -400,13 +393,6 @@ export function DeliveryDetailView({
         </RecordSection>
       </RecordSheet>
 
-      <DeliveryReturnRequestDialog
-        target={returnRequestTarget}
-        onClose={() => setReturnRequestTarget(null)}
-        onDone={refresh}
-        submit={requestDeliveryReturnAction}
-      />
-
       <DeliveryReturnReviewDialog
         target={returnReviewTarget}
         canApprove={capabilities.canApproveDeliveryReturn}
@@ -422,7 +408,8 @@ export function DeliveryDetailView({
         onReceived={refresh}
         loadLines={listDeliveryReceiptLinesAction}
         accept={acceptDeliveryAction}
-        canTransfer={capabilities.canCreateDeliveryTransfer}
+        canReceive={capabilities.canAcceptDelivery}
+        requestReturn={capabilities.canRequestDeliveryReturn ? requestDeliveryReturnAction : undefined}
       />
     </div>
   );

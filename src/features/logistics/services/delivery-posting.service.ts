@@ -439,7 +439,7 @@ export const deliveryPostingService = {
 
     const statusBySerial = new Map(preview.lines.map((line) => [line.serialNumberId, line.branchStatus]));
     const serialIds = header.lines.map((line) => line.serialNumberId);
-    const [openTransfers, receivedOnTransfer] = await Promise.all([
+    const [openTransfers, receivedOnTransfer, returnedLines] = await Promise.all([
       findOpenTransferLines(prisma, actor.tenantId, serialIds),
       serialIds.length
         ? prisma.deliveryTransferLine.findMany({
@@ -451,8 +451,18 @@ export const deliveryPostingService = {
             select: { serialNumberId: true },
           })
         : Promise.resolve([]),
+      serialIds.length
+        ? prisma.deliveryReturnLine.findMany({
+            where: {
+              serialNumberId: { in: serialIds },
+              returnRequest: { tenantId: actor.tenantId, deliveryId, status: "COMPLETED" },
+            },
+            select: { serialNumberId: true },
+          })
+        : Promise.resolve([]),
     ]);
     const transferredIds = new Set(receivedOnTransfer.map((row) => row.serialNumberId));
+    const returnedIds = new Set(returnedLines.map((row) => row.serialNumberId));
     const transferBySerial = new Map(
       openTransfers.map((row) => [row.serialNumberId, { id: row.transferId, transferNo: row.transferNo }]),
     );
@@ -473,6 +483,7 @@ export const deliveryPostingService = {
             branchStatus,
             onOpenTransfer: openTransfer !== null,
             receivedOnTransfer: transferredIds.has(line.serialNumberId),
+            returned: returnedIds.has(line.serialNumberId),
           }),
         };
       }),
