@@ -159,13 +159,29 @@ export function buildItrBody(
 }
 
 /**
+ * The company's cost-accounting dimensions (`Dimensions`, read 2026-10-28): dimension 2
+ * is Branch, coded by the branch's warehouse code (the ISMS `Branch.sapCode`), and
+ * dimension 3 is Business Type. Document lines carry them as `CostingCode<N>`.
+ */
+const SAP_LINE_DIMENSION = {
+  branch: "CostingCode2",
+  businessType: "CostingCode3",
+} as const;
+
+/** Business Type (dimension 3) cost centre for outright sales. */
+const SAP_BUSINESS_TYPE_OUTRIGHT = "OUTRIGHT";
+
+/**
  * An approved outright order as a Sales Order. SAP requires its Delivery Date, so the
- * caller always sends one (the order's delivery due date, else today).
+ * caller always sends one (the order's delivery due date, else today). Every line is
+ * tagged with the ordering branch and the Outright business type.
  */
 export function buildSoBody(
   i: OrderDocumentText & {
     cardCode: string;
     whs: string;
+    /** The ordering branch's SAP code, which is also its Branch dimension code. */
+    branchCode: string;
     dueDate: string;
     lines: PlainLine[];
   },
@@ -179,6 +195,8 @@ export function buildSoBody(
       ItemCode: l.itemCode,
       Quantity: l.quantity,
       WarehouseCode: i.whs,
+      [SAP_LINE_DIMENSION.branch]: i.branchCode,
+      [SAP_LINE_DIMENSION.businessType]: SAP_BUSINESS_TYPE_OUTRIGHT,
       ...text.line,
     })),
   };

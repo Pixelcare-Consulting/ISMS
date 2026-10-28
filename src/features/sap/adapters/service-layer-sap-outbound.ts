@@ -302,7 +302,7 @@ export const serviceLayerSapOutbound: SapOutboundPort = {
     const order = await prisma.branchOrder.findFirst({
       where: { id: orderId, tenantId },
       include: {
-        branch: { select: { name: true } },
+        branch: { select: { name: true, sapCode: true } },
         details: {
           orderBy: { id: "asc" },
           include: { model: { select: { skuCode: true } } },
@@ -348,6 +348,7 @@ export const serviceLayerSapOutbound: SapOutboundPort = {
         ismsRef: order.orderNumber,
         cardCode: routing.cardCode,
         whs: routing.sourceWhsCode,
+        branchCode: order.branch.sapCode,
         dueDate: isoDate(order.deliveryDueDate ?? new Date()),
         branchName: order.branch.name,
         notes: order.notes,

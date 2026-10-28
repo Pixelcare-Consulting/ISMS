@@ -106,11 +106,12 @@ describe("buildItrBody", () => {
 });
 
 describe("buildSoBody", () => {
-  it("carries the same notes, journal remarks and line fields as the ITR", () => {
+  it("carries the ITR's text fields plus the Branch and Outright business type dimensions", () => {
     const body = buildSoBody({
       ismsRef: "SO#2026-10-00034",
       cardCode: "C001",
       whs: "FWH14P1F",
+      branchCode: "ABP001",
       dueDate: "2026-11-03",
       branchName: "ABENSON ABREEZA DAVAO",
       notes: "Rush for the mall sale.",
@@ -127,6 +128,8 @@ describe("buildSoBody", () => {
       ItemCode: "55QUHW01",
       Quantity: 2,
       WarehouseCode: "FWH14P1F",
+      CostingCode2: "ABP001",
+      CostingCode3: "OUTRIGHT",
       U_ISMS_PONum: "SO#2026-10-00034",
       U_Branch_Name: "ABENSON ABREEZA DAV…",
       U_Branch_Namelong: "ABENSON ABREEZA DAVAO",
