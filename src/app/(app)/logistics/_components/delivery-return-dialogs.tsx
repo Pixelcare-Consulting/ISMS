@@ -7,13 +7,16 @@ import { toast } from "sonner";
 import { DeliveryReturnStatusBadge } from "@/app/(app)/logistics/_components/delivery-transfer-status-badge";
 import {
   needsSapRetry,
+  pendingReturnOf,
   returnSapFailedMessage,
+  sapRetryReturnOf,
   returnSapPendingMessage,
 } from "@/features/logistics/constants/delivery-workflow-labels";
 import type {
   DeliveryReturnDetail,
   DeliveryReturnOutcome,
 } from "@/features/logistics/services/delivery-return.service";
+import { formatRejectSapDocNo } from "@/features/logistics/lib/sap-doc-number";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -30,7 +33,7 @@ import { Textarea } from "@/components/ui/textarea";
 const TEXT_MAX = 500;
 const dateFormat = new Intl.DateTimeFormat("en-PH", { dateStyle: "medium", timeStyle: "short" });
 
-/** Latest return of a delivery, as the deliveries lists include it. */
+/** A reject request of a delivery, as the deliveries lists include them (newest first). */
 export interface LatestDeliveryReturn {
   id: string;
   requestNo: string;
@@ -39,21 +42,28 @@ export interface LatestDeliveryReturn {
 }
 
 export interface ReturnTarget {
-  id: string;
+  /** The reject request to review. */
+  returnId: string;
   deliveryNo: string;
   branchName: string;
 }
 
 type Failure = { error: string };
-type RequestResult = { success: true; requestNo: string } | Failure;
-type LoadResult = { success: true; detail: DeliveryReturnDetail | null } | Failure;
+type LoadResult = { success: true; detail: DeliveryReturnDetail } | Failure;
 type OutcomeResult = ({ success: true } & DeliveryReturnOutcome) | Failure;
 
-/** Return column: latest request status, or a dash when none was requested. */
-export function DeliveryReturnCell({ latest }: { latest: LatestDeliveryReturn | null | undefined }) {
+/**
+ * Rejected column: the request that needs attention (waiting for the TL, then
+ * SAP not finished), else the newest; a count when there are more.
+ */
+export function DeliveryReturnCell({ returns }: { returns: readonly LatestDeliveryReturn[] }) {
+  const latest = pendingReturnOf(returns) ?? sapRetryReturnOf(returns) ?? returns[0];
   if (!latest) return <span className="text-muted-foreground">—</span>;
   return (
     <div className="flex flex-col items-start gap-1">
+      {returns.length > 1 ? (
+        <span className="text-xs text-muted-foreground">{returns.length} reject requests</span>
+      ) : null}
       <DeliveryReturnStatusBadge status={latest.status} />
       {needsSapRetry(latest) ? (
         <span
@@ -77,112 +87,6 @@ function toastOutcome(outcome: DeliveryReturnOutcome) {
   } else if (outcome.status === "APPROVED") {
     toast.message(`Return approved. ${returnSapPendingMessage(null)}`);
   }
-}
-
-export function DeliveryReturnRequestDialog({
-  target,
-  onClose,
-  onDone,
-  submit,
-}: {
-  target: ReturnTarget | null;
-  onClose: () => void;
-  onDone: () => void;
-  submit: (deliveryId: string, reason: string) => Promise<RequestResult>;
-}) {
-  return (
-    <Dialog
-      open={target !== null}
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-    >
-      <DialogContent className="sm:max-w-lg">
-        {target ? (
-          <RequestBody key={target.id} target={target} onClose={onClose} onDone={onDone} submit={submit} />
-        ) : null}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function RequestBody({
-  target,
-  onClose,
-  onDone,
-  submit,
-}: {
-  target: ReturnTarget;
-  onClose: () => void;
-  onDone: () => void;
-  submit: (deliveryId: string, reason: string) => Promise<RequestResult>;
-}) {
-  const reasonId = useId();
-  const [reason, setReason] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
-  const trimmed = reason.trim();
-
-  function send() {
-    if (!trimmed) {
-      setError("Enter the reason for the return");
-      return;
-    }
-    startTransition(async () => {
-      const result = await submit(target.id, trimmed);
-      if ("error" in result) {
-        setError(result.error);
-        return;
-      }
-      toast.success(`Return ${result.requestNo} sent for approval.`);
-      onDone();
-      onClose();
-    });
-  }
-
-  return (
-    <>
-      <DialogHeader>
-        <DialogTitle>Request return of {target.deliveryNo}</DialogTitle>
-        <DialogDescription>
-          Every unit still in transit to {target.branchName} goes back to the warehouse it was dispatched from, once
-          the return is approved and posted to SAP. Until then the units stay pending acceptance.
-        </DialogDescription>
-      </DialogHeader>
-      <div className="space-y-2">
-        <Label htmlFor={reasonId}>Reason</Label>
-        <Textarea
-          id={reasonId}
-          value={reason}
-          maxLength={TEXT_MAX}
-          rows={4}
-          required
-          aria-invalid={error ? true : undefined}
-          aria-describedby={`${reasonId}-hint`}
-          onChange={(event) => {
-            setReason(event.target.value);
-            if (error) setError(null);
-          }}
-        />
-        <div id={`${reasonId}-hint`} className="flex justify-between gap-2 text-xs">
-          <span className={error ? "text-destructive" : "text-muted-foreground"} role={error ? "alert" : undefined}>
-            {error ?? "Required."}
-          </span>
-          <span className="tabular-nums text-muted-foreground">
-            {reason.length}/{TEXT_MAX}
-          </span>
-        </div>
-      </div>
-      <DialogFooter className="flex-wrap gap-2">
-        <Button variant="outline" className="max-sm:h-11" disabled={pending} onClick={onClose}>
-          Cancel
-        </Button>
-        <Button className="max-sm:h-11" disabled={pending || !trimmed} onClick={send}>
-          {pending ? "Sending…" : "Request return"}
-        </Button>
-      </DialogFooter>
-    </>
-  );
 }
 
 export interface ReviewReturnActions {
@@ -222,7 +126,7 @@ export function DeliveryReturnReviewDialog({
       <DialogContent className="sm:max-w-lg">
         {target ? (
           <ReviewBody
-            key={target.id}
+            key={target.returnId}
             target={target}
             canApprove={canApprove}
             canRetry={canRetry}
@@ -239,7 +143,7 @@ export function DeliveryReturnReviewDialog({
 type ReviewState =
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; detail: DeliveryReturnDetail | null };
+  | { kind: "ready"; detail: DeliveryReturnDetail };
 
 function ReviewBody({
   target,
@@ -267,14 +171,14 @@ function ReviewBody({
 
   useEffect(() => {
     let cancelled = false;
-    load(target.id).then((result) => {
+    load(target.returnId).then((result) => {
       if (cancelled) return;
       setState("error" in result ? { kind: "error", message: result.error } : { kind: "ready", detail: result.detail });
     });
     return () => {
       cancelled = true;
     };
-  }, [load, target.id, reloadKey]);
+  }, [load, target.returnId, reloadKey]);
 
   const detail = state.kind === "ready" ? state.detail : null;
   const canDecide = canApprove && detail?.status === "PENDING_APPROVAL";
@@ -334,11 +238,11 @@ function ReviewBody({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Return for {target.deliveryNo}</DialogTitle>
+        <DialogTitle>Rejected units on {target.deliveryNo}</DialogTitle>
         <DialogDescription>
           {canDecide
-            ? `Approve to post the SAP document and move the units from ${target.branchName} back to the warehouse. Reject to keep them pending acceptance.`
-            : `Return request for ${target.branchName}.`}
+            ? `${target.branchName} rejected these units. Approve to post the SAP IT (consignment) or Return (outright) and move them back to the warehouse. Reject to keep them pending acceptance.`
+            : `Units ${target.branchName} rejected at receiving.`}
         </DialogDescription>
       </DialogHeader>
 
@@ -349,7 +253,7 @@ function ReviewBody({
           {state.message}
         </p>
       ) : !detail ? (
-        <p className="text-sm text-muted-foreground">No return has been requested for this delivery.</p>
+        <p className="text-sm text-muted-foreground">Reject request not found.</p>
       ) : (
         <div className="max-h-[60vh] space-y-4 overflow-y-auto">
           <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
@@ -381,7 +285,9 @@ function ReviewBody({
             {detail.sapDocNo ? (
               <Field
                 label="SAP document"
-                value={detail.sapDocDate ? `${detail.sapDocNo} (${detail.sapDocDate})` : detail.sapDocNo}
+                value={`${formatRejectSapDocNo(detail.sapDocNo, detail.orderSapDocType)}${
+                  detail.sapDocDate ? ` (${detail.sapDocDate})` : ""
+                }`}
               />
             ) : null}
           </dl>
@@ -408,6 +314,7 @@ function ReviewBody({
                   <span className="truncate text-xs text-muted-foreground">
                     {unit.skuCode} · {unit.modelName}
                   </span>
+                  {unit.remarks ? <span className="mt-1 text-xs">{unit.remarks}</span> : null}
                 </li>
               ))}
             </ul>

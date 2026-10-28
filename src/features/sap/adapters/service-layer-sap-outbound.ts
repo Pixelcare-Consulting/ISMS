@@ -15,6 +15,9 @@ import {
   buildItBody,
   buildItrBody,
   buildReturnBody,
+  deliveryReturnJournalMemo,
+  deliveryReturnRemarks,
+  orderLineText,
   buildSoBody,
   postSapDocument,
   type SapSerialLine,
@@ -23,9 +26,6 @@ import {
   completeDeliveryReturn,
   type DeliveryReturnSapKind,
 } from "@/features/logistics/services/delivery-return-completion";
-import { sapErrorMessage } from "@/features/sap/services/sap-master-data";
-import { sapServiceLayerClient } from "@/features/sap/services/sap-service-layer-client";
-import type { SapServiceLayerCredentials } from "@/features/sap/types/sap-service-layer";
 import { sapServiceLayerService } from "@/features/sap/services/sap-service-layer.service";
 import { mockSapOutbound } from "@/features/sap/adapters/mock-sap-outbound";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
@@ -38,71 +38,36 @@ function isoDate(d: Date) {
 }
 
 /** Serials grouped by item, sorted, without a base document. */
-function groupSerialsBySku(rows: { serialNo: string; skuCode: string }[]): SapSerialLine[] {
-  const bySku = new Map<string, string[]>();
+interface SerialRow {
+  serialNo: string;
+  skuCode: string;
+  /** Per-unit row remarks; units of one item with different remarks get separate lines. */
+  remarks?: string | null;
+}
+
+function remarksKey(remarks: string | null | undefined): string {
+  return remarks?.trim() ?? "";
+}
+
+function groupSerialsBySku(rows: SerialRow[]): SapSerialLine[] {
+  const groups = new Map<string, SapSerialLine>();
   for (const row of rows) {
-    bySku.set(row.skuCode, [...(bySku.get(row.skuCode) ?? []), row.serialNo]);
+    const key = `${row.skuCode}\u0000${remarksKey(row.remarks)}`;
+    const line = groups.get(key) ?? { itemCode: row.skuCode, serialNos: [], remarks: remarksKey(row.remarks) || null };
+    line.serialNos.push(row.serialNo);
+    groups.set(key, line);
   }
-  return [...bySku.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([itemCode, serialNos]) => ({ itemCode, serialNos }));
+  return [...groups.values()].sort(
+    (a, b) => a.itemCode.localeCompare(b.itemCode) || remarksKey(a.remarks).localeCompare(remarksKey(b.remarks)),
+  );
 }
 
-interface SapDrLine {
-  LineNum: number;
-  ItemCode?: string;
-  SerialNumbers?: { InternalSerialNumber?: string | null }[];
-}
-
-/**
- * Return lines copied from the DR in SAP: each returned serial is matched to
- * the DR line that carries it, so the Return references the right BaseLine.
- */
-async function mapReturnLinesFromDr(
-  creds: SapServiceLayerCredentials,
-  drEntry: number,
-  drNo: string,
-  serials: { serialNo: string; skuCode: string }[],
-): Promise<SapSerialLine[]> {
-  const read = await sapServiceLayerClient.request<{ DocumentLines?: SapDrLine[] }>({
-    creds,
-    method: "GET",
-    path: `/DeliveryNotes(${drEntry})?$select=DocEntry,DocumentLines`,
-  });
-  if (read.statusCode >= 400) {
-    throw new Error(sapErrorMessage(read.statusCode, read.rawBody, "DeliveryNotes"));
-  }
-
-  const lineBySerial = new Map<string, SapDrLine>();
-  for (const line of read.data?.DocumentLines ?? []) {
-    for (const serial of line.SerialNumbers ?? []) {
-      const no = serial.InternalSerialNumber?.trim();
-      if (no) lineBySerial.set(no, line);
-    }
-  }
-
-  const byLine = new Map<number, SapSerialLine>();
-  for (const serial of serials) {
-    const drLine = lineBySerial.get(serial.serialNo);
-    if (!drLine) throw new Error(`Serial ${serial.serialNo} is not on DR# ${drNo} in SAP`);
-    const entry = byLine.get(drLine.LineNum) ?? {
-      itemCode: drLine.ItemCode || serial.skuCode,
-      serialNos: [],
-      baseEntry: drEntry,
-      baseLine: drLine.LineNum,
-    };
-    entry.serialNos.push(serial.serialNo);
-    byLine.set(drLine.LineNum, entry);
-  }
-  return [...byLine.values()].sort((a, b) => (a.baseLine ?? 0) - (b.baseLine ?? 0));
-}
-
-/** Consignment returns post an Inventory Transfer; outright ones a Return on the DR. */
+/** Consignment rejects post an Inventory Transfer; outright ones a standalone Return. */
 function returnKind(docType: "ITR" | "SO"): DeliveryReturnSapKind {
   return docType === "SO" ? "RETURN" : "IT";
 }
 
-/** Approved return: IT branch → source warehouse (consignment) or Return on the DR (outright). */
+/** Approved reject: IT branch → source warehouse (consignment) or a standalone Return (outright). */
 async function postDeliveryReturn(
   tenantId: string,
   userId: string | undefined,
@@ -116,10 +81,14 @@ async function postDeliveryReturn(
     where: { id: returnId, tenantId },
     select: {
       requestNo: true,
+      reason: true,
       status: true,
       sapDocNo: true,
       lines: {
-        select: { serialNumber: { select: { serialNo: true, model: { select: { skuCode: true } } } } },
+        select: {
+          remarks: true,
+          serialNumber: { select: { serialNo: true, model: { select: { skuCode: true } } } },
+        },
         orderBy: { serialNumber: { serialNo: "asc" } },
       },
       delivery: {
@@ -127,8 +96,8 @@ async function postDeliveryReturn(
           sapDocEntry: true,
           drNo: true,
           sourceWarehouse: { select: { code: true } },
-          branch: { select: { sapCode: true, dealer: { select: { sapCode: true } } } },
-          order: { select: { sapDocType: true } },
+          branch: { select: { name: true, sapCode: true, dealer: { select: { sapCode: true } } } },
+          order: { select: { sapDocType: true, sapDocNum: true } },
         },
       },
     },
@@ -148,32 +117,51 @@ async function postDeliveryReturn(
   const toWhs = delivery.sourceWarehouse?.code;
   if (!toWhs) throw new Error("Delivery has no source warehouse");
   const docType = docTypeForOrder({ sapDocType: delivery.order?.sapDocType ?? null });
-  const serials = request.lines.map((line) => ({
+  const serials: SerialRow[] = request.lines.map((line) => ({
     serialNo: line.serialNumber.serialNo,
     skuCode: line.serialNumber.model.skuCode,
+    remarks: line.remarks,
   }));
 
   const kind = returnKind(docType);
+  const journalMemo = deliveryReturnJournalMemo({
+    requestNo: request.requestNo,
+    orderDocType: docType,
+    orderDocNum: delivery.order?.sapDocNum ?? null,
+  });
+  const remarks = deliveryReturnRemarks({
+    requestNo: request.requestNo,
+    orderDocType: docType,
+    orderDocNum: delivery.order?.sapDocNum ?? null,
+    reason: request.reason,
+  });
+  // Standalone documents: nothing is based on the DR / ITR; the original is named in the remarks.
+  const branchCode = delivery.branch.sapCode;
+  if (!branchCode) throw new Error("Branch has no SAP warehouse code");
+  const lines = groupSerialsBySku(serials);
   let body: Record<string, unknown>;
   if (docType === "SO") {
-    if (delivery.sapDocEntry == null) throw new Error("Delivery has no DR in SAP");
     const cardCode = delivery.branch.dealer?.sapCode;
     if (!cardCode) throw new Error("Dealer has no SAP customer code");
-    const drNo = delivery.drNo ?? String(delivery.sapDocEntry);
     body = buildReturnBody({
       ismsRef: request.requestNo,
+      remarks,
+      journalMemo,
       cardCode,
       whs: toWhs,
-      baseDrEntry: delivery.sapDocEntry,
-      lines: await mapReturnLinesFromDr(creds, delivery.sapDocEntry, drNo, serials),
+      branchCode,
+      branchName: delivery.branch.name,
+      lines,
     });
   } else {
-    if (!delivery.branch.sapCode) throw new Error("Branch has no SAP warehouse code");
     body = buildItBody({
       ismsRef: request.requestNo,
-      fromWhs: delivery.branch.sapCode,
+      remarks,
+      journalMemo,
+      fromWhs: branchCode,
       toWhs,
-      lines: groupSerialsBySku(serials),
+      lineText: orderLineText(request.requestNo, delivery.branch.name),
+      lines,
     });
   }
 
@@ -302,7 +290,7 @@ export const serviceLayerSapOutbound: SapOutboundPort = {
     const order = await prisma.branchOrder.findFirst({
       where: { id: orderId, tenantId },
       include: {
-        branch: { select: { name: true } },
+        branch: { select: { name: true, sapCode: true } },
         details: {
           orderBy: { id: "asc" },
           include: { model: { select: { skuCode: true } } },
@@ -348,6 +336,7 @@ export const serviceLayerSapOutbound: SapOutboundPort = {
         ismsRef: order.orderNumber,
         cardCode: routing.cardCode,
         whs: routing.sourceWhsCode,
+        branchCode: order.branch.sapCode,
         dueDate: isoDate(order.deliveryDueDate ?? new Date()),
         branchName: order.branch.name,
         notes: order.notes,

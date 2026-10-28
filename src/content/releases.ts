@@ -66,6 +66,68 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.84.0",
+    date: "2026-10-28",
+    releasedAt: "2026-10-28T18:48:00+08:00",
+    title: "Receive or reject units on arrival",
+    highlights: [
+      "When a delivery arrives, the branch receives or rejects all units at once, or ticks units to act on just those.",
+      "Rejected units go to the TL as an IT request (consignment) or a Return request (outright). Once approved, ISMS creates the IT or Return in SAP and the units go back to the warehouse.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "The receive window has two buttons: Receive and Reject. Every unit starts ticked, so they read Receive all and Reject all; untick units and they change to Receive ticked and Reject ticked.",
+      },
+      {
+        type: "feature",
+        description:
+          "Rejecting asks for optional remarks for the whole request and for each unit. Blank remarks are filled in for you.",
+      },
+      {
+        type: "feature",
+        description:
+          "Each reject is its own request. The branch can receive some units, reject others, then receive or reject more later; each approved reject becomes its own SAP document.",
+      },
+      {
+        type: "feature",
+        description:
+          "A delivery's page lists its rejected units: each request with its status, unit count, SAP number and remarks, and its own Review or Retry button for the TL.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Units waiting on a reject request show apart in the receive window and cannot be received or rejected again until the TL decides.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The SAP IT or Return names the original ITR or SO in its remarks, carries the branch and each unit's remarks on its lines, and shows in ISMS as IT: or Return: with its number.",
+      },
+      {
+        type: "improvement",
+        description: "Deliveries and Branch Inventory show the SAP document number as DR: or IT:, so you know where to look in SAP.",
+      },
+      {
+        type: "improvement",
+        description: "Stock updates from SAP run faster.",
+      },
+      {
+        type: "fix",
+        description: "Outright orders sent to SAP now carry the branch and the Outright business type on every line.",
+      },
+      {
+        type: "fix",
+        description: "Large SAP syncs no longer fail when they look up many records at once.",
+      },
+      {
+        type: "fix",
+        description: "The Request return button on a delivery is gone; rejecting happens in the receive window.",
+      },
+    ],
+  },
+  {
     version: "0.83.0",
     date: "2026-10-28",
     title: "Dispatch happens in SAP",

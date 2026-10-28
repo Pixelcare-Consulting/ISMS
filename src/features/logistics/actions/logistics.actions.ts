@@ -23,6 +23,7 @@ import {
   deliveryReturnCancelNoteSchema,
   deliveryReturnDecisionSchema,
   deliveryReturnReasonSchema,
+  deliveryReturnUnitsSchema,
   deliveryReturnService,
   type DeliveryReturnDetail,
 } from "@/features/logistics/services/delivery-return.service";
@@ -931,12 +932,14 @@ function revalidateDeliveryReturn() {
   revalidatePath("/inventory");
 }
 
-export async function requestDeliveryReturnAction(deliveryId: string, reason: unknown) {
+export async function requestDeliveryReturnAction(deliveryId: string, remarks: unknown, units?: unknown) {
   const session = await requireAnyPermission([LOGISTICS_DELIVERY_RETURN_REQUEST]);
-  const parsed = deliveryReturnReasonSchema.safeParse(reason);
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Enter the reason for the return" };
+  const parsed = deliveryReturnReasonSchema.safeParse(remarks);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the remarks" };
+  const parsedUnits = deliveryReturnUnitsSchema.safeParse(units);
+  if (!parsedUnits.success) return { error: parsedUnits.error.issues[0]?.message ?? "Tick the units to reject" };
   try {
-    const row = await deliveryReturnService.request(postingActor(session), { deliveryId, reason: parsed.data });
+    const row = await deliveryReturnService.request(postingActor(session), { deliveryId, reason: parsed.data, units: parsedUnits.data });
     revalidateDelivery(deliveryId);
     return { success: true as const, id: row.id, requestNo: row.requestNo };
   } catch (error) {
@@ -945,11 +948,11 @@ export async function requestDeliveryReturnAction(deliveryId: string, reason: un
 }
 
 export async function getDeliveryReturnAction(
-  deliveryId: string,
-): Promise<{ success: true; detail: DeliveryReturnDetail | null } | { error: string }> {
+  returnId: string,
+): Promise<{ success: true; detail: DeliveryReturnDetail } | { error: string }> {
   const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS, ...DELIVERY_RETURN_PERMISSIONS]);
   try {
-    const detail = await deliveryReturnService.getLatestForDelivery(postingActor(session), deliveryId);
+    const detail = await deliveryReturnService.get(postingActor(session), returnId);
     return { success: true as const, detail };
   } catch (error) {
     return actionError(error, "Failed to load the return request");
