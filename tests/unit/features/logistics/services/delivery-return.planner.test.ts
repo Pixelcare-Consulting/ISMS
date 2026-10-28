@@ -190,19 +190,15 @@ describe("return SAP retry visibility", () => {
 
 describe("planReturnSapReady", () => {
   it("refuses an order with no stored SAP type", () => {
-    expect(planReturnSapReady({ orderSapDocType: null, sapDocEntry: 9 })).toEqual({
+    expect(planReturnSapReady({ orderSapDocType: null })).toEqual({
       ok: false,
-      error: "This delivery was dispatched before SAP posting was enabled. Accept or transfer its units instead.",
+      error: "This delivery was dispatched before SAP posting was enabled. Receive its units instead.",
     });
   });
 
-  it("refuses an outright delivery without its DR, allows consignment without one", () => {
-    expect(planReturnSapReady({ orderSapDocType: "SO", sapDocEntry: null })).toEqual({
-      ok: false,
-      error: "This delivery has no DR in SAP. Accept or transfer its units instead.",
-    });
-    expect(planReturnSapReady({ orderSapDocType: "SO", sapDocEntry: 9 })).toEqual({ ok: true });
-    expect(planReturnSapReady({ orderSapDocType: "ITR", sapDocEntry: null })).toEqual({ ok: true });
+  it("allows consignment and outright alike: the reject document is standalone, no DR needed", () => {
+    expect(planReturnSapReady({ orderSapDocType: "SO" })).toEqual({ ok: true });
+    expect(planReturnSapReady({ orderSapDocType: "ITR" })).toEqual({ ok: true });
   });
 });
 

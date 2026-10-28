@@ -68,23 +68,15 @@ export function planReturnRequest(
 }
 
 export const RETURN_NO_SAP_ORDER_ERROR =
-  "This delivery was dispatched before SAP posting was enabled. Accept or transfer its units instead.";
-export const RETURN_NO_SAP_DR_ERROR = "This delivery has no DR in SAP. Accept or transfer its units instead.";
+  "This delivery was dispatched before SAP posting was enabled. Receive its units instead.";
 
 /**
- * A return always posts to SAP (IT or Return on the DR), so refuse up front a
- * delivery that can never post one: an order with no stored SAP type, or an
- * outright (SO) delivery without its DR. Otherwise the request would hold the
- * delivery forever.
+ * A reject always posts to SAP, a standalone IT (consignment) or Return (outright), so
+ * refuse up front an order with no stored SAP type: it could never post, and the request
+ * would hold its units forever. The DR is not needed; nothing is based on it.
  */
-export function planReturnSapReady(input: {
-  orderSapDocType: SapOrderDocType | null;
-  sapDocEntry: number | null;
-}): { ok: true } | PlanFailure {
+export function planReturnSapReady(input: { orderSapDocType: SapOrderDocType | null }): { ok: true } | PlanFailure {
   if (!input.orderSapDocType) return { ok: false, error: RETURN_NO_SAP_ORDER_ERROR };
-  if (input.orderSapDocType === "SO" && input.sapDocEntry == null) {
-    return { ok: false, error: RETURN_NO_SAP_DR_ERROR };
-  }
   return { ok: true };
 }
 

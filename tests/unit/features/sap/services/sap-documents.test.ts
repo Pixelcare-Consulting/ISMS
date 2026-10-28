@@ -45,15 +45,30 @@ describe("SAP document builders", () => {
     expect(line.BaseType).toBe("InventoryTransferRequest");
   });
 
-  it("buildReturnBody uses BaseType 15", () => {
+  it("buildReturnBody is a standalone Return carrying the branch, Outright, ISMS ref and remarks per line", () => {
     const body = buildReturnBody({
-      ismsRef: "R-1",
+      ismsRef: "RTN-1",
       cardCode: "C1",
       whs: "W",
-      baseDrEntry: 9,
-      lines: [{ itemCode: "X", serialNos: ["S1"], baseEntry: 9, baseLine: 0 }],
+      branchCode: "ABL003",
+      branchName: "ABENSON LCC IRIGA BRANCH",
+      lines: [{ itemCode: "X", serialNos: ["S1"], remarks: "Dent" }],
     }) as Body;
-    expect(body.DocumentLines[0].BaseType).toBe(15);
+    expect(body.CardCode).toBe("C1");
+    const line = body.DocumentLines[0];
+    expect(line).not.toHaveProperty("BaseType");
+    expect(line).not.toHaveProperty("BaseEntry");
+    expect(line).toMatchObject({
+      ItemCode: "X",
+      WarehouseCode: "W",
+      Quantity: 1,
+      CostingCode2: "ABL003",
+      CostingCode3: "OUTRIGHT",
+      U_ISMS_PONum: "RTN-1",
+      U_Branch_Name: "ABENSON LCC IRIGA B…",
+      U_Branch_Namelong: "ABENSON LCC IRIGA BRANCH",
+      U_free_text: "Dent",
+    });
   });
 
   it("a delivery return names the original ITR / SO in Comments and keeps the ISMS ref as the key", () => {

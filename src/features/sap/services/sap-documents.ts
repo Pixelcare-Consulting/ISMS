@@ -27,7 +27,6 @@ const LINES_FIELD: Record<SapDocKind, "StockTransferLines" | "DocumentLines"> = 
 };
 
 /** SAP object-type code of a Delivery (DR), the base document of a Return line. */
-const BASE_TYPE_DR = 15;
 
 export interface SapDocRef {
   docEntry: number;
@@ -71,12 +70,6 @@ function serialPayload(line: SapSerialLine) {
     Quantity: line.serialNos.length,
     SerialNumbers: line.serialNos.map((s) => ({ InternalSerialNumber: s, Quantity: 1 })),
   };
-}
-
-function baseRef(line: SapSerialLine) {
-  return line.baseEntry == null
-    ? {}
-    : { BaseEntry: line.baseEntry, BaseLine: line.baseLine ?? 0 };
 }
 
 /**
@@ -138,15 +131,24 @@ function orderDocumentText(i: OrderDocumentText): {
         ORDER_DOC_TEXT_LIMITS.journalMemo,
       ),
     },
-    line: {
-      U_ISMS_PONum: fitSapText(i.ismsRef, ORDER_DOC_TEXT_LIMITS.lineIsmsRef),
-      ...(branchName
-        ? {
-            U_Branch_Name: fitSapText(branchName, ORDER_DOC_TEXT_LIMITS.lineBranchName),
-            U_Branch_Namelong: fitSapText(branchName, ORDER_DOC_TEXT_LIMITS.lineBranchNameLong),
-          }
-        : {}),
-    },
+    line: orderLineText(i.ismsRef, branchName),
+  };
+}
+
+/**
+ * Line UDFs every ISMS document carries: the ISMS reference (ISMS PO#) and the branch name,
+ * full name in Branch Namelong and the 20-character Branch Name column filled as far as it fits.
+ */
+export function orderLineText(ismsRef: string, branchName: string): Record<string, unknown> {
+  const name = branchName.trim();
+  return {
+    U_ISMS_PONum: fitSapText(ismsRef, ORDER_DOC_TEXT_LIMITS.lineIsmsRef),
+    ...(name
+      ? {
+          U_Branch_Name: fitSapText(name, ORDER_DOC_TEXT_LIMITS.lineBranchName),
+          U_Branch_Namelong: fitSapText(name, ORDER_DOC_TEXT_LIMITS.lineBranchNameLong),
+        }
+      : {}),
   };
 }
 
@@ -230,6 +232,8 @@ export function buildItBody(i: {
   fromWhs: string;
   toWhs: string;
   baseItrEntry?: number;
+  /** Extra UDFs on every line, e.g. orderLineText for a reject IT. */
+  lineText?: Record<string, unknown>;
   lines: SapSerialLine[];
 }): Record<string, unknown> {
   return {
@@ -241,6 +245,7 @@ export function buildItBody(i: {
       FromWarehouseCode: i.fromWhs,
       WarehouseCode: i.toWhs,
       ...serialPayload(l),
+      ...i.lineText,
       ...lineRemarks(l),
       ...(l.baseEntry != null || i.baseItrEntry != null
         ? {
@@ -253,49 +258,37 @@ export function buildItBody(i: {
   };
 }
 
-function buildBasedDocumentBody(
-  ismsRef: string,
-  cardCode: string,
-  whs: string,
-  baseType: number,
-  baseEntry: number,
-  lines: SapSerialLine[],
-  remarks?: string,
-  journalMemo?: string,
-): Record<string, unknown> {
-  return {
-    ...header(ismsRef, remarks, journalMemo),
-    CardCode: cardCode,
-    DocumentLines: lines.map((l) => ({
-      ItemCode: l.itemCode,
-      WarehouseCode: whs,
-      ...serialPayload(l),
-      ...lineRemarks(l),
-      BaseType: baseType,
-      ...(l.baseEntry == null ? { BaseEntry: baseEntry, BaseLine: l.baseLine ?? 0 } : baseRef(l)),
-    })),
-  };
-}
-
+/**
+ * A standalone Return for units an outright branch rejected at receipt: no base document,
+ * so SAP copies nothing from the DR. Each line carries what the DR line would have given:
+ * the branch and Outright dimensions, the ISMS reference and branch names, and the unit's
+ * remarks. The original SO is named only in the header remarks.
+ */
 export function buildReturnBody(i: {
   ismsRef: string;
   remarks?: string;
   journalMemo?: string;
   cardCode: string;
   whs: string;
-  baseDrEntry: number;
+  /** The branch's SAP code, which is also its Branch dimension code. */
+  branchCode: string;
+  branchName: string;
   lines: SapSerialLine[];
 }): Record<string, unknown> {
-  return buildBasedDocumentBody(
-    i.ismsRef,
-    i.cardCode,
-    i.whs,
-    BASE_TYPE_DR,
-    i.baseDrEntry,
-    i.lines,
-    i.remarks,
-    i.journalMemo,
-  );
+  const text = orderLineText(i.ismsRef, i.branchName);
+  return {
+    ...header(i.ismsRef, i.remarks, i.journalMemo),
+    CardCode: i.cardCode,
+    DocumentLines: i.lines.map((l) => ({
+      ItemCode: l.itemCode,
+      WarehouseCode: i.whs,
+      ...serialPayload(l),
+      [SAP_LINE_DIMENSION.branch]: i.branchCode,
+      [SAP_LINE_DIMENSION.businessType]: SAP_BUSINESS_TYPE_OUTRIGHT,
+      ...text,
+      ...lineRemarks(l),
+    })),
+  };
 }
 
 /** Comments on the IT / Return an approved delivery return posts: names the original ITR or SO. */

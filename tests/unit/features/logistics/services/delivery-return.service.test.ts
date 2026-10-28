@@ -179,17 +179,17 @@ describe("deliveryReturnService.request", () => {
   it("refuses a delivery whose order was approved before SAP posting (no SAP type)", async () => {
     (loadDelivery as jest.Mock).mockResolvedValue({ ...partialDelivery(), orderSapDocType: null });
     await expect(deliveryReturnService.request(requester, { deliveryId: "del1", reason: "x" })).rejects.toThrow(
-      "This delivery was dispatched before SAP posting was enabled. Accept or transfer its units instead.",
+      "This delivery was dispatched before SAP posting was enabled. Receive its units instead.",
     );
     expect(mockPrisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it("refuses an outright (SO) delivery that has no DR in SAP", async () => {
+  it("allows an outright (SO) delivery without its DR in SAP: the Return is standalone", async () => {
     (loadDelivery as jest.Mock).mockResolvedValue({ ...partialDelivery(), orderSapDocType: "SO", sapDocEntry: null });
-    await expect(deliveryReturnService.request(requester, { deliveryId: "del1", reason: "x" })).rejects.toThrow(
-      "This delivery has no DR in SAP. Accept or transfer its units instead.",
-    );
-    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    await expect(deliveryReturnService.request(requester, { deliveryId: "del1", reason: "x" })).resolves.toEqual({
+      id: "r1",
+      requestNo: "RTN-1",
+    });
   });
 
   it("allows an outright (SO) delivery with its DR", async () => {
