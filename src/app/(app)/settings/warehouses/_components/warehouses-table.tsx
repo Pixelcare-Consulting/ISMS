@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState, useTransition } from "react";
 import { createColumnHelper } from "@tanstack/react-table";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Package } from "lucide-react";
+import { MapPin, Package } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -31,7 +31,7 @@ import { matchesTableSearch } from "@/utils/match-table-search";
 
 const warehouseColumn = createColumnHelper<DataTableFeatures, WarehouseRow>();
 
-import { WarehouseLocationsPanel } from "./warehouse-locations-panel";
+import { WarehouseLocationsDialog } from "./warehouse-locations-dialog";
 
 interface LocationRow {
   id: string;
@@ -68,7 +68,9 @@ export function WarehousesTable({
     warehouseId: string;
     location: LocationRow;
   } | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [locationsWarehouseId, setLocationsWarehouseId] = useState<string | null>(null);
+  // Read from `rows` so the dialog shows adds and removes as soon as they land.
+  const locationsWarehouse = rows.find((w) => w.id === locationsWarehouseId) ?? null;
 
   const filtered = useMemo(
     () =>
@@ -196,34 +198,17 @@ export function WarehousesTable({
         id: "locations",
         header: "Locations",
         enableSorting: true,
-        cell: ({ row }) => {
-          const open = expandedId === row.original.id;
-          return (
-            <div className="space-y-2">
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setExpandedId(open ? null : row.original.id)}
-              >
-                {row.original.locations.length} location
-                {row.original.locations.length === 1 ? "" : "s"}
-              </Button>
-              {open ? (
-                <WarehouseLocationsPanel
-                  warehouseId={row.original.id}
-                  warehouseName={row.original.name}
-                  locations={row.original.locations}
-                  pending={pending}
-                  onAdd={addLocation}
-                  onRemove={(warehouseId, location) =>
-                    setDeletingLocation({ warehouseId, location })
-                  }
-                />
-              ) : null}
-            </div>
-          );
-        },
-        meta: { wrap: true, className: "min-w-[28rem]" },
+        cell: ({ row }) => (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setLocationsWarehouseId(row.original.id)}
+          >
+            <MapPin className="mr-1 h-3.5 w-3.5" />
+            {row.original.locations.length} location
+            {row.original.locations.length === 1 ? "" : "s"}
+          </Button>
+        ),
       }),
       warehouseColumn.display({
         id: "links",
@@ -251,7 +236,7 @@ export function WarehousesTable({
       }),
     ];
     return cols;
-  }, [addLocation, expandedId, indexOffset, pending]);
+  }, [indexOffset]);
 
   return (
     <>
@@ -345,6 +330,16 @@ export function WarehousesTable({
           itemLabel: "warehouse",
           onPageChange: setPage,
         }}
+      />
+
+      <WarehouseLocationsDialog
+        warehouse={locationsWarehouse}
+        pending={pending}
+        onOpenChange={(open) => {
+          if (!open) setLocationsWarehouseId(null);
+        }}
+        onAdd={addLocation}
+        onRemove={(warehouseId, location) => setDeletingLocation({ warehouseId, location })}
       />
 
       <DeleteConfirmDialog

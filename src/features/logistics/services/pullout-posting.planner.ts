@@ -3,6 +3,7 @@
  * It does not create warehouse stock and does not mark the request completed.
  */
 
+import type { PulloutWorkflowCodeKey } from "@/features/logistics/constants/workflow-codes";
 import {
   classifyAllocation,
   uniqueSerialIds,
@@ -12,18 +13,7 @@ import {
   type PlanFailure,
 } from "@/features/logistics/services/posting-planner-types";
 
-export type PulloutStatus =
-  | "requested"
-  | "approved"
-  | "draft"
-  | "pending_tl"
-  | "for_pullout"
-  | "scheduled"
-  | "pending_logistics"
-  | "in_transit"
-  | "pulled_out"
-  | "completed"
-  | "cancelled";
+export type PulloutStatus = PulloutWorkflowCodeKey;
 
 export interface PulloutLineView {
   serialNumberId: string;

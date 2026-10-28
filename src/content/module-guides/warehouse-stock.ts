@@ -3,7 +3,7 @@ import type { ModuleGuideContent } from "@/content/module-guides/types";
 export const WAREHOUSE_STOCK_MODULE_GUIDE: ModuleGuideContent = {
   title: "Warehouse stock",
   description:
-    "Every serial with a location in a warehouse, including branch stock stocked into a location. Warehouse setup stays under Settings → Warehouses.",
+    "Every serial with a location in a warehouse, including branch stock that has a location. Warehouse setup stays under Settings → Warehouses.",
   tips: [
     { label: "Filter by warehouse / location or search SN and SKU" },
     { label: "Edit location moves a serial to another location in the same warehouse" },

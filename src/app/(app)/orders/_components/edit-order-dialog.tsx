@@ -15,10 +15,13 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
+  DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { cn } from "@/utils/cn";
 
 interface EditableLine {
   modelId: string;
@@ -121,25 +124,33 @@ export function EditOrderDialog({
   }
 
   const availableToAdd = models.filter((m) => !lines.some((l) => l.modelId === m.id));
-  const editSummary = `${order.branchName} — ${
+  const editHint =
     order.orderType === "manual"
-      ? "you can adjust lines while Supply Planning reviews."
-      : "editing resubmits the order for review."
-  }`;
+      ? "You can adjust lines while Supply Planning reviews."
+      : "Editing resubmits the order for review.";
 
-  const body = (
-    <>
-        <div>
-          {stacked ? (
-            <DialogTitle className="font-medium">Edit order {order.orderNumber}</DialogTitle>
-          ) : (
-            <h3 className="font-medium">Edit order {order.orderNumber}</h3>
-          )}
-          {stacked ? (
-            <DialogDescription>{editSummary}</DialogDescription>
-          ) : (
-            <p className="text-sm text-muted-foreground">{editSummary}</p>
-          )}
+  return (
+    <Dialog
+      open
+      onOpenChange={(next) => {
+        if (!next && !pending) onClose();
+      }}
+    >
+      <DialogContent
+        showCloseButton={false}
+        overlayClassName={stacked ? "z-[70]" : undefined}
+        className={cn("max-w-lg", stacked && "z-[80]")}
+      >
+        <DialogHeader>
+          <DialogTitle>Edit order {order.orderNumber}</DialogTitle>
+          <DialogDescription>{editHint}</DialogDescription>
+        </DialogHeader>
+
+        <div className="min-w-0">
+          <p className="text-sm text-muted-foreground">Branch</p>
+          <p className="mt-1.5 break-words rounded-lg bg-muted/70 px-3 py-2.5 text-sm font-medium leading-5">
+            {order.branchName}
+          </p>
         </div>
 
         {!loaded ? (
@@ -152,98 +163,88 @@ export function EditOrderDialog({
               </p>
             ) : null}
 
-            <div className="space-y-2">
-              <Label>Lines</Label>
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Lines</p>
               {lines.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No lines — add at least one SKU.</p>
               ) : (
-                lines.map((line) => (
-                  <div key={line.modelId} className="flex items-center gap-2">
-                    <span className="flex-1 truncate font-mono text-sm">{line.skuCode}</span>
-                    <input
-                      type="number"
-                      min={1}
-                      className="h-9 w-20 rounded-md border px-2 text-sm"
-                      value={line.quantity}
-                      onChange={(e) => setQty(line.modelId, Math.max(1, Number(e.target.value)))}
-                      disabled={pending}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeLine(line.modelId)}
-                      disabled={pending}
-                      aria-label={`Remove line ${line.skuCode}`}
+                <ul className="divide-y divide-border/60" aria-label="Lines">
+                  {lines.map((line) => (
+                    <li
+                      key={line.modelId}
+                      className="grid grid-cols-[minmax(0,1fr)_4.5rem_2rem] items-center gap-x-3 py-1.5"
                     >
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </div>
-                ))
+                      <span className="truncate text-sm font-medium" title={line.skuCode}>
+                        {line.skuCode}
+                      </span>
+                      <Input
+                        type="number"
+                        min={1}
+                        className="h-8 w-full rounded-lg border-transparent bg-muted px-1 text-center text-sm tabular-nums shadow-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                        value={line.quantity}
+                        onChange={(e) => setQty(line.modelId, Math.max(1, Number(e.target.value)))}
+                        disabled={pending}
+                        aria-label={`Quantity for ${line.skuCode}`}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 justify-self-end text-muted-foreground hover:text-foreground"
+                        onClick={() => removeLine(line.modelId)}
+                        disabled={pending}
+                        aria-label={`Remove line ${line.skuCode}`}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
               )}
             </div>
 
             <div className="flex items-end gap-2">
-              <div className="flex-1">
-                <SearchableSelect
-                  label="Add SKU"
-                  options={availableToAdd.map((m) => ({
-                    id: m.id,
-                    label: `${m.skuCode} — ${m.name}${m.maxQty != null ? ` (Shelf max ${m.maxQty})` : ""}`,
-                  }))}
-                  popoverClassName={stacked ? "z-[100]" : undefined}
-                  value={addModelId}
-                  onChange={setAddModelId}
-                  placeholder="Select model…"
-                  searchPlaceholder="Search models…"
-                  emptyMessage="No eligible SKUs."
-                  disabled={pending}
-                />
-              </div>
-              <Button variant="outline" onClick={addLine} disabled={pending || !addModelId}>
+              <SearchableSelect
+                label="Add SKU"
+                className="min-w-0 flex-1"
+                options={availableToAdd.map((m) => ({
+                  id: m.id,
+                  label: `${m.skuCode} — ${m.name}${m.maxQty != null ? ` (Shelf max ${m.maxQty})` : ""}`,
+                }))}
+                popoverClassName={stacked ? "z-[100]" : undefined}
+                value={addModelId}
+                onChange={setAddModelId}
+                placeholder="Select model…"
+                searchPlaceholder="Search models…"
+                emptyMessage="No eligible SKUs."
+                disabled={pending}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                className="shrink-0"
+                onClick={addLine}
+                disabled={pending || !addModelId}
+              >
                 Add
               </Button>
             </div>
 
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={onClose} disabled={pending}>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
                 Cancel
               </Button>
               <Button
+                type="button"
                 onClick={submit}
                 disabled={pending || windowBlock !== null || lines.length === 0}
               >
                 {pending ? "Saving…" : "Save changes"}
               </Button>
-            </div>
+            </DialogFooter>
           </>
         )}
-    </>
-  );
-
-  if (stacked) {
-    return (
-      <Dialog
-        open
-        onOpenChange={(next) => {
-          if (!next && !pending) onClose();
-        }}
-      >
-        <DialogContent
-          showCloseButton={false}
-          overlayClassName="z-[70]"
-          className="z-[80] max-w-md"
-        >
-          {body}
-        </DialogContent>
-      </Dialog>
-    );
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md max-h-[calc(100svh-2rem)] overflow-y-auto space-y-4 rounded-xl border bg-card p-4 sm:p-6 shadow-lg">
-        {body}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

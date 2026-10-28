@@ -17,6 +17,11 @@ export const DELIVERY_RETURN_ENTITY = "DeliveryReturnRequest";
  * Local half of an approved return, run once SAP has the document. One
  * transaction: the in-transit branch rows go, each unit lands at the warehouse
  * location it was dispatched from, the request completes and the delivery closes.
+ *
+ * A unit dispatched from SAP's placement has no location. It gets no ISMS stock row:
+ * it is linked back to the delivery's source warehouse as SAP now holds it, so dispatch
+ * can offer it again without waiting for the next serial sync.
+ *
  * Called by the SAP adapters (live and mock); a second call is a no-op.
  */
 export async function completeDeliveryReturn(input: {
@@ -34,7 +39,9 @@ export async function completeDeliveryReturn(input: {
         status: true,
         requestNo: true,
         deliveryId: true,
-        delivery: { select: { branchId: true } },
+        delivery: {
+          select: { branchId: true, sourceWarehouse: { select: { code: true, deletedAt: true } } },
+        },
         lines: { select: { serialNumberId: true, warehouseLocationToId: true } },
       },
     });
@@ -68,15 +75,35 @@ export async function completeDeliveryReturn(input: {
     assertExclusiveClaim(removed.count, serialIds.length, "Some units are no longer in transit at the branch");
 
     const now = new Date();
-    await tx.warehouseInventory.createMany({
-      data: request.lines.map((line) => ({
-        tenantId,
-        serialNumberId: line.serialNumberId,
-        warehouseLocationId: line.warehouseLocationToId,
-        systemStatus: "Returned from delivery",
-        systemUpdatedAt: now,
-      })),
-    });
+    const toLocation = request.lines.flatMap((line) =>
+      line.warehouseLocationToId
+        ? [{ serialNumberId: line.serialNumberId, warehouseLocationId: line.warehouseLocationToId }]
+        : [],
+    );
+    const toSapWarehouse = request.lines
+      .filter((line) => !line.warehouseLocationToId)
+      .map((line) => line.serialNumberId);
+
+    if (toLocation.length > 0) {
+      await tx.warehouseInventory.createMany({
+        data: toLocation.map((line) => ({
+          tenantId,
+          ...line,
+          systemStatus: "Returned from delivery",
+          systemUpdatedAt: now,
+        })),
+      });
+    }
+    if (toSapWarehouse.length > 0) {
+      const source = request.delivery.sourceWarehouse;
+      if (!source || source.deletedAt) {
+        throw new Error("This delivery's source warehouse is no longer in ISMS, so the units cannot be returned to it");
+      }
+      await tx.serialNumber.updateMany({
+        where: { tenantId, id: { in: toSapWarehouse } },
+        data: { sapWhsCode: source.code, sapOnHand: true, sapOnHandSyncedAt: now },
+      });
+    }
     await tx.serialNumberHistory.createMany({
       data: serialIds.map((serialNumberId) => ({
         tenantId,

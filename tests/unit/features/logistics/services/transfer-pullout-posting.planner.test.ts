@@ -25,11 +25,13 @@ import {
 } from "@/features/logistics/services/pullout-posting.planner";
 import type { AllocatableSerial } from "@/features/logistics/services/posting-planner-types";
 import {
+  headerAfterLineDecisions,
   planTransferApprove,
   planTransferCreate,
   planTransferReceive,
   planTransferReject,
   planTransferRelease,
+  planTransferSerialReject,
   type TransferLineView,
 } from "@/features/logistics/services/transfer-posting.planner";
 
@@ -107,7 +109,9 @@ describe("transfer posting planner", () => {
     expect(received.ok).toBe(true);
     if (!received.ok) return;
     expect(received.nextStatus).toBe("accepted");
-    expect(received.moves).toEqual([{ serialNumberId: "s1", restoreCode: "STK" }]);
+    expect(received.moves).toEqual([
+      { serialNumberId: "s1", restoreCode: "STK", fromCode: "DIT" },
+    ]);
   });
 
   it("rejects only the serials on this request", () => {
@@ -141,7 +145,7 @@ describe("transfer posting planner", () => {
     expect(racing.ok).toBe(false);
   });
 
-  it("keeps a defective unit defective after receipt", () => {
+  it("returns an accepted serial to stock even when it was defective before the request", () => {
     const created = planTransferCreate({
       fromBranchId: "branch-a",
       toBranchId: "branch-b",
@@ -163,7 +167,9 @@ describe("transfer posting planner", () => {
     });
     expect(received.ok).toBe(true);
     if (!received.ok) return;
-    expect(received.moves).toEqual([{ serialNumberId: "s1", restoreCode: "DEF" }]);
+    expect(received.moves).toEqual([
+      { serialNumberId: "s1", restoreCode: "STK", fromCode: "DIT" },
+    ]);
   });
 
   it("leaves unconfirmed serials in transit and the header in transit", () => {
@@ -204,6 +210,52 @@ describe("transfer posting planner", () => {
     expect(plan.idempotent).toBe(true);
     expect(plan.moves).toEqual([]);
     expect(plan.nextStatus).toBe("in_transit");
+  });
+
+  it("accepts a reserved serial before it is released", () => {
+    const plan = planTransferReceive({
+      status: "for_transfer",
+      fromBranchId: "branch-a",
+      toBranchId: "branch-b",
+      lines: [transferLine({ inventoryCode: "RSV", branchId: "branch-a" })],
+      requestedSerialIds: ["s1"],
+    });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.moves).toEqual([
+      { serialNumberId: "s1", restoreCode: "STK", fromCode: "RSV" },
+    ]);
+    expect(plan.nextStatus).toBe("accepted");
+  });
+
+  it("rejects one serial back to stock and finishes a mixed request as completed", () => {
+    const rejected = planTransferSerialReject({
+      status: "for_transfer",
+      fromBranchId: "branch-a",
+      lines: [
+        transferLine({ serialNumberId: "s1", inventoryCode: "RSV", branchId: "branch-a" }),
+        transferLine({
+          serialNumberId: "s2",
+          decision: "accepted",
+          inventoryCode: "STK",
+          branchId: "branch-b",
+        }),
+      ],
+      serialNumberId: "s1",
+      remarks: "Damaged carton",
+    });
+    expect(rejected.ok).toBe(true);
+    if (!rejected.ok) return;
+    expect(rejected.moves).toEqual([
+      { serialNumberId: "s1", restoreCode: "STK", fromCode: "RSV" },
+    ]);
+    expect(rejected.nextStatus).toBe("completed");
+    expect(
+      headerAfterLineDecisions([
+        { decision: "accepted" },
+        { decision: "rejected" },
+      ]),
+    ).toBe("completed");
   });
 });
 

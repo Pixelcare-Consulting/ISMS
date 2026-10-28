@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 
 import { CreateOrderDialog } from "@/app/(app)/orders/_components/create-order-dialog";
@@ -38,6 +39,7 @@ export function OrdersCreateWorkspaceProvider({
   canCreateSpecial?: boolean;
   children: ReactNode;
 }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [prefill, setPrefill] = useState<CreateOrderPrefill | undefined>();
 
@@ -45,17 +47,29 @@ export function OrdersCreateWorkspaceProvider({
     () => ({
       canEdit,
       openCreate: (next) => {
-        setPrefill(next);
-        setOpen(true);
+        if (orderType === "auto_replenish") {
+          setPrefill(next);
+          setOpen(true);
+          return;
+        }
+        const params = new URLSearchParams();
+        if (orderType === "manual" || orderType === "special") {
+          params.set("type", orderType);
+        }
+        if (next?.dealerId) params.set("dealerId", next.dealerId);
+        if (next?.branchId) params.set("branchId", next.branchId);
+        if (next?.brandId) params.set("brandId", next.brandId);
+        const query = params.toString();
+        router.push(query ? `/orders/manual/new?${query}` : "/orders/manual/new");
       },
     }),
-    [canEdit],
+    [canEdit, orderType, router],
   );
 
   return (
     <OrdersCreateWorkspaceContext.Provider value={value}>
       {children}
-      {open ? (
+      {open && orderType === "auto_replenish" ? (
         <CreateOrderDialog
           onClose={() => {
             setOpen(false);

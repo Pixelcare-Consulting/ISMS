@@ -16,6 +16,7 @@ import { branchService } from "@/features/branches/services/branch.service";
 import { branchRepository } from "@/features/branches/repositories/branch.repository";
 import { dealerRepository } from "@/features/dealers/repositories/dealer.repository";
 import { orderingPolicyService } from "@/features/ordering/services/ordering-policy.service";
+import { SapOrderPostRejectedError } from "@/features/orders/lib/sap-order-rejection";
 import { checkOrderingAllowed } from "@/features/orders/utils/order-window";
 import {
   anyOrderTypePermissions,
@@ -27,6 +28,11 @@ import {
   orderPermissionCandidates,
   orderTypeAccessPermissions,
 } from "@/features/orders/constants/order-permissions";
+import {
+  manualSpecialHistoryScopes,
+  manualSpecialQueueScopes,
+  type ManualSpecialTypeFilter,
+} from "@/features/orders/lib/manual-special-order-scope";
 import {
   canApproveOrder,
   canEditOrderLines,
@@ -41,6 +47,7 @@ import {
 import { getUserBranchIds } from "@/lib/aor/scope";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { resolveActiveOrderPrice } from "@/features/master-data/utils/resolve-active-order-price";
+import { resolveOrderModeOfPayment } from "@/features/orders/constants/order-sap-doc-type";
 import type { OrderHistoryRow } from "@/features/orders/types/order-analytics";
 import { toClientOrderListItem } from "@/features/orders/utils/to-client-order-list";
 import type { BranchOrderType, Prisma } from "@prisma/client";
@@ -84,6 +91,13 @@ async function requireOrderTypePageAccess(orderType: BranchOrderType) {
   return requireAnyPermission(orderTypeAccessPermissions(orderType));
 }
 
+async function requireManualSpecialListAccess() {
+  return requireAnyPermission([
+    ...orderTypeAccessPermissions("manual"),
+    ...orderTypeAccessPermissions("special"),
+  ]);
+}
+
 const ORDER_SORT_FIELDS = new Set<OrderListSort>([
   "orderNumber",
   "branch",
@@ -119,20 +133,37 @@ export async function listOrdersAction(input?: {
   page?: number;
   limit?: number;
   orderType?: BranchOrderType;
+  /**
+   * Manual and Special in one query. When set, `orderType` is ignored so a
+   * client cannot widen the filter past the viewer's permissions.
+   */
+  listFilter?: ManualSpecialTypeFilter;
   sort?: string;
   sortDir?: string;
   /** Team Leader user id: only orders from that TL's AOR branches. */
   teamLeaderId?: string;
 }) {
-  const session = input?.orderType
-    ? await requireOrderTypePageAccess(input.orderType)
-    : await requireAnyPermission(anyOrderTypePermissions("view"));
+  const session = input?.listFilter
+    ? await requireManualSpecialListAccess()
+    : input?.orderType
+      ? await requireOrderTypePageAccess(input.orderType)
+      : await requireAnyPermission(anyOrderTypePermissions("view"));
   const limit = parseTablePageSize(input?.limit);
-  const queueStatuses = resolveOrderQueueStatuses(
-    input?.orderType,
-    session.user.roleSlugs ?? [],
-    session.user.permissions,
-  );
+  const typeScopes = input?.listFilter
+    ? manualSpecialQueueScopes(
+        session.user.permissions,
+        session.user.roleSlugs ?? [],
+        input.listFilter,
+        session.user.id,
+      )
+    : undefined;
+  const queueStatuses = typeScopes
+    ? undefined
+    : resolveOrderQueueStatuses(
+        input?.orderType,
+        session.user.roleSlugs ?? [],
+        session.user.permissions,
+      );
   const result = await orderService.list(
     session.user.tenantId,
     session.user.id,
@@ -140,8 +171,9 @@ export async function listOrdersAction(input?: {
     {
       page: input?.page,
       limit,
-      orderType: input?.orderType,
+      orderType: typeScopes ? undefined : input?.orderType,
       statuses: queueStatuses,
+      typeScopes,
       teamLeaderId: input?.teamLeaderId?.trim() || undefined,
     },
     { field: parseOrderSort(input?.sort), dir: parseOrderSortDir(input?.sortDir) },
@@ -164,10 +196,31 @@ export async function listOrderTeamLeadersAction(orderType?: BranchOrderType) {
   );
 }
 
-export async function getOrdersKpisAction(orderType?: BranchOrderType) {
-  const session = orderType
-    ? await requireOrderTypePageAccess(orderType)
-    : await requireAnyPermission(anyOrderTypePermissions("view"));
+export async function getOrdersKpisAction(
+  orderType?: BranchOrderType,
+  listFilter?: ManualSpecialTypeFilter,
+) {
+  const session = listFilter
+    ? await requireManualSpecialListAccess()
+    : orderType
+      ? await requireOrderTypePageAccess(orderType)
+      : await requireAnyPermission(anyOrderTypePermissions("view"));
+  if (listFilter) {
+    const typeScopes = manualSpecialQueueScopes(
+      session.user.permissions,
+      session.user.roleSlugs ?? [],
+      listFilter,
+      session.user.id,
+    );
+    return orderService.getKpis(
+      session.user.tenantId,
+      session.user.id,
+      hasFullOrderAccess(session.user.permissions),
+      undefined,
+      undefined,
+      typeScopes,
+    );
+  }
   const queueStatuses = resolveOrderQueueStatuses(
     orderType,
     session.user.roleSlugs ?? [],
@@ -179,6 +232,16 @@ export async function getOrdersKpisAction(orderType?: BranchOrderType) {
     hasFullOrderAccess(session.user.permissions),
     orderType,
     queueStatuses,
+  );
+}
+
+/** Team Leaders for the combined Manual and Special list. */
+export async function listManualSpecialTeamLeadersAction() {
+  const session = await requireManualSpecialListAccess();
+  return orderService.listTeamLeaderOptions(
+    session.user.tenantId,
+    session.user.id,
+    hasFullOrderAccess(session.user.permissions),
   );
 }
 
@@ -349,12 +412,12 @@ export async function createOrderAction(input: {
 }) {
   const session = await requireOrderTypePermission(input.orderType, "create");
   try {
-    await orderService.create(session.user.tenantId, session.user.id, {
+    const order = await orderService.create(session.user.tenantId, session.user.id, {
       ...input,
       hasFullAccess: hasFullOrderAccess(session.user.permissions),
     });
     revalidateOrderPaths(input.orderType);
-    return { success: true as const };
+    return { success: true as const, orderId: order.id };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to create order" };
   }
@@ -512,6 +575,15 @@ export async function approveOrderAction(
     revalidatePath("/operations");
     return { success: true as const };
   } catch (e) {
+    if (e instanceof SapOrderPostRejectedError) {
+      revalidateOrderPaths(existing.orderType);
+      return {
+        error: e.message,
+        sapRejected: true as const,
+        sapMessage: e.sapMessage,
+        updatedAt: e.updatedAt,
+      };
+    }
     return { error: e instanceof Error ? e.message : "Failed to approve order" };
   }
 }
@@ -570,18 +642,35 @@ export async function listOrderHistoryAction(input?: {
   page?: number;
   limit?: number;
   orderType?: BranchOrderType;
+  /** Manual and Special in one query. Ignores `orderType` when set. No new status filter. */
+  listFilter?: ManualSpecialTypeFilter;
   sort?: string;
   sortDir?: string;
 }) {
-  const session = input?.orderType
-    ? await requireOrderTypePageAccess(input.orderType)
-    : await requireAnyPermission(anyOrderTypePermissions("view"));
+  const session = input?.listFilter
+    ? await requireManualSpecialListAccess()
+    : input?.orderType
+      ? await requireOrderTypePageAccess(input.orderType)
+      : await requireAnyPermission(anyOrderTypePermissions("view"));
   const limit = parseTablePageSize(input?.limit);
+  const typeScopes = input?.listFilter
+    ? manualSpecialHistoryScopes(
+        session.user.permissions,
+        input.listFilter,
+        session.user.roleSlugs ?? [],
+        session.user.id,
+      )
+    : undefined;
   const result = await orderService.list(
     session.user.tenantId,
     session.user.id,
     hasFullOrderAccess(session.user.permissions),
-    { page: input?.page, limit, orderType: input?.orderType },
+    {
+      page: input?.page,
+      limit,
+      orderType: typeScopes ? undefined : input?.orderType,
+      typeScopes,
+    },
     { field: parseOrderSort(input?.sort), dir: parseOrderSortDir(input?.sortDir) },
   );
 
@@ -613,6 +702,10 @@ export async function listOrderHistoryAction(input?: {
       reviewSnapshotAt: order.reviewSnapshotAt?.toISOString() ?? null,
       sapDocType: order.sapDocType,
       sapDocNum: order.sapDocNum,
+      modeOfPayment: resolveOrderModeOfPayment({
+        orderModeOfPayment: order.modeOfPayment,
+        dealerModeOfPayment: order.branch.dealer?.modeOfPayment,
+      }),
       orderQty,
       totalAmt,
       appQty,

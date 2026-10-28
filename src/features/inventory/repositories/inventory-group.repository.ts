@@ -119,7 +119,8 @@ function resolveEffectiveBranchIdsForGroups(
 /**
  * Whether a branch unit is stocked in, by either route:
  * - ISMS: delivered on a DR that carries both a DR# and a DR date (the same deliveries
- *   the DR# column reads), or placed in a warehouse location by Stock in
+ *   the DR# column reads), or holding a warehouse location (set before ISMS Stock in was
+ *   removed, or by a return to a location)
  * - SAP: the serial sync linked it to the SAP warehouse that holds it
  *
  * Only stocked-in units count as STK on the grouped views; the rest count toward Total.

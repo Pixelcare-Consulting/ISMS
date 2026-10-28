@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { EditOrderDialog } from "@/app/(app)/orders/_components/edit-order-dialog";
@@ -20,7 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { OrderStatusBadge } from "@/features/orders/components/order-status-badge";
 import {
-  formatOrderSapDocument,
+  orderSapDocumentFields,
   type OrderSapDocType,
 } from "@/features/orders/constants/order-sap-doc-type";
 import { BRANCH_ORDER_TYPE_LABELS } from "@/features/orders/constants/order-status";
@@ -77,6 +78,20 @@ interface OrderDetailsDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+function submittedOrderHref(orderType: BranchOrderType, orderId: string): string | null {
+  switch (orderType) {
+    case "manual":
+    case "special":
+      return `/orders/manual/submitted/${orderId}`;
+    case "auto_replenish":
+      return null;
+    default: {
+      const unreachable: never = orderType;
+      return unreachable;
+    }
+  }
+}
+
 function formatOptionalDate(value: string | Date | null | undefined): string | null {
   if (!value) return null;
   const date = typeof value === "string" ? new Date(value) : value;
@@ -115,6 +130,7 @@ export function OrderDetailsDialog({
   const [editing, setEditing] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const modelIds = useMemo(() => lines.map((line) => line.modelId), [lines]);
+  const sapDocument = orderSapDocumentFields({ sapDocType, sapDocNum });
   const worksheet = useOrderWorksheet({
     enabled: open,
     branchId,
@@ -154,6 +170,7 @@ export function OrderDetailsDialog({
   const snapshotAtLabel = formatOptionalDate(reviewSnapshotAt);
   const showApprovedQty =
     status === "approved" || lines.some((line) => line.approvedQty != null);
+  const summaryHref = submittedOrderHref(orderType, orderId);
   const showEdit = canEditOrderLines({
     status,
     orderType,
@@ -199,9 +216,9 @@ export function OrderDetailsDialog({
                   </>
                 ) : null}
                 <dt className="whitespace-nowrap text-muted-foreground">SAP document</dt>
-                <dd className="min-w-0 break-words">
-                  {formatOrderSapDocument({ sapDocType, sapDocNum })}
-                </dd>
+                <dd className="min-w-0 break-words">{sapDocument.type}</dd>
+                <dt className="whitespace-nowrap text-muted-foreground">{sapDocument.numberLabel}</dt>
+                <dd className="min-w-0 break-words font-mono tabular-nums">{sapDocument.number}</dd>
                 <dt className="whitespace-nowrap text-muted-foreground">Created by</dt>
                 <dd className="min-w-0 break-words">{createdByName?.trim() || "—"}</dd>
                 <dt className="whitespace-nowrap text-muted-foreground">Next approver</dt>
@@ -285,6 +302,11 @@ export function OrderDetailsDialog({
             <Button type="button" variant="outline" onClick={() => setAnalyticsOpen(true)}>
               Order analytics
             </Button>
+            {summaryHref ? (
+              <Button type="button" variant="outline" asChild>
+                <Link href={summaryHref}>All details</Link>
+              </Button>
+            ) : null}
             <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               Close
             </Button>

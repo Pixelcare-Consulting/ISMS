@@ -1,84 +1,97 @@
 "use client";
 
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { DocumentDetailBand } from "@/app/(app)/logistics/_components/logistics-detail-ui";
+import { ShipmentPrintButton } from "@/app/(app)/logistics/_components/logistics-shipment-section";
+import { shipmentPrintDocument } from "@/app/(app)/logistics/_components/shipment-print";
 import {
-  LogisticsDocumentHeader,
-  LogisticsDoneLine,
-  LogisticsProgressCard,
-} from "@/app/(app)/logistics/_components/logistics-detail-ui";
-import { TransferForm } from "@/app/(app)/logistics/_components/transfer-form";
-import {
-  TransferTracker,
-  transferFinishedSteps,
-  type TransferFinishedStep,
-} from "@/app/(app)/logistics/_components/transfer-tracker";
+  hasTransferDocumentAction,
+  TransferDocumentActionButtons,
+  TransferForm,
+  type TransferDocumentActions,
+  type TransferFormHandle,
+} from "@/app/(app)/logistics/_components/transfer-form";
 import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
-import type { TransferDetail } from "@/features/logistics/services/transfer-posting.service";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
+import type { WorkflowStatusOption } from "@/features/logistics/constants/workflow-codes";
+import type { TransferDetail } from "@/features/logistics/services/transfer-posting.service";
 
-const DONE_TIME = new Intl.DateTimeFormat("en-PH", {
-  year: "numeric",
-  month: "short",
-  day: "2-digit",
-  hour: "numeric",
-  minute: "2-digit",
-  timeZone: "Asia/Manila",
-});
-
-function doneLineDetail(step: TransferFinishedStep): string | undefined {
-  if (!step.at) return undefined;
-  const date = new Date(step.at);
-  const when = Number.isNaN(date.getTime()) ? step.at : DONE_TIME.format(date);
-  if (!step.actor) return when;
-  return `${step.actor} · ${when}`;
+function transferPrintDocument(detail: TransferDetail) {
+  return shipmentPrintDocument({
+    title: "Transfer",
+    documentNo: detail.transferNo,
+    shipment: detail.shipment,
+    fields: [
+      { label: "Releasing branch", value: detail.fromBranch.name },
+      { label: "Receiving branch", value: detail.toBranch.name },
+    ],
+    lines: detail.lines.map((line) => ({
+      model: `${line.skuCode} ${line.modelName}`,
+      detail: line.serialNo,
+    })),
+    lineHeaders: { model: "Model", detail: "Serial number" },
+  });
 }
+
+const NO_DOCUMENT_ACTIONS: TransferDocumentActions = {
+  canApprove: false,
+  canReject: false,
+  canRelease: false,
+  pending: false,
+};
 
 export function TransferDetailView({
   detail,
   capabilities,
   branchScope,
+  workflowStatuses,
 }: {
   detail: TransferDetail;
   capabilities: LogisticsActionCapabilities;
   branchScope: string[] | null;
+  workflowStatuses: readonly WorkflowStatusOption[];
 }) {
   const router = useRouter();
-  const finished = transferFinishedSteps(detail.status, detail.history);
+  const formRef = useRef<TransferFormHandle>(null);
+  const [documentActions, setDocumentActions] = useState<TransferDocumentActions>(NO_DOCUMENT_ACTIONS);
 
   return (
     <div className="space-y-6">
-      <LogisticsDocumentHeader
+      <DocumentDetailBand
         backHref="/logistics/transfers"
         backLabel="Back to transfers"
-        context="Branch transfer"
         title={detail.transferNo}
-        statusCode={detail.status.code}
-        statusColor={detail.status.color}
-        badges={
+        statusLine={
           <StatusCodeBadge
             code={detail.status.code}
             name={detail.status.name}
             color={detail.status.color}
           />
         }
+        actions={
+          <>
+            {hasTransferDocumentAction(documentActions) ? (
+              <TransferDocumentActionButtons
+                actions={documentActions}
+                onAction={(action) => formRef.current?.openDocumentAction(action)}
+              />
+            ) : null}
+            <ShipmentPrintButton document={transferPrintDocument(detail)} />
+          </>
+        }
       />
-      <LogisticsProgressCard>
-        <TransferTracker status={detail.status} history={detail.history} />
-      </LogisticsProgressCard>
-      {finished.length > 0 ? (
-        <div className="space-y-2">
-          {finished.map((step) => (
-            <LogisticsDoneLine key={step.key} title={step.title} detail={doneLineDetail(step)} />
-          ))}
-        </div>
-      ) : null}
       <TransferForm
+        ref={formRef}
         mode="view"
         layout="page"
+        actionsPlacement="external"
         detail={detail}
         capabilities={capabilities}
         branchScope={branchScope}
+        workflowStatuses={workflowStatuses}
+        onDocumentActionsChange={setDocumentActions}
         onUpdated={() => router.refresh()}
       />
     </div>

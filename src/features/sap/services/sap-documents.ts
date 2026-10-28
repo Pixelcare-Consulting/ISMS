@@ -26,8 +26,7 @@ const LINES_FIELD: Record<SapDocKind, "StockTransferLines" | "DocumentLines"> = 
   RETURN: "DocumentLines",
 };
 
-/** SAP object-type codes for the base document of a copied line. */
-const BASE_TYPE_SO = 17;
+/** SAP object-type code of a Delivery (DR), the base document of a Return line. */
 const BASE_TYPE_DR = 15;
 
 export interface SapDocRef {
@@ -70,14 +69,83 @@ function baseRef(line: SapSerialLine) {
     : { BaseEntry: line.baseEntry, BaseLine: line.baseLine ?? 0 };
 }
 
-export function buildItrBody(i: {
+/**
+ * Column sizes in this company DB, the same on the ITR (OWTQ / WTQ1) and the SO
+ * (ORDR / RDR1): read from UserFieldsMD on 2026-10-27/28; Comments and JournalMemo are
+ * B1's own. A longer value makes SAP refuse the document, so every free-text value is
+ * fitted before it is sent.
+ */
+const ORDER_DOC_TEXT_LIMITS = {
+  comments: 254,
+  journalMemo: 50,
+  lineIsmsRef: 21,
+  lineBranchName: 20,
+  lineBranchNameLong: 100,
+} as const;
+
+/** One line of text no longer than `max`: whitespace collapsed, cut with "…" if needed. */
+export function fitSapText(value: string, max: number): string {
+  const text = value.replace(/\s+/g, " ").trim();
+  return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
+}
+
+interface OrderDocumentText {
   ismsRef: string;
-  fromWhs: string;
-  toWhs: string;
-  lines: PlainLine[];
-}): Record<string, unknown> {
+  branchName: string;
+  notes?: string | null;
+}
+
+/**
+ * The ISMS text an approved order carries into SAP, ITR or SO alike. Header: Remarks
+ * carry the order notes (the ISMS reference when there are none), and Journal Remarks
+ * read `ISMS <order #> · <branch>` instead of SAP's generic default. Lines: the order
+ * number (ISMS PO#) and the branch name, full name in Branch Namelong and the
+ * 20-character Branch Name column filled as far as it fits.
+ */
+function orderDocumentText(i: OrderDocumentText): {
+  header: Record<string, unknown>;
+  line: Record<string, unknown>;
+} {
+  const branchName = i.branchName.trim();
+  const notes = i.notes?.trim();
   return {
-    ...header(i.ismsRef),
+    header: {
+      ...header(i.ismsRef),
+      Comments: fitSapText(notes || `ISMS ${i.ismsRef}`, ORDER_DOC_TEXT_LIMITS.comments),
+      JournalMemo: fitSapText(
+        branchName ? `ISMS ${i.ismsRef} · ${branchName}` : `ISMS ${i.ismsRef}`,
+        ORDER_DOC_TEXT_LIMITS.journalMemo,
+      ),
+    },
+    line: {
+      U_ISMS_PONum: fitSapText(i.ismsRef, ORDER_DOC_TEXT_LIMITS.lineIsmsRef),
+      ...(branchName
+        ? {
+            U_Branch_Name: fitSapText(branchName, ORDER_DOC_TEXT_LIMITS.lineBranchName),
+            U_Branch_Namelong: fitSapText(branchName, ORDER_DOC_TEXT_LIMITS.lineBranchNameLong),
+          }
+        : {}),
+    },
+  };
+}
+
+/**
+ * An approved consignment order as an Inventory Transfer Request. Due Date is sent only
+ * when the order has a delivery due date; without one SAP sets it.
+ */
+export function buildItrBody(
+  i: OrderDocumentText & {
+    fromWhs: string;
+    toWhs: string;
+    /** YYYY-MM-DD. Omitted (not sent) when the order has no delivery due date. */
+    dueDate?: string | null;
+    lines: PlainLine[];
+  },
+): Record<string, unknown> {
+  const text = orderDocumentText(i);
+  return {
+    ...text.header,
+    ...(i.dueDate ? { DueDate: i.dueDate } : {}),
     FromWarehouse: i.fromWhs,
     ToWarehouse: i.toWhs,
     StockTransferLines: i.lines.map((l) => ({
@@ -85,25 +153,33 @@ export function buildItrBody(i: {
       Quantity: l.quantity,
       FromWarehouseCode: i.fromWhs,
       WarehouseCode: i.toWhs,
+      ...text.line,
     })),
   };
 }
 
-export function buildSoBody(i: {
-  ismsRef: string;
-  cardCode: string;
-  whs: string;
-  dueDate: string;
-  lines: PlainLine[];
-}): Record<string, unknown> {
+/**
+ * An approved outright order as a Sales Order. SAP requires its Delivery Date, so the
+ * caller always sends one (the order's delivery due date, else today).
+ */
+export function buildSoBody(
+  i: OrderDocumentText & {
+    cardCode: string;
+    whs: string;
+    dueDate: string;
+    lines: PlainLine[];
+  },
+): Record<string, unknown> {
+  const text = orderDocumentText(i);
   return {
-    ...header(i.ismsRef),
+    ...text.header,
     CardCode: i.cardCode,
     DocDueDate: i.dueDate,
     DocumentLines: i.lines.map((l) => ({
       ItemCode: l.itemCode,
       Quantity: l.quantity,
       WarehouseCode: i.whs,
+      ...text.line,
     })),
   };
 }
@@ -154,16 +230,6 @@ function buildBasedDocumentBody(
       ...(l.baseEntry == null ? { BaseEntry: baseEntry, BaseLine: l.baseLine ?? 0 } : baseRef(l)),
     })),
   };
-}
-
-export function buildDrBody(i: {
-  ismsRef: string;
-  cardCode: string;
-  whs: string;
-  baseSoEntry: number;
-  lines: SapSerialLine[];
-}): Record<string, unknown> {
-  return buildBasedDocumentBody(i.ismsRef, i.cardCode, i.whs, BASE_TYPE_SO, i.baseSoEntry, i.lines);
 }
 
 export function buildReturnBody(i: {

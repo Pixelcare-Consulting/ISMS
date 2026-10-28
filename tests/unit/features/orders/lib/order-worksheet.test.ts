@@ -5,8 +5,12 @@ import {
   isAwaitingPulloutWorkflow,
   outstandingQtyForLines,
   resolveDitDirection,
+  worksheetBrandSalesQty,
   worksheetDii,
+  worksheetModelRate,
+  worksheetPlanningFigures,
   worksheetSuggestion,
+  WORKSHEET_DEFAULT_MIL_DAYS,
   type WorksheetModelFact,
   type WorksheetSalesByModel,
 } from "@/features/orders/lib/order-worksheet";
@@ -369,5 +373,153 @@ describe("worksheet rows and outstanding supply", () => {
     expect(formatWorksheetSalesPeriodLabel(window)).toBe(
       "October 1\u201319, 2026 (Asia/Manila)",
     );
+  });
+});
+
+describe("supply planning worksheet payload", () => {
+  it("defaults frequency, quotas, MIL days, and leaves chip color unset", () => {
+    const payload = assemble({
+      models: [model({ modelId: "m1", skuCode: "SKU-1" })],
+      serials: [
+        { serialNumberId: "s1", modelId: "m1", statusCode: "STK", pendingDefectInspection: false },
+      ],
+    });
+
+    expect(payload.deliveryFrequencyCode).toBeNull();
+    expect(payload.brandQuotas).toEqual([]);
+    expect(payload.lines[0]?.milDays).toBe(WORKSHEET_DEFAULT_MIL_DAYS);
+    expect(payload.lines[0]?.inventory.byStatus).toEqual(
+      expect.arrayContaining([{ code: "STK", count: 1 }]),
+    );
+    expect(payload.lines[0]?.inventory.byStatus[0]).not.toHaveProperty("color");
+  });
+
+  it("keeps frequency, quotas, MIL days, and status colors from the loader inputs", () => {
+    const payload = assembleOrderWorksheet({
+      branch: { id: "branch-1", name: "Ayala Cebu", dealerId: null, dealerName: null },
+      orderType: "manual",
+      brandId: null,
+      brandName: null,
+      brands: [{ id: "brand-1", name: "Devant" }],
+      models: [model({ modelId: "m1", skuCode: "SKU-1", brandId: "brand-1", brandName: "Devant" })],
+      serials: [
+        { serialNumberId: "fpo", modelId: "m1", statusCode: "FPO", pendingDefectInspection: false },
+      ],
+      pullouts: [],
+      transfers: [],
+      deliveriesIntoBranch: [],
+      orderLines: [],
+      sales: { unavailable: false, byModel: new Map() },
+      window,
+      inventoryAsOf: "2026-10-19T02:00:00.000Z",
+      deliveryFrequencyCode: " F4 ",
+      brandQuotas: [
+        { brandId: " brand-1 ", quantity: 40 },
+        { brandId: " ", quantity: 9 },
+      ],
+      milDaysByModel: new Map([["m1", 14]]),
+      statusColors: new Map([
+        ["STK", "green"],
+        ["FPO", "amber"],
+      ]),
+    });
+
+    expect(payload.deliveryFrequencyCode).toBe("F4");
+    expect(payload.brandQuotas).toEqual([{ brandId: "brand-1", quantity: 40 }]);
+    expect(payload.lines[0]?.milDays).toBe(14);
+    expect(payload.lines[0]?.inventory.byStatus).toEqual([
+      { code: "STK", count: 0, color: "green" },
+      { code: "FPO", count: 1, color: "amber" },
+    ]);
+  });
+});
+
+describe("supply planning figures and rate", () => {
+  const devant = {
+    brandId: "devant",
+    srp: 100,
+    cbm: 0.2,
+    salesAmount: 50,
+    salesUnavailable: false,
+    milDays: 14,
+    onPlanogram: true,
+    onHandQty: 2,
+    requestedQty: 3,
+    approvedQty: 2,
+  };
+  const sonique = {
+    brandId: "sonique",
+    srp: 80,
+    cbm: 0.5,
+    salesAmount: 0,
+    salesUnavailable: false,
+    milDays: 30,
+    onPlanogram: true,
+    onHandQty: 1,
+    requestedQty: 0,
+    approvedQty: null,
+  };
+
+  it("scopes figures to the brand and keeps all brands on every line", () => {
+    const quotas = [
+      { brandId: "devant", quantity: 12 },
+      { brandId: "sonique", quantity: 8 },
+    ];
+    const devantFigures = worksheetPlanningFigures({
+      lines: [devant, sonique],
+      brandId: "devant",
+      brandQuotas: quotas,
+      daysElapsed: 10,
+    });
+    expect(devantFigures.quotaQty).toBe(12);
+    expect(devantFigures.inventoryAmount).toBe(200);
+    expect(devantFigures.approvedOrderAmount).toBe(200);
+    expect(devantFigures.totalInventoryAmount).toBe(400);
+    expect(devantFigures.totalCbm).toBeCloseTo(0.6);
+    expect(devantFigures.targetDiiDays).toBe(14);
+    expect(devantFigures.computedDii).toBe(40);
+
+    const all = worksheetPlanningFigures({
+      lines: [devant, sonique],
+      brandId: null,
+      brandQuotas: quotas,
+      daysElapsed: 10,
+    });
+    expect(all.quotaQty).toBe(20);
+    expect(all.inventoryAmount).toBe(280);
+    expect(all.approvedOrderAmount).toBe(200);
+    expect(all.totalInventoryAmount).toBe(480);
+    expect(all.totalCbm).toBeCloseTo(0.6);
+    expect(all.targetDiiDays).toBe(14);
+  });
+
+  it("leaves quota blank when the brand has none and skips zero requested CBM", () => {
+    const figures = worksheetPlanningFigures({
+      lines: [sonique],
+      brandId: "sonique",
+      brandQuotas: [{ brandId: "devant", quantity: 12 }],
+      daysElapsed: 10,
+    });
+    expect(figures.quotaQty).toBeNull();
+    expect(figures.totalCbm).toBe(0);
+    expect(figures.computedDii).toBeNull();
+    expect(figures.diiUnavailableReason).toBe(NO_SALES_DII_REASON);
+  });
+
+  it("computes rate from line sales without storing it", () => {
+    const sales = worksheetBrandSalesQty([
+      { brandId: "devant", salesQty: 2, salesUnavailable: false },
+      { brandId: "devant", salesQty: 8, salesUnavailable: false },
+      { brandId: "sonique", salesQty: 5, salesUnavailable: false },
+    ]);
+    expect(worksheetModelRate(2, false, sales.get("devant") ?? null)).toBe(0.2);
+    expect(worksheetModelRate(5, false, sales.get("sonique") ?? null)).toBe(1);
+    expect(worksheetModelRate(2, true, 10)).toBeNull();
+    expect(worksheetModelRate(2, false, 0)).toBeNull();
+    expect(
+      worksheetBrandSalesQty([
+        { brandId: "devant", salesQty: null, salesUnavailable: true },
+      ]).get("devant"),
+    ).toBeNull();
   });
 });

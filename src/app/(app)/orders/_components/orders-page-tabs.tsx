@@ -10,6 +10,7 @@ import {
   parseOrdersPageTab,
   type OrdersPageTab,
 } from "@/features/orders/constants/orders-page-tabs";
+import type { ManualSpecialTypeFilter } from "@/features/orders/lib/manual-special-order-scope";
 
 export type { OrdersPageTab };
 
@@ -17,14 +18,22 @@ interface OrdersPageTabsProps {
   activeTab: OrdersPageTab;
   basePath: string;
   tabs?: readonly OrdersPageTab[];
+  typeFilter?: ManualSpecialTypeFilter;
   ordersContent: ReactNode;
   analyticsContent?: ReactNode;
   historyContent: ReactNode;
 }
 
-function hrefForTab(basePath: string, tab: OrdersPageTab): string {
-  if (tab === "orders") return basePath;
-  return `${basePath}?tab=${tab}`;
+function hrefForTab(
+  basePath: string,
+  tab: OrdersPageTab,
+  typeFilter?: ManualSpecialTypeFilter,
+): string {
+  const params = new URLSearchParams();
+  if (typeFilter && typeFilter !== "all") params.set("type", typeFilter);
+  if (tab !== "orders") params.set("tab", tab);
+  const query = params.toString();
+  return query ? `${basePath}?${query}` : basePath;
 }
 
 function tabLabel(tab: OrdersPageTab): string {
@@ -62,8 +71,9 @@ function tabSkeleton(tab: OrdersPageTab) {
       return (
         <DataTableSkeleton
           columns={[
-            "SO#",
+            "Order #",
             "Type",
+            "Mode of payment",
             "Branch",
             "Order Qty",
             "Total Amt",
@@ -87,6 +97,7 @@ export function OrdersPageTabs({
   activeTab,
   basePath,
   tabs = ORDERS_PAGE_TABS,
+  typeFilter,
   ordersContent,
   analyticsContent,
   historyContent,
@@ -123,7 +134,7 @@ export function OrdersPageTabs({
         if (next === displayTab) return;
         setDisplayTab(next);
         startTransition(() => {
-          router.push(hrefForTab(basePath, next));
+          router.push(hrefForTab(basePath, next, typeFilter));
         });
       }}
     >

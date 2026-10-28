@@ -1,12 +1,12 @@
 "use client";
 
 import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
-import { Loader2 } from "lucide-react";
+import { CircleAlert, Loader2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { useOrdersCreateWorkspace } from "@/app/(app)/orders/_components/orders-create-workspace-context";
+import { CreateOrderSetupDialog } from "@/app/(app)/orders/_components/create-order-form";
 import {
   adminBulkCancelOrdersAction,
   approveOrderAction,
@@ -18,17 +18,22 @@ import {
 import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
 import {
   canApproveOrder,
-  canEditOrderLines,
   isOrderPendingApproval,
   isSuperAdminOrderOverride,
+  PRODUCT_SPECIALIST_ROLE_SLUG,
 } from "@/features/orders/constants/order-workflow";
 import { OrderDetailsDialog } from "@/app/(app)/orders/_components/order-details-dialog";
 import { SuggestedOrdersDialog } from "@/app/(app)/orders/_components/suggested-orders-dialog";
 import { OrderWorkflowDialog } from "@/app/(app)/orders/_components/order-workflow-dialog";
 import {
-  EditOrderDialog,
-  type EditableOrder,
-} from "@/app/(app)/orders/_components/edit-order-dialog";
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { BRANCH_ORDER_STATUS_LABELS } from "@/features/orders/constants/order-status";
 import { OrderTypeBadge } from "@/features/orders/components/order-type-badge";
@@ -49,11 +54,16 @@ import { DeleteConfirmDialog } from "@/components/data-table/delete-confirm-dial
 import { LoadingModal } from "@/components/ui/loading-modal";
 import {
   formatOrderModeOfPayment,
-  formatOrderSapDocument,
+  orderModeOfPaymentSearchText,
+  resolveOrderModeOfPayment,
   type OrderSapDocType,
 } from "@/features/orders/constants/order-sap-doc-type";
+import type { ModeOfPaymentKindValue } from "@/features/lookups/constants/mode-of-payment-kind";
+import { ModeOfPaymentBadge } from "@/features/orders/components/mode-of-payment-badge";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { matchesTableSearch } from "@/utils/match-table-search";
+import type { ManualSpecialTypeFilter } from "@/features/orders/lib/manual-special-order-scope";
+import { describeSapOrderRejection } from "@/features/orders/lib/sap-order-rejection";
 
 interface OrderRow {
   id: string;
@@ -65,16 +75,17 @@ interface OrderRow {
   notes?: string | null;
   spaRemarks?: string | null;
   updatedAt?: string | Date | null;
+  createdAt?: string | Date | null;
   reviewSnapshot?: unknown;
   reviewSnapshotAt?: string | Date | null;
   sapDocType?: OrderSapDocType | null;
   sapDocNum?: number | null;
   deliveryDueDate?: string | Date | null;
-  modeOfPayment?: { name: string } | null;
+  modeOfPayment?: ModeOfPaymentRow | null;
   branch: {
     name: string;
     deliverySchedule?: unknown;
-    dealer?: { modeOfPayment: { name: string } | null } | null;
+    dealer?: { modeOfPayment: ModeOfPaymentRow | null } | null;
   };
   createdBy: { name: string | null; email: string };
   details: {
@@ -95,9 +106,21 @@ interface OrderRow {
   }[];
 }
 
+interface ModeOfPaymentRow {
+  name: string;
+  kind?: ModeOfPaymentKindValue | null;
+}
+
 const orderColumn = createColumnHelper<DataTableFeatures, OrderRow>();
 
-type OrderSortField = "orderNumber" | "branch" | "orderType" | "status";
+function orderRowModeOfPayment(order: OrderRow) {
+  return resolveOrderModeOfPayment({
+    orderModeOfPayment: order.modeOfPayment,
+    dealerModeOfPayment: order.branch.dealer?.modeOfPayment,
+  });
+}
+
+type OrderSortField = "orderNumber" | "branch" | "orderType" | "status" | "createdAt";
 type OrderSortDir = "asc" | "desc";
 
 interface OrdersTableProps {
@@ -112,6 +135,14 @@ interface OrdersTableProps {
   canEdit?: boolean;
   /** When set, list is type-scoped and create dialog locks this type. */
   fixedOrderType?: BranchOrderType;
+  /** Combined Manual/Special list. Sent back to the server on the team-leader filter. */
+  listFilter?: ManualSpecialTypeFilter;
+  /** Manual/Special create is offered. The button opens the setup popup, then the create page. */
+  createHref?: string | null;
+  /** Create permission per row type. Falls back to `canEdit` when omitted. */
+  createByType?: Partial<Record<BranchOrderType, boolean>>;
+  /** Suggested orders dialog type. Falls back to `fixedOrderType`. */
+  suggestionOrderType?: BranchOrderType;
   /** Base path for pagination links (defaults to `/orders`). */
   basePath?: string;
   initialSort?: string;
@@ -143,6 +174,39 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Stored creator. Name when the account has one, otherwise the account email. */
+function orderCreatorLabel(createdBy: OrderRow["createdBy"] | null | undefined): string {
+  const name = createdBy?.name?.trim();
+  if (name) return name;
+  const email = createdBy?.email?.trim();
+  return email || "—";
+}
+
+const ORDER_CREATED_DATE = new Intl.DateTimeFormat("en-PH", {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  timeZone: "Asia/Manila",
+});
+
+const ORDER_CREATED_TIME = new Intl.DateTimeFormat("en-PH", {
+  hour: "numeric",
+  minute: "2-digit",
+  timeZone: "Asia/Manila",
+});
+
+function OrderCreatedAtCell({ value }: { value: string | Date | null | undefined }) {
+  if (!value) return "—";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return (
+    <div className="whitespace-normal leading-tight">
+      <p>{ORDER_CREATED_DATE.format(date)}</p>
+      <p>{ORDER_CREATED_TIME.format(date)}</p>
+    </div>
+  );
+}
+
 function buildOrdersHref(
   basePath: string,
   page: number,
@@ -150,6 +214,7 @@ function buildOrdersHref(
   sort?: string,
   sortDir?: string,
   teamLeaderId?: string | null,
+  typeFilter?: string | null,
 ): string {
   const params = new URLSearchParams();
   if (page > 1) params.set("page", String(page));
@@ -157,6 +222,7 @@ function buildOrdersHref(
   if (sort) params.set("sort", sort);
   if (sort && sortDir) params.set("dir", sortDir);
   if (teamLeaderId) params.set("tl", teamLeaderId);
+  if (typeFilter === "manual" || typeFilter === "special") params.set("type", typeFilter);
   const query = params.toString();
   return query ? `${basePath}?${query}` : basePath;
 }
@@ -169,11 +235,28 @@ function buildOrdersHrefWithTab(
   sortDir?: string,
   tab?: string | null,
   teamLeaderId?: string | null,
+  typeFilter?: string | null,
 ): string {
-  const href = buildOrdersHref(basePath, page, limit, sort, sortDir, teamLeaderId);
+  const href = buildOrdersHref(basePath, page, limit, sort, sortDir, teamLeaderId, typeFilter);
   if (!tab || tab === "orders") return href;
   const join = href.includes("?") ? "&" : "?";
   return `${href}${join}tab=${tab}`;
+}
+
+function rowCreatePermission(
+  orderType: string,
+  canEdit: boolean,
+  createByType?: Partial<Record<BranchOrderType, boolean>>,
+): boolean {
+  if (!createByType) return canEdit;
+  switch (orderType) {
+    case "manual":
+    case "special":
+    case "auto_replenish":
+      return Boolean(createByType[orderType]);
+    default:
+      return false;
+  }
 }
 
 export function OrdersTable({
@@ -181,6 +264,10 @@ export function OrdersTable({
   viewerRoleSlugs,
   canEdit = false,
   fixedOrderType,
+  listFilter,
+  createHref,
+  createByType,
+  suggestionOrderType,
   basePath = "/orders",
   initialSort = "",
   initialSortDir = "desc",
@@ -205,19 +292,35 @@ export function OrdersTable({
   const [pickedTeamLeaderId, setPickedTeamLeaderId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [workflowOrder, setWorkflowOrder] = useState<OrderRow | null>(null);
+  const [sapRejection, setSapRejection] = useState<{ sapMessage: string | null } | null>(null);
   const [detailsOrderId, setDetailsOrderId] = useState<string | null>(null);
-  const [editingOrder, setEditingOrder] = useState<EditableOrder | null>(null);
   const [draftToDelete, setDraftToDelete] = useState<OrderRow | null>(null);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [bulkCancelOpen, setBulkCancelOpen] = useState(false);
+  const [createSetupOpen, setCreateSetupOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [processingAction, setProcessingAction] = useState<"approve" | "reject" | null>(
     null,
   );
-  const createWorkspace = useOrdersCreateWorkspace();
+  const canCreateManual =
+    createByType?.manual ?? (fixedOrderType === "manual" ? canEdit : false);
+  const canCreateSpecial =
+    createByType?.special ?? (fixedOrderType === "special" ? canEdit : false);
+  const showCreateOrder = Boolean(createHref) || canCreateManual || canCreateSpecial;
+  const setupInitialType =
+    listFilter === "special" && canCreateSpecial
+      ? "special"
+      : canCreateManual
+        ? "manual"
+        : "special";
+  const suggestedType = suggestionOrderType ?? (canEdit ? fixedOrderType : undefined);
   const pageSize = parseTablePageSize(result.limit);
   const pageTab = searchParams.get("tab");
   const teamLeaderId = searchParams.get("tl") ?? "";
+  const urlType = searchParams.get("type");
+  const preservedType = urlType === "manual" || urlType === "special" ? urlType : null;
+  const activeListFilter: ManualSpecialTypeFilter | undefined =
+    listFilter === undefined ? undefined : preservedType ?? "all";
   const teamLeaderOptions = useMemo(
     () => teamLeaders.map((leader) => ({ id: leader.id, label: leader.name })),
     [teamLeaders],
@@ -237,6 +340,7 @@ export function OrdersTable({
         sort ? sortDir : undefined,
         pageTab,
         teamLeaderId,
+        preservedType,
       ),
     );
   }
@@ -256,13 +360,15 @@ export function OrdersTable({
       sort ? sortDir : undefined,
       pageTab,
       nextTeamLeaderId,
+      preservedType,
     );
     startFiltering(async () => {
       try {
         const next = await listOrdersAction({
           page: 1,
           limit: pageSize,
-          orderType: fixedOrderType,
+          orderType: activeListFilter ? undefined : fixedOrderType,
+          listFilter: activeListFilter,
           sort: sort || undefined,
           sortDir: sort ? sortDir : undefined,
           teamLeaderId: nextTeamLeaderId || undefined,
@@ -283,14 +389,31 @@ export function OrdersTable({
   function toggleSort(field: OrderSortField) {
     const next = nextTableSort(field, sort, sortDir);
     router.push(
-      buildOrdersHrefWithTab(basePath, 1, pageSize, next.sort, next.dir, pageTab, teamLeaderId),
+      buildOrdersHrefWithTab(
+        basePath,
+        1,
+        pageSize,
+        next.sort,
+        next.dir,
+        pageTab,
+        teamLeaderId,
+        preservedType,
+      ),
     );
   }
 
   const filtered = useMemo(
     () =>
       result.items.filter((o) =>
-        matchesTableSearch(query, [o.id, o.orderNumber, o.branch.name, o.status]),
+        matchesTableSearch(query, [
+          o.id,
+          o.orderNumber,
+          o.branch.name,
+          o.status,
+          o.createdBy?.name,
+          o.createdBy?.email,
+          orderModeOfPaymentSearchText(orderRowModeOfPayment(o)),
+        ]),
       ),
     [result.items, query],
   );
@@ -301,6 +424,8 @@ export function OrdersTable({
         result.items.map((o) => o.orderNumber),
         result.items.map((o) => o.branch.name),
         result.items.map((o) => o.status),
+        result.items.map((o) => o.createdBy?.name),
+        result.items.map((o) => o.createdBy?.email),
       ),
     [result.items],
   );
@@ -341,6 +466,15 @@ export function OrdersTable({
       const waitMs = minMs - (Date.now() - started);
       if (waitMs > 0) await delay(waitMs);
       setProcessingAction(null);
+      if ("sapRejected" in result && result.sapRejected) {
+        setSapRejection({ sapMessage: result.sapMessage });
+        if (result.updatedAt) {
+          const updatedAt = result.updatedAt;
+          setWorkflowOrder((current) => (current ? { ...current, updatedAt } : current));
+        }
+        router.refresh();
+        return;
+      }
       if (result.error) {
         toast.error(result.error);
         return;
@@ -399,6 +533,14 @@ export function OrdersTable({
         cell: ({ row }) => <OrderTypeBadge orderType={row.original.orderType} />,
       }),
       orderColumn.display({
+        id: "modeOfPayment",
+        header: "Mode of payment",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <ModeOfPaymentBadge modeOfPayment={orderRowModeOfPayment(row.original)} />
+        ),
+      }),
+      orderColumn.display({
         id: "status",
         header: "Status",
         enableSorting: true,
@@ -413,23 +555,35 @@ export function OrdersTable({
         ),
       }),
       orderColumn.display({
-        id: "sapDocument",
-        header: "SAP document",
+        id: "createdBy",
+        header: "Created by",
         enableSorting: false,
-        cell: ({ row }) =>
-          formatOrderSapDocument({
-            sapDocType: row.original.sapDocType ?? null,
-            sapDocNum: row.original.sapDocNum ?? null,
-          }),
+        cell: ({ row }) => orderCreatorLabel(row.original.createdBy),
+        meta: { className: "max-w-40 truncate" },
+      }),
+      orderColumn.display({
+        id: "createdAt",
+        header: "Created at",
+        enableSorting: true,
+        cell: ({ row }) => <OrderCreatedAtCell value={row.original.createdAt} />,
+        meta: { className: "tabular-nums" },
       }),
       orderColumn.display({
         id: "lines",
         header: "Lines",
         enableSorting: false,
-        cell: ({ row }) =>
-          row.original.details
+        cell: ({ row }) => {
+          const label = row.original.details
             .map((detail) => `${detail.model.skuCode}×${detail.quantity}`)
-            .join(", "),
+            .join(", ");
+          if (!label) return "—";
+          return (
+            <span className="block max-w-xs truncate" title={label}>
+              {label}
+            </span>
+          );
+        },
+        meta: { className: "max-w-xs" },
       }),
       orderColumn.display({
         id: "actions",
@@ -439,7 +593,7 @@ export function OrdersTable({
         cell: ({ row }) => {
           const order = row.original;
           return (
-            <div className="flex justify-end gap-2">
+            <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
               {isOrderPendingApproval(order.status as BranchOrderStatus) ? (
                 <OrderReviewButton
                   order={order}
@@ -447,9 +601,11 @@ export function OrdersTable({
                   onReview={() => setWorkflowOrder(order)}
                 />
               ) : null}
-              {canEdit && order.status === "draft" ? (
+              {rowCreatePermission(order.orderType, canEdit, createByType) &&
+              order.status === "draft" ? (
                 <Button
                   size="sm"
+                  className="shrink-0"
                   disabled={pending}
                   onClick={() => {
                     startTransition(async () => {
@@ -468,53 +624,40 @@ export function OrdersTable({
                   Submit for review
                 </Button>
               ) : null}
-              {canEdit && order.status === "draft" ? (
+              {rowCreatePermission(order.orderType, canEdit, createByType) &&
+              order.status === "draft" ? (
                 <Button
                   size="sm"
                   variant="destructive"
+                  className="shrink-0"
                   disabled={pending}
                   onClick={() => setDraftToDelete(order)}
                 >
                   Delete
                 </Button>
               ) : null}
-              {canEditOrderLines({
-                status: order.status as BranchOrderStatus,
-                orderType: order.orderType as BranchOrderType,
-                roleSlugs: viewerRoleSlugs,
-                hasCreatePermission: canEdit,
-              }) ? (
+              {showOrderViewDetails(order, viewerRoleSlugs) ? (
                 <Button
                   size="sm"
-                  variant="ghost"
-                  onClick={() =>
-                    setEditingOrder({
-                      id: order.id,
-                      orderNumber: order.orderNumber,
-                      branchId: order.branchId,
-                      branchName: order.branch.name,
-                      orderType: order.orderType as EditableOrder["orderType"],
-                      lines: order.details.map((detail) => ({
-                        modelId: detail.model.id,
-                        skuCode: detail.model.skuCode,
-                        quantity: detail.quantity,
-                      })),
-                    })
-                  }
+                  variant="outline"
+                  className="shrink-0"
+                  onClick={() => setDetailsOrderId(order.id)}
                 >
-                  Edit
+                  View details
                 </Button>
               ) : null}
-              <Button size="sm" variant="outline" onClick={() => setDetailsOrderId(order.id)}>
-                View details
-              </Button>
             </div>
           );
         },
+        meta: { align: "end", className: "w-px whitespace-nowrap" },
       }),
     ];
     return cols;
-  }, [canEdit, pending, router, viewerRoleSlugs]);
+  }, [canEdit, createByType, pending, router, viewerRoleSlugs]);
+
+  const sapRejectionCopy = sapRejection
+    ? describeSapOrderRejection(sapRejection.sapMessage)
+    : null;
 
   return (
     <>
@@ -522,6 +665,7 @@ export function OrdersTable({
         data={filtered}
         columns={columns}
         loading={filtering}
+        tableClassName="w-max min-w-full [&_td]:py-1.5 [&_th]:py-1.5"
         getRowId={(row) => row.id}
         manualSorting
         manualPagination
@@ -545,9 +689,10 @@ export function OrdersTable({
           suggestions,
         }}
         pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
-        toolbarLeading={
+        searchTrailing={
           teamLeaderOptions.length > 0 || teamLeaderId ? (
-            <div className="flex w-full items-center gap-2 sm:w-auto">
+            <div className="flex items-center gap-2">
+              {/* After search, so the list opens over the toolbar instead of the Type column. */}
               <SearchableSelect
                 id="orders-team-leader-filter"
                 options={teamLeaderOptions}
@@ -557,7 +702,9 @@ export function OrdersTable({
                 searchPlaceholder="Search team leaders…"
                 emptyMessage="No team leader matches."
                 allowClear
-                className="w-full sm:w-56"
+                side="top"
+                align="end"
+                className="w-52"
               />
               {/* Always mounted so screen readers announce the change. */}
               <span
@@ -594,13 +741,15 @@ export function OrdersTable({
                 ) : null}
               </>
             ) : null}
-            {canEdit && fixedOrderType ? (
+            {suggestedType ? (
               <Button type="button" variant="outline" onClick={() => setSuggestionsOpen(true)}>
                 Suggested orders
               </Button>
             ) : null}
-            {canEdit && fixedOrderType !== "auto_replenish" ? (
-              <Button onClick={() => createWorkspace.openCreate()}>Create order</Button>
+            {showCreateOrder ? (
+              <Button type="button" onClick={() => setCreateSetupOpen(true)}>
+                Create order
+              </Button>
             ) : null}
           </>
         }
@@ -618,6 +767,7 @@ export function OrdersTable({
               sort ? sortDir : undefined,
               pageTab,
               teamLeaderId,
+              preservedType,
             ),
         }}
         empty={filtered.length === 0}
@@ -660,7 +810,11 @@ export function OrdersTable({
           }))}
           approvalLevels={detailsOrder.approvalLevels}
           roleSlugs={viewerRoleSlugs}
-          hasCreatePermission={canEdit}
+          hasCreatePermission={
+            detailsOrder
+              ? rowCreatePermission(detailsOrder.orderType, canEdit, createByType)
+              : canEdit
+          }
           open
           onOpenChange={(open) => {
             if (!open) setDetailsOrderId(null);
@@ -674,6 +828,7 @@ export function OrdersTable({
           orderType={workflowOrder.orderType as "auto_replenish" | "manual" | "special"}
           branchId={workflowOrder.branchId}
           branchName={workflowOrder.branch.name}
+          createdAt={workflowOrder.createdAt}
           updatedAt={workflowOrder.updatedAt}
           deliverySchedule={workflowOrder.branch.deliverySchedule}
           lines={workflowOrder.details.map((d) => ({
@@ -688,14 +843,61 @@ export function OrdersTable({
           status={workflowOrder.status as BranchOrderStatus}
           open
           pending={pending}
-          onOpenChange={() => setWorkflowOrder(null)}
+          onOpenChange={() => {
+            if (sapRejection) return;
+            setWorkflowOrder(null);
+          }}
           onApprove={handleApprove}
           onReject={handleReject}
         />
       ) : null}
-      {editingOrder ? (
-        <EditOrderDialog order={editingOrder} onClose={() => setEditingOrder(null)} />
-      ) : null}
+      <AlertDialog
+        open={sapRejection !== null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setSapRejection(null);
+        }}
+      >
+        <AlertDialogContent
+          className="z-[80] gap-0 sm:max-w-lg"
+          overlayClassName="z-[80]"
+        >
+          <AlertDialogHeader className="space-y-4 text-left">
+            <div className="flex items-center gap-3">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <CircleAlert className="size-4" aria-hidden />
+              </span>
+              <AlertDialogTitle className="text-base font-semibold leading-snug tracking-tight text-foreground sm:text-lg">
+                This order could not be approved
+              </AlertDialogTitle>
+            </div>
+            <AlertDialogDescription asChild className="text-foreground">
+              <div className="space-y-4 text-left text-sm leading-relaxed">
+                <p className="text-muted-foreground">
+                  This order is still waiting for Supply Planning. It keeps the same order
+                  number, so you do not need to create a new one.
+                </p>
+                <div className="rounded-lg border border-border/80 border-l-[3px] border-l-primary/70 bg-muted/40 px-3.5 py-3">
+                  <p className="font-medium text-foreground">{sapRejectionCopy?.summary}</p>
+                  {sapRejectionCopy?.detail ? (
+                    <p className="mt-2 break-words text-xs leading-relaxed text-muted-foreground">
+                      {sapRejectionCopy.detail}
+                    </p>
+                  ) : null}
+                </div>
+                <p className="text-foreground">{sapRejectionCopy?.nextStep}</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="-mx-4 mt-5 border-t px-4 pt-4 sm:-mx-6 sm:justify-end sm:px-6">
+            <AlertDialogAction
+              className="w-full sm:w-auto"
+              onClick={() => setSapRejection(null)}
+            >
+              Back to the order
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {draftToDelete ? (
         <DeleteConfirmDialog
           open
@@ -774,12 +976,29 @@ export function OrdersTable({
           }}
         />
       ) : null}
-      {suggestionsOpen && fixedOrderType ? (
+      {suggestionsOpen && suggestedType ? (
         <SuggestedOrdersDialog
-          orderType={fixedOrderType}
+          orderType={suggestedType}
           onClose={() => setSuggestionsOpen(false)}
         />
       ) : null}
+      <CreateOrderSetupDialog
+        open={createSetupOpen}
+        canCreateManual={canCreateManual}
+        canCreateSpecial={canCreateSpecial}
+        initialType={setupInitialType}
+        onOpenChange={setCreateSetupOpen}
+        onContinue={(choice) => {
+          const params = new URLSearchParams();
+          params.set("type", choice.orderType);
+          params.set("dealerId", choice.dealerId);
+          params.set("branchId", choice.branchId);
+          if (choice.modeOfPaymentId) params.set("modeOfPaymentId", choice.modeOfPaymentId);
+          params.set("ready", "1");
+          setCreateSetupOpen(false);
+          router.push(`/orders/manual/new?${params.toString()}`);
+        }}
+      />
       <LoadingModal
         open={pending && processingAction !== null}
         title={
@@ -807,6 +1026,20 @@ function draftSubmitDescription(orderType: string): string {
   return "Supply Planning can review this order now.";
 }
 
+/**
+ * View details shows once this viewer no longer has Review on the row
+ * (approved, rejected, cancelled, or any step past their review), including Order History.
+ * Product Specialists always keep View details. Review itself is unchanged.
+ */
+function showOrderViewDetails(order: OrderRow, viewerRoleSlugs: string[]): boolean {
+  if (viewerRoleSlugs.includes(PRODUCT_SPECIALIST_ROLE_SLUG)) return true;
+  const status = order.status as BranchOrderStatus;
+  const orderType = order.orderType as BranchOrderType;
+  const reviewShown =
+    isOrderPendingApproval(status) && canApproveOrder(status, orderType, viewerRoleSlugs);
+  return !reviewShown;
+}
+
 function OrderReviewButton({ order, viewerRoleSlugs, onReview }: OrderReviewButtonProps) {
   const status = order.status as BranchOrderStatus;
   const orderType = order.orderType as BranchOrderType;
@@ -815,7 +1048,7 @@ function OrderReviewButton({ order, viewerRoleSlugs, onReview }: OrderReviewButt
   }
 
   return (
-    <Button size="sm" variant="outline" onClick={onReview}>
+    <Button size="sm" variant="outline" className="shrink-0" onClick={onReview}>
       Review
     </Button>
   );

@@ -191,6 +191,7 @@ export async function openDocumentIdsBySerial(
       where: {
         serialNumberId: { in: serialNumberIds },
         ...(except?.transferId ? { transferId: { not: except.transferId } } : {}),
+        decision: "pending",
         transfer: {
           tenantId,
           statusCode: { code: { in: [...OPEN_TRANSFER_STATUS_CODES] } },

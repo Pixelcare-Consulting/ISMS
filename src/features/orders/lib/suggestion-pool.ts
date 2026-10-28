@@ -8,6 +8,11 @@ import {
   type OutstandingLineInput,
 } from "@/features/orders/lib/suggestion-apply-decisions";
 import { planningPoolKey, shelfPoolKey } from "@/features/orders/lib/suggestion-qty";
+import {
+  nextSalesOrderNumber,
+  orderModeOfPaymentKind,
+  orderNumberPrefix,
+} from "@/features/orders/utils/next-sales-order-number";
 
 export type SuggestionDb = Prisma.TransactionClient;
 
@@ -378,26 +383,13 @@ export async function countStkByModel(
   return counts;
 }
 
+/** A suggested-orders draft has no mode of payment of its own, so the dealer's sets the prefix. */
 export async function nextDraftOrderNumber(
   db: SuggestionDb,
   tenantId: string,
+  branchId: string,
   now = new Date(),
 ): Promise<string> {
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const prefix = `SO#${year}-${month}-`;
-  await lockSuggestionKey(db, `order-number|${tenantId}|${prefix}`);
-
-  const latest = await db.branchOrder.findFirst({
-    where: { tenantId, orderNumber: { startsWith: prefix } },
-    orderBy: { orderNumber: "desc" },
-    select: { orderNumber: true },
-  });
-
-  let next = 1;
-  if (latest?.orderNumber) {
-    const parsed = Number.parseInt(latest.orderNumber.slice(prefix.length), 10);
-    if (Number.isFinite(parsed)) next = parsed + 1;
-  }
-  return `${prefix}${String(next).padStart(5, "0")}`;
+  const kind = await orderModeOfPaymentKind(db, { tenantId, branchId });
+  return nextSalesOrderNumber(tenantId, { db, now, prefix: orderNumberPrefix(kind) });
 }

@@ -35,9 +35,8 @@ export function WarehousesStockPanel({
       <div className="space-y-1">
         <h2 className="text-base font-medium">Warehouse stock</h2>
         <p className="text-sm text-muted-foreground">
-          Browse serial numbers held in warehouse locations. Stock in from a
-          location on the Warehouses tab. This list stays a read-only inventory
-          view.
+          Browse serial numbers held in warehouse locations. Stock comes from
+          SAP through the serial number sync; this list is a read-only view.
         </p>
       </div>
 

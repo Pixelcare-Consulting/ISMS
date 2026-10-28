@@ -16,6 +16,7 @@ import {
   STOCK_UNITS_DEFAULT_SORT,
   STOCK_UNITS_DEFAULT_SORT_DIR,
 } from "@/features/inventory/constants/stock-units-sort";
+import { SerialSapSyncDialog } from "@/features/serial-numbers/components/serial-sap-sync-dialog";
 import {
   parseTablePageSize,
   type TablePageSize,
@@ -36,6 +37,8 @@ interface InventoryTableProps {
   initialSortDir?: string;
   /** Hide branch search/column (PS stock units UX). */
   hideBranch?: boolean;
+  /** Serial sync from SAP — requires `sap.manage`. */
+  canSync?: boolean;
 }
 
 export function InventoryTable({
@@ -44,6 +47,7 @@ export function InventoryTable({
   initialSort = STOCK_UNITS_DEFAULT_SORT,
   initialSortDir = STOCK_UNITS_DEFAULT_SORT_DIR,
   hideBranch = false,
+  canSync = false,
 }: InventoryTableProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -198,6 +202,7 @@ export function InventoryTable({
       }
       toolbarActions={
         <>
+          {canSync ? <SerialSapSyncDialog /> : null}
           {selectedCount > 0 ? (
             <Button variant="secondary" className="min-h-11" onClick={() => setRowSelection({})}>
               {selectedCount} selected

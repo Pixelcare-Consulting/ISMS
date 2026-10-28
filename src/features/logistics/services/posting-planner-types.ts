@@ -1,3 +1,8 @@
+import {
+  PULLOUT_WORKFLOW_CODE,
+  TRANSFER_WORKFLOW_CODE,
+} from "@/features/logistics/constants/workflow-codes";
+
 /** Closed inventory codes from the seeded inventory system list. */
 export type InventoryCode = "DIT" | "STK" | "SLD" | "OFS" | "RSV" | "DEF" | "FPO" | "FW";
 
@@ -18,20 +23,20 @@ export interface AllocatableSerial {
 }
 
 export const OPEN_TRANSFER_STATUS_CODES = [
-  "pending_tl",
-  "requested",
-  "approved",
-  "for_transfer",
-  "in_transit",
+  TRANSFER_WORKFLOW_CODE.pending_tl,
+  TRANSFER_WORKFLOW_CODE.requested,
+  TRANSFER_WORKFLOW_CODE.approved,
+  TRANSFER_WORKFLOW_CODE.for_transfer,
+  TRANSFER_WORKFLOW_CODE.in_transit,
 ] as const;
 
 export const OPEN_PULLOUT_STATUS_CODES = [
-  "pending_tl",
-  "requested",
-  "approved",
-  "for_pullout",
-  "pending_logistics",
-  "in_transit",
+  PULLOUT_WORKFLOW_CODE.pending_tl,
+  PULLOUT_WORKFLOW_CODE.requested,
+  PULLOUT_WORKFLOW_CODE.approved,
+  PULLOUT_WORKFLOW_CODE.for_pullout,
+  PULLOUT_WORKFLOW_CODE.pending_logistics,
+  PULLOUT_WORKFLOW_CODE.in_transit,
 ] as const;
 
 export function isHoldCode(code: InventoryCode | null): code is HoldCode {

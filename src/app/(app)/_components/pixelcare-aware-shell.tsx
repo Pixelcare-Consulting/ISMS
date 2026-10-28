@@ -15,6 +15,7 @@ import { cn } from "@/utils/cn";
  */
 export function PixelcareAwareShell(props: {
   sidebar: ReactNode;
+  contextual?: ReactNode;
   header: ReactNode;
   children: ReactNode;
 }) {
@@ -26,7 +27,8 @@ export function PixelcareAwareShell(props: {
   return (
     <>
       {hideChrome ? null : props.sidebar}
-      <SidebarInset className="h-svh overflow-hidden">
+      {hideChrome ? null : props.contextual}
+      <SidebarInset className="h-svh min-w-0 overflow-hidden">
         {hideChrome ? null : props.header}
         <div
           className={cn(

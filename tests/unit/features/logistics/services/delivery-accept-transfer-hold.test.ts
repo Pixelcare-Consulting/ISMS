@@ -161,16 +161,6 @@ describe("deliveryPostingService.accept with an open return", () => {
   });
 });
 
-describe("deliveryPostingService.reject", () => {
-  it("refuses a dispatched delivery and points to a return request", async () => {
-    await expect(deliveryPostingService.reject(input)).rejects.toThrow(
-      "Request a return for a dispatched delivery.",
-    );
-    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
-    expect(mockTx.branchInventory.deleteMany).not.toHaveBeenCalled();
-  });
-});
-
 describe("deliveryPostingService.listReceiptLines states", () => {
   it("lists a unit received on this delivery's unit transfer as TRANSFERRED, not received", async () => {
     // loadDelivery reads the delivery first, then the header with serial details.

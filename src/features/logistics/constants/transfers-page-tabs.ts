@@ -5,6 +5,18 @@ export const TRANSFERS_LIST_PATH = "/logistics/transfers";
 export const TRANSFERS_PAGE_TABS = ["transfers", "unit"] as const;
 export type TransfersPageTab = (typeof TRANSFERS_PAGE_TABS)[number];
 
+/**
+ * Tabs not shown, with their code kept for reference. Unit transfers were hidden on
+ * 2026-10-27: dispatch moved to SAP (Copy To), and branch-to-branch moves use Transfers.
+ * Unit-transfer detail pages stay reachable by link (e.g. from a delivery's receive dialog).
+ */
+export const HIDDEN_TRANSFERS_PAGE_TABS: readonly TransfersPageTab[] = ["unit"];
+
+/** The tabs a viewer may see, before permission checks. */
+export const VISIBLE_TRANSFERS_PAGE_TABS: readonly TransfersPageTab[] = TRANSFERS_PAGE_TABS.filter(
+  (tab) => !HIDDEN_TRANSFERS_PAGE_TABS.includes(tab),
+);
+
 export function parseTransfersPageTab(value?: string): TransfersPageTab {
   if (value === "transfers" || value === "unit") return value;
   return "transfers";

@@ -281,6 +281,7 @@ model Tenant {
   branchAllowedModels         BranchAllowedModel[]
   branchOrders                BranchOrder[]
   branchDeliveries            BranchDelivery[]
+  deliverySapDocuments        DeliverySapDocument[]
   deliveryReturnRequests      DeliveryReturnRequest[]
   deliveryTransfers           DeliveryTransfer[]
   branchTransfers             BranchTransfer[]
@@ -376,6 +377,9 @@ model User {
   branchTransfersCreated             BranchTransfer[]              @relation("BranchTransferCreatedBy")
   branchSalesTransactionsCreated     BranchSalesTransaction[]      @relation("BranchSalesTransactionCreatedBy")
   branchPulloutsScheduled            BranchPullout[]               @relation("BranchPulloutScheduledBy")
+  branchDeliveriesScheduled          BranchDelivery[]              @relation("BranchDeliveryScheduledBy")
+  branchTransfersScheduled           BranchTransfer[]              @relation("BranchTransferScheduledBy")
+  branchTransferLinesDecided         BranchTransferLine[]          @relation("BranchTransferLineDecidedBy")
   returnRequestsSubmitted            BranchReturnRequest[]         @relation("ReturnRequestedBy")
   returnRequestsEvaluated            BranchReturnRequest[]         @relation("ReturnEvaluatedBy")
   returnRequestsApproved             BranchReturnRequest[]         @relation("ReturnApprovedBy")
@@ -1760,8 +1764,9 @@ model BranchInventory {
   serialNumberId String   @map("serial_number_id")
   statusCodeId   String   @map("status_code_id")
   updatedById    String?  @map("updated_by_id")
-  /// Shelf location in the branch's primary warehouse, set by warehouse Stock in.
-  /// A label only: the unit stays branch stock. Null until stocked into a location.
+  /// Shelf location in the branch's primary warehouse. A label only: the unit stays branch
+  /// stock. ISMS no longer sets a first location (stock comes from SAP); existing ones can
+  /// still be moved.
   warehouseLocationId String? @map("warehouse_location_id")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
@@ -2270,6 +2275,12 @@ model BranchDelivery {
   sapDocEntry  Int?      @map("sap_doc_entry")
   drNo         String?   @map("dr_no")
   drDate       DateTime? @db.Date @map("dr_date")
+  /// Logistics waybill. Print stays off until this, the courier, and the schedule date are saved.
+  waybillNo    String?   @map("waybill_no")
+  /// Courier or forwarder named on the waybill.
+  courierName  String?   @map("courier_name")
+  scheduledAt  DateTime? @db.Date @map("scheduled_at")
+  scheduledById String?  @map("scheduled_by_id")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
@@ -2278,7 +2289,9 @@ model BranchDelivery {
   sourceWarehouse Warehouse?      @relation(fields: [sourceWarehouseId], references: [id], onDelete: SetNull)
   order      BranchOrder?         @relation(fields: [orderId], references: [id], onDelete: SetNull)
   statusCode ReasonStatusCode     @relation(fields: [statusCodeId], references: [id])
+  scheduledBy User?               @relation("BranchDeliveryScheduledBy", fields: [scheduledById], references: [id], onDelete: SetNull)
   lines      BranchDeliveryLine[]
+  sapDocuments DeliverySapDocument[]
   backloads  BranchBackload[]
   returnRequests DeliveryReturnRequest[]
   transfers  DeliveryTransfer[]
@@ -2288,6 +2301,7 @@ model BranchDelivery {
   @@index([tenantId, sapDocRef])
   @@index([tenantId, branchId, statusCodeId])
   @@index([tenantId, sourceWarehouseId])
+  @@index([scheduledById])
   @@map("branch_deliveries")
 }
 
@@ -2300,6 +2314,16 @@ model BranchTransfer {
   statusCodeId String   @map("status_code_id")
   notes        String?
   createdById  String?  @map("created_by_id")
+  /// Logistics waybill. Print stays off until this, the courier, and the schedule date are saved.
+  waybillNo    String?   @map("waybill_no")
+  /// Courier or forwarder named on the waybill.
+  courierName  String?   @map("courier_name")
+  /// Release slip number issued when the releasing team leader approves.
+  rsNo         String?   @map("rs_no")
+  /// Delivery receipt number issued with that approval. Ageing keeps the serial's original DR date.
+  drNo         String?   @map("dr_no")
+  scheduledAt  DateTime? @db.Date @map("scheduled_at")
+  scheduledById String?  @map("scheduled_by_id")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
@@ -2308,12 +2332,14 @@ model BranchTransfer {
   toBranch       Branch                        @relation("TransferToBranch", fields: [toBranchId], references: [id], onDelete: Cascade)
   statusCode     ReasonStatusCode              @relation(fields: [statusCodeId], references: [id])
   createdBy      User?                         @relation("BranchTransferCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  scheduledBy    User?                         @relation("BranchTransferScheduledBy", fields: [scheduledById], references: [id], onDelete: SetNull)
   lines          BranchTransferLine[]
   approvalLevels BranchTransferApprovalLevel[]
 
   @@unique([tenantId, transferNo])
   @@index([tenantId, statusCodeId])
   @@index([createdById])
+  @@index([scheduledById])
   @@map("branch_transfers")
 }
 
@@ -2324,13 +2350,21 @@ model BranchTransferLine {
   quantity          Int     @default(1)
   /// Inventory code before this transfer held the unit. Null on rows created before the hold.
   priorStatusCodeId String? @map("prior_status_code_id")
+  /// Receiving branch outcome. Pending until that branch accepts or rejects the serial.
+  decision          String    @default("pending")
+  remarks           String?
+  decidedAt         DateTime? @map("decided_at")
+  decidedById       String?   @map("decided_by_id")
 
   transfer        BranchTransfer    @relation(fields: [transferId], references: [id], onDelete: Cascade)
   serialNumber    SerialNumber      @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
   priorStatusCode ReasonStatusCode? @relation("TransferLinePriorStatus", fields: [priorStatusCodeId], references: [id], onDelete: SetNull)
+  decidedBy       User?             @relation("BranchTransferLineDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
 
   @@unique([transferId, serialNumberId])
   @@index([priorStatusCodeId])
+  @@index([decidedById])
+  @@index([decision])
   @@map("branch_transfer_lines")
 }
 
@@ -3195,6 +3229,37 @@ model BranchDeliveryLine {
   @@map("branch_delivery_lines")
 }
 
+/// An IT (from the order's ITR) or DR (from its SO) that a SAP user made with Copy To, as the
+/// cron follow-up found it. One row per SAP document, so a document is applied at most once.
+/// status: APPLIED (serials are DIT on the delivery), FAILED (retried on later runs),
+/// FLAGGED (needs a person: cancelled in SAP, or not based on this order's ITR/SO).
+model DeliverySapDocument {
+  id         String    @id @default(cuid())
+  tenantId   String    @map("tenant_id")
+  deliveryId String    @map("delivery_id")
+  /// IT or DR.
+  docKind    String    @map("doc_kind")
+  docEntry   Int       @map("doc_entry")
+  docNum     Int       @map("doc_num")
+  /// What users see: the DR number when SAP has one, else DocNum.
+  displayNo  String    @map("display_no")
+  docDate    DateTime? @db.Date @map("doc_date")
+  status     String
+  serialCount Int      @default(0) @map("serial_count")
+  error      String?
+  attempts   Int       @default(1)
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  delivery BranchDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, docKind, docEntry])
+  @@index([deliveryId])
+  @@index([tenantId, status])
+  @@map("delivery_sap_documents")
+}
+
 /// Request to return delivered units to a warehouse. One open request per delivery (partial unique index in SQL).
 model DeliveryReturnRequest {
   id           String               @id @default(cuid())
@@ -3230,11 +3295,13 @@ model DeliveryReturnLine {
   id                    String @id @default(cuid())
   returnId              String @map("return_id")
   serialNumberId        String @map("serial_number_id")
-  warehouseLocationToId String @map("warehouse_location_to_id")
+  /// Null when the unit was dispatched from SAP's warehouse placement with no ISMS location;
+  /// it then goes back to the delivery's source warehouse per SAP, not to a location.
+  warehouseLocationToId String? @map("warehouse_location_to_id")
 
   returnRequest       DeliveryReturnRequest @relation(fields: [returnId], references: [id], onDelete: Cascade)
   serialNumber        SerialNumber          @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
-  warehouseLocationTo WarehouseLocation     @relation(fields: [warehouseLocationToId], references: [id], onDelete: Restrict)
+  warehouseLocationTo WarehouseLocation?    @relation(fields: [warehouseLocationToId], references: [id], onDelete: Restrict)
 
   @@unique([returnId, serialNumberId])
   @@index([serialNumberId])

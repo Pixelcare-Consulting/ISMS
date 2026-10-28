@@ -21,10 +21,9 @@ import {
   createSerialNumberAction,
   listModelBranchSerialsAction,
   setSerialNumberStatusAction,
-  syncSerialNumbersFromSapAction,
   updateSerialNumberAction,
 } from "@/features/serial-numbers/actions/serial-number.actions";
-import { SapSyncButton } from "@/features/sap/components/sap-sync-button";
+import { SerialSapSyncDialog } from "@/features/serial-numbers/components/serial-sap-sync-dialog";
 import { uniqueSearchSuggestions } from "@/components/data-table";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
@@ -425,13 +424,7 @@ export function SerialNumberTableByModel({
             <Button variant="outline" size="sm" asChild>
               <Link href="/inventory/serial-numbers">Serial list</Link>
             </Button>
-            {canSync ? (
-              <SapSyncButton
-                syncKey="serial-number"
-                noun={{ one: "serial number", many: "serial numbers" }}
-                onSync={syncSerialNumbersFromSapAction}
-              />
-            ) : null}
+            {canSync ? <SerialSapSyncDialog /> : null}
             <SearchableSelect
               id="serial-status"
               className="sm:w-40"

@@ -7,6 +7,10 @@ interface PageHeaderProps {
   description?: string;
   /** Clickable ? button beside the title — opens a reusable tutorial dialog */
   tutorial?: PageTutorialContent;
+  /** Sits on the title row, before the heading. */
+  leading?: React.ReactNode;
+  /** Sits on the title row, after the heading. */
+  titleAside?: React.ReactNode;
   actions?: React.ReactNode;
   sticky?: boolean;
   className?: string;
@@ -16,6 +20,8 @@ export function PageHeader({
   title,
   description,
   tutorial,
+  leading,
+  titleAside,
   actions,
   sticky = true,
   className,
@@ -29,10 +35,14 @@ export function PageHeader({
         className,
       )}
     >
-      <div>
-        <div className="flex items-center gap-1.5">
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">{title}</h1>
-          {tutorial ? <PageTutorialTrigger content={tutorial} /> : null}
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          {leading ? <div className="flex items-center">{leading}</div> : null}
+          <div className="flex items-center gap-1.5">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">{title}</h1>
+            {tutorial ? <PageTutorialTrigger content={tutorial} /> : null}
+          </div>
+          {titleAside ? <div className="flex items-center">{titleAside}</div> : null}
         </div>
         {description ? (
           <p className="mt-1 text-sm text-muted-foreground">{description}</p>

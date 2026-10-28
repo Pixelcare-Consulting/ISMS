@@ -5,7 +5,19 @@ import {
   getOrderApprovalChain,
   TEAM_LEADER_ROLE_SLUG,
 } from "@/features/orders/constants/order-workflow";
-import { nextSalesOrderNumber } from "@/features/orders/utils/next-sales-order-number";
+import {
+  hasQueryableTypeScopes,
+  orderScopeWhere,
+  type OrderTypeScope,
+} from "@/features/orders/lib/order-scope-where";
+import {
+  isSalesOrderNumberConflict,
+  MAX_SALES_ORDER_NUMBER_ATTEMPTS,
+  nextSalesOrderNumber,
+  orderModeOfPaymentKind,
+  orderNumberPrefix,
+  SALES_ORDER_NUMBER_EXHAUSTED_MESSAGE,
+} from "@/features/orders/utils/next-sales-order-number";
 import type { BranchOrderStatus, BranchOrderType, Prisma, SapOrderDocType } from "@prisma/client";
 
 /** Shown when approval is attempted against a row that changed after it was opened. */
@@ -18,10 +30,10 @@ const orderListInclude = {
       name: true,
       sapCode: true,
       deliverySchedule: true,
-      dealer: { select: { modeOfPayment: { select: { name: true } } } },
+      dealer: { select: { name: true, modeOfPayment: { select: { name: true, kind: true } } } },
     },
   },
-  modeOfPayment: { select: { name: true } },
+  modeOfPayment: { select: { name: true, kind: true } },
   createdBy: { select: { id: true, name: true, email: true } },
   details: {
     include: {
@@ -32,6 +44,7 @@ const orderListInclude = {
           name: true,
           brandId: true,
           srp: true,
+          cbm: true,
           priceLists: {
             select: {
               amount: true,
@@ -52,19 +65,13 @@ const orderListInclude = {
   },
 } satisfies Prisma.BranchOrderInclude;
 
-function orderScopeWhere(
+function singleTypeScopeWhere(
   tenantId: string,
   branchIds: string[] | null,
   orderType?: BranchOrderType,
   statuses?: BranchOrderStatus[],
-): Prisma.BranchOrderWhereInput {
-  // null = unrestricted (full access / no AOR). [] = scoped with no branches → match none.
-  return {
-    tenantId,
-    ...(branchIds === null ? {} : { branchId: { in: branchIds } }),
-    ...(orderType ? { orderType } : {}),
-    ...(statuses ? { status: { in: statuses } } : {}),
-  };
+) {
+  return orderScopeWhere(tenantId, branchIds, { orderType, statuses });
 }
 
 export type OrderListSort =
@@ -123,19 +130,27 @@ export const orderRepository = {
       limit?: number;
       orderType?: BranchOrderType;
       statuses?: BranchOrderStatus[];
+      /** One query. Each entry is that type's own status set. Replaces orderType + statuses. */
+      typeScopes?: OrderTypeScope[];
     },
     sort?: { field?: OrderListSort; dir?: OrderListSortDir },
   ) {
     const { limit, page, skip } = resolvePagination(pagination);
-    if (pagination?.statuses && pagination.statuses.length === 0) {
+    if (pagination?.typeScopes) {
+      if (!hasQueryableTypeScopes(pagination.typeScopes)) {
+        return toPaginatedResult([], 0, page, limit);
+      }
+    } else if (pagination?.statuses && pagination.statuses.length === 0) {
       return toPaginatedResult([], 0, page, limit);
     }
-    const where = orderScopeWhere(
-      tenantId,
-      branchIds,
-      pagination?.orderType,
-      pagination?.statuses,
-    );
+    const where = pagination?.typeScopes
+      ? orderScopeWhere(tenantId, branchIds, { typeScopes: pagination.typeScopes })
+      : singleTypeScopeWhere(
+          tenantId,
+          branchIds,
+          pagination?.orderType,
+          pagination?.statuses,
+        );
     const orderBy = sort?.field
       ? orderPrismaOrderBy(sort.field, sort.dir ?? "desc")
       : { createdAt: "desc" as const };
@@ -159,10 +174,17 @@ export const orderRepository = {
     branchIds: string[] | null,
     orderType?: BranchOrderType,
     statuses?: BranchOrderStatus[],
+    typeScopes?: OrderTypeScope[],
   ) {
+    if (typeScopes) {
+      if (!hasQueryableTypeScopes(typeScopes)) return Promise.resolve(0);
+      return prisma.branchOrder.count({
+        where: orderScopeWhere(tenantId, branchIds, { typeScopes }),
+      });
+    }
     if (statuses && statuses.length === 0) return Promise.resolve(0);
     return prisma.branchOrder.count({
-      where: orderScopeWhere(tenantId, branchIds, orderType, statuses),
+      where: singleTypeScopeWhere(tenantId, branchIds, orderType, statuses),
     });
   },
 
@@ -171,11 +193,20 @@ export const orderRepository = {
     branchIds: string[] | null,
     orderType?: BranchOrderType,
     statuses?: BranchOrderStatus[],
+    typeScopes?: OrderTypeScope[],
   ) {
+    if (typeScopes) {
+      if (!hasQueryableTypeScopes(typeScopes)) return Promise.resolve([]);
+      return prisma.branchOrder.groupBy({
+        by: ["status"],
+        where: orderScopeWhere(tenantId, branchIds, { typeScopes }),
+        _count: { id: true },
+      });
+    }
     if (statuses && statuses.length === 0) return Promise.resolve([]);
     return prisma.branchOrder.groupBy({
       by: ["status"],
-      where: orderScopeWhere(tenantId, branchIds, orderType, statuses),
+      where: singleTypeScopeWhere(tenantId, branchIds, orderType, statuses),
       _count: { id: true },
     });
   },
@@ -211,6 +242,70 @@ export const orderRepository = {
         ...(branchIds === null ? {} : { branchId: { in: branchIds } }),
       },
       include: orderListInclude,
+    });
+  },
+
+  /**
+   * Manual or special order for the submitted-order page.
+   * Branch scope matches the order list. Line amount is the stored value only.
+   */
+  findManualOrSpecialById(tenantId: string, id: string, branchIds: string[] | null) {
+    return prisma.branchOrder.findFirst({
+      where: {
+        id,
+        tenantId,
+        orderType: { in: ["manual", "special"] },
+        ...(branchIds === null ? {} : { branchId: { in: branchIds } }),
+      },
+      select: {
+        id: true,
+        orderNumber: true,
+        orderType: true,
+        status: true,
+        branchId: true,
+        notes: true,
+        sapDocType: true,
+        sapDocNum: true,
+        reviewSnapshot: true,
+        reviewSnapshotAt: true,
+        createdAt: true,
+        processedAt: true,
+        createdById: true,
+        createdBy: { select: { name: true, email: true } },
+        branch: {
+          select: {
+            name: true,
+            dealer: {
+              select: {
+                name: true,
+                modeOfPayment: { select: { name: true } },
+              },
+            },
+          },
+        },
+        modeOfPayment: { select: { name: true } },
+        details: {
+          orderBy: { model: { skuCode: "asc" } },
+          select: {
+            id: true,
+            modelId: true,
+            quantity: true,
+            amount: true,
+            remarks: true,
+            spRemarks: true,
+            model: { select: { skuCode: true, name: true, cbm: true } },
+          },
+        },
+        approvalLevels: {
+          orderBy: { level: "asc" },
+          select: {
+            level: true,
+            approvedAt: true,
+            rejectedAt: true,
+            approvedBy: { select: { name: true, email: true } },
+          },
+        },
+      },
     });
   },
 
@@ -296,40 +391,57 @@ export const orderRepository = {
     const approvalChain = getOrderApprovalChain(data.orderType);
     const initialStatus = getInitialOrderStatus(data.orderType);
 
-    const orderNumber = await nextSalesOrderNumber(tenantId);
+    for (let attempt = 0; attempt < MAX_SALES_ORDER_NUMBER_ATTEMPTS; attempt += 1) {
+      try {
+        return await prisma.$transaction(async (tx) => {
+          const kind = await orderModeOfPaymentKind(tx, {
+            tenantId,
+            branchId: data.branchId,
+            modeOfPaymentId: data.modeOfPaymentId,
+          });
+          const orderNumber = await nextSalesOrderNumber(tenantId, {
+            db: tx,
+            prefix: orderNumberPrefix(kind),
+          });
+          return tx.branchOrder.create({
+            data: {
+              tenantId,
+              branchId: data.branchId,
+              orderType: data.orderType,
+              orderNumber,
+              status: initialStatus,
+              createdById: data.createdById,
+              notes: data.notes,
+              brandId: data.brandId ?? null,
+              modeOfPaymentId: data.modeOfPaymentId ?? null,
+              details: {
+                create: data.details.map((line) => ({
+                  modelId: line.modelId,
+                  quantity: line.quantity,
+                  remarks: line.remarks ?? null,
+                  amount: line.amount ?? null,
+                })),
+              },
+              approvalLevels: {
+                create: approvalChain.map((step) => ({
+                  level: step.level,
+                  roleSlug: step.roleSlug,
+                })),
+              },
+            },
+            include: {
+              branch: { select: { name: true } },
+              details: { include: { model: { select: { skuCode: true } } } },
+              approvalLevels: true,
+            },
+          });
+        });
+      } catch (error) {
+        if (!isSalesOrderNumberConflict(error)) throw error;
+      }
+    }
 
-    return prisma.branchOrder.create({
-      data: {
-        tenantId,
-        branchId: data.branchId,
-        orderType: data.orderType,
-        orderNumber,
-        status: initialStatus,
-        createdById: data.createdById,
-        notes: data.notes,
-        brandId: data.brandId ?? null,
-        modeOfPaymentId: data.modeOfPaymentId ?? null,
-        details: {
-          create: data.details.map((line) => ({
-            modelId: line.modelId,
-            quantity: line.quantity,
-            remarks: line.remarks ?? null,
-            amount: line.amount ?? null,
-          })),
-        },
-        approvalLevels: {
-          create: approvalChain.map((step) => ({
-            level: step.level,
-            roleSlug: step.roleSlug,
-          })),
-        },
-      },
-      include: {
-        branch: { select: { name: true } },
-        details: { include: { model: { select: { skuCode: true } } } },
-        approvalLevels: true,
-      },
-    });
+    throw new Error(SALES_ORDER_NUMBER_EXHAUSTED_MESSAGE);
   },
 
   /**
@@ -651,6 +763,48 @@ export const orderRepository = {
           comment: data.comment ?? null,
         },
       });
+    });
+  },
+
+  /**
+   * SAP refused the document after final approval was saved. The order goes
+   * back to Pending Supply Planning. The SO#, lines, approved quantities, and
+   * SP remarks stay so the same order can be approved again.
+   */
+  async revertSupplyPlanningApproval(
+    tenantId: string,
+    orderId: string,
+    level: number,
+  ): Promise<{ updatedAt: Date }> {
+    return prisma.$transaction(async (tx) => {
+      const reverted = await tx.branchOrder.updateMany({
+        where: { id: orderId, tenantId, status: "approved" },
+        data: {
+          status: "pending_sp",
+          processedAt: null,
+          approvedById: null,
+        },
+      });
+      if (reverted.count !== 1) {
+        throw new Error("This order could not be returned to Pending Supply Planning.");
+      }
+
+      await tx.branchOrderApprovalLevel.update({
+        where: { orderId_level: { orderId, level } },
+        data: {
+          approvedAt: null,
+          approvedById: null,
+        },
+      });
+
+      const row = await tx.branchOrder.findFirst({
+        where: { id: orderId, tenantId },
+        select: { updatedAt: true },
+      });
+      if (!row) {
+        throw new Error("This order could not be returned to Pending Supply Planning.");
+      }
+      return { updatedAt: row.updatedAt };
     });
   },
 };

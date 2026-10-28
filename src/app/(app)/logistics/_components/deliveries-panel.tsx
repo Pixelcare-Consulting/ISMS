@@ -1,25 +1,10 @@
 "use client";
 
 import { createColumnHelper } from "@tanstack/react-table";
-import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
-import { toast } from "sonner";
+import { useMemo, useState } from "react";
 
-import {
-  acceptDeliveryAction,
-  cancelDeliveryReturnAction,
-  decideDeliveryReturnAction,
-  dispatchDeliveryAction,
-  getDeliveryReturnAction,
-  listDeliveryReceiptLinesAction,
-  listDispatchCandidatesAction,
-  rejectDeliveryAction,
-  requestDeliveryReturnAction,
-  retryDeliveryReturnSapAction,
-} from "@/features/logistics/actions/logistics.actions";
-import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import { formatInventoryDrDate } from "@/app/(app)/inventory/_components/inventory-list-format";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import {
@@ -33,39 +18,23 @@ import {
   type DataTableColumn,
   type DataTableFeatures,
 } from "@/lib/data-table";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
-  DeliveryDispatchDialog,
-  DispatchingModal,
-  type DispatchTarget,
-} from "@/app/(app)/logistics/_components/delivery-dispatch-dialog";
-import {
-  DeliveryReceiveDialog,
-  type ReceiveTarget,
-} from "@/app/(app)/logistics/_components/delivery-receive-dialog";
-import {
   DeliveryReturnCell,
-  DeliveryReturnRequestDialog,
-  DeliveryReturnReviewDialog,
   type LatestDeliveryReturn,
-  type ReturnTarget,
-  type ReviewReturnActions,
 } from "@/app/(app)/logistics/_components/delivery-return-dialogs";
-import { isReturnOpen, needsSapRetry } from "@/features/logistics/constants/delivery-workflow-labels";
 import {
   buildLogisticsPageHref,
   LOGISTICS_DELIVERIES_PATH,
 } from "@/app/(app)/logistics/_components/logistics-paths";
+import { CheckSapNowButton } from "@/app/(app)/logistics/_components/check-sap-now-button";
+import { CompactProgressRail } from "@/app/(app)/logistics/_components/compact-progress-rail";
+import { buildDeliveryTracker } from "@/app/(app)/logistics/_components/delivery-tracker";
+import type { WorkflowStatusOption } from "@/features/logistics/constants/workflow-codes";
+import {
+  LogisticsListViewSwitch,
+  useLogisticsListProgressView,
+} from "@/app/(app)/logistics/_components/logistics-list-view-switch";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
 interface StatusCodeRef {
@@ -95,52 +64,31 @@ interface DeliveryRow {
   returnRequests: LatestDeliveryReturn[];
 }
 
-const REVIEW_ACTIONS: ReviewReturnActions = {
-  load: getDeliveryReturnAction,
-  decide: decideDeliveryReturnAction,
-  retry: retryDeliveryReturnSapAction,
-  cancel: cancelDeliveryReturnAction,
-};
-
 interface DeliveriesPanelProps {
   deliveries: PaginatedList<DeliveryRow>;
-  capabilities: LogisticsActionCapabilities;
+  workflowStatuses: readonly WorkflowStatusOption[];
+  /** Shows "Check SAP now" (dispatch or logistics manage permission). */
+  canCheckSap?: boolean;
   initialSort?: string;
   initialSortDir?: string;
 }
 
 const deliveryColumn = createColumnHelper<DataTableFeatures, DeliveryRow>();
 
-/** Same feed pattern as order approval; the SAP post is the slow step. */
 type DeliverySortField = "deliveryNo" | "orderNumber" | "branch" | "status";
 type DeliverySortDir = "asc" | "desc";
 
-type PendingReject = {
-  id: string;
-  deliveryNo: string;
-  branchName: string;
-  orderNumber?: string;
-};
-
 export function DeliveriesPanel({
   deliveries,
-  capabilities,
+  workflowStatuses,
+  canCheckSap = false,
   initialSort = "",
   initialSortDir = "desc",
 }: DeliveriesPanelProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [progressView] = useLogisticsListProgressView();
   const [query, setQuery] = useState("");
-  const [pending, startTransition] = useTransition();
-  const [pendingConfirm, setPendingConfirm] = useState<PendingReject | null>(null);
-  const [receiveTarget, setReceiveTarget] = useState<ReceiveTarget | null>(null);
-  const [returnRequestTarget, setReturnRequestTarget] = useState<ReturnTarget | null>(null);
-  const [returnReviewTarget, setReturnReviewTarget] = useState<ReturnTarget | null>(null);
-  const [dispatchTarget, setDispatchTarget] = useState<DispatchTarget | null>(null);
-  // Own flag: the shared `pending` also covers reject and return actions.
-  const [dispatching, setDispatching] = useState(false);
-  /** Row whose Dispatch button is loading its serials. */
-  const [openingDispatchId, setOpeningDispatchId] = useState<string | null>(null);
   const pageSize = parseTablePageSize(deliveries.limit);
   const sort = (searchParams.get("sort") ?? initialSort) || "";
   const sortDir = (
@@ -188,65 +136,6 @@ export function DeliveriesPanel({
     [deliveries.items],
   );
 
-
-  function confirmPendingAction() {
-    if (!pendingConfirm) return;
-    const { id } = pendingConfirm;
-    startTransition(async () => {
-      const result = await rejectDeliveryAction(id);
-      if (result.error) {
-        toast.error(result.error);
-        return;
-      }
-      toast.success("Delivery rejected. Warehouse quantity is unchanged.");
-      setPendingConfirm(null);
-      router.refresh();
-    });
-  }
-
-  function openDispatch(row: DeliveryRow) {
-    setOpeningDispatchId(row.id);
-    startTransition(async () => {
-      try {
-        const result = await listDispatchCandidatesAction(row.id);
-        if (!("success" in result)) {
-          toast.error(result.error);
-          return;
-        }
-        setDispatchTarget({
-          id: row.id,
-          deliveryNo: row.deliveryNo,
-          branchName: row.branch.name,
-          models: result.models,
-          serials: result.serials,
-        });
-      } finally {
-        setOpeningDispatchId(null);
-      }
-    });
-  }
-
-  function confirmDispatch(serialNumberIds: string[]) {
-    if (!dispatchTarget) return;
-    setDispatching(true);
-    startTransition(async () => {
-      try {
-        const result = await dispatchDeliveryAction(dispatchTarget.id, { serialNumberIds });
-        if (result.error) {
-          toast.error(result.error);
-          return;
-        }
-        toast.success(
-          `Dispatched ${result.movedCount} serial${result.movedCount === 1 ? "" : "s"}.${result.drNo ? ` DR# ${result.drNo}.` : ""}`,
-        );
-        setDispatchTarget(null);
-        router.refresh();
-      } finally {
-        setDispatching(false);
-      }
-    });
-  }
-
   const indexOffset = (deliveries.page - 1) * deliveries.limit;
   const columns = useMemo(() => {
     const cols: DataTableColumn<DeliveryRow>[] = [
@@ -269,6 +158,26 @@ export function DeliveriesPanel({
             {row.original.deliveryNo}
           </Link>
         ),
+      }),
+      deliveryColumn.display({
+        id: "progress",
+        header: "Progress",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <CompactProgressRail
+            ariaLabel={`${row.original.deliveryNo} progress`}
+            items={buildDeliveryTracker(
+              {
+                code: row.original.statusCode.code,
+                name: row.original.statusCode.name,
+                color: row.original.statusCode.color ?? null,
+              },
+              [],
+              workflowStatuses,
+            )}
+          />
+        ),
+        meta: { className: "w-52 min-w-52" },
       }),
       deliveryColumn.accessor((row) => row.drNo ?? "", {
         id: "drNo",
@@ -315,210 +224,64 @@ export function DeliveriesPanel({
         id: "actions",
         header: "Actions",
         enableSorting: false,
-        cell: ({ row }) => {
-          const delivery = row.original;
-          const code = delivery.statusCode.code;
-          const dispatched = code === "pending" || code === "partial";
-          const latestReturn = delivery.returnRequests[0];
-          const returnOpen = isReturnOpen(latestReturn);
-          const returnTarget = {
-            id: delivery.id,
-            deliveryNo: delivery.deliveryNo,
-            branchName: delivery.branch.name,
-          };
-          return (
-            <div className="flex justify-end gap-2">
-              {delivery.statusCode.code === "approved" && capabilities.canDispatch ? (
-                <Button
-                  size="sm"
-                  disabled={pending}
-                  aria-busy={openingDispatchId === delivery.id}
-                  onClick={() => openDispatch(delivery)}
-                >
-                  {openingDispatchId === delivery.id ? (
-                    <Loader2 className="size-4 animate-spin" aria-hidden />
-                  ) : null}
-                  Dispatch
-                </Button>
-              ) : null}
-              {code === "approved" && capabilities.canDispatch ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={pending}
-                  onClick={() =>
-                    setPendingConfirm({
-                      id: delivery.id,
-                      deliveryNo: delivery.deliveryNo,
-                      branchName: delivery.branch.name,
-                      orderNumber: delivery.order?.orderNumber,
-                    })
-                  }
-                >
-                  Reject
-                </Button>
-              ) : null}
-              {dispatched && !returnOpen && capabilities.canRequestDeliveryReturn ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={pending}
-                  onClick={() => setReturnRequestTarget(returnTarget)}
-                >
-                  Request return
-                </Button>
-              ) : null}
-              {latestReturn?.status === "PENDING_APPROVAL" && capabilities.canApproveDeliveryReturn ? (
-                <Button size="sm" disabled={pending} onClick={() => setReturnReviewTarget(returnTarget)}>
-                  Review return
-                </Button>
-              ) : null}
-              {needsSapRetry(latestReturn) &&
-              (capabilities.canApproveDeliveryReturn || capabilities.canRequestDeliveryReturn) ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={pending}
-                  onClick={() => setReturnReviewTarget(returnTarget)}
-                >
-                  Retry SAP posting
-                </Button>
-              ) : null}
-              {dispatched && !returnOpen && capabilities.canAcceptDelivery ? (
-                <Button
-                  size="sm"
-                  disabled={pending}
-                  className="bg-emerald-600 text-white hover:bg-emerald-700"
-                  onClick={() =>
-                    setReceiveTarget({
-                      id: delivery.id,
-                      deliveryNo: delivery.deliveryNo,
-                      branchName: delivery.branch.name,
-                    })
-                  }
-                >
-                  {delivery.statusCode.code === "partial" ? "Receive remaining" : "Receive"}
-                </Button>
-              ) : null}
-            </div>
-          );
-        },
+        cell: ({ row }) => (
+          <Button size="sm" variant="outline" asChild>
+            <Link href={`/logistics/deliveries/${row.original.id}`}>Open</Link>
+          </Button>
+        ),
       }),
     ];
-    return cols;
-  }, [
-    capabilities.canAcceptDelivery,
-    capabilities.canApproveDeliveryReturn,
-    capabilities.canDispatch,
-    capabilities.canRequestDeliveryReturn,
-    indexOffset,
-    openingDispatchId,
-    pending,
-  ]);
+    if (!progressView) return cols.filter((column) => column.id !== "progress");
+    const progressIds = new Set([
+      "deliveryNo",
+      "progress",
+      "orderNumber",
+      "branch",
+      "status",
+      "return",
+      "actions",
+    ]);
+    return cols.filter((column) => column.id != null && progressIds.has(column.id));
+  }, [indexOffset, progressView, workflowStatuses]);
 
   return (
-    <>
-      <DataTable
-        data={filtered}
-        columns={columns}
-        getRowId={(row) => row.id}
-        manualSorting
-        manualPagination
-        enableSorting
-        sorting={{
-          sortKey: sort,
-          sortDir,
-          onSort: (columnId) => toggleSort(columnId as DeliverySortField),
-        }}
-        stickyHeader
-        search={{ value: query, onChange: setQuery, placeholder: "Search deliveries…", suggestions }}
-        pagination={{
-          total: deliveries.total,
-          page: deliveries.page,
-          totalPages: deliveries.totalPages,
-          itemLabel: "delivery",
-          buildHref: (page) =>
-            buildLogisticsPageHref(
-              LOGISTICS_DELIVERIES_PATH,
-              page,
-              pageSize,
-              sort,
-              sort ? sortDir : undefined,
-            ),
-        }}
-        pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
-        empty={filtered.length === 0}
-        emptyMessage={query.trim() ? "No results match your search." : "No deliveries."}
-      />
-
-      <AlertDialog
-        open={pendingConfirm !== null}
-        onOpenChange={(open) => {
-          if (!open && !pending) setPendingConfirm(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Reject delivery?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {pendingConfirm ? (
-                <>
-                  Reject{" "}
-                  <span className="font-medium text-foreground">{pendingConfirm.deliveryNo}</span>
-                  {pendingConfirm.orderNumber ? <> (order {pendingConfirm.orderNumber})</> : null} at{" "}
-                  {pendingConfirm.branchName}. Nothing has been dispatched, so warehouse quantity stays the
-                  same.
-                </>
-              ) : null}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={pending}
-              onClick={(event) => {
-                event.preventDefault();
-                confirmPendingAction();
-              }}
-            >
-              Reject
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <DeliveryReturnRequestDialog
-        target={returnRequestTarget}
-        onClose={() => setReturnRequestTarget(null)}
-        onDone={() => router.refresh()}
-        submit={requestDeliveryReturnAction}
-      />
-
-      <DeliveryReturnReviewDialog
-        target={returnReviewTarget}
-        canApprove={capabilities.canApproveDeliveryReturn}
-        canRetry={capabilities.canApproveDeliveryReturn || capabilities.canRequestDeliveryReturn}
-        actions={REVIEW_ACTIONS}
-        onClose={() => setReturnReviewTarget(null)}
-        onDone={() => router.refresh()}
-      />
-
-      <DeliveryReceiveDialog
-        target={receiveTarget}
-        onClose={() => setReceiveTarget(null)}
-        onReceived={() => router.refresh()}
-        loadLines={listDeliveryReceiptLinesAction}
-        accept={acceptDeliveryAction}
-        canTransfer={capabilities.canCreateDeliveryTransfer}
-      />
-
-      <DeliveryDispatchDialog
-        target={dispatchTarget}
-        pending={pending}
-        onClose={() => setDispatchTarget(null)}
-        onConfirm={confirmDispatch}
-      />
-      <DispatchingModal open={dispatching} deliveryNo={dispatchTarget?.deliveryNo} />
-    </>
+    <DataTable
+      data={filtered}
+      columns={columns}
+      getRowId={(row) => row.id}
+      manualSorting
+      manualPagination
+      enableSorting
+      sorting={{
+        sortKey: sort,
+        sortDir,
+        onSort: (columnId) => toggleSort(columnId as DeliverySortField),
+      }}
+      stickyHeader
+      search={{ value: query, onChange: setQuery, placeholder: "Search deliveries…", suggestions }}
+      toolbarActions={
+        <>
+          {canCheckSap ? <CheckSapNowButton /> : null}
+          <LogisticsListViewSwitch />
+        </>
+      }
+      pagination={{
+        total: deliveries.total,
+        page: deliveries.page,
+        totalPages: deliveries.totalPages,
+        itemLabel: "delivery",
+        buildHref: (page) =>
+          buildLogisticsPageHref(
+            LOGISTICS_DELIVERIES_PATH,
+            page,
+            pageSize,
+            sort,
+            sort ? sortDir : undefined,
+          ),
+      }}
+      pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
+      empty={filtered.length === 0}
+      emptyMessage={query.trim() ? "No results match your search." : "No deliveries."}
+    />
   );
 }

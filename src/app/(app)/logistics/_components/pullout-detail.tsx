@@ -1,37 +1,43 @@
 "use client";
 
-import { createColumnHelper } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
 import {
   useEffect,
-  useMemo,
   useState,
   useTransition,
   type FormEvent,
-  type KeyboardEvent,
   type ReactNode,
 } from "react";
 import { toast } from "sonner";
 
 import {
-  LogisticsDocumentHeader,
-  LogisticsDoneLine,
-  LogisticsHistoryCard,
-  LogisticsProgressCard,
-  LogisticsStepWorkspace,
-  LogisticsTableHeading,
+  DocumentDetailBand,
+  LogisticsHistoryBody,
 } from "@/app/(app)/logistics/_components/logistics-detail-ui";
+import { pulloutAuditLabel, PulloutTracker } from "@/app/(app)/logistics/_components/pullout-tracker";
 import {
-  finishedPulloutSteps,
-  PulloutTracker,
-} from "@/app/(app)/logistics/_components/pullout-tracker";
-import { uniqueSearchSuggestions, useClientTablePagination } from "@/components/data-table";
+  CompactLineTable,
+  CompactModelCell,
+  type CompactLineColumn,
+} from "@/components/compact-line-table";
+import {
+  RecordField,
+  RecordFieldGrid,
+  RecordReadout,
+  RecordSection,
+  RecordSheet,
+} from "@/components/record-section";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Textarea } from "@/components/ui/textarea";
 import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
+import {
+  PULLOUT_WORKFLOW_CODE,
+  workflowStatusLabel,
+  type WorkflowStatusOption,
+} from "@/features/logistics/constants/workflow-codes";
 import {
   approvePulloutTlAction,
   listPulloutSerialsAction,
@@ -42,13 +48,8 @@ import {
 } from "@/features/logistics/actions/logistics.actions";
 import type { PulloutDetail } from "@/features/logistics/services/pullout-posting.service";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
-import {
-  DataTable,
-  type DataTableColumn,
-  type DataTableFeatures,
-} from "@/lib/data-table";
-import { cn } from "@/utils/cn";
-import { matchesTableSearch } from "@/utils/match-table-search";
+
+const PULLOUT_LIST_FORM_ID = "pullout-list-form";
 
 type RequestCondition = "STK" | "DEF" | "Mixed";
 type HoldCode = "RSV" | "FPO" | "DEF" | "DIT";
@@ -97,23 +98,6 @@ const MANILA_DATE_TIME = new Intl.DateTimeFormat("en-PH", {
   minute: "2-digit",
   timeZone: "Asia/Manila",
 });
-
-function historyLabel(action: string): string {
-  switch (action) {
-    case "pullout.created":
-      return "Request submitted";
-    case "pullout.approved":
-      return "Approved by Team Lead";
-    case "pullout.rejected":
-      return "Rejected";
-    case "pullout.list_saved":
-      return "Logistics list saved";
-    case "pullout.finalized":
-      return "Sent — in transit";
-    default:
-      return action;
-  }
-}
 
 function inScope(scope: string[] | null, branchId: string): boolean {
   return scope === null || scope.includes(branchId);
@@ -190,20 +174,17 @@ function Field({
   label,
   htmlFor,
   children,
-  className,
+  wide = false,
 }: {
   label: string;
   htmlFor?: string;
   children: ReactNode;
-  className?: string;
+  wide?: boolean;
 }) {
   return (
-    <div className={cn("min-w-0", className)}>
-      <dt className="text-xs text-muted-foreground">
-        {htmlFor ? <label htmlFor={htmlFor}>{label}</label> : label}
-      </dt>
-      <dd className="mt-1 text-sm font-medium">{children}</dd>
-    </div>
+    <RecordField label={label} htmlFor={htmlFor} wide={wide}>
+      {children}
+    </RecordField>
   );
 }
 
@@ -226,16 +207,6 @@ function RequestConditionBadge({ condition }: { condition: RequestCondition }) {
   }
 }
 
-function ModelSummary({ skuCode, name }: { skuCode: string; name: string }) {
-  const title = name ? `${skuCode} — ${name}` : skuCode;
-  return (
-    <div className="w-56 max-w-full min-w-0" title={title}>
-      <p className="truncate">{skuCode}</p>
-      {name ? <p className="truncate text-xs text-muted-foreground">{name}</p> : null}
-    </div>
-  );
-}
-
 function NotRecorded() {
   return <span className="text-muted-foreground">Not recorded</span>;
 }
@@ -251,12 +222,74 @@ function recordedNames(names: readonly string[]) {
   );
 }
 
-const pulloutItemColumn = createColumnHelper<DataTableFeatures, ItemRow>();
-
-function stopSearchSubmit(event: KeyboardEvent<HTMLDivElement>) {
-  if (event.key === "Enter" && event.target instanceof HTMLInputElement) {
-    event.preventDefault();
+function pulloutItemColumns(
+  canEditList: boolean,
+  pending: boolean,
+  selected: readonly string[],
+  onToggle: (serialNumberId: string, on: boolean) => void,
+): CompactLineColumn<ItemRow>[] {
+  const columns: CompactLineColumn<ItemRow>[] = [];
+  if (canEditList) {
+    columns.push({
+      id: "include",
+      header: <span className="sr-only">Include</span>,
+      className: "w-12",
+      cell: (row) => (
+        <Checkbox
+          checked={selected.includes(row.serialNumberId)}
+          onCheckedChange={(value) => onToggle(row.serialNumberId, value === true)}
+          disabled={pending}
+          aria-label={`Keep ${row.serialNo}`}
+        />
+      ),
+    });
   }
+  columns.push(
+    {
+      id: "model",
+      header: "Model",
+      className: "min-w-44",
+      cell: (row) => <CompactModelCell code={row.skuCode} name={row.modelName} />,
+    },
+    {
+      id: "serial",
+      header: "Serial number",
+      className: "w-40 font-mono",
+      cell: (row) => row.serialNo,
+    },
+    {
+      id: "condition",
+      header: "Inventory condition",
+      cell: (row) => {
+        const prior = asPriorCode(row.priorCode);
+        return prior ? <StatusCodeBadge code={prior} name={prior} /> : <Dash />;
+      },
+    },
+    {
+      id: "classification",
+      header: "Classification",
+      cell: (row) => recordedNames(row.classificationNames),
+    },
+    {
+      id: "packing",
+      header: "Unit packing condition",
+      cell: (row) => recordedNames(row.unitPackingConditionNames),
+    },
+    {
+      id: "accessories",
+      header: "Accessory completeness",
+      cell: (row) => recordedNames(row.accessoryCompletenessNames),
+    },
+    {
+      id: "hold",
+      header: "Current hold",
+      cell: (row) => {
+        const hold = asHoldCode(row.inventoryCode);
+        return hold ? <StatusCodeBadge code={hold} name={hold} /> : <Dash />;
+      },
+    },
+  );
+  return columns;
 }
 
 function PulloutItemsTable({
@@ -265,7 +298,6 @@ function PulloutItemsTable({
   pending,
   selected,
   onToggle,
-  title = "Units on this pull-out",
   itemLabel = "unit",
   toolbarActions,
 }: {
@@ -274,147 +306,31 @@ function PulloutItemsTable({
   pending: boolean;
   selected: string[];
   onToggle: (serialNumberId: string, on: boolean) => void;
-  title?: string;
   itemLabel?: string;
   toolbarActions?: ReactNode;
 }) {
-  const [query, setQuery] = useState("");
-  const filtered = useMemo(
-    () =>
-      rows.filter((row) =>
-        matchesTableSearch(query, [
-          row.skuCode,
-          row.modelName,
-          row.serialNo,
-          row.priorCode,
-          row.inventoryCode,
-          ...row.classificationNames,
-          ...row.unitPackingConditionNames,
-          ...row.accessoryCompletenessNames,
-        ]),
-      ),
-    [query, rows],
-  );
-  const suggestions = useMemo(
-    () =>
-      uniqueSearchSuggestions(
-        rows.map((row) => row.serialNo),
-        rows.map((row) => row.skuCode),
-        rows.map((row) => row.modelName),
-        rows.flatMap((row) => row.classificationNames),
-        rows.flatMap((row) => row.unitPackingConditionNames),
-        rows.flatMap((row) => row.accessoryCompletenessNames),
-      ),
-    [rows],
-  );
-  const { page, setPage, pageSize, setPageSize, total, totalPages, pageItems, indexOffset } =
-    useClientTablePagination(filtered, { resetKey: query });
-
-  const columns = useMemo(() => {
-    const cols: DataTableColumn<ItemRow>[] = [
-      pulloutItemColumn.display({
-        id: "index",
-        header: "#",
-        cell: ({ row }) => indexOffset + row.index + 1,
-        meta: { className: "tabular-nums text-muted-foreground" },
-      }),
-    ];
-    if (canEditList) {
-      cols.push(
-        pulloutItemColumn.display({
-          id: "include",
-          header: () => <span className="sr-only">Include</span>,
-          cell: ({ row }) => (
-            <Checkbox
-              checked={selected.includes(row.original.serialNumberId)}
-              onCheckedChange={(value) => onToggle(row.original.serialNumberId, value === true)}
-              disabled={pending}
-              aria-label={`Keep ${row.original.serialNo}`}
-            />
-          ),
-          meta: { className: "w-12" },
-        }),
-      );
-    }
-    cols.push(
-      pulloutItemColumn.display({
-        id: "model",
-        header: "Model",
-        cell: ({ row }) => (
-          <ModelSummary skuCode={row.original.skuCode} name={row.original.modelName} />
-        ),
-      }),
-      pulloutItemColumn.display({
-        id: "serial",
-        header: "Serial number",
-        cell: ({ row }) => row.original.serialNo,
-        meta: { className: "font-mono" },
-      }),
-      pulloutItemColumn.display({
-        id: "condition",
-        header: "Inventory condition",
-        cell: ({ row }) => {
-          const prior = asPriorCode(row.original.priorCode);
-          return prior ? <StatusCodeBadge code={prior} name={prior} /> : <Dash />;
-        },
-      }),
-      pulloutItemColumn.display({
-        id: "classification",
-        header: "Classification",
-        cell: ({ row }) => recordedNames(row.original.classificationNames),
-      }),
-      pulloutItemColumn.display({
-        id: "packing",
-        header: "Unit packing condition",
-        cell: ({ row }) => recordedNames(row.original.unitPackingConditionNames),
-      }),
-      pulloutItemColumn.display({
-        id: "accessories",
-        header: "Accessory completeness",
-        cell: ({ row }) => recordedNames(row.original.accessoryCompletenessNames),
-      }),
-      pulloutItemColumn.display({
-        id: "hold",
-        header: "Current hold",
-        cell: ({ row }) => {
-          const hold = asHoldCode(row.original.inventoryCode);
-          return hold ? <StatusCodeBadge code={hold} name={hold} /> : <Dash />;
-        },
-      }),
-    );
-    return cols;
-  }, [canEditList, indexOffset, onToggle, pending, selected]);
-
   return (
-    <div onKeyDown={stopSearchSubmit}>
-      <DataTable
-        data={pageItems}
-        columns={columns}
-        getRowId={(row) => row.serialNumberId}
-        manualPagination
-        stickyHeader
-        search={{
-          value: query,
-          onChange: setQuery,
-          placeholder: "Search serials…",
-          suggestions,
-        }}
-        pageSize={{ value: pageSize, onChange: setPageSize }}
-        toolbarLeading={
-          <LogisticsTableHeading title={title} count={rows.length} itemLabel={itemLabel} />
-        }
-        toolbarActions={toolbarActions}
-        pagination={{
-          total,
-          page,
-          totalPages,
-          itemLabel,
-          onPageChange: setPage,
-        }}
-        empty={pageItems.length === 0}
-        emptyMessage={rows.length === 0 ? "No serials on this pull-out." : "No matching serials."}
-      />
-    </div>
+    <CompactLineTable
+      rows={rows}
+      getRowId={(row) => row.serialNumberId}
+      columns={pulloutItemColumns(canEditList, pending, selected, onToggle)}
+      searchText={(row) => [
+        row.skuCode,
+        row.modelName,
+        row.serialNo,
+        row.priorCode,
+        row.inventoryCode,
+        ...row.classificationNames,
+        ...row.unitPackingConditionNames,
+        ...row.accessoryCompletenessNames,
+      ]}
+      searchPlaceholder="Search serials…"
+      itemLabel={itemLabel}
+      emptyMessage="No serials on this pull-out."
+      noMatchMessage="No matching serials."
+      toolbarAction={toolbarActions}
+      minWidth="72rem"
+    />
   );
 }
 
@@ -424,20 +340,14 @@ function readOnlyToggle() {}
 
 function pulloutOpenKind(code: string): PulloutOpenKind {
   switch (code) {
-    case "pending_tl":
-    case "for_pullout":
-    case "pending_logistics":
-    case "in_transit":
+    case PULLOUT_WORKFLOW_CODE.pending_tl:
+    case PULLOUT_WORKFLOW_CODE.for_pullout:
+    case PULLOUT_WORKFLOW_CODE.pending_logistics:
+    case PULLOUT_WORKFLOW_CODE.in_transit:
       return code;
     default:
       return "other";
   }
-}
-
-function doneLineDetail(at: string | null, actor: string | null): string | undefined {
-  const when = formatWhen(at, true);
-  if (actor && when) return `${actor} · ${when}`;
-  return when ?? actor ?? undefined;
 }
 
 function sameIds(left: readonly string[], right: readonly string[]): boolean {
@@ -477,9 +387,7 @@ function recordedSchedule(detail: PulloutDetail): { label: string; value: string
 
 function ScheduleFields({ detail }: { detail: PulloutDetail }) {
   return recordedSchedule(detail).map((field) => (
-    <Field key={field.label} label={field.label}>
-      {field.value}
-    </Field>
+    <RecordReadout key={field.label} label={field.label} value={field.value} />
   ));
 }
 
@@ -513,7 +421,7 @@ function PulloutListFields({
 }) {
   const warehouseChoices = warehouses.length > 0 ? warehouses : [detail.warehouse];
   return (
-    <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
+    <RecordFieldGrid>
       <Field label="Destination warehouse" htmlFor={canEdit ? "pullout-warehouse" : undefined}>
         {canEdit ? (
           <SearchableSelect
@@ -545,7 +453,7 @@ function PulloutListFields({
         )}
       </Field>
       <ScheduleFields detail={detail} />
-      <Field label="Remarks" htmlFor={canEdit ? "pullout-remarks" : undefined} className="sm:col-span-2">
+      <Field label="Remarks" htmlFor={canEdit ? "pullout-remarks" : undefined} wide>
         {canEdit ? (
           <Textarea
             id="pullout-remarks"
@@ -563,11 +471,51 @@ function PulloutListFields({
           </p>
         )}
       </Field>
-    </dl>
+    </RecordFieldGrid>
   );
 }
 
-const extraSerialColumn = createColumnHelper<DataTableFeatures, ExtraSerial>();
+function extraSerialColumns(
+  pending: boolean,
+  selected: readonly string[],
+  onToggle: (serialNumberId: string, on: boolean) => void,
+): CompactLineColumn<ExtraSerial>[] {
+  return [
+    {
+      id: "include",
+      header: <span className="sr-only">Add</span>,
+      className: "w-12",
+      cell: (row) => (
+        <Checkbox
+          checked={selected.includes(row.serialNumberId)}
+          onCheckedChange={(value) => onToggle(row.serialNumberId, value === true)}
+          disabled={pending}
+          aria-label={`Add ${row.serialNo}`}
+        />
+      ),
+    },
+    {
+      id: "model",
+      header: "Model",
+      className: "min-w-44",
+      cell: (row) => <CompactModelCell code={row.skuCode} name={row.modelName} />,
+    },
+    {
+      id: "serial",
+      header: "Serial number",
+      className: "w-40 font-mono",
+      cell: (row) => row.serialNo,
+    },
+    {
+      id: "condition",
+      header: "Inventory condition",
+      cell: (row) => {
+        const prior = asPriorCode(row.inventoryCode);
+        return prior ? <StatusCodeBadge code={prior} name={prior} /> : <Dash />;
+      },
+    },
+  ];
+}
 
 function ExtraSerialsTable({
   rows,
@@ -580,98 +528,19 @@ function ExtraSerialsTable({
   selected: string[];
   onToggle: (serialNumberId: string, on: boolean) => void;
 }) {
-  const [query, setQuery] = useState("");
-  const filtered = useMemo(
-    () =>
-      rows.filter((row) =>
-        matchesTableSearch(query, [row.skuCode, row.modelName, row.serialNo, row.inventoryCode]),
-      ),
-    [query, rows],
-  );
-  const suggestions = useMemo(
-    () =>
-      uniqueSearchSuggestions(
-        rows.map((row) => row.serialNo),
-        rows.map((row) => row.skuCode),
-        rows.map((row) => row.modelName),
-      ),
-    [rows],
-  );
-  const { page, setPage, pageSize, setPageSize, total, totalPages, pageItems, indexOffset } =
-    useClientTablePagination(filtered, { resetKey: query });
-  const columns = useMemo(() => {
-    const cols: DataTableColumn<ExtraSerial>[] = [
-      extraSerialColumn.display({
-        id: "index",
-        header: "#",
-        cell: ({ row }) => indexOffset + row.index + 1,
-        meta: { className: "tabular-nums text-muted-foreground" },
-      }),
-      extraSerialColumn.display({
-        id: "include",
-        header: () => <span className="sr-only">Add</span>,
-        cell: ({ row }) => (
-          <Checkbox
-            checked={selected.includes(row.original.serialNumberId)}
-            onCheckedChange={(value) => onToggle(row.original.serialNumberId, value === true)}
-            disabled={pending}
-            aria-label={`Add ${row.original.serialNo}`}
-          />
-        ),
-        meta: { className: "w-12" },
-      }),
-      extraSerialColumn.display({
-        id: "model",
-        header: "Model",
-        cell: ({ row }) => <ModelSummary skuCode={row.original.skuCode} name={row.original.modelName} />,
-      }),
-      extraSerialColumn.display({
-        id: "serial",
-        header: "Serial number",
-        cell: ({ row }) => row.original.serialNo,
-        meta: { className: "font-mono" },
-      }),
-      extraSerialColumn.display({
-        id: "condition",
-        header: "Inventory condition",
-        cell: ({ row }) => {
-          const prior = asPriorCode(row.original.inventoryCode);
-          return prior ? <StatusCodeBadge code={prior} name={prior} /> : <Dash />;
-        },
-      }),
-    ];
-    return cols;
-  }, [indexOffset, onToggle, pending, selected]);
-
   return (
-    <div onKeyDown={stopSearchSubmit}>
-      <DataTable
-        data={pageItems}
-        columns={columns}
+    <div className="space-y-2">
+      <p className="text-sm font-medium">Other serials</p>
+      <CompactLineTable
+        rows={rows}
         getRowId={(row) => row.serialNumberId}
-        manualPagination
-        stickyHeader
-        search={{
-          value: query,
-          onChange: setQuery,
-          placeholder: "Search serials…",
-          suggestions,
-        }}
-        pageSize={{ value: pageSize, onChange: setPageSize }}
-        toolbarLeading={
-          <LogisticsTableHeading title="Other serials" count={rows.length} itemLabel="serial" />
-        }
-        pagination={{
-          total,
-          page,
-          totalPages,
-          itemLabel: "serial",
-          onPageChange: setPage,
-        }}
-        empty={pageItems.length === 0}
-        emptyMessage={
-          rows.length === 0 ? "No other free serials at this branch." : "No matching serials."
-        }
+        columns={extraSerialColumns(pending, selected, onToggle)}
+        searchText={(row) => [row.skuCode, row.modelName, row.serialNo, row.inventoryCode]}
+        searchPlaceholder="Search serials…"
+        itemLabel="serial"
+        emptyMessage="No other free serials at this branch."
+        noMatchMessage="No matching serials."
+        minWidth="40rem"
       />
     </div>
   );
@@ -718,11 +587,9 @@ function AddSerialsPanel({
 
 function ReadOnlyUnits({
   rows,
-  title,
   itemLabel,
 }: {
   rows: ItemRow[];
-  title: string;
   itemLabel: string;
 }) {
   return (
@@ -732,7 +599,6 @@ function ReadOnlyUnits({
       pending={false}
       selected={NO_SELECTION}
       onToggle={readOnlyToggle}
-      title={title}
       itemLabel={itemLabel}
     />
   );
@@ -743,24 +609,28 @@ function RecordedPullout({ detail }: { detail: PulloutDetail }) {
   const waybill = detail.waybillNo?.trim() ?? "";
   const warehouse = joinedLabel(detail.warehouse.name, detail.warehouse.code);
   return (
-    <div className="space-y-6">
-      <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
-        <Field label="Branch">{textOrDash(detail.branch.name)}</Field>
-        <Field label="Created by">{textOrDash(detail.createdByName)}</Field>
-        <Field label="Reason">
-          <ReasonValue reason={detail.reason} />
-        </Field>
-        <Field label="Destination warehouse">{textOrDash(warehouse)}</Field>
-        {waybill ? <Field label="Waybill">{waybill}</Field> : null}
-        <ScheduleFields detail={detail} />
-        {remarks ? (
-          <Field label="Remarks" className="sm:col-span-2">
-            <p className="font-normal whitespace-pre-wrap">{remarks}</p>
-          </Field>
-        ) : null}
-      </dl>
-      <ReadOnlyUnits rows={savedItemRows(detail.lines)} title="Units on this pull-out" itemLabel="unit" />
-    </div>
+    <>
+      <RecordSection
+        title={workflowStatusLabel(detail.status)}
+        description="Branch, reason, and where these units were sent."
+        divided
+      >
+        <RecordFieldGrid>
+          <RecordReadout label="Branch" value={textOrDash(detail.branch.name)} />
+          <RecordReadout label="Created by" value={textOrDash(detail.createdByName)} />
+          <RecordReadout label="Reason" value={<ReasonValue reason={detail.reason} />} />
+          <RecordReadout label="Destination warehouse" value={textOrDash(warehouse)} />
+          {waybill ? <RecordReadout label="Waybill" value={waybill} /> : null}
+          <ScheduleFields detail={detail} />
+          {remarks ? (
+            <RecordReadout label="Remarks" value={remarks} wide multiline />
+          ) : null}
+        </RecordFieldGrid>
+      </RecordSection>
+      <RecordSection title="Units" description="Serials on this pull-out." divided>
+        <ReadOnlyUnits rows={savedItemRows(detail.lines)} itemLabel="unit" />
+      </RecordSection>
+    </>
   );
 }
 
@@ -768,15 +638,18 @@ export function PulloutDetailView({
   detail,
   capabilities,
   branchScope,
+  workflowStatuses,
 }: {
   detail: PulloutDetail;
   capabilities: LogisticsActionCapabilities;
   branchScope: string[] | null;
+  workflowStatuses: readonly WorkflowStatusOption[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const canEditList =
-    (detail.status.code === "for_pullout" || detail.status.code === "pending_logistics") &&
+    (detail.status.code === PULLOUT_WORKFLOW_CODE.for_pullout ||
+      detail.status.code === PULLOUT_WORKFLOW_CODE.pending_logistics) &&
     capabilities.canManage &&
     inScope(branchScope, detail.branch.id);
   const [warehouses, setWarehouses] = useState<{ id: string; name: string; code: string }[]>([]);
@@ -858,9 +731,10 @@ export function PulloutDetailView({
   const onPulloutIds = new Set(detail.lines.map((line) => line.serialNumberId));
   const availableSerials = extraSerials.filter((serial) => !onPulloutIds.has(serial.serialNumberId));
   const condition = requestCondition(detail.lines);
-  const showApprove = detail.status.code === "pending_tl" && capabilities.canApproveTl;
+  const showApprove =
+    detail.status.code === PULLOUT_WORKFLOW_CODE.pending_tl && capabilities.canApproveTl;
   const showReject = showApprove && capabilities.canRejectTransfer;
-  const showSend = canEditList && detail.status.code === "pending_logistics";
+  const showSend = canEditList && detail.status.code === PULLOUT_WORKFLOW_CODE.pending_logistics;
   const listDirty =
     warehouseId !== detail.warehouse.id ||
     waybillNo !== (detail.waybillNo ?? "") ||
@@ -869,8 +743,6 @@ export function PulloutDetailView({
       selected,
       detail.lines.map((line) => line.serialNumberId),
     );
-  const doneLines = finishedPulloutSteps(detail.status.code, detail.createdAt, detail.history);
-
   function toggleSerial(serialNumberId: string, on: boolean) {
     setSelected((current) => {
       if (!on) return current.filter((id) => id !== serialNumberId);
@@ -895,38 +767,39 @@ export function PulloutDetailView({
   function submitList(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canEditList || pending || selected.length === 0) return;
-    if (detail.status.code === "pending_logistics" && !listDirty) return;
+    if (detail.status.code === PULLOUT_WORKFLOW_CODE.pending_logistics && !listDirty) return;
     saveList();
   }
 
-  function wrapForm(workspace: ReactNode) {
-    if (!canEditList) return workspace;
-    return <form onSubmit={submitList}>{workspace}</form>;
-  }
-
-  function listBody(stockNote: boolean) {
+  function listSections(title: string, description: string, stockNote: boolean) {
     return (
-      <div className="space-y-6">
-        <PulloutListFields
-          detail={detail}
-          canEdit={canEditList}
-          pending={pending}
-          waybillNo={waybillNo}
-          warehouseId={warehouseId}
-          notes={notes}
-          warehouses={warehouses}
-          onWaybillNo={setWaybillNo}
-          onWarehouseId={setWarehouseId}
-          onNotes={setNotes}
-        />
-        <div className="space-y-4">
+      <>
+        <RecordSection title={title} description={description} divided>
+          <PulloutListFields
+            detail={detail}
+            canEdit={canEditList}
+            pending={pending}
+            waybillNo={waybillNo}
+            warehouseId={warehouseId}
+            notes={notes}
+            warehouses={warehouses}
+            onWaybillNo={setWaybillNo}
+            onWarehouseId={setWarehouseId}
+            onNotes={setNotes}
+          />
+          {stockNote ? (
+            <p className="text-sm text-muted-foreground">
+              Sending does not put stock in the warehouse yet.
+            </p>
+          ) : null}
+        </RecordSection>
+        <RecordSection title="Units" description="Serials on this pull-out." divided>
           <PulloutItemsTable
             rows={savedRows}
             canEditList={canEditList}
             pending={pending}
             selected={selected}
             onToggle={toggleSerial}
-            title="Units on this pull-out"
             itemLabel="unit"
             toolbarActions={
               canEditList ? (
@@ -952,124 +825,61 @@ export function PulloutDetailView({
               onRetry={retryExtras}
             />
           ) : null}
-        </div>
-        {stockNote ? (
-          <p className="text-sm text-muted-foreground">
-            Sending does not put stock in the warehouse yet.
-          </p>
-        ) : null}
-      </div>
+        </RecordSection>
+      </>
     );
   }
 
-  function currentWorkspace(): ReactNode {
+  function workspaceSections(): ReactNode {
     const kind = pulloutOpenKind(detail.status.code);
     switch (kind) {
-      case "pending_tl":
+      case PULLOUT_WORKFLOW_CODE.pending_tl:
         return (
-          <LogisticsStepWorkspace
-            title="Waiting for approval"
-            description="Team Lead approves or rejects this pull-out."
-            actions={
-              showApprove ? (
-                <>
-                  <Button
-                    type="button"
-                    disabled={pending}
-                    onClick={() => run(() => approvePulloutTlAction(detail.id), "Pull-out approved")}
-                  >
-                    Approve
-                  </Button>
-                  {showReject ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={pending}
-                      onClick={() => run(() => rejectPulloutAction(detail.id), "Pull-out rejected")}
-                    >
-                      Reject
-                    </Button>
-                  ) : null}
-                </>
-              ) : undefined
-            }
-          >
-            <div className="space-y-6">
-              <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
-                <Field label="Branch">{textOrDash(detail.branch.name)}</Field>
-                <Field label="Created by">{textOrDash(detail.createdByName)}</Field>
-                <Field label="Reason">
-                  <ReasonValue reason={detail.reason} />
-                </Field>
-              </dl>
-              <ReadOnlyUnits rows={savedRows} title="Reserved serials" itemLabel="serial" />
-            </div>
-          </LogisticsStepWorkspace>
+          <>
+            <RecordSection
+              title={workflowStatusLabel(detail.status)}
+              description="Team Lead approves or rejects this pull-out."
+              divided
+            >
+              <RecordFieldGrid>
+                <RecordReadout label="Branch" value={textOrDash(detail.branch.name)} />
+                <RecordReadout label="Created by" value={textOrDash(detail.createdByName)} />
+                <RecordReadout label="Reason" value={<ReasonValue reason={detail.reason} />} />
+              </RecordFieldGrid>
+            </RecordSection>
+            <RecordSection title="Units" description="Serials reserved for this pull-out." divided>
+              <ReadOnlyUnits rows={savedRows} itemLabel="serial" />
+            </RecordSection>
+          </>
         );
-      case "for_pullout":
-        return wrapForm(
-          <LogisticsStepWorkspace
-            title="Prepare units"
-            description="Confirm these units, then save the list."
-            actions={
-              canEditList ? (
-                <Button type="submit" disabled={pending || selected.length === 0}>
-                  Save list
-                </Button>
-              ) : undefined
-            }
-          >
-            {listBody(false)}
-          </LogisticsStepWorkspace>,
+      case PULLOUT_WORKFLOW_CODE.for_pullout:
+        return listSections(
+          workflowStatusLabel(detail.status),
+          "Confirm these units, then save the list.",
+          false,
         );
-      case "pending_logistics":
-        return wrapForm(
-          <LogisticsStepWorkspace
-            title="Ready to send"
-            description="The list is saved. Send it when the units are ready to leave."
-            actions={
-              showSend || (canEditList && listDirty) ? (
-                <>
-                  {canEditList && listDirty ? (
-                    <Button
-                      type="submit"
-                      variant="outline"
-                      disabled={pending || selected.length === 0}
-                    >
-                      Save list
-                    </Button>
-                  ) : null}
-                  {showSend ? (
-                    <Button
-                      type="button"
-                      disabled={pending}
-                      onClick={() =>
-                        run(() => releasePulloutAction(detail.id), "Pull-out is in transit")
-                      }
-                    >
-                      Send
-                    </Button>
-                  ) : null}
-                </>
-              ) : undefined
-            }
-          >
-            {listBody(true)}
-          </LogisticsStepWorkspace>,
+      case PULLOUT_WORKFLOW_CODE.pending_logistics:
+        return listSections(
+          workflowStatusLabel(detail.status),
+          "The list is saved. Send it when the units are ready to leave.",
+          true,
         );
-      case "in_transit":
+      case PULLOUT_WORKFLOW_CODE.in_transit:
         return (
-          <LogisticsStepWorkspace
-            title="In transit"
-            description="These units are in transit."
-          >
-            <div className="space-y-4">
+          <>
+            <RecordSection
+              title={workflowStatusLabel(detail.status)}
+              description="These units are in transit."
+              divided
+            >
               <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
                 {`Warehouse receipt is not available yet. After this pull-out is sent, the units stay in transit at ${detail.branch.name}.`}
               </p>
-              <ReadOnlyUnits rows={savedRows} title="Units on this pull-out" itemLabel="unit" />
-            </div>
-          </LogisticsStepWorkspace>
+            </RecordSection>
+            <RecordSection title="Units" description="Serials on this pull-out." divided>
+              <ReadOnlyUnits rows={savedRows} itemLabel="unit" />
+            </RecordSection>
+          </>
         );
       case "other":
         return <RecordedPullout detail={detail} />;
@@ -1080,61 +890,130 @@ export function PulloutDetailView({
     }
   }
 
+  function headerActions(): ReactNode {
+    const kind = pulloutOpenKind(detail.status.code);
+    switch (kind) {
+      case PULLOUT_WORKFLOW_CODE.pending_tl:
+        if (!showApprove) return null;
+        return (
+          <>
+            <Button
+              type="button"
+              disabled={pending}
+              onClick={() => run(() => approvePulloutTlAction(detail.id), "Pull-out approved")}
+            >
+              Approve
+            </Button>
+            {showReject ? (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={pending}
+                onClick={() => run(() => rejectPulloutAction(detail.id), "Pull-out rejected")}
+              >
+                Reject
+              </Button>
+            ) : null}
+          </>
+        );
+      case PULLOUT_WORKFLOW_CODE.for_pullout:
+        if (!canEditList) return null;
+        return (
+          <Button
+            type="submit"
+            form={PULLOUT_LIST_FORM_ID}
+            disabled={pending || selected.length === 0}
+          >
+            Save list
+          </Button>
+        );
+      case PULLOUT_WORKFLOW_CODE.pending_logistics:
+        if (!showSend && !(canEditList && listDirty)) return null;
+        return (
+          <>
+            {canEditList && listDirty ? (
+              <Button
+                type="submit"
+                form={PULLOUT_LIST_FORM_ID}
+                variant="outline"
+                disabled={pending || selected.length === 0}
+              >
+                Save list
+              </Button>
+            ) : null}
+            {showSend ? (
+              <Button
+                type="button"
+                disabled={pending}
+                onClick={() => run(() => releasePulloutAction(detail.id), "Pull-out is in transit")}
+              >
+                Send
+              </Button>
+            ) : null}
+          </>
+        );
+      case PULLOUT_WORKFLOW_CODE.in_transit:
+      case "other":
+        return null;
+      default: {
+        const unreachable: never = kind;
+        return unreachable;
+      }
+    }
+  }
+
+  const sheet = (
+    <RecordSheet>
+      <RecordSection title="Progress">
+        <PulloutTracker
+          status={detail.status}
+          createdAt={detail.createdAt}
+          history={detail.history}
+          catalog={workflowStatuses}
+        />
+      </RecordSection>
+      {workspaceSections()}
+      <RecordSection title="History" divided>
+        <LogisticsHistoryBody
+          items={detail.history.map((row) => ({
+            id: row.id,
+            label: pulloutAuditLabel(row.action),
+            actor: row.userName,
+            at: row.at,
+          }))}
+        />
+        <p className="mt-4 text-sm text-muted-foreground">
+          {detail.sapJob?.message ?? "No SAP request has been queued for this pull-out."}
+        </p>
+      </RecordSection>
+    </RecordSheet>
+  );
+
   return (
     <div className="space-y-6">
-      <LogisticsDocumentHeader
+      <DocumentDetailBand
         backHref="/logistics/pickups"
         backLabel="Back to pull-outs"
-        context="Pull-out"
         title={detail.pulloutNo}
-        statusCode={detail.status.code}
-        statusColor={detail.status.color}
-        badges={
-          <>
+        statusLine={
+          <span className="inline-flex flex-wrap items-center gap-2">
             <StatusCodeBadge
               code={detail.status.code}
               name={detail.status.name}
               color={detail.status.color}
             />
             {condition ? <RequestConditionBadge condition={condition} /> : null}
-          </>
+          </span>
         }
+        actions={headerActions()}
       />
-
-      <LogisticsProgressCard>
-        <PulloutTracker
-          status={detail.status}
-          createdAt={detail.createdAt}
-          history={detail.history}
-        />
-      </LogisticsProgressCard>
-
-      {doneLines.length > 0 ? (
-        <div className="space-y-2">
-          {doneLines.map((step) => (
-            <LogisticsDoneLine
-              key={step.code}
-              title={step.title}
-              detail={doneLineDetail(step.at, step.actor)}
-            />
-          ))}
-        </div>
-      ) : null}
-
-      {currentWorkspace()}
-
-      <LogisticsHistoryCard
-        items={detail.history.map((row) => ({
-          id: row.id,
-          label: historyLabel(row.action),
-          actor: row.userName,
-          at: row.at,
-        }))}
-      />
-
-      <p className="text-sm text-muted-foreground">
-        {detail.sapJob?.message ?? "No SAP request has been queued for this pull-out."}
-      </p>
+      {canEditList ? (
+        <form id={PULLOUT_LIST_FORM_ID} onSubmit={submitList}>
+          {sheet}
+        </form>
+      ) : (
+        sheet
+      )}
     </div>
   );
 }

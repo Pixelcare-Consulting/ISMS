@@ -310,7 +310,7 @@ export function buildPixelcareAiTools(
 
     findOrderStatus: tool({
       description:
-        "Look up permitted order status for one or more sales order numbers. Pass orderNumbers when the user already gave SO#YYYY-MM-##### values and keep the #. orderNumber still accepts a single number or partial match. Returns each number as a hit (status and deep link) or an explicit miss. Never invent a status.",
+        "Look up permitted order status for one or more sales order numbers. Pass orderNumbers when the user already gave ITR#YYYY-MM-##### or SO#YYYY-MM-##### values and keep the #. orderNumber still accepts a single number or partial match. Returns each number as a hit (status and deep link) or an explicit miss. Never invent a status.",
       inputSchema: z.object({
         orderNumber: z
           .string()
@@ -322,7 +322,7 @@ export function buildPixelcareAiTools(
           .max(10)
           .nullish()
           .describe(
-            "Sales order numbers already in the user message. Keep the # (SO#YYYY-MM-#####).",
+            "Sales order numbers already in the user message. Keep the # (ITR#YYYY-MM-##### or SO#YYYY-MM-#####).",
           ),
       }),
       execute: async ({ orderNumber, orderNumbers }) => {

@@ -3,8 +3,10 @@ jest.mock("@/features/sap/services/sap-service-layer-client", () => ({
 }));
 
 import {
-  buildDrBody,
   buildItBody,
+  buildItrBody,
+  buildSoBody,
+  fitSapText,
   buildReturnBody,
   postSapDocument,
 } from "@/features/sap/services/sap-documents";
@@ -42,18 +44,6 @@ describe("SAP document builders", () => {
     expect(line.BaseType).toBe("InventoryTransferRequest");
   });
 
-  it("buildDrBody uses BaseType 17", () => {
-    const body = buildDrBody({
-      ismsRef: "D-1",
-      cardCode: "C1",
-      whs: "W",
-      baseSoEntry: 5,
-      lines: [{ itemCode: "X", serialNos: ["S1", "S2"], baseEntry: 5, baseLine: 1 }],
-    }) as Body;
-    expect(body.DocumentLines[0].BaseType).toBe(17);
-    expect(body.DocumentLines[0].Quantity).toBe(2);
-  });
-
   it("buildReturnBody uses BaseType 15", () => {
     const body = buildReturnBody({
       ismsRef: "R-1",
@@ -63,6 +53,91 @@ describe("SAP document builders", () => {
       lines: [{ itemCode: "X", serialNos: ["S1"], baseEntry: 9, baseLine: 0 }],
     }) as Body;
     expect(body.DocumentLines[0].BaseType).toBe(15);
+  });
+});
+
+describe("buildItrBody", () => {
+  const base = {
+    ismsRef: "ITR#2026-10-94860",
+    fromWhs: "FWH14P1F",
+    toWhs: "ABL003",
+    branchName: "ABENSON LCC IRIGA",
+    lines: [{ itemCode: "55QUHW01", quantity: 1 }],
+  };
+
+  it("puts the order notes in Remarks and a readable Journal Remarks on the header", () => {
+    const body = buildItrBody({ ...base, notes: "Deliver before the weekend sale." }) as Body;
+    expect(body.U_ISMS_PO_No).toBe("ITR#2026-10-94860");
+    expect(body.Comments).toBe("Deliver before the weekend sale.");
+    expect(body.JournalMemo).toBe("ISMS ITR#2026-10-94860 · ABENSON LCC IRIGA");
+  });
+
+  it("sends the order's delivery due date, and leaves Due Date to SAP when there is none", () => {
+    expect((buildItrBody({ ...base, dueDate: "2026-11-03" }) as Body).DueDate).toBe("2026-11-03");
+    expect(buildItrBody({ ...base, dueDate: null })).not.toHaveProperty("DueDate");
+    expect(buildItrBody(base)).not.toHaveProperty("DueDate");
+  });
+
+  it("falls back to the ISMS reference in Remarks when the order has no notes", () => {
+    const body = buildItrBody({ ...base, notes: "  " }) as Body;
+    expect(body.Comments).toBe("ISMS ITR#2026-10-94860");
+  });
+
+  it("stamps the order number and branch name on every line, within SAP's column sizes", () => {
+    const body = buildItrBody({ ...base, branchName: "ABENSON ABREEZA DAVAO" }) as Body;
+    expect(body.StockTransferLines[0]).toMatchObject({
+      ItemCode: "55QUHW01",
+      U_ISMS_PONum: "ITR#2026-10-94860",
+      U_Branch_Name: "ABENSON ABREEZA DAV…",
+      U_Branch_Namelong: "ABENSON ABREEZA DAVAO",
+    });
+    expect(String(body.StockTransferLines[0].U_Branch_Name)).toHaveLength(20);
+  });
+
+  it("keeps long notes and journal remarks inside SAP's limits", () => {
+    const body = buildItrBody({
+      ...base,
+      branchName: "A".repeat(60),
+      notes: "x ".repeat(300),
+    }) as Body;
+    expect(String(body.Comments).length).toBeLessThanOrEqual(254);
+    expect(String(body.JournalMemo).length).toBeLessThanOrEqual(50);
+  });
+});
+
+describe("buildSoBody", () => {
+  it("carries the same notes, journal remarks and line fields as the ITR", () => {
+    const body = buildSoBody({
+      ismsRef: "SO#2026-10-00034",
+      cardCode: "C001",
+      whs: "FWH14P1F",
+      dueDate: "2026-11-03",
+      branchName: "ABENSON ABREEZA DAVAO",
+      notes: "Rush for the mall sale.",
+      lines: [{ itemCode: "55QUHW01", quantity: 2 }],
+    }) as Body;
+    expect(body).toMatchObject({
+      U_ISMS_PO_No: "SO#2026-10-00034",
+      Comments: "Rush for the mall sale.",
+      JournalMemo: "ISMS SO#2026-10-00034 · ABENSON ABREEZA DAVAO",
+      CardCode: "C001",
+      DocDueDate: "2026-11-03",
+    });
+    expect(body.DocumentLines[0]).toEqual({
+      ItemCode: "55QUHW01",
+      Quantity: 2,
+      WarehouseCode: "FWH14P1F",
+      U_ISMS_PONum: "SO#2026-10-00034",
+      U_Branch_Name: "ABENSON ABREEZA DAV…",
+      U_Branch_Namelong: "ABENSON ABREEZA DAVAO",
+    });
+  });
+});
+
+describe("fitSapText", () => {
+  it("collapses whitespace and only cuts when it must", () => {
+    expect(fitSapText("  line one\n line   two ", 30)).toBe("line one line two");
+    expect(fitSapText("abcdef", 4)).toBe("abc…");
   });
 });
 

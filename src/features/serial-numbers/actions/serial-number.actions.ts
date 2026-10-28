@@ -13,6 +13,10 @@ import type {
   SerialNumberListSortDir,
 } from "@/features/serial-numbers/repositories/serial-number.repository";
 import { serialNumberSapSyncService } from "@/features/serial-numbers/services/serial-number-sap-sync.service";
+import {
+  serialTargetedSyncInputSchema,
+  type SerialTargetedSyncInput,
+} from "@/features/serial-numbers/schemas/serial-number.schema";
 import { SAP_MANAGE } from "@/features/sap/constants/sap-permissions";
 import { requirePermission } from "@/lib/auth/permissions";
 
@@ -181,6 +185,36 @@ export async function syncSerialNumbersFromSapAction() {
       session.user.tenantId,
       session.user.id,
       { budgetMs: 45_000 },
+    );
+    revalidatePath(SERIAL_NUMBERS_ROUTE);
+    return { success: true as const, result };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to sync serial numbers from SAP" };
+  }
+}
+
+/** Models, brands, branches and warehouses the targeted sync can be narrowed to. */
+export async function listSerialSyncTargetOptionsAction() {
+  const session = await requirePermission(SAP_MANAGE);
+  return serialNumberSapSyncService.listTargetOptions(session.user.tenantId);
+}
+
+/**
+ * One slice of a targeted serial sync. The client calls again with `result.resume` until
+ * `result.caughtUp` is true.
+ */
+export async function syncSerialNumbersTargetFromSapAction(input: SerialTargetedSyncInput) {
+  const session = await requirePermission(SAP_MANAGE);
+  const parsed = serialTargetedSyncInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid sync selection" };
+  }
+  try {
+    const result = await serialNumberSapSyncService.syncTargetFromSap(
+      session.user.tenantId,
+      session.user.id,
+      parsed.data.target,
+      { budgetMs: 45_000, resume: parsed.data.resume },
     );
     revalidatePath(SERIAL_NUMBERS_ROUTE);
     return { success: true as const, result };

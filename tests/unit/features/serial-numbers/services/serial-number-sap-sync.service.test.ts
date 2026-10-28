@@ -11,6 +11,9 @@ jest.mock("@/features/serial-numbers/services/serial-stock-replicate", () => ({
 jest.mock("@/features/serial-numbers/repositories/serial-number.repository", () => ({
   serialNumberRepository: {
     listSapSyncModelKeys: jest.fn(),
+    listSapItemCodesFor: jest.fn(),
+    listSapWarehouseCodesFor: jest.fn(),
+    listSerialNosAtSapWarehouses: jest.fn(),
     applySapSyncPage: jest.fn(),
     setSapOnHandFlags: jest.fn(),
   },
@@ -18,11 +21,24 @@ jest.mock("@/features/serial-numbers/repositories/serial-number.repository", () 
 jest.mock("@/features/sap/services/sap-onhand-stock", () => ({
   ensureSapOnHandQuery: jest.fn(),
   fetchSapSerialLocations: jest.fn(),
+  fetchSapSerialsInWarehouse: jest.fn(),
 }));
 jest.mock("@/features/sap/services/sap-service-layer.service", () => ({
   sapServiceLayerService: { getCredentials: jest.fn() },
 }));
 jest.mock("@/features/sap/services/sap-sync-engine", () => ({
+  runSapTargetedSync: jest.fn(async () => ({
+    fetched: 0,
+    created: 0,
+    updated: 0,
+    unchanged: 0,
+    removed: 0,
+    skipped: [],
+    caughtUp: true,
+    passRows: 0,
+    totalAtSource: null,
+    resume: null,
+  })),
   runSapSync: jest.fn(
     async (
       tenantId: string,
@@ -79,7 +95,12 @@ jest.mock("@/features/sap/services/sap-sync-engine", () => ({
   ),
 }));
 
-import { fetchSapSerialLocations, ensureSapOnHandQuery } from "@/features/sap/services/sap-onhand-stock";
+import {
+  fetchSapSerialLocations,
+  fetchSapSerialsInWarehouse,
+  ensureSapOnHandQuery,
+} from "@/features/sap/services/sap-onhand-stock";
+import { runSapTargetedSync } from "@/features/sap/services/sap-sync-engine";
 import { sapServiceLayerService } from "@/features/sap/services/sap-service-layer.service";
 import { serialNumberRepository } from "@/features/serial-numbers/repositories/serial-number.repository";
 import {
@@ -232,4 +253,68 @@ it("reads on-hand in separate windows when serial ids on a page are far apart", 
   expect(fetchLocations).toHaveBeenCalledWith(expect.objectContaining({ id: "c1" }), 10, 11);
   expect(fetchLocations).toHaveBeenCalledWith(expect.objectContaining({ id: "c1" }), 49999, 50000);
   expect(setFlags).toHaveBeenCalledWith("t1", ["m-live"], [], ["SN1", "SN2"]);
+});
+
+describe("syncTargetFromSap", () => {
+  const runTargeted = runSapTargetedSync as jest.Mock;
+  const itemCodesFor = serialNumberRepository.listSapItemCodesFor as jest.Mock;
+  const warehouseCodesFor = serialNumberRepository.listSapWarehouseCodesFor as jest.Mock;
+  const serialsAt = serialNumberRepository.listSerialNosAtSapWarehouses as jest.Mock;
+  const inWarehouse = fetchSapSerialsInWarehouse as jest.Mock;
+
+  function walkedTarget() {
+    return runTargeted.mock.calls[0][2] as { field: string; keys: string[]; label: string };
+  }
+
+  it("walks pasted serials by SerialNumber and hands the resume token through", async () => {
+    await serialNumberSapSyncService.syncTargetFromSap(
+      "t1",
+      "u1",
+      { kind: "SERIAL", values: ["SN2", "SN1"] },
+      { resume: "tok" },
+    );
+
+    expect(walkedTarget()).toMatchObject({ field: "SerialNumber", keys: ["SN2", "SN1"] });
+    expect(walkedTarget().label).toMatch(/^SERIAL:2:SN1,SN2#[0-9a-f]{8}$/);
+    expect(runTargeted.mock.calls[0][4]).toEqual({ resume: "tok" });
+  });
+
+  it("walks a model's serials by its SAP item code", async () => {
+    itemCodesFor.mockResolvedValue(["LIVE"]);
+
+    await serialNumberSapSyncService.syncTargetFromSap("t1", "u1", {
+      kind: "MODEL",
+      values: ["m-live"],
+    });
+
+    expect(itemCodesFor).toHaveBeenCalledWith("t1", { modelIds: ["m-live"] });
+    expect(walkedTarget()).toMatchObject({ field: "ItemCode", keys: ["LIVE"] });
+  });
+
+  it("takes a warehouse's serials from SAP and from ISMS, only for carried items", async () => {
+    warehouseCodesFor.mockResolvedValue(["B1"]);
+    serialsAt.mockResolvedValue(["SN-LEFT"]);
+    inWarehouse.mockResolvedValue([
+      { serialNo: "SN-HERE", itemCode: "LIVE", warehouseCode: "B1" },
+      { serialNo: "SN-OTHER", itemCode: "NOT-CARRIED", warehouseCode: "B1" },
+    ]);
+
+    await serialNumberSapSyncService.syncTargetFromSap("t1", "u1", {
+      kind: "WAREHOUSE",
+      values: ["w1"],
+    });
+
+    expect(warehouseCodesFor).toHaveBeenCalledWith("t1", { warehouseIds: ["w1"] });
+    expect(walkedTarget().field).toBe("SerialNumber");
+    expect([...walkedTarget().keys].sort()).toEqual(["SN-HERE", "SN-LEFT"]);
+  });
+
+  it("says so instead of syncing when the selection resolves to nothing", async () => {
+    itemCodesFor.mockResolvedValue([]);
+
+    await expect(
+      serialNumberSapSyncService.syncTargetFromSap("t1", "u1", { kind: "BRAND", values: ["b1"] }),
+    ).rejects.toThrow("None of the selected brands are in ISMS Master data");
+    expect(runTargeted).not.toHaveBeenCalled();
+  });
 });

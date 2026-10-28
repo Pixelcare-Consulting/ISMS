@@ -46,8 +46,8 @@ export default async function WarehouseStockPage({
     <div className="space-y-4">
       <ModuleGuide {...WAREHOUSE_STOCK_MODULE_GUIDE} />
       <SectionPageLead>
-        Serials with a location in a warehouse. Branch stock stocked into a location stays
-        branch stock; Held by shows its branch.
+        Serials with a location in a warehouse. Branch stock with a location stays branch
+        stock; Held by shows its branch.
       </SectionPageLead>
       <WarehouseStockTable
         result={result}

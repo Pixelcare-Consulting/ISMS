@@ -1,3 +1,5 @@
+import type { Prisma } from "@prisma/client";
+
 import { deliveryPostingService } from "@/features/logistics/services/delivery-posting.service";
 import { deliveryReturnService } from "@/features/logistics/services/delivery-return.service";
 import {
@@ -13,8 +15,8 @@ export const opsService = {
     return opsRepository.listDeliveries(tenantId, branchIds);
   },
 
-  listTransfers(tenantId: string) {
-    return opsRepository.listTransfers(tenantId);
+  listTransfers(tenantId: string, extra?: Prisma.BranchTransferWhereInput) {
+    return opsRepository.listTransfers(tenantId, extra);
   },
 
   listPullouts(tenantId: string, branchIds?: string[]) {

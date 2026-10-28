@@ -58,4 +58,10 @@ export interface SapSyncResult {
    * this to name SAP warehouses that must be synced before their serials can be.
    */
   notes?: string[];
+
+  /**
+   * Targeted syncs only: where this slice stopped, to send back with the next call.
+   * Null once the target is fully read. A pass keeps its place in `SapSyncCursor` instead.
+   */
+  resume?: string | null;
 }

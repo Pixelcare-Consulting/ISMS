@@ -1,7 +1,14 @@
+import { createHash } from "node:crypto";
+
+import { SAP_NO_CONNECTION_MESSAGE } from "@/config/platform";
 import { sapText } from "@/features/sap/services/sap-master-data";
-import { runSapSync } from "@/features/sap/services/sap-sync-engine";
-import type { SapSyncEntity } from "@/features/sap/types/sap-sync-entity";
+import { fetchSapSerialsInWarehouse } from "@/features/sap/services/sap-onhand-stock";
+import { sapServiceLayerService } from "@/features/sap/services/sap-service-layer.service";
+import { runSapSync, runSapTargetedSync } from "@/features/sap/services/sap-sync-engine";
+import type { SapSyncEntity, SapSyncTarget } from "@/features/sap/types/sap-sync-entity";
 import type { SapSyncResult } from "@/features/sap/schemas/sap-master-sync.schema";
+import { SERIAL_SYNC_TARGET_LABELS } from "@/features/serial-numbers/constants/serial-sync-target";
+import type { SerialSyncTarget } from "@/features/serial-numbers/schemas/serial-number.schema";
 import { serialNumberRepository } from "@/features/serial-numbers/repositories/serial-number.repository";
 import {
   gateSerialPageByWarehouse,
@@ -178,7 +185,79 @@ function missingWarehouseNote(result: SapSyncResult): string | null {
   );
 }
 
+/**
+ * Serials SAP holds in these warehouses, plus the ones ISMS last saw there.
+ *
+ * Both halves matter: SAP's side finds serials that arrived since the last sync, and
+ * ISMS's side finds serials that have since left, so their location is cleared or moved
+ * rather than left pointing at a warehouse that no longer holds them. SAP's side is kept
+ * to items ISMS carries; anything else could only come back as a skip.
+ */
+async function serialsInWarehouses(tenantId: string, codes: string[]): Promise<string[]> {
+  const creds = await sapServiceLayerService.getCredentials(tenantId);
+  if (!creds) throw new Error(SAP_NO_CONNECTION_MESSAGE);
+
+  const models = await serialNumberRepository.listSapSyncModelKeys(tenantId);
+  const carried = new Set(models.map((model) => model.skuCode));
+
+  const serials = new Set(await serialNumberRepository.listSerialNosAtSapWarehouses(tenantId, codes));
+  // Sequential on purpose: SAP serialises requests on one session anyway.
+  for (const code of codes) {
+    for (const location of await fetchSapSerialsInWarehouse(creds, code)) {
+      if (carried.has(location.itemCode)) serials.add(location.serialNo);
+    }
+  }
+  return [...serials];
+}
+
+/** Keys the engine walks for `target`, and the SAP field they match. */
+async function resolveTarget(
+  tenantId: string,
+  target: SerialSyncTarget,
+): Promise<Pick<SapSyncTarget, "field" | "keys">> {
+  const { kind, values } = target;
+  switch (kind) {
+    case "SERIAL":
+      return { field: "SerialNumber", keys: values };
+    case "MODEL":
+      return {
+        field: "ItemCode",
+        keys: await serialNumberRepository.listSapItemCodesFor(tenantId, { modelIds: values }),
+      };
+    case "BRAND":
+      return {
+        field: "ItemCode",
+        keys: await serialNumberRepository.listSapItemCodesFor(tenantId, { brandIds: values }),
+      };
+    case "BRANCH":
+    case "WAREHOUSE": {
+      const codes = await serialNumberRepository.listSapWarehouseCodesFor(
+        tenantId,
+        kind === "BRANCH" ? { branchIds: values } : { warehouseIds: values },
+      );
+      if (codes.length === 0) return { field: "SerialNumber", keys: [] };
+      return { field: "SerialNumber", keys: await serialsInWarehouses(tenantId, codes) };
+    }
+  }
+}
+
+/**
+ * `SERIAL:3:SN1,SN2,SN3#a1b2c3d4`. Short enough for an audit line, and the hash keeps two
+ * different targets with the same preview from sharing a lock.
+ */
+function targetLabel(target: SerialSyncTarget): string {
+  const sorted = [...target.values].sort();
+  const hash = createHash("sha256").update(sorted.join("\n")).digest("hex").slice(0, 8);
+  const preview = sorted.slice(0, 5).join(",");
+  return `${target.kind}:${sorted.length}:${preview}${sorted.length > 5 ? ",…" : ""}#${hash}`;
+}
+
 export const serialNumberSapSyncService = {
+  /** What the targeted sync picker offers. */
+  listTargetOptions(tenantId: string) {
+    return serialNumberRepository.listSapSyncTargetOptions(tenantId);
+  },
+
   /**
    * Pull serial master data from SAP into the ISMS registry, linking each serial to the
    * SAP warehouse that holds it.
@@ -198,6 +277,41 @@ export const serialNumberSapSyncService = {
     options?: { budgetMs?: number },
   ): Promise<SapSyncResult> {
     const result = await runSapSync(tenantId, serialNumberSyncEntity, actorUserId, options);
+    const note = missingWarehouseNote(result);
+    return note ? { ...result, notes: [...(result.notes ?? []), note] } : result;
+  },
+
+  /**
+   * Re-sync only the serials `target` names: specific serials, a model's or brand's
+   * serials, or the serials in a branch's or warehouse's SAP warehouses.
+   *
+   * Same writes as a full sync, and the same warehouse gate, but it never moves the full
+   * sync's place and never removes anything. Like the full sync it may take more than one
+   * call; pass the previous result's `resume` back until `caughtUp` is true.
+   */
+  async syncTargetFromSap(
+    tenantId: string,
+    actorUserId: string | null,
+    target: SerialSyncTarget,
+    options?: { budgetMs?: number; resume?: string | null },
+  ): Promise<SapSyncResult> {
+    const { field, keys } = await resolveTarget(tenantId, target);
+    if (keys.length === 0) {
+      const what = SERIAL_SYNC_TARGET_LABELS[target.kind].toLowerCase();
+      throw new Error(
+        target.kind === "BRANCH" || target.kind === "WAREHOUSE"
+          ? `No serial numbers found in SAP or ISMS for the selected ${what}.`
+          : `None of the selected ${what} are in ISMS Master data, so there is nothing to sync.`,
+      );
+    }
+
+    const result = await runSapTargetedSync(
+      tenantId,
+      serialNumberSyncEntity,
+      { field, kind: "string", keys, label: targetLabel(target) },
+      actorUserId,
+      options,
+    );
     const note = missingWarehouseNote(result);
     return note ? { ...result, notes: [...(result.notes ?? []), note] } : result;
   },

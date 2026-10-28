@@ -5,8 +5,11 @@ import type { BranchOrderType } from "@prisma/client";
 import {
   getDeliveryActionableStatusCodes,
   getPulloutActionableStatusCodes,
-  getTransferActionableStatusCodes,
 } from "@/features/logistics/constants/logistics-actionable-statuses";
+import {
+  resolveLogisticsBranchScope,
+  transferActionableWhere,
+} from "@/features/logistics/lib/transfer-visibility";
 import {
   canAccessLogistics,
   resolveLogisticsCapabilities,
@@ -147,8 +150,12 @@ export async function getWorkflowNavCountBadgesAction(): Promise<WorkflowNavCoun
       (async () => {
         if (!canAccessLogistics(permissions)) return 0;
         const caps = resolveLogisticsCapabilities(permissions);
-        const codes = getTransferActionableStatusCodes(caps);
-        return logisticsRepository.countTransfersByStatusCodes(tenantId, codes);
+        const where = transferActionableWhere(
+          await resolveLogisticsBranchScope({ tenantId, userId, permissions }),
+          caps,
+        );
+        if (!where) return 0;
+        return logisticsRepository.countAllTransfers(tenantId, where);
       })(),
       (async () => {
         if (!canAccessLogistics(permissions)) return 0;

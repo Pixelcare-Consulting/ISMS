@@ -139,7 +139,7 @@ export function WarehouseStockTable({
 
   const emptyMessage = hasActiveFilters
     ? "No warehouse serials match your filters."
-    : "No serials have a location yet. Use Stock in on a location in Settings, Warehouses.";
+    : "No serials have a warehouse location. Stock comes from SAP; serials SAP holds in a warehouse are dispatched from there without a location.";
 
   const indexOffset = (result.page - 1) * result.limit;
   const columns = useMemo(() => {

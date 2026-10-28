@@ -1,9 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import { OrderApprovalTimeline } from "@/app/(app)/orders/_components/order-approval-timeline";
-import { OrderWorksheet } from "@/app/(app)/orders/_components/order-worksheet";
+import {
+  OrderWorksheet,
+  SupplyPlanningFigures,
+} from "@/app/(app)/orders/_components/order-worksheet";
 import { useOrderWorksheet } from "@/app/(app)/orders/_components/use-order-worksheet";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +29,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Textarea } from "@/components/ui/textarea";
 import { OrderStatusBadge } from "@/features/orders/components/order-status-badge";
 import { BRANCH_ORDER_TYPE_LABELS } from "@/features/orders/constants/order-status";
@@ -36,6 +40,10 @@ import {
 } from "@/features/orders/constants/order-workflow";
 import type { ApprovalTimelineSource } from "@/features/orders/lib/order-approval-timeline";
 import { worksheetLinesOnOrder } from "@/features/orders/lib/order-create-details";
+import {
+  worksheetBrandSalesQty,
+  worksheetPlanningFigures,
+} from "@/features/orders/lib/order-worksheet";
 import { worksheetOrderTotals } from "@/features/orders/lib/order-worksheet-filters";
 import { buildOrderReviewSnapshot, type OrderReviewSnapshot } from "@/features/orders/lib/order-review-snapshot";
 import {
@@ -45,7 +53,17 @@ import {
   type WorksheetDraftInput,
 } from "@/features/orders/lib/order-worksheet-rows";
 import { getDeliveryDueDateWarning } from "@/features/orders/utils/delivery-schedule";
+import type { OrderAnalyticsBrand, OrderWorksheetLine } from "@/features/orders/types/order-analytics";
 import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
+
+const REQUEST_AT = new Intl.DateTimeFormat("en-PH", {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  timeZone: "Asia/Manila",
+});
 
 export interface OrderWorkflowLine {
   detailId: string;
@@ -62,6 +80,7 @@ interface OrderWorkflowDialogProps {
   orderType: BranchOrderType;
   branchId: string;
   branchName: string;
+  createdAt?: string | Date | null;
   updatedAt?: string | Date | null;
   deliverySchedule?: unknown;
   lines: OrderWorkflowLine[];
@@ -97,6 +116,7 @@ export function OrderWorkflowDialog({
   orderType,
   branchId,
   branchName,
+  createdAt,
   updatedAt,
   deliverySchedule,
   lines,
@@ -114,6 +134,12 @@ export function OrderWorkflowDialog({
   const [confirmAction, setConfirmAction] = useState<"approve" | "reject" | null>(null);
   const [drafts, setDrafts] = useState<Record<string, WorksheetDraftInput>>({});
   const [draftsForOrderId, setDraftsForOrderId] = useState<string | null>(null);
+  const [brandId, setBrandId] = useState("");
+  const [brandForOrderId, setBrandForOrderId] = useState<string | null>(null);
+  if (brandForOrderId !== orderId) {
+    setBrandForOrderId(orderId);
+    setBrandId("");
+  }
   const modelIds = useMemo(() => lines.map((line) => line.modelId), [lines]);
   const worksheet = useOrderWorksheet({
     enabled: open,
@@ -127,6 +153,40 @@ export function OrderWorkflowDialog({
     () => worksheetLinesOnOrder(worksheet.payload?.lines ?? [], orderModelIds),
     [orderModelIds, worksheet.payload],
   );
+  const reviewBrands = useMemo(
+    () => reviewBrandOptions(worksheet.payload?.brands ?? [], worksheet.payload?.lines ?? []),
+    [worksheet.payload],
+  );
+  const brandSalesQty = useMemo(
+    () => worksheetBrandSalesQty(worksheet.payload?.lines ?? []),
+    [worksheet.payload],
+  );
+  const planningFigures = useMemo(() => {
+    if (!worksheet.payload) return null;
+    const projected = projectWorksheetLines(
+      worksheet.payload.lines,
+      drafts,
+      orderType,
+      "readonly",
+    );
+    return worksheetPlanningFigures({
+      lines: projected.map((line) => ({
+        brandId: line.brandId,
+        srp: line.srp,
+        cbm: line.cbm,
+        salesAmount: line.salesAmount,
+        salesUnavailable: line.salesUnavailable,
+        milDays: line.milDays,
+        onPlanogram: line.onPlanogram,
+        onHandQty: line.inventory.onHandQty,
+        requestedQty: line.requestedQty,
+        approvedQty: line.approvedQty,
+      })),
+      brandId: brandId || null,
+      brandQuotas: worksheet.payload.brandQuotas,
+      daysElapsed: worksheet.payload.summary.daysElapsed,
+    });
+  }, [brandId, drafts, orderType, worksheet.payload]);
   if (worksheet.payload && draftsForOrderId !== orderId) {
     setDraftsForOrderId(orderId);
     setDrafts(draftsForOrderLines(worksheet.payload.lines, lines));
@@ -247,27 +307,43 @@ export function OrderWorkflowDialog({
           </DialogHeader>
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto xl:flex-row xl:overflow-hidden">
             <aside className="flex w-full shrink-0 flex-col gap-4 border-b px-4 py-4 sm:px-6 xl:w-80 xl:overflow-y-auto xl:border-b-0 xl:border-r xl:px-5">
-              <dl className="grid grid-cols-[4.75rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2 text-sm">
-                <dt className="text-muted-foreground">Type</dt>
-                <dd className="min-w-0 break-words">
-                  {BRANCH_ORDER_TYPE_LABELS[orderType] ?? orderType}
-                </dd>
-                <dt className="text-muted-foreground">Branch</dt>
-                <dd className="min-w-0 break-words">{branchName}</dd>
-                <dt className="text-muted-foreground">Status</dt>
-                <dd className="min-w-0">
-                  <OrderStatusBadge status={status} />
-                </dd>
-                {currentApprover ? (
-                  <>
-                    <dt className="text-muted-foreground">Approver</dt>
-                    <dd className="min-w-0 break-words">{currentApprover}</dd>
-                  </>
-                ) : null}
-              </dl>
-              {afterApprove ? (
-                <p className="text-sm leading-relaxed text-muted-foreground">{afterApprove}</p>
-              ) : null}
+              {isSpFinalStep ? (
+                <SupplyPlanningRail
+                  orderNumber={orderNumber}
+                  createdAt={createdAt}
+                  orderType={orderType}
+                  branchName={branchName}
+                  brands={reviewBrands}
+                  brandId={brandId}
+                  onBrandIdChange={setBrandId}
+                  frequencyCode={worksheet.payload?.deliveryFrequencyCode ?? null}
+                  targetDiiDays={planningFigures?.targetDiiDays ?? null}
+                />
+              ) : (
+                <>
+                  <dl className="grid grid-cols-[4.75rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2 text-sm">
+                    <dt className="text-muted-foreground">Type</dt>
+                    <dd className="min-w-0 break-words">
+                      {BRANCH_ORDER_TYPE_LABELS[orderType] ?? orderType}
+                    </dd>
+                    <dt className="text-muted-foreground">Branch</dt>
+                    <dd className="min-w-0 break-words">{branchName}</dd>
+                    <dt className="text-muted-foreground">Status</dt>
+                    <dd className="min-w-0">
+                      <OrderStatusBadge status={status} />
+                    </dd>
+                    {currentApprover ? (
+                      <>
+                        <dt className="text-muted-foreground">Approver</dt>
+                        <dd className="min-w-0 break-words">{currentApprover}</dd>
+                      </>
+                    ) : null}
+                  </dl>
+                  {afterApprove ? (
+                    <p className="text-sm leading-relaxed text-muted-foreground">{afterApprove}</p>
+                  ) : null}
+                </>
+              )}
               {isSpFinalStep ? (
                 <div className="space-y-1.5">
                   <Label htmlFor="delivery-due">Delivery due date (optional)</Label>
@@ -306,7 +382,14 @@ export function OrderWorkflowDialog({
                 />
               </div>
             </aside>
-            <div className="flex min-h-[24rem] min-w-0 flex-1 flex-col px-4 py-3 sm:px-6 xl:min-h-0 xl:overflow-hidden">
+            <div className="flex min-h-[24rem] min-w-0 flex-1 flex-col gap-3 px-4 py-3 sm:px-6 xl:min-h-0 xl:overflow-hidden">
+              {isSpFinalStep ? (
+                <SupplyPlanningFigures
+                  figures={planningFigures}
+                  inventoryAsOf={worksheet.payload?.summary.inventoryAsOf ?? null}
+                  loading={worksheet.loading}
+                />
+              ) : null}
               <OrderWorksheet
                 lines={orderSheetLines}
                 brands={worksheet.payload?.brands ?? []}
@@ -317,6 +400,10 @@ export function OrderWorkflowDialog({
                 error={worksheet.error}
                 summary={worksheet.payload?.summary ?? null}
                 summaryMode="current"
+                hideSummary={isSpFinalStep}
+                columnSet={isSpFinalStep ? "supply-planning" : "default"}
+                brandId={isSpFinalStep ? brandId : undefined}
+                brandSalesQty={isSpFinalStep ? brandSalesQty : undefined}
                 showApprovedQty={isSpFinalStep}
                 approvedQtyEditable={isSpFinalStep}
                 showSpRemarks={isSpFinalStep}
@@ -391,4 +478,88 @@ export function OrderWorkflowDialog({
       </AlertDialog>
     </>
   );
+}
+
+function SupplyPlanningRail({
+  orderNumber,
+  createdAt,
+  orderType,
+  branchName,
+  brands,
+  brandId,
+  onBrandIdChange,
+  frequencyCode,
+  targetDiiDays,
+}: {
+  orderNumber: string;
+  createdAt: string | Date | null | undefined;
+  orderType: BranchOrderType;
+  branchName: string;
+  brands: OrderAnalyticsBrand[];
+  brandId: string;
+  onBrandIdChange: (brandId: string) => void;
+  frequencyCode: string | null;
+  targetDiiDays: number | null;
+}) {
+  return (
+    <div className="space-y-3">
+      <RailFact label="Order number">{orderNumber}</RailFact>
+      <RailFact label="Request date">{formatRequestAt(createdAt)}</RailFact>
+      <RailFact label="Order type">{BRANCH_ORDER_TYPE_LABELS[orderType] ?? orderType}</RailFact>
+      <RailFact label="Branch">{branchName}</RailFact>
+      <div className="space-y-1">
+        <SearchableSelect
+          id="review-brand"
+          label="Brand"
+          className="w-full"
+          popoverClassName="z-[100]"
+          options={brands.map((brand) => ({ id: brand.id, label: brand.name }))}
+          value={brandId}
+          onChange={onBrandIdChange}
+          allowClear
+          disabled={brands.length === 0}
+          placeholder="All brands"
+          searchPlaceholder="Search brands…"
+          emptyMessage="No brands on this order."
+        />
+      </div>
+      <RailFact label="Delivery frequency">{frequencyCode?.trim() ? frequencyCode : "—"}</RailFact>
+      <RailFact label="DII target">{formatDiiTarget(targetDiiDays)}</RailFact>
+    </div>
+  );
+}
+
+function RailFact({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="space-y-0.5">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <div className="min-w-0 break-words text-sm">{children}</div>
+    </div>
+  );
+}
+
+function reviewBrandOptions(
+  brands: readonly OrderAnalyticsBrand[],
+  lines: readonly Pick<OrderWorksheetLine, "brandId" | "brandName">[],
+): OrderAnalyticsBrand[] {
+  const byId = new Map(brands.map((brand) => [brand.id, brand]));
+  for (const line of lines) {
+    if (!line.brandId || byId.has(line.brandId)) continue;
+    const name = line.brandName?.trim();
+    byId.set(line.brandId, { id: line.brandId, name: name && name.length > 0 ? name : "Brand" });
+  }
+  return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function formatRequestAt(value: string | Date | null | undefined): string {
+  if (!value) return "—";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return REQUEST_AT.format(date);
+}
+
+function formatDiiTarget(days: number | null): string {
+  if (days == null || !Number.isFinite(days)) return "—";
+  const rounded = Number.isInteger(days) ? String(days) : days.toFixed(1);
+  return `${rounded} days`;
 }

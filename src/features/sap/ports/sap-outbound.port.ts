@@ -1,6 +1,5 @@
 import type { SapIntegrationJob } from "@prisma/client";
 
-import type { SapDocRef } from "@/features/sap/services/sap-documents";
 
 /**
  * Swappable outbound contract for SAP B1 document create.
@@ -37,14 +36,6 @@ export interface SapOutboundPort {
     userId?: string;
     job: SapIntegrationJob;
   }): Promise<string>;
-
-  /** Dispatch → Delivery Note (DR) for an outright order, or Inventory Transfer for a consignment one. */
-  createDispatchDocument(input: {
-    tenantId: string;
-    deliveryId: string;
-    /** The warehouse serials being dispatched: they become the SAP document's serial lines. */
-    serialNumberIds: string[];
-  }): Promise<SapDocRef>;
 
   /**
    * Approved delivery return job (`delivery_return`): IT back to the source

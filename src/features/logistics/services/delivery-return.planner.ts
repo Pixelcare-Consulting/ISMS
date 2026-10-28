@@ -5,7 +5,8 @@ import type { DeliveryPostingView, PlanFailure } from "@/features/logistics/serv
 /**
  * Full return of a dispatched delivery's in-transit units. The operator
  * requests it, an approver decides, and only after SAP has the IT or Return do
- * the units go back to the warehouse locations they were dispatched from.
+ * the units go back: to the warehouse location they were dispatched from, or,
+ * for a unit dispatched from SAP's placement, to the source warehouse per SAP.
  */
 
 /** A request in either status still holds the delivery: one open request per delivery (partial unique index). */
@@ -15,7 +16,7 @@ export const RETURN_ALREADY_OPEN_ERROR = "A return request for this delivery is 
 export const RETURN_ON_TRANSFER_ERROR = "Finish or remove the open unit transfer first.";
 export const RETURN_REASON_MAX = 500;
 
-export type ReturnLinePlan = { serialNumberId: string; warehouseLocationToId: string };
+export type ReturnLinePlan = { serialNumberId: string; warehouseLocationToId: string | null };
 
 export function planReturnRequest(
   d: DeliveryPostingView,
@@ -34,13 +35,10 @@ export function planReturnRequest(
     return { ok: false, error: RETURN_ON_TRANSFER_ERROR };
   }
 
-  const lines: ReturnLinePlan[] = [];
-  for (const line of inTransit) {
-    if (!line.warehouseLocationFromId) {
-      return { ok: false, error: "A dispatched serial has no warehouse location to return to" };
-    }
-    lines.push({ serialNumberId: line.serialNumberId, warehouseLocationToId: line.warehouseLocationFromId });
-  }
+  const lines: ReturnLinePlan[] = inTransit.map((line) => ({
+    serialNumberId: line.serialNumberId,
+    warehouseLocationToId: line.warehouseLocationFromId,
+  }));
   return { ok: true, lines };
 }
 

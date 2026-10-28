@@ -14,8 +14,10 @@
 #   migrator  one-shot: extensions + `prisma migrate deploy`, then exits
 #   app       Next.js standalone server (:3000), starts after migrator succeeds
 #   cron      every SAP_CHECK_INTERVAL_SECONDS (default 600), calls
-#             /api/cron/sap-check and /api/cron/ai-automations with CRON_SECRET.
-#             sap-check is read-only (notifies; never syncs). ai-automations runs
+#             /api/cron/sap-check, /api/cron/sap-follow and /api/cron/ai-automations
+#             with CRON_SECRET. sap-check is read-only (notifies; never syncs).
+#             sap-follow applies the ITs / DRs SAP users made with Copy To from an
+#             approved order's ITR / SO. ai-automations runs
 #             enabled assistant schedules in each automation's timezone.
 
 x-logging: &default-logging
@@ -101,6 +103,11 @@ services:
             -H "Authorization: Bearer $$CRON_SECRET" \
             http://app:3000/api/cron/sap-check \
             || echo "[cron] sap-check failed ($(date -u +%FT%TZ))"
+          echo
+          curl -fsS -m 290 \
+            -H "Authorization: Bearer $$CRON_SECRET" \
+            http://app:3000/api/cron/sap-follow \
+            || echo "[cron] sap-follow failed ($(date -u +%FT%TZ))"
           echo
           curl -fsS -m 290 \
             -H "Authorization: Bearer $$CRON_SECRET" \

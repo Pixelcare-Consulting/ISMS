@@ -1,5 +1,8 @@
 import type { BranchOrderStatus, BranchOrderType, SkuStatus } from "@prisma/client";
-import type { OrderSapDocType } from "@/features/orders/constants/order-sap-doc-type";
+import type {
+  OrderSapDocType,
+  ResolvedOrderModeOfPayment,
+} from "@/features/orders/constants/order-sap-doc-type";
 
 /** Off-planogram shelf gap. Em dash, matching the worksheet contract. */
 export const OFF_PLANOGRAM_SUGGESTION_REASON = "N/A\u2014outside planogram";
@@ -133,6 +136,11 @@ export interface OrderWorksheetLine {
   salesUnavailable: boolean;
   sugQty: number | null;
   suggestionUnavailableReason: string | null;
+  /**
+   * Usual days of cover for this model.
+   * Same branch MIL setting order analytics uses. Missing settings use 30 days.
+   */
+  milDays: number;
   /** DIT serials coming into the branch. Not subtracted from SUG. */
   incomingQty: number;
   /**
@@ -167,6 +175,12 @@ export interface OrderWorksheetSummary {
   salesUnavailable: boolean;
 }
 
+/** Current-month quantity stored on Branch Quotas for one brand. */
+export interface OrderWorksheetBrandQuota {
+  brandId: string;
+  quantity: number;
+}
+
 export interface OrderWorksheetPayload {
   branchId: string;
   branchName: string;
@@ -175,6 +189,10 @@ export interface OrderWorksheetPayload {
   brands: OrderAnalyticsBrand[];
   brandId: string | null;
   orderType: BranchOrderType;
+  /** Frequency code on the branch delivery schedule, such as F1. Blank when none. */
+  deliveryFrequencyCode: string | null;
+  /** One current-month quota per brand. Empty when the branch has none. */
+  brandQuotas: OrderWorksheetBrandQuota[];
   lines: OrderWorksheetLine[];
   summary: OrderWorksheetSummary;
 }
@@ -227,6 +245,8 @@ export interface OrderHistoryRow {
   reviewSnapshotAt: string | null;
   sapDocType: OrderSapDocType | null;
   sapDocNum: number | null;
+  /** The mode of payment the order uses (its own, else the dealer's). Null when neither is set. */
+  modeOfPayment: ResolvedOrderModeOfPayment | null;
   orderQty: number;
   totalAmt: number;
   appQty: number;
@@ -241,11 +261,25 @@ export interface OrderHistoryRow {
 export interface OrderHistoryDetailLine extends OrderHistoryLine {
   amount: number;
   approvedAmount: number | null;
+  /** Unit CBM stored on the model. Null when the model has none. */
+  unitCbm: number | null;
+}
+
+/** The one delivery linked to an order. Display and link only. */
+export interface OrderHistoryLinkedDelivery {
+  id: string;
+  deliveryNo: string;
+  status: { code: string; name: string; color: string | null };
 }
 
 /** One order opened from Order History, including the approval clock. */
-export interface OrderHistoryDetail extends Omit<OrderHistoryRow, "lines" | "status"> {
+export interface OrderHistoryDetail extends Omit<OrderHistoryRow, "lines" | "status" | "modeOfPayment"> {
   status: BranchOrderStatus;
+  dealerName: string | null;
+  /** Resolved payment name. Null when neither the order nor the dealer has one. */
+  paymentLabel: string | null;
   processedAt: string | null;
   lines: OrderHistoryDetailLine[];
+  /** Null when this order has no delivery. Not an overall fulfillment status. */
+  delivery: OrderHistoryLinkedDelivery | null;
 }

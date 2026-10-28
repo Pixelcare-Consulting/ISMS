@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { DeliveryTransfersPanel } from "@/app/(app)/logistics/_components/delivery-transfers-panel";
 import { TransfersPageTabs } from "@/app/(app)/logistics/_components/transfers-page-tabs";
@@ -6,6 +6,7 @@ import { TransfersPanel } from "@/app/(app)/logistics/_components/transfers-pane
 import { SectionPageLead } from "@/components/navigation/section-page-lead";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { TransferKpisStrip } from "@/features/logistics/components/transfer-kpis";
+import { loadWorkflowCatalog } from "@/features/logistics/constants/workflow-catalog";
 import {
   getTransferKpisAction,
   listDeliveryTransfersAction,
@@ -20,7 +21,7 @@ import {
 } from "@/features/logistics/constants/logistics-permissions";
 import {
   TRANSFERS_LIST_PATH,
-  TRANSFERS_PAGE_TABS,
+  VISIBLE_TRANSFERS_PAGE_TABS,
   parseTransfersPageTab,
   transfersListHref,
   type TransfersPageTab,
@@ -51,8 +52,10 @@ function canViewBranchTransfers(permissions: string[] | undefined): boolean {
 }
 
 function visibleTabs(permissions: string[] | undefined): readonly TransfersPageTab[] {
-  if (canViewBranchTransfers(permissions)) return TRANSFERS_PAGE_TABS;
-  return ["unit"];
+  const allowed: readonly TransfersPageTab[] = canViewBranchTransfers(permissions)
+    ? VISIBLE_TRANSFERS_PAGE_TABS
+    : ["unit"];
+  return allowed.filter((tab) => VISIBLE_TRANSFERS_PAGE_TABS.includes(tab));
 }
 
 export default async function TransfersPage({ searchParams }: TransfersPageProps) {
@@ -61,8 +64,10 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
   const page = Number(params.page) || 1;
   const limit = parseTablePageSize(params.limit);
   const tabs = visibleTabs(session.user.permissions);
+  // Someone who could only see the (now hidden) Unit transfers tab has nothing here.
+  if (tabs.length === 0) notFound();
   const requestedTab = parseTransfersPageTab(params.tab);
-  const activeTab: TransfersPageTab = tabs.includes(requestedTab) ? requestedTab : "unit";
+  const activeTab: TransfersPageTab = tabs.includes(requestedTab) ? requestedTab : tabs[0];
 
   if (activeTab === "unit" && params.tab !== "unit") {
     redirect(transfersListHref("unit", page, limit));
@@ -73,7 +78,7 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
 
   const capabilities = resolveLogisticsCapabilities(session.user.permissions);
   const unrestricted = isBranchScopeUnrestricted(session.user.permissions);
-  const [transfers, kpis, branchScope, unitTransfers] = await Promise.all([
+  const [transfers, kpis, branchScope, unitTransfers, workflowStatuses] = await Promise.all([
     activeTab === "transfers"
       ? listTransfersAction({ page, limit, sort: params.sort, sortDir: params.dir })
       : Promise.resolve(null),
@@ -84,6 +89,7 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
     activeTab === "unit"
       ? listDeliveryTransfersAction({ page, limit })
       : Promise.resolve(null),
+    loadWorkflowCatalog(session.user.tenantId, "transfer_workflow"),
   ]);
   const currentUserName = session.user.name?.trim() || session.user.email || "";
 
@@ -105,6 +111,7 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
                 capabilities={capabilities}
                 branchScope={unrestricted ? null : branchScope}
                 currentUserName={currentUserName}
+                workflowStatuses={workflowStatuses}
                 initialSort={params.sort ?? ""}
                 initialSortDir={params.dir ?? "desc"}
               />
@@ -117,7 +124,10 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
               <SectionPageLead>
                 Units a branch did not accept from a delivery go on a unit transfer. Approve or delete each line, release it, then accept each unit where it arrives.
               </SectionPageLead>
-              <DeliveryTransfersPanel transfers={unitTransfers} />
+              <DeliveryTransfersPanel
+                transfers={unitTransfers}
+                workflowStatuses={workflowStatuses}
+              />
             </div>
           ) : null
         }

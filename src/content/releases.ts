@@ -66,6 +66,562 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.83.0",
+    date: "2026-10-28",
+    title: "Dispatch happens in SAP",
+    highlights: [
+      "Deliveries are dispatched in SAP with Copy To: the order's ITR becomes an Inventory Transfer, its SO a Delivery. ISMS picks it up within about 10 minutes and the units show as in transit for the branch to accept.",
+      "Each delivery has a SAP section with the ITR or SO number to copy from, and every SAP document ISMS found for it.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "ISMS follows SAP Copy To on its own: the serials picked in SAP become in transit on the delivery, with the DR or transfer number and date.",
+      },
+      {
+        type: "feature",
+        description:
+          "Check SAP now, on Deliveries and on a delivery waiting for SAP, looks for new SAP documents right away instead of waiting for the next check.",
+      },
+      {
+        type: "feature",
+        description:
+          "Logistics gets a notification when a SAP document cannot be added to a delivery, with the reason (for example a serial ISMS already shows elsewhere). It clears once the document is sorted out.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The Dispatch and Reject buttons on an approved delivery are gone, since dispatch now happens in SAP. Receiving, returns, and rejecting units on arrival work as before.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Stock in on warehouse locations is gone: stock comes from SAP. Existing locations and Edit location stay.",
+      },
+      {
+        type: "improvement",
+        description: "The Unit transfers tab is hidden. Branch-to-branch moves use Transfers.",
+      },
+    ],
+  },
+  {
+    version: "0.82.0",
+    date: "2026-10-27",
+    title: "Orders show their mode of payment and ITR or SO number",
+    highlights: [
+      "Consignment orders are numbered ITR# and outright orders SO#, and both order lists show each order's mode of payment.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "New orders are numbered by how they are paid: ITR# for consignment, SO# for outright. Existing orders keep their numbers.",
+      },
+      {
+        type: "feature",
+        description:
+          "Orders and Order History show a Mode of payment column, coloured by consignment or outright, and the search box finds orders by it.",
+      },
+      {
+        type: "improvement",
+        description:
+          "An order's page shows the SAP document and its ITR or SO number as separate fields.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The ITR or SO sent to SAP now carries the order number and branch name on every line, the order notes as remarks, a clearer journal remark, and the delivery due date when one is set.",
+      },
+      {
+        type: "fix",
+        description:
+          "Typing in a quantity field replaces the 0 instead of adding to it, and a cleared field stays empty.",
+      },
+    ],
+  },
+  {
+    version: "0.81.1",
+    date: "2026-10-27",
+    title: "Warehouse locations in a window",
+    highlights: [
+      "A warehouse's locations open in their own window, with a list that scrolls and an add form that stays in view.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Locations open in a window instead of stretching the warehouse row, and a long list scrolls inside it.",
+      },
+      {
+        type: "fix",
+        description:
+          "A location code can be used only once per warehouse (names may repeat), even if two people add it at the same moment.",
+      },
+    ],
+  },
+  {
+    version: "0.81.0",
+    date: "2026-10-27",
+    title: "Sync only the serial numbers you need",
+    highlights: [
+      "Sync from SAP can now pull just the serial numbers, models, brands, branches, or warehouses you pick. Leave it empty to sync everything.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Sync from SAP on Serial numbers lets you paste serial numbers or pick models, brands, branches, or warehouses, and re-reads only those from SAP.",
+      },
+      {
+        type: "improvement",
+        description: "The Sync from SAP button is also on Branch inventory.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Stopping a sync now says to run Sync from SAP again to pick up the rest.",
+      },
+    ],
+  },
+  {
+    version: "0.80.22",
+    date: "2026-10-27",
+    releasedAt: "2026-10-27T11:45:00+08:00",
+    title: "New orders get a random order number",
+    highlights: [
+      "New orders get a random order number for the month, and a number already in use is never given out again.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "New orders get a random order number for the month, and a number already in use is never given out again.",
+      },
+    ],
+  },
+  {
+    version: "0.80.21",
+    date: "2026-10-27",
+    releasedAt: "2026-10-27T11:21:00+08:00",
+    title: "A message when SAP does not accept an order",
+    highlights: [
+      "If SAP does not accept the order, a message explains why, and the order stays pending under the same order number.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "If SAP does not accept the order, a message explains why, and the order stays pending under the same order number.",
+      },
+    ],
+  },
+  {
+    version: "0.80.20",
+    date: "2026-10-27",
+    releasedAt: "2026-10-27T10:40:00+08:00",
+    title: "Supply Planning review follows the order sheet",
+    highlights: [
+      "Supply Planning’s review screen follows the order sheet, including the branch quota, days of inventory, and the columns used to approve a request.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Supply Planning’s review screen follows the order sheet: brand quota, DII, inventory by status, sales, rate, MIL, suggestion, order, CBM, approved quantity, and SP remarks.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Creating an order now shows each model’s sales this month and its share of the brand, in the same column order as the order sheet.",
+      },
+      {
+        type: "fix",
+        description:
+          "Creating an order on a shorter screen keeps the model list scrolling inside the page, with stock totals and columns staying in view.",
+      },
+    ],
+  },
+  {
+    version: "0.80.19",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T17:10:00+08:00",
+    title: "Transfers stay inside a dealer group",
+    highlights: [
+      "A transfer can go to another branch of the same dealer, even when that branch is outside your area of responsibility.",
+      "A different dealer stays blocked.",
+      "Only the releasing branch's team leader is asked to approve.",
+      "After approval, the receiving branch can accept or reject each serial, and a rejected serial needs a reason.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "The receiving branch can accept or reject each serial. Accept moves the unit to that branch as stock and updates the delivery receipt number. The original delivery date stays the same. Reject leaves the unit at the releasing branch as stock. The release slip and delivery receipt print when the releasing team leader approves.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Branches of the same dealer can transfer to each other. Approval waits only for the team leader of the releasing branch, and the receiving branch sees the request after that approval.",
+      },
+      {
+        type: "fix",
+        description:
+          "Choosing another branch of the same dealer no longer says it is outside your area of responsibility.",
+      },
+    ],
+  },
+  {
+    version: "0.80.18",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T16:45:00+08:00",
+    title: "Print after the waybill is saved",
+    highlights: [
+      "Logistics can enter the waybill, courier, and schedule date on a delivery or a transfer.",
+      "Print is available after those details are saved.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Print a delivery or a transfer after the waybill, courier, and schedule date are saved.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Transfers now include the same waybill, courier, and schedule date as deliveries.",
+      },
+    ],
+  },
+  {
+    version: "0.80.17",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T16:05:00+08:00",
+    title: "Logistics statuses follow Status settings",
+    highlights: [
+      "Deliveries, transfers, and pull-outs use the names, colors, and order saved in Organization → Status settings.",
+      "Add, rename, recolor, or turn off a delivery, transfer, or pull-out status and the lists, progress, and counts follow that change.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Delivery, transfer, and pull-out progress and counts follow the statuses in Status settings, including the name, color, and order.",
+      },
+    ],
+  },
+  {
+    version: "0.80.16",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T15:25:00+08:00",
+    title: "Series summary follows Master data",
+    highlights: [
+      "Stock units Series summary groups quantity and value by the series saved on each model.",
+      "Change a model's series in Master data and that quantity moves into the new series.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Series summary follows the series on the model. Moving a model from one series to another moves its quantity, and models with no series stay together.",
+      },
+    ],
+  },
+  {
+    version: "0.80.15",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T15:10:00+08:00",
+    title: "Same page as creating an order",
+    highlights: [
+      "Opening a delivery, transfer, pull-out, or saved order uses the same page and table as creating an order, with that document's progress on the page.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Opening a delivery, transfer, pull-out, or saved order uses the same page and table as creating an order, with that document's progress on the page.",
+      },
+    ],
+  },
+  {
+    version: "0.80.14",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T14:35:00+08:00",
+    title: "Open a delivery from the list",
+    highlights: [
+      "A delivery row opens the delivery, the same way a transfer or pull-out does.",
+      "Opening an order or a delivery uses the same sections as creating an order, and the order page shows the stock, request, and approval details.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "A delivery row opens the delivery, the same way a transfer or pull-out does.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Opening an order or a delivery uses the same sections as creating an order, and the order page shows the stock, request, and approval details.",
+      },
+    ],
+  },
+  {
+    version: "0.80.13",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T14:10:00+08:00",
+    title: "Review until the order moves on",
+    highlights: [
+      "Supply Planning sees Review until the order has moved on, and a delivery, transfer, or pull-out shows its progress once.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Supply Planning sees Review until the order has moved on, and a delivery, transfer, or pull-out shows its progress once.",
+      },
+    ],
+  },
+  {
+    version: "0.80.12",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T13:45:00+08:00",
+    title: "Product specialists see their own orders",
+    highlights: ["A product specialist sees only the orders they created."],
+    changes: [
+      {
+        type: "improvement",
+        description: "A product specialist sees only the orders they created.",
+      },
+    ],
+  },
+  {
+    version: "0.80.11",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T13:20:00+08:00",
+    title: "Stages show icons and recorded times",
+    highlights: [
+      "Opening a delivery, transfer, or pull-out shows its stages with icons and the time already recorded.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Opening a delivery, transfer, or pull-out shows its stages with icons and the time already recorded.",
+      },
+    ],
+  },
+  {
+    version: "0.80.10",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T12:55:00+08:00",
+    title: "See logistics as a table or with progress",
+    highlights: [
+      "Deliveries, transfers, and pull-outs can be shown as a table or with each document's progress on the row.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Deliveries, transfers, and pull-outs can be shown as a table or with each document's progress on the row.",
+      },
+    ],
+  },
+  {
+    version: "0.80.9",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T12:40:00+08:00",
+    title: "Your special order stays on the list",
+    highlights: [
+      "A special order you submitted stays on the orders list, and View details can open the full order page.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "A special order you submitted stays on the orders list, and View details can open the full order page.",
+      },
+      {
+        type: "improvement",
+        description: "On the orders list, the time sits under the date so the actions stay in view.",
+      },
+    ],
+  },
+  {
+    version: "0.80.8",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T09:55:00+08:00",
+    title: "Submit confirmation includes total CBM",
+    highlights: [
+      "Before you submit an order, the confirmation includes the total CBM already shown on that order.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Before you submit an order, the confirmation includes the total CBM already shown on that order.",
+      },
+      {
+        type: "fix",
+        description: "Confirming an order sends it one time.",
+      },
+    ],
+  },
+  {
+    version: "0.80.7",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T09:45:00+08:00",
+    title: "After you submit, you can see the order",
+    highlights: [
+      "After you submit an order, a page shows the order number, where it is waiting, and the models you sent.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "After you submit an order, a page shows the order number, where it is waiting, and the models you sent.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Before an order is submitted, you can filter models by the brands on that branch’s planogram and review a summary.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The orders list shows who created each order and when, and editing a line uses a simpler form.",
+      },
+    ],
+  },
+  {
+    version: "0.80.6",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T09:15:00+08:00",
+    title: "Create Order is easier to leave and trim",
+    highlights: [
+      "On Create Order, Back to orders is the way out, model rows can be numbered and removed together, and a special order shows a note above the models.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "On Create Order, Back to orders is the way out, model rows can be numbered and removed together, and a special order shows a note above the models.",
+      },
+    ],
+  },
+  {
+    version: "0.80.5",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T09:10:00+08:00",
+    title: "Create order reads like a form",
+    highlights: [
+      "The create-order page reads like a form, with each model on a single row.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "The create-order page reads like a form, with each model on a single row.",
+      },
+    ],
+  },
+  {
+    version: "0.80.4",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T09:05:00+08:00",
+    title: "One menu collapse button",
+    highlights: [
+      "While a section menu is open, the extra collapse button beside the version is hidden. It comes back when the menu is closed so you can open it again.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "While a section menu is open, the extra collapse button beside the version is hidden. It comes back when the menu is closed so you can open it again.",
+      },
+    ],
+  },
+  {
+    version: "0.80.3",
+    date: "2026-10-24",
+    releasedAt: "2026-10-24T16:50:00+08:00",
+    title: "Create order asks first",
+    highlights: [
+      "Choosing Create Order asks for the dealer, branch, and order type first, then shows the models for that branch.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Choosing Create Order asks for the dealer, branch, and order type first, then shows the models for that branch.",
+      },
+    ],
+  },
+  {
+    version: "0.80.2",
+    date: "2026-10-24",
+    releasedAt: "2026-10-24T15:50:00+08:00",
+    title: "Models on their own rows",
+    highlights: [
+      "Creating an order lists each model on its own row instead of a spreadsheet, with stock, quantity, and totals still on the page.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Creating an order lists each model on its own row instead of a spreadsheet, with stock, quantity, and totals still on the page.",
+      },
+    ],
+  },
+  {
+    version: "0.80.1",
+    date: "2026-10-24",
+    releasedAt: "2026-10-24T15:30:00+08:00",
+    title: "Clearer create order",
+    highlights: [
+      "Creating an order keeps the same steps, with the models, totals, and branch details easier to scan.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Creating an order keeps the same steps, with the models, totals, and branch details easier to scan.",
+      },
+    ],
+  },
+  {
+    version: "0.80.0",
+    date: "2026-10-24",
+    releasedAt: "2026-10-24T13:50:00+08:00",
+    title: "Easier menus and orders",
+    highlights: [
+      "Menus open in two steps: choose a section, then the page you need.",
+      "Manual and Special orders share one list. Choose which type to see. Auto replenish stays on its own page.",
+      "Creating an order opens its own page.",
+      "Order, delivery, transfer, and pull-out details show the real stage and the history already recorded for that stage.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Menus open in two steps: choose a section, then the page you need.",
+      },
+      {
+        type: "feature",
+        description:
+          "Manual and Special orders share one list, with a choice of type. Auto replenish stays on its own page.",
+      },
+      {
+        type: "feature",
+        description: "Creating an order opens its own page.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Order, delivery, transfer, and pull-out details show the real stage and the history already recorded for that stage.",
+      },
+    ],
+  },
+  {
     version: "0.79.1",
     date: "2026-10-23",
     releasedAt: "2026-10-23T15:45:00+08:00",

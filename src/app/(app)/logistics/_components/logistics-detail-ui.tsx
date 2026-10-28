@@ -1,18 +1,14 @@
 "use client";
 
-import { Check, History, Route } from "lucide-react";
+import { ChevronLeft, History, Route } from "lucide-react";
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
-import {
-  resolveStatusColorKey,
-  type StatusColorKey,
-} from "@/features/reason-status/constants/status-colors";
 import { cn } from "@/utils/cn";
 
 const ACTIVITY_TIME = new Intl.DateTimeFormat("en-PH", {
-  year: "numeric",
+  year: "numeric", 
   month: "short",
   day: "2-digit",
   hour: "numeric",
@@ -20,35 +16,10 @@ const ACTIVITY_TIME = new Intl.DateTimeFormat("en-PH", {
   timeZone: "Asia/Manila",
 });
 
-function formatActivityTime(value: string): string {
+function formatActivityTime(value: string): { text: string; dateTime: string | null } {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : ACTIVITY_TIME.format(date);
-}
-
-/** Soft wash for the document header. In transit (sky) is a plain white card. */
-function documentSurfaceClass(key: StatusColorKey): string {
-  switch (key) {
-    case "emerald":
-      return "border-emerald-200 border-l-emerald-500 bg-emerald-50";
-    case "amber":
-      return "border-amber-200 border-l-amber-500 bg-amber-50";
-    case "sky":
-      return "bg-card";
-    case "rose":
-      return "border-rose-200 border-l-rose-500 bg-rose-50";
-    case "violet":
-      return "border-violet-200 border-l-violet-500 bg-violet-50";
-    case "orange":
-      return "border-orange-200 border-l-orange-500 bg-orange-50";
-    case "teal":
-      return "border-teal-200 border-l-teal-500 bg-teal-50";
-    case "slate":
-      return "border-slate-200 border-l-slate-400 bg-slate-50";
-    default: {
-      const unreachable: never = key;
-      return unreachable;
-    }
-  }
+  if (Number.isNaN(date.getTime())) return { text: "Time unavailable", dateTime: null };
+  return { text: ACTIVITY_TIME.format(date), dateTime: value };
 }
 
 export type LogisticsSectionTone = "sky" | "violet" | "amber" | "slate";
@@ -70,61 +41,37 @@ function sectionToneClasses(tone: LogisticsSectionTone): { header: string; chip:
   }
 }
 
-export function LogisticsDocumentHeader({
+/** Dark band used by Create Order: document number, a short status line, back, and actions. */
+export function DocumentDetailBand({
   backHref,
   backLabel,
-  context,
   title,
-  statusCode,
-  statusColor,
-  badges,
+  statusLine,
   actions,
-  plain = false,
 }: {
   backHref: string;
   backLabel: string;
-  context: string;
   title: string;
-  statusCode: string;
-  statusColor?: string | null;
-  badges: ReactNode;
+  statusLine: ReactNode;
   actions?: ReactNode;
-  /** White card. No status wash and no colored left edge. */
-  plain?: boolean;
 }) {
-  const colorKey = resolveStatusColorKey(statusColor, statusCode);
-  const plainSurface = plain || colorKey === "sky";
-  const surface = plainSurface ? "bg-card" : documentSurfaceClass(colorKey);
-
   return (
-    <div className="space-y-2">
-      <Link
-        href={backHref}
-        className="inline-flex text-sm text-muted-foreground transition-colors hover:text-foreground hover:underline"
-      >
-        {backLabel}
-      </Link>
-      <header
-        className={cn(
-          "flex flex-col gap-4 rounded-xl border p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5",
-          plainSurface ? null : "border-l-4",
-          surface,
-        )}
-      >
-        <div className="min-w-0">
-          <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            {context}
-          </p>
-          <h1 className="mt-1 truncate text-2xl font-semibold tracking-tight text-foreground">
-            {title}
-          </h1>
-          <div className="mt-2 flex flex-wrap items-center gap-2">{badges}</div>
-        </div>
-        {actions ? (
-          <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">{actions}</div>
-        ) : null}
-      </header>
-    </div>
+    <header className="flex flex-col gap-4 rounded-xl bg-sidebar px-5 py-5 text-sidebar-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6">
+      <div className="min-w-0">
+        <h1 className="truncate text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
+        <div className="mt-1 text-sm text-sidebar-muted">{statusLine}</div>
+      </div>
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
+        <Link
+          href={backHref}
+          className="inline-flex h-9 items-center gap-1 rounded-full bg-sidebar-accent px-3.5 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-white/10"
+        >
+          <ChevronLeft className="size-4" aria-hidden />
+          {backLabel}
+        </Link>
+        {actions}
+      </div>
+    </header>
   );
 }
 
@@ -139,38 +86,6 @@ export function LogisticsProgressCard({ children }: { children: ReactNode }) {
       </div>
       <div className="bg-card p-4 sm:p-5">{children}</div>
     </section>
-  );
-}
-
-function doneLineDetail(detail: ReactNode): ReactNode | null {
-  if (typeof detail === "string") {
-    const trimmed = detail.trim();
-    return trimmed.length > 0 ? trimmed : null;
-  }
-  return detail ?? null;
-}
-
-/** One finished step: a check, the job name, and an optional person and time. */
-export function LogisticsDoneLine({
-  title,
-  detail,
-}: {
-  title: string;
-  detail?: ReactNode;
-}) {
-  const shown = doneLineDetail(detail);
-
-  return (
-    <p className="flex min-w-0 flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
-      <Check className="size-3.5 shrink-0 text-emerald-600" aria-hidden />
-      <span>{title}</span>
-      {shown ? (
-        <span className="min-w-0">
-          <span aria-hidden> · </span>
-          {shown}
-        </span>
-      ) : null}
-    </p>
   );
 }
 
@@ -199,6 +114,26 @@ export function LogisticsStepWorkspace({
         </footer>
       ) : null}
     </section>
+  );
+}
+
+/** Finished work on one line: what happened, who, and when. */
+export function LogisticsDoneLine({
+  what,
+  who,
+  when,
+}: {
+  what: string;
+  who?: string | null;
+  when?: string | null;
+}) {
+  const detail = [who?.trim(), when?.trim()].filter((part): part is string => Boolean(part));
+
+  return (
+    <p className="text-sm text-muted-foreground">
+      <span className="font-medium text-foreground">{what}</span>
+      {detail.length > 0 ? ` · ${detail.join(" · ")}` : null}
+    </p>
   );
 }
 
@@ -267,6 +202,7 @@ export interface LogisticsActivity {
   label: string;
   actor?: string | null;
   at: string;
+  note?: string | null;
 }
 
 export interface LogisticsTimelineItem {
@@ -288,6 +224,7 @@ interface GroupedActivity {
   actor?: string | null;
   at: string;
   count: number;
+  note?: string | null;
 }
 
 /** Display grouping only. Stored history rows are left as they were saved. */
@@ -305,6 +242,7 @@ function groupActivities(items: LogisticsActivity[]): GroupedActivity[] {
         actor: item.actor,
         at: item.at,
         count: 1,
+        note: item.note,
       });
       continue;
     }
@@ -315,6 +253,7 @@ function groupActivities(items: LogisticsActivity[]): GroupedActivity[] {
     if (activityTime(item.at) >= activityTime(group.at)) {
       group.actor = item.actor;
       group.at = item.at;
+      group.note = item.note;
     }
   }
 
@@ -358,28 +297,67 @@ export function LogisticsTimeline({ items }: { items: LogisticsTimelineItem[] })
   );
 }
 
-export function LogisticsHistoryCard({ items }: { items: LogisticsActivity[] }) {
-  const grouped = groupActivities(items);
+function ActivityStamp({ at }: { at: string }) {
+  const stamp = formatActivityTime(at);
+  if (!stamp.dateTime) return <span>{stamp.text}</span>;
+  return <time dateTime={stamp.dateTime}>{stamp.text}</time>;
+}
+
+/** Timeline only. The page places this inside the one white card. */
+export function LogisticsHistoryBody({
+  items,
+  groupByLabel = true,
+}: {
+  items: LogisticsActivity[];
+  /** Repeated labels stay separate when this is off, so they are not counted as units. */
+  groupByLabel?: boolean;
+}) {
+  const grouped = groupByLabel
+    ? groupActivities(items)
+    : items.map((item) => ({
+        id: item.id,
+        label: item.label,
+        actor: item.actor,
+        at: item.at,
+        count: 1,
+        note: item.note,
+      }));
+
+  if (grouped.length === 0) {
+    return <p className="text-sm text-muted-foreground">No history yet.</p>;
+  }
 
   return (
-    <LogisticsInfoCard title="History" icon={History} tone="slate">
-      {grouped.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No history yet.</p>
-      ) : (
-        <LogisticsTimeline
-          items={grouped.map((item) => ({
-            id: item.id,
-            title: item.label,
-            subtitle: (
-              <>
-                {item.actor ? <span>{item.actor}</span> : null}
-                <time dateTime={item.at}>{formatActivityTime(item.at)}</time>
-                {item.count > 1 ? <span>{item.count} units</span> : null}
-              </>
-            ),
-          }))}
-        />
-      )}
+    <LogisticsTimeline
+      items={grouped.map((item) => ({
+        id: item.id,
+        title: item.label,
+        note: item.note,
+        subtitle: (
+          <>
+            {item.actor ? <span>{item.actor}</span> : null}
+            <ActivityStamp at={item.at} />
+            {item.count > 1 ? <span>{item.count} units</span> : null}
+          </>
+        ),
+      }))}
+    />
+  );
+}
+
+export function LogisticsHistoryCard({
+  items,
+  groupByLabel = true,
+  title = "History",
+}: {
+  items: LogisticsActivity[];
+  /** Repeated labels stay separate when this is off, so they are not counted as units. */
+  groupByLabel?: boolean;
+  title?: string;
+}) {
+  return (
+    <LogisticsInfoCard title={title} icon={History} tone="slate">
+      <LogisticsHistoryBody items={items} groupByLabel={groupByLabel} />
     </LogisticsInfoCard>
   );
 }

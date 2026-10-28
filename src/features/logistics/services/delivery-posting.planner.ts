@@ -1,19 +1,15 @@
 /**
- * Delivery posting rules. Dispatch, accept, and reject either post every
- * requested unit or change nothing. A second attempt of a finished post does
- * not move the same unit again.
+ * Delivery posting rules. Accept either posts every requested unit or changes
+ * nothing, and a second attempt does not move the same unit again. Dispatch
+ * happens in SAP (Copy To); see sap-copy-to-follow.planner.ts.
  *
  * Status names stay the existing delivery workflow codes. Inventory stays
  * DIT while in transit and STK only after the branch accepts.
  */
 
-export type DeliveryWorkflowCode =
-  | "approved"
-  | "pending"
-  | "accepted"
-  | "rejected"
-  | "partial"
-  | "requested";
+import type { DeliveryWorkflowCodeKey } from "@/features/logistics/constants/workflow-codes";
+
+export type DeliveryWorkflowCode = DeliveryWorkflowCodeKey;
 
 export type BranchUnitStatus = "DIT" | "STK" | "SLD" | "DEF" | "OTHER";
 
@@ -33,61 +29,7 @@ export interface DeliveryPostingView {
   requirements: { modelId: string; quantity: number }[];
 }
 
-export interface WarehouseHold {
-  serialNumberId: string;
-  modelId: string;
-  warehouseId: string;
-  warehouseLocationId: string;
-  /**
-   * WAREHOUSE: a warehouse stock row. BRANCH: branch stock stocked into a
-   * location of this warehouse; dispatch relocates that branch row.
-   */
-  source: "WAREHOUSE" | "BRANCH";
-}
-
-/**
- * A warehouse serial is offered on Dispatch when it is still active, its model
- * is on the approved delivery, and it sits in the branch primary warehouse
- * when that warehouse is set.
- */
-export function isDispatchCandidate(input: {
-  modelId: string;
-  deleted: boolean;
-  warehouseId: string;
-  requiredModelIds: readonly string[];
-  primaryWarehouseId: string | null;
-}): boolean {
-  if (input.deleted) return false;
-  if (!input.requiredModelIds.includes(input.modelId)) return false;
-  if (input.primaryWarehouseId && input.warehouseId !== input.primaryWarehouseId) return false;
-  return true;
-}
-
-export function selectDispatchCandidates<
-  T extends { modelId: string; deleted: boolean; warehouseId: string },
->(
-  rows: readonly T[],
-  requiredModelIds: readonly string[],
-  primaryWarehouseId: string | null,
-): T[] {
-  return rows.filter((row) =>
-    isDispatchCandidate({
-      modelId: row.modelId,
-      deleted: row.deleted,
-      warehouseId: row.warehouseId,
-      requiredModelIds,
-      primaryWarehouseId,
-    }),
-  );
-}
-
 export type PlanFailure = { ok: false; error: string };
-
-export interface DispatchPlan {
-  ok: true;
-  warehouseId: string;
-  moves: { serialNumberId: string; warehouseLocationId: string }[];
-}
 
 export interface AcceptPlan {
   ok: true;
@@ -99,12 +41,6 @@ export interface AcceptPlan {
   idempotent: boolean;
 }
 
-export interface RejectPlan {
-  ok: true;
-  idempotent: boolean;
-}
-
-/** Accept is blocked while a return request (pending approval or awaiting SAP) holds the delivery. */
 export const RETURN_WAITING_ERROR = "A return request for this delivery is waiting for approval";
 
 function unique(ids: string[]): string[] | null {
@@ -114,188 +50,6 @@ function unique(ids: string[]): string[] | null {
     seen.add(id);
   }
   return ids;
-}
-
-export function planDispatch(
-  delivery: DeliveryPostingView,
-  holds: WarehouseHold[],
-  serialNumberIds: string[],
-): DispatchPlan | PlanFailure {
-  if (delivery.status === "pending" || delivery.status === "partial" || delivery.status === "accepted") {
-    return { ok: false, error: "This delivery has already been dispatched" };
-  }
-  if (delivery.status === "rejected") {
-    return { ok: false, error: "A rejected delivery cannot be dispatched" };
-  }
-  if (delivery.status !== "approved") {
-    return { ok: false, error: "Only an approved delivery can be dispatched" };
-  }
-  if (delivery.requirements.length === 0 || delivery.requirements.some((row) => row.quantity < 1)) {
-    return { ok: false, error: "This delivery has no approved quantity to dispatch" };
-  }
-
-  const requested = unique(serialNumberIds);
-  if (!requested || requested.length === 0) {
-    return { ok: false, error: "Select the serials to dispatch" };
-  }
-
-  const requiredTotal = delivery.requirements.reduce((sum, row) => sum + row.quantity, 0);
-  if (requested.length !== requiredTotal) {
-    return {
-      ok: false,
-      error: `Dispatch needs ${requiredTotal} warehouse serial${requiredTotal === 1 ? "" : "s"} for the approved quantity`,
-    };
-  }
-
-  const holdById = new Map(holds.map((hold) => [hold.serialNumberId, hold]));
-  const moves: DispatchPlan["moves"] = [];
-  const countedByModel = new Map<string, number>();
-  let warehouseId: string | null = null;
-
-  for (const serialNumberId of requested) {
-    const hold = holdById.get(serialNumberId);
-    if (!hold) {
-      return {
-        ok: false,
-        error: "One or more serials are missing, already allocated, or not in that warehouse",
-      };
-    }
-    if (warehouseId && hold.warehouseId !== warehouseId) {
-      return { ok: false, error: "Dispatch serials must come from the same warehouse" };
-    }
-    warehouseId = hold.warehouseId;
-    countedByModel.set(hold.modelId, (countedByModel.get(hold.modelId) ?? 0) + 1);
-    moves.push({
-      serialNumberId,
-      warehouseLocationId: hold.warehouseLocationId,
-    });
-  }
-
-  for (const requirement of delivery.requirements) {
-    const counted = countedByModel.get(requirement.modelId) ?? 0;
-    if (counted !== requirement.quantity) {
-      return {
-        ok: false,
-        error: "The selected serials do not match the approved model and quantity",
-      };
-    }
-  }
-  if (countedByModel.size !== delivery.requirements.length) {
-    return {
-      ok: false,
-      error: "The selected serials do not match the approved model and quantity",
-    };
-  }
-
-  return { ok: true, warehouseId: warehouseId ?? "", moves };
-}
-
-export interface DispatchSerialRef {
-  serialNumberId: string;
-  serialNo: string;
-}
-
-/** A branch shelf row that already holds a serial being dispatched. */
-export interface DispatchShelf {
-  serialNumberId: string;
-  branchId: string;
-  branchName: string;
-  status: BranchUnitStatus;
-}
-
-export type DispatchBranchPlacementPlan =
-  | { ok: true; inserts: string[]; updates: string[] }
-  | PlanFailure;
-
-type DispatchShelfAction =
-  | { action: "insert" }
-  | { action: "update" }
-  | { action: "reject"; message: string };
-
-function dispatchShelfConflict(serialNo: string, shelf: DispatchShelf): string {
-  switch (shelf.status) {
-    case "SLD":
-      return `Serial ${serialNo} is already sold at ${shelf.branchName}.`;
-    case "DEF":
-      return `Serial ${serialNo} is defective at ${shelf.branchName}.`;
-    case "DIT":
-    case "STK":
-    case "OTHER":
-      return `Serial ${serialNo} is already at ${shelf.branchName}.`;
-    default: {
-      const unreachable: never = shelf.status;
-      return unreachable;
-    }
-  }
-}
-
-function classifyDispatchShelf(
-  deliveryBranchId: string,
-  serialNo: string,
-  shelves: readonly DispatchShelf[],
-): DispatchShelfAction {
-  for (const shelf of shelves) {
-    switch (shelf.status) {
-      case "SLD":
-      case "DEF":
-        return { action: "reject", message: dispatchShelfConflict(serialNo, shelf) };
-      case "DIT":
-      case "STK":
-      case "OTHER":
-        break;
-      default: {
-        const unreachable: never = shelf.status;
-        return unreachable;
-      }
-    }
-  }
-
-  const elsewhere = shelves.find((shelf) => shelf.branchId !== deliveryBranchId);
-  if (elsewhere) {
-    return { action: "reject", message: dispatchShelfConflict(serialNo, elsewhere) };
-  }
-
-  if (shelves.some((shelf) => shelf.branchId === deliveryBranchId)) {
-    return { action: "update" };
-  }
-
-  return { action: "insert" };
-}
-
-/**
- * Decide how each dispatched serial lands on a branch shelf.
- * Missing rows are inserted as in-transit. A row already on this delivery's
- * branch is updated. Another branch, or a sold or defective unit, stops the post.
- */
-export function planDispatchBranchPlacement(
-  deliveryBranchId: string,
-  serials: readonly DispatchSerialRef[],
-  shelves: readonly DispatchShelf[],
-): DispatchBranchPlacementPlan {
-  const inserts: string[] = [];
-  const updates: string[] = [];
-
-  for (const serial of serials) {
-    const ownShelves = shelves.filter((shelf) => shelf.serialNumberId === serial.serialNumberId);
-    const decision = classifyDispatchShelf(deliveryBranchId, serial.serialNo, ownShelves);
-    const action = decision.action;
-    switch (action) {
-      case "insert":
-        inserts.push(serial.serialNumberId);
-        break;
-      case "update":
-        updates.push(serial.serialNumberId);
-        break;
-      case "reject":
-        return { ok: false, error: decision.message };
-      default: {
-        const unreachable: never = action;
-        return unreachable;
-      }
-    }
-  }
-
-  return { ok: true, inserts, updates };
 }
 
 export function planAccept(
@@ -372,31 +126,6 @@ export function planAccept(
   };
 }
 
-/**
- * Reject closes a delivery that was never dispatched. Units already in transit
- * go back only through a return request, which needs approval and an SAP document.
- */
-export function planReject(delivery: DeliveryPostingView): RejectPlan | PlanFailure {
-  if (delivery.status === "rejected") {
-    return { ok: true, idempotent: true };
-  }
-  if (delivery.status === "accepted") {
-    return { ok: false, error: "An accepted delivery cannot be rejected" };
-  }
-  if (delivery.status === "pending" || delivery.status === "partial") {
-    return { ok: false, error: "Request a return for a dispatched delivery." };
-  }
-  if (delivery.status !== "approved") {
-    return { ok: false, error: "Only an approved delivery that has not been dispatched can be rejected" };
-  }
-  return { ok: true, idempotent: false };
-}
-
-/**
- * Delivery status once units leave it by another route (a unit transfer or a
- * return). No line still in transit at the branch means accepted; at least one
- * gone means partial; otherwise the status stays.
- */
 export function planDeliverySettle(input: {
   totalLines: number;
   stillInTransit: number;
