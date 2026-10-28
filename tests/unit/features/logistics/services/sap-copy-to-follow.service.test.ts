@@ -40,6 +40,9 @@ jest.mock("@/features/reason-status/services/reason-status.service", () => ({
     requireCodeId: jest.fn(async (_t: string, _c: string, code: string) => `inv-${code}`),
   },
 }));
+jest.mock("@/features/logistics/services/sap-copy-to-follow.notifier", () => ({
+  notifyCopyToAttention: jest.fn(async () => "none"),
+}));
 jest.mock("@/features/inventory/services/serial-placement", () => ({
   loadCurrentPlacements: jest.fn(),
   lockSerialNumbers: jest.fn(),

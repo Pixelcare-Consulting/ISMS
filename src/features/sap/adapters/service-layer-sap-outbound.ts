@@ -349,6 +349,8 @@ export const serviceLayerSapOutbound: SapOutboundPort = {
         cardCode: routing.cardCode,
         whs: routing.sourceWhsCode,
         dueDate: isoDate(order.deliveryDueDate ?? new Date()),
+        branchName: order.branch.name,
+        notes: order.notes,
         lines: plainLines,
       });
     } else {

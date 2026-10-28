@@ -18,6 +18,7 @@ import {
 } from "@/features/logistics/constants/logistics-permissions";
 import { logisticsRepository } from "@/features/logistics/repositories/logistics.repository";
 import { deliveryPostingService } from "@/features/logistics/services/delivery-posting.service";
+import { runSapCopyToFollow } from "@/features/logistics/services/sap-copy-to-follow.service";
 import {
   deliveryReturnCancelNoteSchema,
   deliveryReturnDecisionSchema,
@@ -354,6 +355,21 @@ export async function createDeliveryAction(input: unknown) {
   revalidateLogisticsPaths();
   revalidatePath("/operations");
   return { success: true as const };
+}
+
+/**
+ * Run the SAP Copy To follow-up now instead of waiting for the next cron tick (about every
+ * 10 minutes). A run already in progress is joined, not repeated.
+ */
+export async function checkSapCopyToNowAction() {
+  const session = await requireAnyPermission([...DISPATCH_PERMISSIONS]);
+  try {
+    const result = await runSapCopyToFollow(session.user.tenantId, { budgetMs: 45_000 });
+    revalidateLogisticsPaths();
+    return { success: true as const, ...result };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Could not check SAP" };
+  }
 }
 
 export async function listDeliveryReceiptLinesAction(id: string) {

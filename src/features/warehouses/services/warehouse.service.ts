@@ -1,3 +1,4 @@
+import { Prisma } from "@/lib/database/generated/prisma/client";
 import { auditService } from "@/features/audit/services/audit.service";
 import { warehouseRepository } from "@/features/warehouses/repositories/warehouse.repository";
 import {
@@ -74,10 +75,19 @@ export const warehouseService = {
       throw new Error(duplicateLocationCodeMessage(input.code));
     }
 
-    const location = await warehouseRepository.addLocation(input.warehouseId, {
-      code: input.code.trim(),
-      name: input.name.trim(),
-    });
+    let location: Awaited<ReturnType<typeof warehouseRepository.addLocation>>;
+    try {
+      location = await warehouseRepository.addLocation(input.warehouseId, {
+        code: input.code.trim(),
+        name: input.name.trim(),
+      });
+    } catch (e) {
+      // Someone added the same code a moment ago: warehouse_locations_code_ci_uq caught it.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+        throw new Error(duplicateLocationCodeMessage(input.code));
+      }
+      throw e;
+    }
 
     await auditService.log({
       tenantId: input.tenantId,

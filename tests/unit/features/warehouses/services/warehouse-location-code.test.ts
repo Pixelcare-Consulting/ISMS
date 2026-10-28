@@ -27,3 +27,13 @@ it("allows a repeated name under a new code, saved trimmed", async () => {
   await warehouseService.addLocation({ ...base, code: " A2 ", name: " Aisle 1 " });
   expect(addLocation).toHaveBeenCalledWith("w1", { code: "A2", name: "Aisle 1" });
 });
+
+it("reports a code added by someone else a moment ago as a duplicate", async () => {
+  const { Prisma } = jest.requireActual("@/lib/database/generated/prisma/client");
+  addLocation.mockRejectedValue(
+    new Prisma.PrismaClientKnownRequestError("Unique constraint failed", { code: "P2002", clientVersion: "x" }),
+  );
+  await expect(warehouseService.addLocation({ ...base, code: "B9", name: "Bin 9" })).rejects.toThrow(
+    "Location code B9 already exists in this warehouse.",
+  );
+});

@@ -9,6 +9,7 @@ import {
   ShipmentPrintButton,
 } from "@/app/(app)/logistics/_components/logistics-shipment-section";
 import { shipmentPrintDocument } from "@/app/(app)/logistics/_components/shipment-print";
+import { CheckSapNowButton } from "@/app/(app)/logistics/_components/check-sap-now-button";
 import {
   DocumentDetailBand,
   LogisticsHistoryBody,
@@ -144,7 +145,13 @@ const COPY_TO_TARGET: Record<string, string> = {
  * The SAP side of the delivery: the ITR / SO ISMS posted at approval, and the IT / DR
  * documents SAP users made from it with Copy To, as the cron follow-up found them.
  */
-function SapDocumentsSection({ detail }: { detail: DeliveryDetail }) {
+function SapDocumentsSection({
+  detail,
+  canCheckSap,
+}: {
+  detail: DeliveryDetail;
+  canCheckSap: boolean;
+}) {
   const order = detail.order;
   if (!order?.sapDocType) return null;
   const base = orderSapDocumentFields({ sapDocType: order.sapDocType, sapDocNum: order.sapDocNum });
@@ -166,10 +173,13 @@ function SapDocumentsSection({ detail }: { detail: DeliveryDetail }) {
         />
       </RecordFieldGrid>
       {waiting ? (
-        <p className="mt-3 text-sm text-muted-foreground">
-          Waiting for SAP: copy {order.sapDocType} {base.number} to {COPY_TO_TARGET[order.sapDocType]} in
-          SAP to dispatch this delivery.
-        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <p className="min-w-0 flex-1 text-sm text-muted-foreground">
+            Waiting for SAP: copy {order.sapDocType} {base.number} to {COPY_TO_TARGET[order.sapDocType]}{" "}
+            in SAP to dispatch this delivery.
+          </p>
+          {canCheckSap ? <CheckSapNowButton /> : null}
+        </div>
       ) : null}
       {detail.sapDocuments.length > 0 ? (
         <ul className="mt-3 divide-y rounded-md border">
@@ -340,7 +350,10 @@ export function DeliveryDetailView({
             <RecordReadout label="DR date" value={formatInventoryDrDate(detail.drDate)} />
           </RecordFieldGrid>
         </RecordSection>
-        <SapDocumentsSection detail={detail} />
+        <SapDocumentsSection
+          detail={detail}
+          canCheckSap={capabilities.canDispatch || capabilities.canManage}
+        />
         <LogisticsShipmentSection
           key={`${detail.shipment.waybillNo ?? ""}|${detail.shipment.courierName ?? ""}|${detail.shipment.scheduledAt ?? ""}`}
           shipment={detail.shipment}

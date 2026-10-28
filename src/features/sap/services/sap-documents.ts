@@ -70,11 +70,12 @@ function baseRef(line: SapSerialLine) {
 }
 
 /**
- * Column sizes in this company DB (OWTQ / WTQ1, read from UserFieldsMD on 2026-10-27,
- * Comments and JournalMemo are B1's own). A longer value makes SAP refuse the document,
- * so every free-text value is fitted before it is sent.
+ * Column sizes in this company DB, the same on the ITR (OWTQ / WTQ1) and the SO
+ * (ORDR / RDR1): read from UserFieldsMD on 2026-10-27/28; Comments and JournalMemo are
+ * B1's own. A longer value makes SAP refuse the document, so every free-text value is
+ * fitted before it is sent.
  */
-const ITR_TEXT_LIMITS = {
+const ORDER_DOC_TEXT_LIMITS = {
   comments: 254,
   journalMemo: 50,
   lineIsmsRef: 21,
@@ -88,34 +89,62 @@ export function fitSapText(value: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
 }
 
-/**
- * An approved consignment order as an Inventory Transfer Request.
- *
- * Header: Remarks carry the order notes (the ISMS reference when there are none), and
- * Journal Remarks read `ISMS <order #> · <branch>` instead of SAP's generic default.
- * Due Date is sent only when the order has a delivery due date; without one SAP sets it.
- * Lines: the order number (ISMS PO#) and the branch name on every line, full name in
- * Branch Namelong and the 20-character Branch Name column filled as far as it fits.
- */
-export function buildItrBody(i: {
+interface OrderDocumentText {
   ismsRef: string;
-  fromWhs: string;
-  toWhs: string;
   branchName: string;
   notes?: string | null;
-  /** YYYY-MM-DD. Omitted (not sent) when the order has no delivery due date. */
-  dueDate?: string | null;
-  lines: PlainLine[];
-}): Record<string, unknown> {
+}
+
+/**
+ * The ISMS text an approved order carries into SAP, ITR or SO alike. Header: Remarks
+ * carry the order notes (the ISMS reference when there are none), and Journal Remarks
+ * read `ISMS <order #> · <branch>` instead of SAP's generic default. Lines: the order
+ * number (ISMS PO#) and the branch name, full name in Branch Namelong and the
+ * 20-character Branch Name column filled as far as it fits.
+ */
+function orderDocumentText(i: OrderDocumentText): {
+  header: Record<string, unknown>;
+  line: Record<string, unknown>;
+} {
   const branchName = i.branchName.trim();
   const notes = i.notes?.trim();
   return {
-    ...header(i.ismsRef),
-    Comments: fitSapText(notes || `ISMS ${i.ismsRef}`, ITR_TEXT_LIMITS.comments),
-    JournalMemo: fitSapText(
-      branchName ? `ISMS ${i.ismsRef} · ${branchName}` : `ISMS ${i.ismsRef}`,
-      ITR_TEXT_LIMITS.journalMemo,
-    ),
+    header: {
+      ...header(i.ismsRef),
+      Comments: fitSapText(notes || `ISMS ${i.ismsRef}`, ORDER_DOC_TEXT_LIMITS.comments),
+      JournalMemo: fitSapText(
+        branchName ? `ISMS ${i.ismsRef} · ${branchName}` : `ISMS ${i.ismsRef}`,
+        ORDER_DOC_TEXT_LIMITS.journalMemo,
+      ),
+    },
+    line: {
+      U_ISMS_PONum: fitSapText(i.ismsRef, ORDER_DOC_TEXT_LIMITS.lineIsmsRef),
+      ...(branchName
+        ? {
+            U_Branch_Name: fitSapText(branchName, ORDER_DOC_TEXT_LIMITS.lineBranchName),
+            U_Branch_Namelong: fitSapText(branchName, ORDER_DOC_TEXT_LIMITS.lineBranchNameLong),
+          }
+        : {}),
+    },
+  };
+}
+
+/**
+ * An approved consignment order as an Inventory Transfer Request. Due Date is sent only
+ * when the order has a delivery due date; without one SAP sets it.
+ */
+export function buildItrBody(
+  i: OrderDocumentText & {
+    fromWhs: string;
+    toWhs: string;
+    /** YYYY-MM-DD. Omitted (not sent) when the order has no delivery due date. */
+    dueDate?: string | null;
+    lines: PlainLine[];
+  },
+): Record<string, unknown> {
+  const text = orderDocumentText(i);
+  return {
+    ...text.header,
     ...(i.dueDate ? { DueDate: i.dueDate } : {}),
     FromWarehouse: i.fromWhs,
     ToWarehouse: i.toWhs,
@@ -124,32 +153,33 @@ export function buildItrBody(i: {
       Quantity: l.quantity,
       FromWarehouseCode: i.fromWhs,
       WarehouseCode: i.toWhs,
-      U_ISMS_PONum: fitSapText(i.ismsRef, ITR_TEXT_LIMITS.lineIsmsRef),
-      ...(branchName
-        ? {
-            U_Branch_Name: fitSapText(branchName, ITR_TEXT_LIMITS.lineBranchName),
-            U_Branch_Namelong: fitSapText(branchName, ITR_TEXT_LIMITS.lineBranchNameLong),
-          }
-        : {}),
+      ...text.line,
     })),
   };
 }
 
-export function buildSoBody(i: {
-  ismsRef: string;
-  cardCode: string;
-  whs: string;
-  dueDate: string;
-  lines: PlainLine[];
-}): Record<string, unknown> {
+/**
+ * An approved outright order as a Sales Order. SAP requires its Delivery Date, so the
+ * caller always sends one (the order's delivery due date, else today).
+ */
+export function buildSoBody(
+  i: OrderDocumentText & {
+    cardCode: string;
+    whs: string;
+    dueDate: string;
+    lines: PlainLine[];
+  },
+): Record<string, unknown> {
+  const text = orderDocumentText(i);
   return {
-    ...header(i.ismsRef),
+    ...text.header,
     CardCode: i.cardCode,
     DocDueDate: i.dueDate,
     DocumentLines: i.lines.map((l) => ({
       ItemCode: l.itemCode,
       Quantity: l.quantity,
       WarehouseCode: i.whs,
+      ...text.line,
     })),
   };
 }

@@ -5,6 +5,7 @@ jest.mock("@/features/sap/services/sap-service-layer-client", () => ({
 import {
   buildItBody,
   buildItrBody,
+  buildSoBody,
   fitSapText,
   buildReturnBody,
   postSapDocument,
@@ -101,6 +102,35 @@ describe("buildItrBody", () => {
     }) as Body;
     expect(String(body.Comments).length).toBeLessThanOrEqual(254);
     expect(String(body.JournalMemo).length).toBeLessThanOrEqual(50);
+  });
+});
+
+describe("buildSoBody", () => {
+  it("carries the same notes, journal remarks and line fields as the ITR", () => {
+    const body = buildSoBody({
+      ismsRef: "SO#2026-10-00034",
+      cardCode: "C001",
+      whs: "FWH14P1F",
+      dueDate: "2026-11-03",
+      branchName: "ABENSON ABREEZA DAVAO",
+      notes: "Rush for the mall sale.",
+      lines: [{ itemCode: "55QUHW01", quantity: 2 }],
+    }) as Body;
+    expect(body).toMatchObject({
+      U_ISMS_PO_No: "SO#2026-10-00034",
+      Comments: "Rush for the mall sale.",
+      JournalMemo: "ISMS SO#2026-10-00034 · ABENSON ABREEZA DAVAO",
+      CardCode: "C001",
+      DocDueDate: "2026-11-03",
+    });
+    expect(body.DocumentLines[0]).toEqual({
+      ItemCode: "55QUHW01",
+      Quantity: 2,
+      WarehouseCode: "FWH14P1F",
+      U_ISMS_PONum: "SO#2026-10-00034",
+      U_Branch_Name: "ABENSON ABREEZA DAV…",
+      U_Branch_Namelong: "ABENSON ABREEZA DAVAO",
+    });
   });
 });
 

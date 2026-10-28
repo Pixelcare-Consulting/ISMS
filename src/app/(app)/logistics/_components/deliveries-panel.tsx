@@ -27,6 +27,7 @@ import {
   buildLogisticsPageHref,
   LOGISTICS_DELIVERIES_PATH,
 } from "@/app/(app)/logistics/_components/logistics-paths";
+import { CheckSapNowButton } from "@/app/(app)/logistics/_components/check-sap-now-button";
 import { CompactProgressRail } from "@/app/(app)/logistics/_components/compact-progress-rail";
 import { buildDeliveryTracker } from "@/app/(app)/logistics/_components/delivery-tracker";
 import type { WorkflowStatusOption } from "@/features/logistics/constants/workflow-codes";
@@ -66,19 +67,21 @@ interface DeliveryRow {
 interface DeliveriesPanelProps {
   deliveries: PaginatedList<DeliveryRow>;
   workflowStatuses: readonly WorkflowStatusOption[];
+  /** Shows "Check SAP now" (dispatch or logistics manage permission). */
+  canCheckSap?: boolean;
   initialSort?: string;
   initialSortDir?: string;
 }
 
 const deliveryColumn = createColumnHelper<DataTableFeatures, DeliveryRow>();
 
-/** Same feed pattern as order approval; the SAP post is the slow step. */
 type DeliverySortField = "deliveryNo" | "orderNumber" | "branch" | "status";
 type DeliverySortDir = "asc" | "desc";
 
 export function DeliveriesPanel({
   deliveries,
   workflowStatuses,
+  canCheckSap = false,
   initialSort = "",
   initialSortDir = "desc",
 }: DeliveriesPanelProps) {
@@ -256,7 +259,12 @@ export function DeliveriesPanel({
       }}
       stickyHeader
       search={{ value: query, onChange: setQuery, placeholder: "Search deliveries…", suggestions }}
-      toolbarActions={<LogisticsListViewSwitch />}
+      toolbarActions={
+        <>
+          {canCheckSap ? <CheckSapNowButton /> : null}
+          <LogisticsListViewSwitch />
+        </>
+      }
       pagination={{
         total: deliveries.total,
         page: deliveries.page,

@@ -66,6 +66,125 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.83.0",
+    date: "2026-10-28",
+    title: "Dispatch happens in SAP",
+    highlights: [
+      "Deliveries are dispatched in SAP with Copy To: the order's ITR becomes an Inventory Transfer, its SO a Delivery. ISMS picks it up within about 10 minutes and the units show as in transit for the branch to accept.",
+      "Each delivery has a SAP section with the ITR or SO number to copy from, and every SAP document ISMS found for it.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "ISMS follows SAP Copy To on its own: the serials picked in SAP become in transit on the delivery, with the DR or transfer number and date.",
+      },
+      {
+        type: "feature",
+        description:
+          "Check SAP now, on Deliveries and on a delivery waiting for SAP, looks for new SAP documents right away instead of waiting for the next check.",
+      },
+      {
+        type: "feature",
+        description:
+          "Logistics gets a notification when a SAP document cannot be added to a delivery, with the reason (for example a serial ISMS already shows elsewhere). It clears once the document is sorted out.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The Dispatch and Reject buttons on an approved delivery are gone, since dispatch now happens in SAP. Receiving, returns, and rejecting units on arrival work as before.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Stock in on warehouse locations is gone: stock comes from SAP. Existing locations and Edit location stay.",
+      },
+      {
+        type: "improvement",
+        description: "The Unit transfers tab is hidden. Branch-to-branch moves use Transfers.",
+      },
+    ],
+  },
+  {
+    version: "0.82.0",
+    date: "2026-10-27",
+    title: "Orders show their mode of payment and ITR or SO number",
+    highlights: [
+      "Consignment orders are numbered ITR# and outright orders SO#, and both order lists show each order's mode of payment.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "New orders are numbered by how they are paid: ITR# for consignment, SO# for outright. Existing orders keep their numbers.",
+      },
+      {
+        type: "feature",
+        description:
+          "Orders and Order History show a Mode of payment column, coloured by consignment or outright, and the search box finds orders by it.",
+      },
+      {
+        type: "improvement",
+        description:
+          "An order's page shows the SAP document and its ITR or SO number as separate fields.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The ITR or SO sent to SAP now carries the order number and branch name on every line, the order notes as remarks, a clearer journal remark, and the delivery due date when one is set.",
+      },
+      {
+        type: "fix",
+        description:
+          "Typing in a quantity field replaces the 0 instead of adding to it, and a cleared field stays empty.",
+      },
+    ],
+  },
+  {
+    version: "0.81.1",
+    date: "2026-10-27",
+    title: "Warehouse locations in a window",
+    highlights: [
+      "A warehouse's locations open in their own window, with a list that scrolls and an add form that stays in view.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Locations open in a window instead of stretching the warehouse row, and a long list scrolls inside it.",
+      },
+      {
+        type: "fix",
+        description:
+          "A location code can be used only once per warehouse (names may repeat), even if two people add it at the same moment.",
+      },
+    ],
+  },
+  {
+    version: "0.81.0",
+    date: "2026-10-27",
+    title: "Sync only the serial numbers you need",
+    highlights: [
+      "Sync from SAP can now pull just the serial numbers, models, brands, branches, or warehouses you pick. Leave it empty to sync everything.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Sync from SAP on Serial numbers lets you paste serial numbers or pick models, brands, branches, or warehouses, and re-reads only those from SAP.",
+      },
+      {
+        type: "improvement",
+        description: "The Sync from SAP button is also on Branch inventory.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Stopping a sync now says to run Sync from SAP again to pick up the rest.",
+      },
+    ],
+  },
+  {
     version: "0.80.22",
     date: "2026-10-27",
     releasedAt: "2026-10-27T11:45:00+08:00",

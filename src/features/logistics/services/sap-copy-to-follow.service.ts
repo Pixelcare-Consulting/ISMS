@@ -5,6 +5,7 @@ import {
   lockSerialRegistrations,
 } from "@/features/inventory/services/serial-placement";
 import { lockDeliveryRow, txWorkflowCodeId } from "@/features/logistics/services/delivery-settle";
+import { notifyCopyToAttention } from "@/features/logistics/services/sap-copy-to-follow.notifier";
 import {
   checkFollowedDocument,
   deliveryStatusAfterFollow,
@@ -615,6 +616,16 @@ export function runSapCopyToFollow(
         await sapSyncCursorRepository.recordError(tenantId, SOURCES[kind].cursor, message);
         logger.error({ tenantId, kind, err: message }, "sap copy-to follow: listing failed");
       }
+    }
+
+    try {
+      // Every run, so the notification also clears once a person resolves the last one.
+      await notifyCopyToAttention(tenantId);
+    } catch (e) {
+      logger.error(
+        { tenantId, err: e instanceof Error ? e.message : e },
+        "sap copy-to follow: attention notification failed",
+      );
     }
 
     if (result.applied + result.failed + result.flagged > 0) {
