@@ -149,17 +149,6 @@ export const mockSapOutbound: SapOutboundPort = {
     return completeStub(tenantId, userId, job, SAP_REFERENCE_TYPES.BranchDelivery);
   },
 
-  async createDispatchDocument({ deliveryId }) {
-    const tail = deliveryId.slice(-8).toUpperCase();
-    return {
-      docEntry: 1,
-      docNum: 1,
-      docDate: new Date().toISOString().slice(0, 10),
-      displayNo: `MOCK-DR-${tail}`,
-      lineNums: [],
-    };
-  },
-
   /** Mock IT or Return number, then the same local completion as the live adapter. */
   async createDeliveryReturnDocument({ tenantId, userId, job }) {
     const returnId = job.referenceId;

@@ -12,7 +12,7 @@ export const WAREHOUSE_STOCK_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "What this page is for",
       description:
-        "Warehouse stock lists serials sitting in warehouse locations. Branch shelf stock stays under Stock units. This view is read-only — stock in from a warehouse location, or use a warehouse receive. SAP warehouse sync does not place serials.",
+        "Warehouse stock lists serials sitting in warehouse locations. Branch shelf stock stays under Stock units. This view is read-only: stock comes from SAP through the serial number sync, and ISMS has no separate stock in.",
     },
     {
       title: "How to use it",
@@ -25,7 +25,7 @@ export const WAREHOUSE_STOCK_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "Empty list?",
       description:
-        "Rows appear after you stock serials into a location under Settings → Warehouses. An empty list usually means nothing has been stocked in yet — not a permissions error.",
+        "Only serials that have a warehouse location appear here (for example units returned to a location). Serials SAP holds in a warehouse without a location are still dispatchable from that warehouse. An empty list is not a permissions error.",
     },
     {
       title: "Related work",

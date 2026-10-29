@@ -16,6 +16,8 @@ import { OrderTypeBadge } from "@/features/orders/components/order-type-badge";
 import { ORDER_TYPE_ROUTE } from "@/features/orders/constants/order-type-route";
 import { BRANCH_ORDER_STATUS_LABELS } from "@/features/orders/constants/order-status";
 import type { OrderHistoryRow } from "@/features/orders/types/order-analytics";
+import { ModeOfPaymentBadge } from "@/features/orders/components/mode-of-payment-badge";
+import { orderModeOfPaymentSearchText } from "@/features/orders/constants/order-sap-doc-type";
 import {
   DataTable,
   nextTableSort,
@@ -107,6 +109,7 @@ export function OrderHistoryTable({
           row.branchName,
           row.status,
           row.lastUpdatedBy,
+          orderModeOfPaymentSearchText(row.modeOfPayment),
         ]),
       ),
     [result.items, query],
@@ -126,7 +129,7 @@ export function OrderHistoryTable({
     const cols: DataTableColumn<OrderHistoryRow>[] = [
       historyColumn.accessor((row) => row.orderNumber, {
         id: "orderNumber",
-        header: "SO#",
+        header: "Order #",
         enableSorting: true,
         meta: { className: "font-mono" },
       }),
@@ -135,6 +138,12 @@ export function OrderHistoryTable({
         header: "Type",
         enableSorting: true,
         cell: ({ row }) => <OrderTypeBadge orderType={row.original.orderType} />,
+      }),
+      historyColumn.display({
+        id: "modeOfPayment",
+        header: "Mode of payment",
+        enableSorting: false,
+        cell: ({ row }) => <ModeOfPaymentBadge modeOfPayment={row.original.modeOfPayment} />,
       }),
       historyColumn.accessor((row) => row.branchName, {
         id: "branch",

@@ -17,6 +17,7 @@ import {
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { ModuleGuide } from "@/components/module-guide";
 import { INVENTORY_MODULE_GUIDE } from "@/content/module-guides/inventory";
+import { canSyncFromSap } from "@/features/sap/constants/sap-permissions";
 import { requirePermission } from "@/lib/auth/permissions";
 import { InventoryGroupedTable } from "@/app/(app)/inventory/_components/inventory-grouped-table";
 import { InventoryTable } from "@/app/(app)/inventory/_components/inventory-table";
@@ -53,6 +54,7 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
   };
 
   const hideBranch = (session.user.roleSlugs ?? []).includes("ps");
+  const canSync = canSyncFromSap(session.user.permissions);
 
   const [seriesSummary, kpis] = await Promise.all([
     getInventorySeriesSummaryAction(summaryFilters),
@@ -88,6 +90,7 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
           initialSort={sort}
           initialSortDir={sortDir}
           hideBranch={hideBranch}
+          canSync={canSync}
         />
       </div>
     );
@@ -122,6 +125,7 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
         initialOffPlanogram={offPlanogram}
         initialSearch={searchQuery}
         hideBranch={hideBranch}
+        canSync={canSync}
       />
     </div>
   );

@@ -1,9 +1,9 @@
 /**
- * Stored sales order numbers keep the hash: SO#{YYYY}-{MM}-#####
- * (see nextSalesOrderNumber). Do not strip "#" before lookup.
+ * Stored order numbers keep the hash: ITR#{YYYY}-{MM}-##### for consignment orders and
+ * SO#… for outright ones (see nextSalesOrderNumber). Do not strip "#" before lookup.
  */
-const SALES_ORDER_NUMBER_PATTERN = /(?<![A-Za-z0-9])SO#\d{4}-\d{2}-\d{5}(?!\d)/gi;
-const CANONICAL_SALES_ORDER_NUMBER = /^SO#\d{4}-\d{2}-\d{5}$/;
+const SALES_ORDER_NUMBER_PATTERN = /(?<![A-Za-z0-9])(?:SO|ITR)#\d{4}-\d{2}-\d{5}(?!\d)/gi;
+const CANONICAL_SALES_ORDER_NUMBER = /^(?:SO|ITR)#\d{4}-\d{2}-\d{5}$/;
 
 export const MAX_ORDER_LOOKUPS = 10;
 
@@ -11,13 +11,13 @@ export function isCanonicalSalesOrderNumber(value: string): boolean {
   return CANONICAL_SALES_ORDER_NUMBER.test(value);
 }
 
-/** Keep "#" on full SO tokens. Other text is trimmed only. */
+/** Keep "#" on full SO / ITR tokens, prefix upper-cased. Other text is trimmed only. */
 export function normalizeSalesOrderToken(raw: string): string | null {
   const trimmed = raw.trim();
   if (trimmed.length < 2 || trimmed.length > 80) return null;
-  const match = /^SO#(\d{4})-(\d{2})-(\d{5})$/i.exec(trimmed);
+  const match = /^(SO|ITR)#(\d{4})-(\d{2})-(\d{5})$/i.exec(trimmed);
   if (!match) return trimmed;
-  return `SO#${match[1]}-${match[2]}-${match[3]}`;
+  return `${match[1].toUpperCase()}#${match[2]}-${match[3]}-${match[4]}`;
 }
 
 export function extractSalesOrderNumbers(text: string): string[] {
@@ -25,7 +25,7 @@ export function extractSalesOrderNumbers(text: string): string[] {
   const seen = new Set<string>();
   const numbers: string[] = [];
   for (const match of text.matchAll(SALES_ORDER_NUMBER_PATTERN)) {
-    const token = match[0].replace(/^so#/i, "SO#");
+    const token = match[0].replace(/^(so|itr)#/i, (prefix) => prefix.toUpperCase());
     if (seen.has(token)) continue;
     seen.add(token);
     numbers.push(token);

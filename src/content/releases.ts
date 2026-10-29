@@ -66,6 +66,245 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.84.0",
+    date: "2026-10-28",
+    releasedAt: "2026-10-28T18:48:00+08:00",
+    title: "Receive or reject units on arrival",
+    highlights: [
+      "When a delivery arrives, the branch receives or rejects all units at once, or ticks units to act on just those.",
+      "Rejected units go to the TL as an IT request (consignment) or a Return request (outright). Once approved, ISMS creates the IT or Return in SAP and the units go back to the warehouse.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "The receive window has two buttons: Receive and Reject. Every unit starts ticked, so they read Receive all and Reject all; untick units and they change to Receive ticked and Reject ticked.",
+      },
+      {
+        type: "feature",
+        description:
+          "Rejecting asks for optional remarks for the whole request and for each unit. Blank remarks are filled in for you.",
+      },
+      {
+        type: "feature",
+        description:
+          "Each reject is its own request. The branch can receive some units, reject others, then receive or reject more later; each approved reject becomes its own SAP document.",
+      },
+      {
+        type: "feature",
+        description:
+          "A delivery's page lists its rejected units: each request with its status, unit count, SAP number and remarks, and its own Review or Retry button for the TL.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Units waiting on a reject request show apart in the receive window and cannot be received or rejected again until the TL decides.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The SAP IT or Return names the original ITR or SO in its remarks, carries the branch and each unit's remarks on its lines, and shows in ISMS as IT: or Return: with its number.",
+      },
+      {
+        type: "improvement",
+        description: "Deliveries and Branch Inventory show the SAP document number as DR: or IT:, so you know where to look in SAP.",
+      },
+      {
+        type: "improvement",
+        description: "Stock updates from SAP run faster.",
+      },
+      {
+        type: "fix",
+        description: "Outright orders sent to SAP now carry the branch and the Outright business type on every line.",
+      },
+      {
+        type: "fix",
+        description: "Large SAP syncs no longer fail when they look up many records at once.",
+      },
+      {
+        type: "fix",
+        description: "The Request return button on a delivery is gone; rejecting happens in the receive window.",
+      },
+    ],
+  },
+  {
+    version: "0.83.0",
+    date: "2026-10-28",
+    title: "Dispatch happens in SAP",
+    highlights: [
+      "Deliveries are dispatched in SAP with Copy To: the order's ITR becomes an Inventory Transfer, its SO a Delivery. ISMS picks it up within about 10 minutes and the units show as in transit for the branch to accept.",
+      "Each delivery has a SAP section with the ITR or SO number to copy from, and every SAP document ISMS found for it.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "ISMS follows SAP Copy To on its own: the serials picked in SAP become in transit on the delivery, with the DR or transfer number and date.",
+      },
+      {
+        type: "feature",
+        description:
+          "Check SAP now, on Deliveries and on a delivery waiting for SAP, looks for new SAP documents right away instead of waiting for the next check.",
+      },
+      {
+        type: "feature",
+        description:
+          "Logistics gets a notification when a SAP document cannot be added to a delivery, with the reason (for example a serial ISMS already shows elsewhere). It clears once the document is sorted out.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The Dispatch and Reject buttons on an approved delivery are gone, since dispatch now happens in SAP. Receiving, returns, and rejecting units on arrival work as before.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Stock in on warehouse locations is gone: stock comes from SAP. Existing locations and Edit location stay.",
+      },
+      {
+        type: "improvement",
+        description: "The Unit transfers tab is hidden. Branch-to-branch moves use Transfers.",
+      },
+    ],
+  },
+  {
+    version: "0.82.0",
+    date: "2026-10-27",
+    title: "Orders show their mode of payment and ITR or SO number",
+    highlights: [
+      "Consignment orders are numbered ITR# and outright orders SO#, and both order lists show each order's mode of payment.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "New orders are numbered by how they are paid: ITR# for consignment, SO# for outright. Existing orders keep their numbers.",
+      },
+      {
+        type: "feature",
+        description:
+          "Orders and Order History show a Mode of payment column, coloured by consignment or outright, and the search box finds orders by it.",
+      },
+      {
+        type: "improvement",
+        description:
+          "An order's page shows the SAP document and its ITR or SO number as separate fields.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The ITR or SO sent to SAP now carries the order number and branch name on every line, the order notes as remarks, a clearer journal remark, and the delivery due date when one is set.",
+      },
+      {
+        type: "fix",
+        description:
+          "Typing in a quantity field replaces the 0 instead of adding to it, and a cleared field stays empty.",
+      },
+    ],
+  },
+  {
+    version: "0.81.1",
+    date: "2026-10-27",
+    title: "Warehouse locations in a window",
+    highlights: [
+      "A warehouse's locations open in their own window, with a list that scrolls and an add form that stays in view.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Locations open in a window instead of stretching the warehouse row, and a long list scrolls inside it.",
+      },
+      {
+        type: "fix",
+        description:
+          "A location code can be used only once per warehouse (names may repeat), even if two people add it at the same moment.",
+      },
+    ],
+  },
+  {
+    version: "0.81.0",
+    date: "2026-10-27",
+    title: "Sync only the serial numbers you need",
+    highlights: [
+      "Sync from SAP can now pull just the serial numbers, models, brands, branches, or warehouses you pick. Leave it empty to sync everything.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Sync from SAP on Serial numbers lets you paste serial numbers or pick models, brands, branches, or warehouses, and re-reads only those from SAP.",
+      },
+      {
+        type: "improvement",
+        description: "The Sync from SAP button is also on Branch inventory.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Stopping a sync now says to run Sync from SAP again to pick up the rest.",
+      },
+    ],
+  },
+  {
+    version: "0.80.22",
+    date: "2026-10-27",
+    releasedAt: "2026-10-27T11:45:00+08:00",
+    title: "New orders get a random order number",
+    highlights: [
+      "New orders get a random order number for the month, and a number already in use is never given out again.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "New orders get a random order number for the month, and a number already in use is never given out again.",
+      },
+    ],
+  },
+  {
+    version: "0.80.21",
+    date: "2026-10-27",
+    releasedAt: "2026-10-27T11:21:00+08:00",
+    title: "A message when SAP does not accept an order",
+    highlights: [
+      "If SAP does not accept the order, a message explains why, and the order stays pending under the same order number.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "If SAP does not accept the order, a message explains why, and the order stays pending under the same order number.",
+      },
+    ],
+  },
+  {
+    version: "0.80.20",
+    date: "2026-10-27",
+    releasedAt: "2026-10-27T10:40:00+08:00",
+    title: "Supply Planning review follows the order sheet",
+    highlights: [
+      "Supply Planning’s review screen follows the order sheet, including the branch quota, days of inventory, and the columns used to approve a request.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Supply Planning’s review screen follows the order sheet: brand quota, DII, inventory by status, sales, rate, MIL, suggestion, order, CBM, approved quantity, and SP remarks.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Creating an order now shows each model’s sales this month and its share of the brand, in the same column order as the order sheet.",
+      },
+      {
+        type: "fix",
+        description:
+          "Creating an order on a shorter screen keeps the model list scrolling inside the page, with stock totals and columns staying in view.",
+      },
+    ],
+  },
+  {
     version: "0.80.19",
     date: "2026-10-26",
     releasedAt: "2026-10-26T17:10:00+08:00",

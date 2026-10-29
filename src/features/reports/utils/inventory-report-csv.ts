@@ -12,8 +12,8 @@ export const INVENTORY_REPORT_DETAIL_HEADERS = [
   "SKU",
   "MODEL",
   "STATUS",
-  "DR#",
-  "DR DATE",
+  "SAP DOC#",
+  "SAP DOC DATE",
   "AGING DAYS",
   "REMARKS",
 ] as const;

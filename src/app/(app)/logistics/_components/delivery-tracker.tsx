@@ -27,6 +27,7 @@ type DeliveryAuditAction =
   | "delivery.accepted"
   | "delivery.rejected"
   | "delivery.sap_dispatch_posted"
+  | "delivery.dispatched_in_sap"
   | "delivery.shipment_saved";
 
 const DELIVERY_ICONS: Readonly<Record<string, ProgressStageIcon>> = {
@@ -45,6 +46,7 @@ function asDeliveryAuditAction(action: string): DeliveryAuditAction | null {
     case "delivery.accepted":
     case "delivery.rejected":
     case "delivery.sap_dispatch_posted":
+    case "delivery.dispatched_in_sap":
     case "delivery.shipment_saved":
       return action;
     default:
@@ -68,6 +70,8 @@ export function deliveryAuditLabel(action: string): string {
       return "Rejected";
     case "delivery.sap_dispatch_posted":
       return "Dispatch posted";
+    case "delivery.dispatched_in_sap":
+      return "Dispatched in SAP";
     case "delivery.shipment_saved":
       return "Waybill and schedule saved";
     default: {
@@ -83,7 +87,7 @@ function stepAuditActions(code: string): readonly string[] {
     case DELIVERY_WORKFLOW_CODE.approved:
       return ["delivery.created_from_order", "delivery.created"];
     case DELIVERY_WORKFLOW_CODE.pending:
-      return ["delivery.dispatched"];
+      return ["delivery.dispatched", "delivery.dispatched_in_sap"];
     case DELIVERY_WORKFLOW_CODE.accepted:
     case DELIVERY_WORKFLOW_CODE.partial:
       return ["delivery.accepted"];

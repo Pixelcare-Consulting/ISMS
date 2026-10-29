@@ -5,18 +5,20 @@ import {
 } from "@/lib/shared/pagination";
 import type { Prisma } from "@prisma/client";
 
-/** Latest return request of each delivery, for the Return column. */
+/**
+ * Every reject request of each delivery, newest first, for the Rejected column and
+ * the review / retry actions. A delivery has at most one per unit, so the list stays short.
+ */
 export const latestReturnInclude = {
   returnRequests: {
     orderBy: { requestedAt: "desc" },
-    take: 1,
     select: { id: true, requestNo: true, status: true, sapError: true },
   },
 } satisfies Prisma.BranchDeliveryInclude;
 
 const deliveryListInclude = {
   branch: { select: { name: true, sapCode: true } },
-  order: { select: { id: true, orderNumber: true } },
+  order: { select: { id: true, orderNumber: true, sapDocType: true } },
   statusCode: { select: { id: true, code: true, name: true, color: true } },
   ...latestReturnInclude,
 } satisfies Prisma.BranchDeliveryInclude;

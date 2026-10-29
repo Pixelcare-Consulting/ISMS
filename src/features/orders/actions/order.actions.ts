@@ -16,6 +16,7 @@ import { branchService } from "@/features/branches/services/branch.service";
 import { branchRepository } from "@/features/branches/repositories/branch.repository";
 import { dealerRepository } from "@/features/dealers/repositories/dealer.repository";
 import { orderingPolicyService } from "@/features/ordering/services/ordering-policy.service";
+import { SapOrderPostRejectedError } from "@/features/orders/lib/sap-order-rejection";
 import { checkOrderingAllowed } from "@/features/orders/utils/order-window";
 import {
   anyOrderTypePermissions,
@@ -46,6 +47,7 @@ import {
 import { getUserBranchIds } from "@/lib/aor/scope";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { resolveActiveOrderPrice } from "@/features/master-data/utils/resolve-active-order-price";
+import { resolveOrderModeOfPayment } from "@/features/orders/constants/order-sap-doc-type";
 import type { OrderHistoryRow } from "@/features/orders/types/order-analytics";
 import { toClientOrderListItem } from "@/features/orders/utils/to-client-order-list";
 import type { BranchOrderType, Prisma } from "@prisma/client";
@@ -573,6 +575,15 @@ export async function approveOrderAction(
     revalidatePath("/operations");
     return { success: true as const };
   } catch (e) {
+    if (e instanceof SapOrderPostRejectedError) {
+      revalidateOrderPaths(existing.orderType);
+      return {
+        error: e.message,
+        sapRejected: true as const,
+        sapMessage: e.sapMessage,
+        updatedAt: e.updatedAt,
+      };
+    }
     return { error: e instanceof Error ? e.message : "Failed to approve order" };
   }
 }
@@ -691,6 +702,10 @@ export async function listOrderHistoryAction(input?: {
       reviewSnapshotAt: order.reviewSnapshotAt?.toISOString() ?? null,
       sapDocType: order.sapDocType,
       sapDocNum: order.sapDocNum,
+      modeOfPayment: resolveOrderModeOfPayment({
+        orderModeOfPayment: order.modeOfPayment,
+        dealerModeOfPayment: order.branch.dealer?.modeOfPayment,
+      }),
       orderQty,
       totalAmt,
       appQty,

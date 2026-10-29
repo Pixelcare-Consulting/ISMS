@@ -3,9 +3,10 @@ import type { ModuleGuideContent } from "@/content/module-guides/types";
 export const DELIVERIES_MODULE_GUIDE: ModuleGuideContent = {
   title: "Deliveries",
   description:
-    "Inbound movement from approved orders. Logistics schedules shipments; branch staff accept DIT → Stock in Operations.",
+    "Inbound movement from approved orders. Dispatch happens in SAP: copy the order's ITR to an Inventory Transfer, or its SO to a Delivery. ISMS picks it up within about 10 minutes and the units show as in transit; branch staff then accept them in Operations.",
   tips: [
-    { label: "Tie deliveries to approved branch orders" },
+    { label: "Each delivery shows its SAP ITR or SO number to copy from" },
+    { label: "A SAP document ISMS could not apply is listed on the delivery with the reason" },
     { label: "Branches accept in Operations and resolve shortages before closing" },
   ],
   storageKey: "module-guide.logistics.deliveries",

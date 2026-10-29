@@ -21,7 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { OrderStatusBadge } from "@/features/orders/components/order-status-badge";
 import {
-  formatOrderSapDocument,
+  orderSapDocumentFields,
   type OrderSapDocType,
 } from "@/features/orders/constants/order-sap-doc-type";
 import { BRANCH_ORDER_TYPE_LABELS } from "@/features/orders/constants/order-status";
@@ -130,6 +130,7 @@ export function OrderDetailsDialog({
   const [editing, setEditing] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const modelIds = useMemo(() => lines.map((line) => line.modelId), [lines]);
+  const sapDocument = orderSapDocumentFields({ sapDocType, sapDocNum });
   const worksheet = useOrderWorksheet({
     enabled: open,
     branchId,
@@ -215,9 +216,9 @@ export function OrderDetailsDialog({
                   </>
                 ) : null}
                 <dt className="whitespace-nowrap text-muted-foreground">SAP document</dt>
-                <dd className="min-w-0 break-words">
-                  {formatOrderSapDocument({ sapDocType, sapDocNum })}
-                </dd>
+                <dd className="min-w-0 break-words">{sapDocument.type}</dd>
+                <dt className="whitespace-nowrap text-muted-foreground">{sapDocument.numberLabel}</dt>
+                <dd className="min-w-0 break-words font-mono tabular-nums">{sapDocument.number}</dd>
                 <dt className="whitespace-nowrap text-muted-foreground">Created by</dt>
                 <dd className="min-w-0 break-words">{createdByName?.trim() || "—"}</dd>
                 <dt className="whitespace-nowrap text-muted-foreground">Next approver</dt>

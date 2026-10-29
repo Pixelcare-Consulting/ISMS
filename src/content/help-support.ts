@@ -60,7 +60,7 @@ export const HELP_QUICK_LINKS: HelpQuickLink[] = [
   {
     id: "orders",
     title: "Orders",
-    description: "Review requests waiting for your role, or look up past SO#s.",
+    description: "Review requests waiting for your role, or look up past orders.",
     href: "/orders",
     group: "daily",
   },
@@ -561,7 +561,7 @@ export const HELP_FAQ_CATEGORIES: HelpFaqCategory[] = [
         id: "orders-6",
         question: "Why don’t I see every order on the Orders tab?",
         answer:
-          "Orders only lists requests waiting for your role. Approved, rejected, and cancelled SO#s are in Order History so the live list stays as your work queue.",
+          "Orders only lists requests waiting for your role. Approved, rejected, and cancelled orders are in Order History so the live list stays as your work queue.",
       },
       {
         id: "orders-7",

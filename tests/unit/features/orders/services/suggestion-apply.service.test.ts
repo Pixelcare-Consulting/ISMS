@@ -7,6 +7,8 @@ jest.mock("@/lib/database/client", () => ({
     demandPlanningLine: { findMany: jest.fn() },
     orderSuggestionAllocation: { findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
     branchOrder: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
+    // Draft numbering reads the dealer's mode of payment; none here, so the prefix stays SO.
+    branch: { findFirst: jest.fn().mockResolvedValue(null) },
     branchOrderDetail: { findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
     branchPlanogram: { findMany: jest.fn(), findFirst: jest.fn() },
     branchInventory: { findMany: jest.fn() },

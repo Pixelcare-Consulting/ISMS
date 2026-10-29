@@ -4,6 +4,7 @@ import { prisma } from "@/lib/database/client";
 import { decimalToNumber } from "@/lib/database/decimal";
 import { sellableStkDefectReportsFilter } from "@/features/inventory/services/inventory-sellable-guards";
 import { planogramRepository } from "@/features/planogram/repositories/planogram.repository";
+import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import { salesListDetailWhere } from "@/features/sales/constants/sales-list-status";
 import {
   findReleasedPlanning,
@@ -88,7 +89,8 @@ export async function loadOrderWorksheet(
   const inventoryAsOf = now.toISOString();
   const brandId = normalizeBrandId(input.brandId);
 
-  const [branch, entries] = await Promise.all([
+  const quotaDate = new Date(Date.UTC(window.year, window.month - 1, 1));
+  const [branch, entries, milRows, statusCodes, quotaRows] = await Promise.all([
     prisma.branch.findFirst({
       where: { id: input.branchId, tenantId },
       select: {
@@ -96,9 +98,18 @@ export async function loadOrderWorksheet(
         name: true,
         dealerId: true,
         dealer: { select: { id: true, name: true } },
+        deliveryScheduleConfig: {
+          select: { frequencyCode: { select: { code: true } } },
+        },
       },
     }),
     planogramRepository.listPlanogramModelsForAnalytics(tenantId, input.branchId),
+    planogramRepository.listMilByBranch(tenantId, input.branchId),
+    reasonStatusRepository.listActiveCodesByCategory(tenantId, "inventory_system"),
+    prisma.branchQuota.findMany({
+      where: { tenantId, branchId: input.branchId, quotaDate },
+      select: { brandId: true, quotaAmount: true },
+    }),
   ]);
   if (!branch) throw new Error("Branch not found");
 
@@ -164,6 +175,13 @@ export async function loadOrderWorksheet(
     sales: facts.sales,
     window,
     inventoryAsOf,
+    deliveryFrequencyCode: branch.deliveryScheduleConfig?.frequencyCode.code ?? null,
+    brandQuotas: quotaRows.map((row) => ({
+      brandId: row.brandId,
+      quantity: decimalToNumber(row.quotaAmount),
+    })),
+    milDaysByModel: new Map(milRows.map((row) => [row.modelId, row.daysThreshold] as const)),
+    statusColors: new Map(statusCodes.map((code) => [code.code, code.color] as const)),
   });
 
   if (input.orderType !== "auto_replenish") return payload;

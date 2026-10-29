@@ -313,14 +313,9 @@ export const appNavigation: NavEntry[] = [
         href: "/logistics/transfers",
         label: "Transfers",
         icon: ArrowLeftRight,
-        anyPermissions: [
-          "logistics.view",
-          "logistics.create",
-          "logistics.manage",
-          "logistics.delivery_transfer.create",
-          "logistics.delivery_transfer.approve",
-          "logistics.delivery_transfer.receive",
-        ],
+        // The unit-transfer permissions no longer open this page: its Unit transfers tab is
+        // hidden (see HIDDEN_TRANSFERS_PAGE_TABS).
+        anyPermissions: ["logistics.view", "logistics.create", "logistics.manage"],
         countBadgeKey: "logisticsTransfers",
         activePathPrefixes: ["/logistics/delivery-transfers"],
       },

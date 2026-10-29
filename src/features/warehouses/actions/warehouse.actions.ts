@@ -3,12 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { parseStockInSerialNos } from "@/features/inventory/services/warehouse-stock-in.rules";
-import {
-  listTaggableModels,
-  listTaggableSerials,
-  tagSerialsToLocation,
-} from "@/features/inventory/services/branch-stock-location.service";
 import { warehouseSapSyncService } from "@/features/warehouses/services/warehouse-sap-sync.service";
 import { warehouseService } from "@/features/warehouses/services/warehouse.service";
 import { warehouseRepository } from "@/features/warehouses/repositories/warehouse.repository";
@@ -23,15 +17,8 @@ const warehouseSchema = z.object({
 
 const locationSchema = z.object({
   warehouseId: z.string().min(1),
-  code: z.string().min(1),
-  name: z.string().min(1),
-});
-
-const stockInSchema = z.object({
-  warehouseId: z.string().min(1),
-  locationId: z.string().min(1),
-  modelId: z.string().min(1),
-  serials: z.string().min(1),
+  code: z.string().trim().min(1).max(64),
+  name: z.string().trim().min(1).max(120),
 });
 
 export async function listWarehousesAction() {
@@ -109,50 +96,6 @@ export async function addWarehouseLocationAction(input: unknown) {
     return { success: true as const, location };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to add location" };
-  }
-}
-
-/** Models with untagged shelf stock at the branches this warehouse supplies. */
-export async function listModelsForWarehouseStockInAction(warehouseId: string) {
-  const session = await requirePermission("warehouses.manage");
-  if (!warehouseId) return { models: [] };
-  const models = await listTaggableModels(session.user.tenantId, warehouseId);
-  return { models };
-}
-
-/** Serials of a model at those branches that are not stocked into a location yet. */
-export async function listSerialsForWarehouseStockInAction(warehouseId: string, modelId: string) {
-  const session = await requirePermission("warehouses.manage");
-  if (!warehouseId || !modelId) return { serialNos: [] as string[] };
-  const serialNos = await listTaggableSerials(session.user.tenantId, warehouseId, modelId);
-  return { serialNos };
-}
-
-export async function stockInWarehouseLocationAction(input: unknown) {
-  const session = await requirePermission("warehouses.manage");
-  const parsed = stockInSchema.safeParse(input);
-  if (!parsed.success) return { error: "Choose a model and enter at least one serial number." };
-
-  const serialNos = parseStockInSerialNos(parsed.data.serials);
-  if (serialNos.length === 0) {
-    return { error: "Enter at least one serial number." };
-  }
-
-  try {
-    const result = await tagSerialsToLocation({
-      tenantId: session.user.tenantId,
-      userId: session.user.id,
-      warehouseId: parsed.data.warehouseId,
-      locationId: parsed.data.locationId,
-      modelId: parsed.data.modelId,
-      serialNos,
-    });
-    revalidatePath("/settings/warehouses");
-    revalidatePath("/inventory/warehouse-stock");
-    revalidatePath("/inventory");
-    return { success: true as const, ...result };
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "Failed to stock in" };
   }
 }
 

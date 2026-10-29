@@ -19,6 +19,7 @@ function line(
     drDate: Date | null;
     acceptedAt: Date | null;
     createdAt: Date;
+    order: { sapDocType: "ITR" | "SO" | null } | null;
   }>,
 ) {
   return {
@@ -54,6 +55,19 @@ describe("inventoryRepository.findLatestDeliveryReceipts", () => {
     expect(row.deliveryNo).toBe("DR-5001");
     expect(row.internalDeliveryNo).toBe("DLV-9");
     expect(row.deliveryDate).toEqual(drDate);
+  });
+
+  it.each([
+    ["SO", "DR: 5001"],
+    ["ITR", "IT: 5001"],
+  ] as const)("prefixes the SAP doc# of an %s order as %s", async (sapDocType, expected) => {
+    findMany.mockResolvedValue([
+      line("sn-1", { drNo: "5001", order: { sapDocType } }),
+    ]);
+
+    const [row] = await inventoryRepository.findLatestDeliveryReceipts("t1", ["sn-1"]);
+
+    expect(row.deliveryNo).toBe(expected);
   });
 
   it("legacy accepted delivery falls back to deliveryNo and acceptedAt", async () => {

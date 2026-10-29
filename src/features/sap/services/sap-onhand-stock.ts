@@ -30,6 +30,12 @@ import type { SapServiceLayerCredentials } from "@/features/sap/types/sap-servic
 export const SAP_SERIAL_LOCATION_QUERY = "ISMS_SN_LOC_RANGE";
 
 /**
+ * The same read keyed by warehouse instead of serial id, for a targeted sync of one
+ * warehouse or branch: "which serials does SAP hold here". Same tables, same allow-list.
+ */
+export const SAP_SERIAL_WAREHOUSE_QUERY = "ISMS_SN_LOC_WHS";
+
+/**
  * The saved queries ISMS creates in SAP when they are missing. Keep in step with QUERIES
  * in scripts/setup-sap-serial-onhand-query.mjs — the manual fallback for a SAP user that
  * is not allowed to create queries.
@@ -43,6 +49,16 @@ const SAP_ONHAND_QUERY_DEFINITIONS: Record<string, { name: string; text: string 
       "INNER JOIN OSRN T1 ON T1.ItemCode = T0.ItemCode AND T1.SysNumber = T0.SysNumber",
       "WHERE T1.AbsEntry > :lo AND T1.AbsEntry <= :hi AND T0.Quantity > 0",
       "ORDER BY T1.AbsEntry, T0.WhsCode",
+    ].join(" "),
+  },
+  [SAP_SERIAL_WAREHOUSE_QUERY]: {
+    name: "ISMS - serials on hand in one warehouse",
+    text: [
+      "SELECT T1.AbsEntry, T1.DistNumber, T0.ItemCode, T0.WhsCode",
+      "FROM OSRQ T0",
+      "INNER JOIN OSRN T1 ON T1.ItemCode = T0.ItemCode AND T1.SysNumber = T0.SysNumber",
+      "WHERE T0.WhsCode = :whs AND T0.Quantity > 0",
+      "ORDER BY T1.AbsEntry",
     ].join(" "),
   },
 };
@@ -143,17 +159,16 @@ export async function ensureSapOnHandQuery(
 }
 
 /**
- * Every serial SAP holds on hand with an id in `(lo, hi]`, following SAP's paging to the
- * end. A serial on hand in two warehouses (a SAP data problem) appears once per warehouse.
+ * Run a saved query's `/List` and follow SAP's paging to the end. `params` is the query
+ * string after `?`, already encoded.
  */
-export async function fetchSapSerialLocations(
+async function listSerialLocations(
   creds: SapServiceLayerCredentials,
-  lo: number,
-  hi: number,
+  code: string,
+  params: string,
 ): Promise<SapSerialLocation[]> {
   const locations: SapSerialLocation[] = [];
-  let path: string | null =
-    `/SQLQueries('${SAP_SERIAL_LOCATION_QUERY}')/List?lo=${Math.floor(lo)}&hi=${Math.floor(hi)}`;
+  let path: string | null = `/SQLQueries('${code}')/List?${params}`;
 
   for (let page = 0; path; page += 1) {
     if (page >= MAX_PAGES) {
@@ -188,4 +203,37 @@ export async function fetchSapSerialLocations(
   }
 
   return locations;
+}
+
+/**
+ * Every serial SAP holds on hand with an id in `(lo, hi]`, following SAP's paging to the
+ * end. A serial on hand in two warehouses (a SAP data problem) appears once per warehouse.
+ */
+export function fetchSapSerialLocations(
+  creds: SapServiceLayerCredentials,
+  lo: number,
+  hi: number,
+): Promise<SapSerialLocation[]> {
+  return listSerialLocations(
+    creds,
+    SAP_SERIAL_LOCATION_QUERY,
+    `lo=${Math.floor(lo)}&hi=${Math.floor(hi)}`,
+  );
+}
+
+/**
+ * Every serial SAP holds on hand in one warehouse. A string parameter goes to the Service
+ * Layer quoted, with any quote inside it doubled, the same as an OData literal.
+ */
+export async function fetchSapSerialsInWarehouse(
+  creds: SapServiceLayerCredentials,
+  warehouseCode: string,
+): Promise<SapSerialLocation[]> {
+  await ensureSapOnHandQuery(creds, SAP_SERIAL_WAREHOUSE_QUERY);
+  const literal = `'${warehouseCode.replace(/'/g, "''")}'`;
+  return listSerialLocations(
+    creds,
+    SAP_SERIAL_WAREHOUSE_QUERY,
+    `whs=${encodeURIComponent(literal)}`,
+  );
 }

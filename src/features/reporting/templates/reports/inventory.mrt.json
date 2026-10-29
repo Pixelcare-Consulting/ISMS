@@ -920,7 +920,7 @@
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "DR#"
+                "Value": "SAP doc#"
               },
               "VertAlignment": "Center",
               "Font": "Geist;6;Bold;",

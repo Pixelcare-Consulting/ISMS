@@ -1,5 +1,10 @@
+import { Prisma } from "@/lib/database/generated/prisma/client";
 import { auditService } from "@/features/audit/services/audit.service";
 import { warehouseRepository } from "@/features/warehouses/repositories/warehouse.repository";
+import {
+  duplicateLocationCodeMessage,
+  sameLocationCode,
+} from "@/features/warehouses/utils/location-code";
 
 export const warehouseService = {
   listWarehouses(tenantId: string) {
@@ -66,11 +71,23 @@ export const warehouseService = {
   }) {
     const warehouse = await warehouseRepository.findById(input.tenantId, input.warehouseId);
     if (!warehouse) throw new Error("Warehouse not found");
+    if (warehouse.locations.some((location) => sameLocationCode(location.code, input.code))) {
+      throw new Error(duplicateLocationCodeMessage(input.code));
+    }
 
-    const location = await warehouseRepository.addLocation(input.warehouseId, {
-      code: input.code,
-      name: input.name,
-    });
+    let location: Awaited<ReturnType<typeof warehouseRepository.addLocation>>;
+    try {
+      location = await warehouseRepository.addLocation(input.warehouseId, {
+        code: input.code.trim(),
+        name: input.name.trim(),
+      });
+    } catch (e) {
+      // Someone added the same code a moment ago: warehouse_locations_code_ci_uq caught it.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+        throw new Error(duplicateLocationCodeMessage(input.code));
+      }
+      throw e;
+    }
 
     await auditService.log({
       tenantId: input.tenantId,

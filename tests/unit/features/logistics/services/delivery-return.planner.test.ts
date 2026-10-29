@@ -31,7 +31,7 @@ function delivery(overrides: Partial<DeliveryPostingView> = {}): DeliveryPosting
 
 describe("planReturnRequest", () => {
   it("plans only DIT lines", () => {
-    const plan = planReturnRequest(delivery(), false);
+    const plan = planReturnRequest(delivery(), new Set());
     expect(plan).toEqual({
       ok: true,
       lines: [
@@ -41,24 +41,39 @@ describe("planReturnRequest", () => {
     });
   });
 
-  it("refuses second open request", () => {
-    expect(planReturnRequest(delivery(), true)).toEqual({
+  it("a unit on an open reject request cannot be rejected again; the others can", () => {
+    const held = new Set(["s2"]);
+    expect(planReturnRequest(delivery(), held, new Set(), ["s2"])).toEqual({
       ok: false,
-      error: "A return request for this delivery is already open",
+      error: "Some units are already waiting on a reject request",
+    });
+    expect(planReturnRequest(delivery(), held, new Set(), ["s3"])).toEqual({
+      ok: true,
+      lines: [{ serialNumberId: "s3", warehouseLocationToId: "loc-2" }],
     });
   });
 
-  it("refuses when a DIT line has no from-location", () => {
+  it("reject everything skips units already on a request, and refuses when none are left", () => {
+    expect(planReturnRequest(delivery(), new Set(["s2"]))).toEqual({
+      ok: true,
+      lines: [{ serialNumberId: "s3", warehouseLocationToId: "loc-2" }],
+    });
+    expect(planReturnRequest(delivery(), new Set(["s2", "s3"])).ok).toBe(false);
+  });
+
+  it("returns a unit dispatched from SAP's placement with no location to go back to", () => {
     const d = delivery();
     d.lines[2] = { ...d.lines[2], warehouseLocationFromId: null };
-    expect(planReturnRequest(d, false)).toEqual({
-      ok: false,
-      error: "A dispatched serial has no warehouse location to return to",
+    const plan = planReturnRequest(d, new Set());
+    expect(plan.ok).toBe(true);
+    expect(plan.ok && plan.lines.find((line) => line.serialNumberId === d.lines[2].serialNumberId)).toEqual({
+      serialNumberId: d.lines[2].serialNumberId,
+      warehouseLocationToId: null,
     });
   });
 
   it("refuses while a DIT unit is on an open unit transfer", () => {
-    expect(planReturnRequest(delivery(), false, new Set(["s3"]))).toEqual({
+    expect(planReturnRequest(delivery(), new Set(), new Set(["s3"]))).toEqual({
       ok: false,
       error: "Finish or remove the open unit transfer first.",
     });
@@ -66,16 +81,35 @@ describe("planReturnRequest", () => {
 
   it("refuses a delivery that is not dispatched or already settled", () => {
     for (const status of ["approved", "accepted", "rejected", "requested"] as const) {
-      const plan = planReturnRequest(delivery({ status }), false);
+      const plan = planReturnRequest(delivery({ status }), new Set());
       expect(plan.ok).toBe(false);
     }
+  });
+
+  it("returns only the ticked units", () => {
+    const plan = planReturnRequest(delivery(), new Set(), new Set(), ["s3"]);
+    expect(plan).toEqual({ ok: true, lines: [{ serialNumberId: "s3", warehouseLocationToId: "loc-2" }] });
+  });
+
+  it("a ticked unit on an open transfer blocks; an unticked one does not", () => {
+    expect(planReturnRequest(delivery(), new Set(), new Set(["s3"]), ["s3"]).ok).toBe(false);
+    expect(planReturnRequest(delivery(), new Set(), new Set(["s3"]), ["s2"]).ok).toBe(true);
+  });
+
+  it("refuses ticked units that are not in transit, duplicates, or none", () => {
+    expect(planReturnRequest(delivery(), new Set(), new Set(), ["s1"])).toEqual({
+      ok: false,
+      error: "Some units are not in transit on this delivery",
+    });
+    expect(planReturnRequest(delivery(), new Set(), new Set(), ["s2", "s2"]).ok).toBe(false);
+    expect(planReturnRequest(delivery(), new Set(), new Set(), [])).toEqual({ ok: false, error: "Tick the units to return" });
   });
 
   it("refuses when nothing is in transit", () => {
     const d = delivery({
       lines: [{ serialNumberId: "s1", warehouseLocationFromId: "loc-1", branchStatus: "STK" }],
     });
-    expect(planReturnRequest(d, false)).toEqual({ ok: false, error: "No units are in transit on this delivery" });
+    expect(planReturnRequest(d, new Set())).toEqual({ ok: false, error: "No units are in transit on this delivery" });
   });
 });
 
@@ -97,17 +131,25 @@ describe("planReturnDecision", () => {
 });
 
 describe("planReturnSettle (R8b)", () => {
-  it("pending (nothing reached stock) becomes rejected", () => {
-    expect(planReturnSettle("pending")).toBe("rejected");
+  it("every unit went back on a return: rejected", () => {
+    for (const status of ["pending", "partial"]) {
+      expect(planReturnSettle({ status, stillInTransit: 0, allReturned: true })).toBe("rejected");
+    }
   });
 
-  it("partial (some units reached stock) becomes accepted", () => {
-    expect(planReturnSettle("partial")).toBe("accepted");
+  it("nothing left in transit and some units reached stock: accepted", () => {
+    expect(planReturnSettle({ status: "partial", stillInTransit: 0, allReturned: false })).toBe("accepted");
+  });
+
+  it("units still in transit keep the delivery open as partial", () => {
+    for (const status of ["pending", "partial"]) {
+      expect(planReturnSettle({ status, stillInTransit: 2, allReturned: false })).toBe("partial");
+    }
   });
 
   it("no other status can be settled by a return", () => {
     for (const status of ["approved", "accepted", "rejected", "requested"]) {
-      expect(planReturnSettle(status)).toBeNull();
+      expect(planReturnSettle({ status, stillInTransit: 0, allReturned: true })).toBeNull();
     }
   });
 });
@@ -148,19 +190,15 @@ describe("return SAP retry visibility", () => {
 
 describe("planReturnSapReady", () => {
   it("refuses an order with no stored SAP type", () => {
-    expect(planReturnSapReady({ orderSapDocType: null, sapDocEntry: 9 })).toEqual({
+    expect(planReturnSapReady({ orderSapDocType: null })).toEqual({
       ok: false,
-      error: "This delivery was dispatched before SAP posting was enabled. Accept or transfer its units instead.",
+      error: "This delivery was dispatched before SAP posting was enabled. Receive its units instead.",
     });
   });
 
-  it("refuses an outright delivery without its DR, allows consignment without one", () => {
-    expect(planReturnSapReady({ orderSapDocType: "SO", sapDocEntry: null })).toEqual({
-      ok: false,
-      error: "This delivery has no DR in SAP. Accept or transfer its units instead.",
-    });
-    expect(planReturnSapReady({ orderSapDocType: "SO", sapDocEntry: 9 })).toEqual({ ok: true });
-    expect(planReturnSapReady({ orderSapDocType: "ITR", sapDocEntry: null })).toEqual({ ok: true });
+  it("allows consignment and outright alike: the reject document is standalone, no DR needed", () => {
+    expect(planReturnSapReady({ orderSapDocType: "SO" })).toEqual({ ok: true });
+    expect(planReturnSapReady({ orderSapDocType: "ITR" })).toEqual({ ok: true });
   });
 });
 

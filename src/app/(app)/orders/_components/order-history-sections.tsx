@@ -31,6 +31,7 @@ import {
 import { worksheetOrderTotals } from "@/features/orders/lib/order-worksheet-filters";
 import { formatWorksheetCbm, worksheetLineCbm } from "@/features/orders/lib/order-worksheet-metrics";
 import type { OrderTrackerNode } from "@/features/orders/lib/order-history-tracker";
+import type { OrderSapDocumentFields } from "@/features/orders/constants/order-sap-doc-type";
 import type {
   OrderWorksheetLine,
   OrderWorksheetSummary,
@@ -73,7 +74,7 @@ export function OrderRecordPage({
   dealerName,
   branchName,
   paymentLabel,
-  sapLabel,
+  sapDocument,
   createdByName,
   notes,
   deliveryDueLabel = null,
@@ -94,7 +95,7 @@ export function OrderRecordPage({
   dealerName: string | null;
   branchName: string;
   paymentLabel: string | null;
-  sapLabel: string;
+  sapDocument: OrderSapDocumentFields;
   createdByName: string;
   notes: string | null;
   deliveryDueLabel?: string | null;
@@ -165,7 +166,11 @@ export function OrderRecordPage({
             {paymentLabel ? (
               <RecordReadout label="Mode of payment" value={paymentLabel} />
             ) : null}
-            <RecordReadout label="SAP document" value={sapLabel} />
+            <RecordReadout label="SAP document" value={sapDocument.type} />
+            <RecordReadout
+              label={sapDocument.numberLabel}
+              value={<span className="font-mono tabular-nums">{sapDocument.number}</span>}
+            />
             <RecordReadout label="Created by" value={createdByName || "—"} />
             <RecordReadout label="Next approver" value={nextApprover} />
             {deliveryDueLabel ? (

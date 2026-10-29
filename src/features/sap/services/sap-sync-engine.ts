@@ -1,6 +1,6 @@
 import { auditService } from "@/features/audit/services/audit.service";
 import { sapSyncCursorRepository } from "@/features/sap/repositories/sap-sync-cursor.repository";
-import type { SapSyncEntity } from "@/features/sap/types/sap-sync-entity";
+import type { SapSyncEntity, SapSyncTarget } from "@/features/sap/types/sap-sync-entity";
 import type { SapSyncResult, SapSyncSkip } from "@/features/sap/schemas/sap-master-sync.schema";
 import {
   sapPageSize,
@@ -9,9 +9,13 @@ import {
 } from "@/features/sap/services/sap-master-data";
 import {
   decodePosition,
+  decodeTargetedResume,
   encodePosition,
+  encodeTargetedResume,
   planSegment,
   segmentClause,
+  type SegmentedPosition,
+  type SegmentField,
 } from "@/features/sap/services/sap-sync-segment";
 import { sapServiceLayerClient } from "@/features/sap/services/sap-service-layer-client";
 import { SAP_NO_CONNECTION_MESSAGE } from "@/config/platform";
@@ -161,16 +165,119 @@ class SkipTally {
   }
 }
 
+/** What one run wrote, across every page it applied. */
+interface RunTotals {
+  fetched: number;
+  pages: number;
+  created: number;
+  updated: number;
+  unchanged: number;
+}
+
+/** Parse and write pages for one run, folding what each did into `totals` and `skips`. */
+function createPageApplier(
+  tenantId: string,
+  entity: SapSyncEntity,
+  context: unknown,
+  passMark: Date,
+  skips: SkipTally,
+): { totals: RunTotals; applyRows(rows: Record<string, unknown>[]): Promise<void> } {
+  const totals: RunTotals = { fetched: 0, pages: 0, created: 0, updated: 0, unchanged: 0 };
+
+  async function applyRows(rows: Record<string, unknown>[]): Promise<void> {
+    const records: unknown[] = [];
+    for (const row of rows) {
+      const parsed = entity.parse(row, context);
+      if ("skip" in parsed) skips.add(parsed.skip, parsed.example);
+      else records.push(parsed.record);
+    }
+
+    if (records.length > 0) {
+      const applied = await entity.applyPage(tenantId, records, context);
+      totals.created += applied.created;
+      totals.updated += applied.updated;
+      totals.unchanged += applied.unchanged;
+      for (const failure of applied.failures) skips.add(failure.reason, failure.example);
+
+      // Every parsed row is still in SAP, written or not: a row that failed to update is
+      // stale, not gone, and must not be retired for it.
+      await entity.reconcile.markSeen(tenantId, records, passMark);
+    }
+
+    totals.fetched += rows.length;
+    totals.pages += 1;
+  }
+
+  return { totals, applyRows };
+}
+
+/**
+ * Walk `keys` in segments, paging by the entity's key inside each, from `start` until the
+ * keys run out or `deadline` passes. `onAdvance` is told every new position, so a caller
+ * can persist it (a pass) or just keep the last one (a targeted run).
+ */
+async function walkSegments(walk: {
+  creds: SapServiceLayerCredentials;
+  entity: SapSyncEntity;
+  segment: SegmentField;
+  keys: string[];
+  start: SegmentedPosition;
+  deadline: number;
+  applyRows(rows: Record<string, unknown>[]): Promise<void>;
+  onAdvance(position: SegmentedPosition): Promise<void>;
+}): Promise<{ completed: boolean; position: SegmentedPosition }> {
+  // Sorted and de-duplicated so segment boundaries fall in the same places on every run
+  // of a pass — the cursor's anchor is only meaningful against a stable ordering. The
+  // comparison is JavaScript's, never SAP's: segment membership is an explicit `or`
+  // list, so unlike a `gt` walk this never depends on the company database's collation.
+  const keys = [...new Set(walk.keys)].sort();
+  let position = walk.start;
+
+  for (;;) {
+    const plan = planSegment(keys, position.anchor, walk.segment);
+    // No segment left to start: every key has been walked.
+    if (!plan) return { completed: true, position };
+
+    const rows = await fetchPage(
+      walk.creds,
+      walk.entity,
+      position.lastKey,
+      segmentClause(walk.segment, plan.keys),
+    );
+
+    if (rows.length === 0) {
+      // This segment is exhausted; move to the next one, or finish.
+      if (plan.next === null) return { completed: true, position };
+      position = { anchor: plan.next, lastKey: null };
+    } else {
+      const endKey = pageEndKey(rows, walk.entity);
+      await walk.applyRows(rows);
+      position = { anchor: plan.anchor, lastKey: endKey };
+    }
+
+    // Reported per page and per segment hop alike: an interrupted run loses one page of
+    // progress, never its place in the key set.
+    await walk.onAdvance(position);
+
+    if (Date.now() >= walk.deadline) return { completed: false, position };
+  }
+}
+
+async function requireCredentials(tenantId: string): Promise<SapServiceLayerCredentials> {
+  const creds = await sapServiceLayerService.getCredentials(tenantId);
+  if (!creds) {
+    throw new Error(SAP_NO_CONNECTION_MESSAGE);
+  }
+  return creds;
+}
+
 async function runSlice(
   tenantId: string,
   entity: SapSyncEntity,
   actorUserId: string | null,
   options?: { budgetMs?: number },
 ): Promise<SapSyncResult> {
-  const creds = await sapServiceLayerService.getCredentials(tenantId);
-  if (!creds) {
-    throw new Error(SAP_NO_CONNECTION_MESSAGE);
-  }
+  const creds = await requireCredentials(tenantId);
 
   let cursor = await sapSyncCursorRepository.get(tenantId, entity.key);
 
@@ -197,89 +304,30 @@ async function runSlice(
   const context = await entity.prepare?.(tenantId);
   const deadline = Date.now() + budgetMs(options?.budgetMs);
   const skips = new SkipTally();
+  const { totals, applyRows } = createPageApplier(tenantId, entity, context, passMark, skips);
+  const passRowsNow = () => cursor.passRows + totals.fetched;
 
-  let passRows = cursor.passRows;
-  let fetched = 0;
-  let pages = 0;
-  let created = 0;
-  let updated = 0;
-  let unchanged = 0;
   let removed = 0;
   let completed = false;
 
-  /** Parse and write one page, folding what it did into this run's totals. */
-  async function applyRows(rows: Record<string, unknown>[]): Promise<void> {
-    const records: unknown[] = [];
-    for (const row of rows) {
-      const parsed = entity.parse(row, context);
-      if ("skip" in parsed) skips.add(parsed.skip, parsed.example);
-      else records.push(parsed.record);
-    }
-
-    if (records.length > 0) {
-      const applied = await entity.applyPage(tenantId, records);
-      created += applied.created;
-      updated += applied.updated;
-      unchanged += applied.unchanged;
-      for (const failure of applied.failures) skips.add(failure.reason, failure.example);
-
-      // Every parsed row is still in SAP, written or not: a row that failed to update is
-      // stale, not gone, and must not be retired for it.
-      await entity.reconcile.markSeen(tenantId, records, passMark);
-    }
-
-    fetched += rows.length;
-    passRows += rows.length;
-    pages += 1;
-  }
-
   if (entity.segment) {
-    // Sorted and de-duplicated so segment boundaries fall in the same places on every run
-    // of a pass — the cursor's anchor is only meaningful against a stable ordering. The
-    // comparison is JavaScript's, never SAP's: segment membership is an explicit `or`
-    // list, so unlike a `gt` walk this never depends on the company database's collation.
-    const keys = [...new Set(entity.segment.keys(context))].sort();
-    let position = decodePosition(cursor.lastKey);
-
-    for (;;) {
-      const plan = planSegment(keys, position.anchor, entity.segment);
-      // No segment left to start: every key ISMS holds has been walked.
-      if (!plan) {
-        completed = true;
-        break;
-      }
-
-      const rows = await fetchPage(
-        creds,
-        entity,
-        position.lastKey,
-        segmentClause(entity.segment, plan.keys),
-      );
-
-      if (rows.length === 0) {
-        // This segment is exhausted; move to the next one, or finish the pass.
-        if (plan.next === null) {
-          completed = true;
-          break;
-        }
-        position = { anchor: plan.next, lastKey: null };
-      } else {
-        const endKey = pageEndKey(rows, entity);
-        await applyRows(rows);
-        position = { anchor: plan.anchor, lastKey: endKey };
-      }
-
-      // Saved per page and per segment hop alike: an interrupted run loses one page of
-      // progress, never the pass, and never its place in the key set.
-      await sapSyncCursorRepository.advance(
-        tenantId,
-        entity.key,
-        encodePosition(position),
-        passRows,
-      );
-
-      if (Date.now() >= deadline) break;
-    }
+    const walk = await walkSegments({
+      creds,
+      entity,
+      segment: entity.segment,
+      keys: entity.segment.keys(context),
+      start: decodePosition(cursor.lastKey),
+      deadline,
+      applyRows,
+      onAdvance: (position) =>
+        sapSyncCursorRepository.advance(
+          tenantId,
+          entity.key,
+          encodePosition(position),
+          passRowsNow(),
+        ),
+    });
+    completed = walk.completed;
   } else {
     let lastKey = cursor.lastKey;
 
@@ -296,11 +344,14 @@ async function runSlice(
       lastKey = endKey;
 
       // Saved per page: an interrupted run loses one page of progress, never the pass.
-      await sapSyncCursorRepository.advance(tenantId, entity.key, lastKey, passRows);
+      await sapSyncCursorRepository.advance(tenantId, entity.key, lastKey, passRowsNow());
 
       if (Date.now() >= deadline) break;
     }
   }
+
+  const passRows = passRowsNow();
+  const { fetched, pages, created, updated, unchanged } = totals;
 
   // Finishing a pass arms the next one. Nothing schedules it here — the next run finds no
   // pass in progress and starts one, which is also what makes a small entity's every run
@@ -401,4 +452,121 @@ export function runSapSync(
       throw e;
     }
   });
+}
+
+/**
+ * Re-sync only the rows of `entity` that `target` names: one serial, one model's serials,
+ * the serials in one warehouse.
+ *
+ * It is a narrower read than a pass and deliberately *not* a pass. It never moves the
+ * entity's cursor, so a pass in progress carries on from where it was; and it never
+ * retires anything, because "SAP did not return row X for this target" says nothing about
+ * whether X is gone from SAP. What it writes goes through the entity's own `parse` and
+ * `applyPage`, so a targeted row ends up exactly as a pass would have left it.
+ *
+ * Rows it sees are stamped with the running pass's mark when there is one, so a pass that
+ * already walked past them does not later treat them as unseen.
+ *
+ * Sliced like a pass: `caughtUp` false means the budget ran out, and `resume` is the place
+ * to hand back on the next call. Locked per target, so a double click joins the run in
+ * flight while two different targets still run side by side.
+ */
+export function runSapTargetedSync(
+  tenantId: string,
+  entity: SapSyncEntity,
+  target: SapSyncTarget,
+  actorUserId: string | null,
+  options?: { budgetMs?: number; resume?: string | null },
+): Promise<SapSyncResult> {
+  return withSapSyncLock(`${entity.key}:target:${tenantId}:${target.label}`, () =>
+    runTargetedSlice(tenantId, entity, target, actorUserId, options),
+  );
+}
+
+async function runTargetedSlice(
+  tenantId: string,
+  entity: SapSyncEntity,
+  target: SapSyncTarget,
+  actorUserId: string | null,
+  options?: { budgetMs?: number; resume?: string | null },
+): Promise<SapSyncResult> {
+  const creds = await requireCredentials(tenantId);
+  const cursor = await sapSyncCursorRepository.get(tenantId, entity.key);
+  const passMark = cursor.passStartedAt ?? new Date();
+
+  const context = await entity.prepare?.(tenantId);
+  const deadline = Date.now() + budgetMs(options?.budgetMs);
+  const skips = new SkipTally();
+  const { totals, applyRows } = createPageApplier(tenantId, entity, context, passMark, skips);
+  const resume = decodeTargetedResume(options?.resume, entity.keyKind);
+
+  let position = resume.position;
+  const walk = await walkSegments({
+    creds,
+    entity,
+    segment: target,
+    keys: target.keys,
+    start: resume.position,
+    deadline,
+    applyRows,
+    onAdvance: async (next) => {
+      position = next;
+    },
+  });
+  position = walk.position;
+
+  const passRows = resume.rows + totals.fetched;
+  if (walk.completed && passRows === 0) {
+    skips.add(`SAP returned no ${entity.noun.many} for this selection`);
+  }
+
+  const result: SapSyncResult = {
+    fetched: totals.fetched,
+    created: totals.created,
+    updated: totals.updated,
+    unchanged: totals.unchanged,
+    removed: 0,
+    skipped: skips.toList(),
+    caughtUp: walk.completed,
+    passRows,
+    totalAtSource: null,
+    resume: walk.completed ? null : encodeTargetedResume({ position, rows: passRows }),
+  };
+
+  logger.info(
+    {
+      sync: entity.key,
+      entity: entity.entity,
+      tenantId,
+      target: target.label,
+      pages: totals.pages,
+      fetched: totals.fetched,
+      created: totals.created,
+      updated: totals.updated,
+      unchanged: totals.unchanged,
+      caughtUp: walk.completed,
+    },
+    "sap targeted sync slice finished",
+  );
+
+  await auditService.log({
+    tenantId,
+    userId: actorUserId ?? undefined,
+    action: entity.audit.action,
+    entityType: entity.audit.entityType,
+    metadata: {
+      sync: entity.key,
+      entity: entity.entity,
+      target: target.label,
+      targetKeys: target.keys.length,
+      fetched: totals.fetched,
+      created: totals.created,
+      updated: totals.updated,
+      unchanged: totals.unchanged,
+      skipped: result.skipped.reduce((sum, skip) => sum + skip.count, 0),
+      caughtUp: walk.completed,
+    },
+  });
+
+  return result;
 }

@@ -31,6 +31,7 @@ import {
   type StockUnitsGroupBy,
 } from "@/features/inventory/constants/stock-units-group";
 import type { StockUnitsView } from "@/features/inventory/constants/stock-units-view";
+import { SerialSapSyncDialog } from "@/features/serial-numbers/components/serial-sap-sync-dialog";
 import {
   parseTablePageSize,
   type TablePageSize,
@@ -167,6 +168,8 @@ interface InventoryGroupedTableProps {
   initialOffPlanogram?: boolean;
   initialSearch?: string;
   hideBranch?: boolean;
+  /** Serial sync from SAP — requires `sap.manage`. */
+  canSync?: boolean;
 }
 
 export function InventoryGroupedTable({
@@ -175,6 +178,7 @@ export function InventoryGroupedTable({
   initialOffPlanogram = false,
   initialSearch = "",
   hideBranch = false,
+  canSync = false,
 }: InventoryGroupedTableProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -463,17 +467,20 @@ export function InventoryGroupedTable({
         />
       }
       toolbarActions={
-        <div className="flex items-center gap-2 text-sm">
-          <input
-            id="off-planogram-grouped"
-            type="checkbox"
-            checked={offPlanogramOnly}
-            onChange={(event) => toggleOffPlanogram(event.target.checked)}
-          />
-          <Label htmlFor="off-planogram-grouped" className="font-normal">
-            Off-planogram only
-          </Label>
-        </div>
+        <>
+          {canSync ? <SerialSapSyncDialog /> : null}
+          <div className="flex items-center gap-2 text-sm">
+            <input
+              id="off-planogram-grouped"
+              type="checkbox"
+              checked={offPlanogramOnly}
+              onChange={(event) => toggleOffPlanogram(event.target.checked)}
+            />
+            <Label htmlFor="off-planogram-grouped" className="font-normal">
+              Off-planogram only
+            </Label>
+          </div>
+        </>
       }
       banner={filterBanner}
       pageSize={{ value: pageSize, onChange: handlePageSizeChange }}

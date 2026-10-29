@@ -18,10 +18,12 @@ import {
 } from "@/features/logistics/constants/logistics-permissions";
 import { logisticsRepository } from "@/features/logistics/repositories/logistics.repository";
 import { deliveryPostingService } from "@/features/logistics/services/delivery-posting.service";
+import { runSapCopyToFollow } from "@/features/logistics/services/sap-copy-to-follow.service";
 import {
   deliveryReturnCancelNoteSchema,
   deliveryReturnDecisionSchema,
   deliveryReturnReasonSchema,
+  deliveryReturnUnitsSchema,
   deliveryReturnService,
   type DeliveryReturnDetail,
 } from "@/features/logistics/services/delivery-return.service";
@@ -356,33 +358,18 @@ export async function createDeliveryAction(input: unknown) {
   return { success: true as const };
 }
 
-export async function listDispatchCandidatesAction(id: string) {
+/**
+ * Run the SAP Copy To follow-up now instead of waiting for the next cron tick (about every
+ * 10 minutes). A run already in progress is joined, not repeated.
+ */
+export async function checkSapCopyToNowAction() {
   const session = await requireAnyPermission([...DISPATCH_PERMISSIONS]);
   try {
-    const result = await deliveryPostingService.listDispatchCandidates(session.user.tenantId, id);
+    const result = await runSapCopyToFollow(session.user.tenantId, { budgetMs: 45_000 });
+    revalidateLogisticsPaths();
     return { success: true as const, ...result };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "Failed to load warehouse serials" };
-  }
-}
-
-export async function dispatchDeliveryAction(id: string, input: unknown) {
-  const session = await requireAnyPermission([...DISPATCH_PERMISSIONS]);
-  const parsed = serialIdsSchema.safeParse(input);
-  if (!parsed.success) return { error: "Select the serials to dispatch" };
-
-  try {
-    const result = await deliveryPostingService.dispatch({
-      tenantId: session.user.tenantId,
-      userId: session.user.id,
-      permissions: session.user.permissions,
-      deliveryId: id,
-      serialNumberIds: parsed.data.serialNumberIds,
-    });
-    revalidateDelivery(id);
-    return { success: true as const, movedCount: result.movedCount, drNo: result.drNo };
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "Failed to dispatch delivery" };
+    return { error: e instanceof Error ? e.message : "Could not check SAP" };
   }
 }
 
@@ -427,24 +414,6 @@ export async function acceptDeliveryAction(id: string, input?: unknown) {
     };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to accept delivery" };
-  }
-}
-
-/** Reject only closes an undispatched delivery, so it belongs to whoever may dispatch it. */
-export async function rejectDeliveryAction(id: string, notes?: string) {
-  const session = await requireAnyPermission([...DISPATCH_PERMISSIONS]);
-  try {
-    const result = await deliveryPostingService.reject({
-      tenantId: session.user.tenantId,
-      userId: session.user.id,
-      permissions: session.user.permissions,
-      deliveryId: id,
-      notes,
-    });
-    revalidateDelivery(id);
-    return { success: true as const, returnedCount: result.returnedCount };
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "Failed to reject delivery" };
   }
 }
 
@@ -963,12 +932,14 @@ function revalidateDeliveryReturn() {
   revalidatePath("/inventory");
 }
 
-export async function requestDeliveryReturnAction(deliveryId: string, reason: unknown) {
+export async function requestDeliveryReturnAction(deliveryId: string, remarks: unknown, units?: unknown) {
   const session = await requireAnyPermission([LOGISTICS_DELIVERY_RETURN_REQUEST]);
-  const parsed = deliveryReturnReasonSchema.safeParse(reason);
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Enter the reason for the return" };
+  const parsed = deliveryReturnReasonSchema.safeParse(remarks);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the remarks" };
+  const parsedUnits = deliveryReturnUnitsSchema.safeParse(units);
+  if (!parsedUnits.success) return { error: parsedUnits.error.issues[0]?.message ?? "Tick the units to reject" };
   try {
-    const row = await deliveryReturnService.request(postingActor(session), { deliveryId, reason: parsed.data });
+    const row = await deliveryReturnService.request(postingActor(session), { deliveryId, reason: parsed.data, units: parsedUnits.data });
     revalidateDelivery(deliveryId);
     return { success: true as const, id: row.id, requestNo: row.requestNo };
   } catch (error) {
@@ -977,11 +948,11 @@ export async function requestDeliveryReturnAction(deliveryId: string, reason: un
 }
 
 export async function getDeliveryReturnAction(
-  deliveryId: string,
-): Promise<{ success: true; detail: DeliveryReturnDetail | null } | { error: string }> {
+  returnId: string,
+): Promise<{ success: true; detail: DeliveryReturnDetail } | { error: string }> {
   const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS, ...DELIVERY_RETURN_PERMISSIONS]);
   try {
-    const detail = await deliveryReturnService.getLatestForDelivery(postingActor(session), deliveryId);
+    const detail = await deliveryReturnService.get(postingActor(session), returnId);
     return { success: true as const, detail };
   } catch (error) {
     return actionError(error, "Failed to load the return request");

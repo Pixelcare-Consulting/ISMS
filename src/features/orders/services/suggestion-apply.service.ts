@@ -578,7 +578,7 @@ export const suggestionApplyService = {
       let createdDraft = false;
 
       if (!draft) {
-        orderNumber = await nextDraftOrderNumber(db, actor.tenantId);
+        orderNumber = await nextDraftOrderNumber(db, actor.tenantId, input.branchId);
         const created = await tx.branchOrder.create({
           data: {
             tenantId: actor.tenantId,

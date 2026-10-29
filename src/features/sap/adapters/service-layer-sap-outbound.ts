@@ -12,10 +12,12 @@ import type { SapOutboundPort } from "@/features/sap/ports/sap-outbound.port";
 import { SAP_REFERENCE_TYPES } from "@/features/sap/constants/sap-job-types";
 import { sapIntegrationRepository } from "@/features/sap/repositories/sap-integration.repository";
 import {
-  buildDrBody,
   buildItBody,
   buildItrBody,
   buildReturnBody,
+  deliveryReturnJournalMemo,
+  deliveryReturnRemarks,
+  orderLineText,
   buildSoBody,
   postSapDocument,
   type SapSerialLine,
@@ -24,9 +26,6 @@ import {
   completeDeliveryReturn,
   type DeliveryReturnSapKind,
 } from "@/features/logistics/services/delivery-return-completion";
-import { sapErrorMessage } from "@/features/sap/services/sap-master-data";
-import { sapServiceLayerClient } from "@/features/sap/services/sap-service-layer-client";
-import type { SapServiceLayerCredentials } from "@/features/sap/types/sap-service-layer";
 import { sapServiceLayerService } from "@/features/sap/services/sap-service-layer.service";
 import { mockSapOutbound } from "@/features/sap/adapters/mock-sap-outbound";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
@@ -38,116 +37,37 @@ function isoDate(d: Date) {
   return d.toISOString().slice(0, 10);
 }
 
-const LEGACY_ORDER_MESSAGE =
-  "This order was approved before SAP posting was enabled. Re-approve or post it in SAP.";
-
-interface DispatchDetail {
-  modelId: string;
-  skuCode: string;
-  capacity: number;
-  sapLineNum: number | null;
-}
-
-/**
- * Splits the dispatched serials across the order lines: grouped by model, then
- * filled into that model's lines in order up to each line's approved quantity.
- */
-function mapSerialsToLines(
-  details: DispatchDetail[],
-  serials: { serialNo: string; modelId: string; skuCode: string }[],
-  baseEntry: number,
-): SapSerialLine[] {
-  const remaining = new Map<string, string[]>();
-  for (const s of serials) {
-    remaining.set(s.modelId, [...(remaining.get(s.modelId) ?? []), s.serialNo]);
-  }
-
-  const lines: SapSerialLine[] = [];
-  for (const detail of details) {
-    const pool = remaining.get(detail.modelId);
-    if (!pool || pool.length === 0 || detail.capacity <= 0) continue;
-    if (detail.sapLineNum == null) {
-      throw new Error(`Order line for ${detail.skuCode} has no SAP line number`);
-    }
-    lines.push({
-      itemCode: detail.skuCode,
-      serialNos: pool.splice(0, detail.capacity),
-      baseEntry,
-      baseLine: detail.sapLineNum,
-    });
-  }
-
-  const unmapped = [...remaining.values()].reduce((sum, pool) => sum + pool.length, 0);
-  if (unmapped > 0) throw new Error("Some serials do not match an approved order line");
-  return lines;
-}
-
 /** Serials grouped by item, sorted, without a base document. */
-function groupSerialsBySku(rows: { serialNo: string; skuCode: string }[]): SapSerialLine[] {
-  const bySku = new Map<string, string[]>();
+interface SerialRow {
+  serialNo: string;
+  skuCode: string;
+  /** Per-unit row remarks; units of one item with different remarks get separate lines. */
+  remarks?: string | null;
+}
+
+function remarksKey(remarks: string | null | undefined): string {
+  return remarks?.trim() ?? "";
+}
+
+function groupSerialsBySku(rows: SerialRow[]): SapSerialLine[] {
+  const groups = new Map<string, SapSerialLine>();
   for (const row of rows) {
-    bySku.set(row.skuCode, [...(bySku.get(row.skuCode) ?? []), row.serialNo]);
+    const key = `${row.skuCode}\u0000${remarksKey(row.remarks)}`;
+    const line = groups.get(key) ?? { itemCode: row.skuCode, serialNos: [], remarks: remarksKey(row.remarks) || null };
+    line.serialNos.push(row.serialNo);
+    groups.set(key, line);
   }
-  return [...bySku.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([itemCode, serialNos]) => ({ itemCode, serialNos }));
+  return [...groups.values()].sort(
+    (a, b) => a.itemCode.localeCompare(b.itemCode) || remarksKey(a.remarks).localeCompare(remarksKey(b.remarks)),
+  );
 }
 
-interface SapDrLine {
-  LineNum: number;
-  ItemCode?: string;
-  SerialNumbers?: { InternalSerialNumber?: string | null }[];
-}
-
-/**
- * Return lines copied from the DR in SAP: each returned serial is matched to
- * the DR line that carries it, so the Return references the right BaseLine.
- */
-async function mapReturnLinesFromDr(
-  creds: SapServiceLayerCredentials,
-  drEntry: number,
-  drNo: string,
-  serials: { serialNo: string; skuCode: string }[],
-): Promise<SapSerialLine[]> {
-  const read = await sapServiceLayerClient.request<{ DocumentLines?: SapDrLine[] }>({
-    creds,
-    method: "GET",
-    path: `/DeliveryNotes(${drEntry})?$select=DocEntry,DocumentLines`,
-  });
-  if (read.statusCode >= 400) {
-    throw new Error(sapErrorMessage(read.statusCode, read.rawBody, "DeliveryNotes"));
-  }
-
-  const lineBySerial = new Map<string, SapDrLine>();
-  for (const line of read.data?.DocumentLines ?? []) {
-    for (const serial of line.SerialNumbers ?? []) {
-      const no = serial.InternalSerialNumber?.trim();
-      if (no) lineBySerial.set(no, line);
-    }
-  }
-
-  const byLine = new Map<number, SapSerialLine>();
-  for (const serial of serials) {
-    const drLine = lineBySerial.get(serial.serialNo);
-    if (!drLine) throw new Error(`Serial ${serial.serialNo} is not on DR# ${drNo} in SAP`);
-    const entry = byLine.get(drLine.LineNum) ?? {
-      itemCode: drLine.ItemCode || serial.skuCode,
-      serialNos: [],
-      baseEntry: drEntry,
-      baseLine: drLine.LineNum,
-    };
-    entry.serialNos.push(serial.serialNo);
-    byLine.set(drLine.LineNum, entry);
-  }
-  return [...byLine.values()].sort((a, b) => (a.baseLine ?? 0) - (b.baseLine ?? 0));
-}
-
-/** Consignment returns post an Inventory Transfer; outright ones a Return on the DR. */
+/** Consignment rejects post an Inventory Transfer; outright ones a standalone Return. */
 function returnKind(docType: "ITR" | "SO"): DeliveryReturnSapKind {
   return docType === "SO" ? "RETURN" : "IT";
 }
 
-/** Approved return: IT branch → source warehouse (consignment) or Return on the DR (outright). */
+/** Approved reject: IT branch → source warehouse (consignment) or a standalone Return (outright). */
 async function postDeliveryReturn(
   tenantId: string,
   userId: string | undefined,
@@ -161,10 +81,14 @@ async function postDeliveryReturn(
     where: { id: returnId, tenantId },
     select: {
       requestNo: true,
+      reason: true,
       status: true,
       sapDocNo: true,
       lines: {
-        select: { serialNumber: { select: { serialNo: true, model: { select: { skuCode: true } } } } },
+        select: {
+          remarks: true,
+          serialNumber: { select: { serialNo: true, model: { select: { skuCode: true } } } },
+        },
         orderBy: { serialNumber: { serialNo: "asc" } },
       },
       delivery: {
@@ -172,8 +96,8 @@ async function postDeliveryReturn(
           sapDocEntry: true,
           drNo: true,
           sourceWarehouse: { select: { code: true } },
-          branch: { select: { sapCode: true, dealer: { select: { sapCode: true } } } },
-          order: { select: { sapDocType: true } },
+          branch: { select: { name: true, sapCode: true, dealer: { select: { sapCode: true } } } },
+          order: { select: { sapDocType: true, sapDocNum: true } },
         },
       },
     },
@@ -193,32 +117,51 @@ async function postDeliveryReturn(
   const toWhs = delivery.sourceWarehouse?.code;
   if (!toWhs) throw new Error("Delivery has no source warehouse");
   const docType = docTypeForOrder({ sapDocType: delivery.order?.sapDocType ?? null });
-  const serials = request.lines.map((line) => ({
+  const serials: SerialRow[] = request.lines.map((line) => ({
     serialNo: line.serialNumber.serialNo,
     skuCode: line.serialNumber.model.skuCode,
+    remarks: line.remarks,
   }));
 
   const kind = returnKind(docType);
+  const journalMemo = deliveryReturnJournalMemo({
+    requestNo: request.requestNo,
+    orderDocType: docType,
+    orderDocNum: delivery.order?.sapDocNum ?? null,
+  });
+  const remarks = deliveryReturnRemarks({
+    requestNo: request.requestNo,
+    orderDocType: docType,
+    orderDocNum: delivery.order?.sapDocNum ?? null,
+    reason: request.reason,
+  });
+  // Standalone documents: nothing is based on the DR / ITR; the original is named in the remarks.
+  const branchCode = delivery.branch.sapCode;
+  if (!branchCode) throw new Error("Branch has no SAP warehouse code");
+  const lines = groupSerialsBySku(serials);
   let body: Record<string, unknown>;
   if (docType === "SO") {
-    if (delivery.sapDocEntry == null) throw new Error("Delivery has no DR in SAP");
     const cardCode = delivery.branch.dealer?.sapCode;
     if (!cardCode) throw new Error("Dealer has no SAP customer code");
-    const drNo = delivery.drNo ?? String(delivery.sapDocEntry);
     body = buildReturnBody({
       ismsRef: request.requestNo,
+      remarks,
+      journalMemo,
       cardCode,
       whs: toWhs,
-      baseDrEntry: delivery.sapDocEntry,
-      lines: await mapReturnLinesFromDr(creds, delivery.sapDocEntry, drNo, serials),
+      branchCode,
+      branchName: delivery.branch.name,
+      lines,
     });
   } else {
-    if (!delivery.branch.sapCode) throw new Error("Branch has no SAP warehouse code");
     body = buildItBody({
       ismsRef: request.requestNo,
-      fromWhs: delivery.branch.sapCode,
+      remarks,
+      journalMemo,
+      fromWhs: branchCode,
       toWhs,
-      lines: groupSerialsBySku(serials),
+      lineText: orderLineText(request.requestNo, delivery.branch.name),
+      lines,
     });
   }
 
@@ -347,7 +290,7 @@ export const serviceLayerSapOutbound: SapOutboundPort = {
     const order = await prisma.branchOrder.findFirst({
       where: { id: orderId, tenantId },
       include: {
-        branch: { select: { name: true } },
+        branch: { select: { name: true, sapCode: true } },
         details: {
           orderBy: { id: "asc" },
           include: { model: { select: { skuCode: true } } },
@@ -393,7 +336,10 @@ export const serviceLayerSapOutbound: SapOutboundPort = {
         ismsRef: order.orderNumber,
         cardCode: routing.cardCode,
         whs: routing.sourceWhsCode,
+        branchCode: order.branch.sapCode,
         dueDate: isoDate(order.deliveryDueDate ?? new Date()),
+        branchName: order.branch.name,
+        notes: order.notes,
         lines: plainLines,
       });
     } else {
@@ -401,6 +347,9 @@ export const serviceLayerSapOutbound: SapOutboundPort = {
         ismsRef: order.orderNumber,
         fromWhs: routing.sourceWhsCode,
         toWhs: routing.branchWhsCode,
+        branchName: order.branch.name,
+        notes: order.notes,
+        dueDate: order.deliveryDueDate ? isoDate(order.deliveryDueDate) : null,
         lines: plainLines,
       });
     }
@@ -503,98 +452,6 @@ export const serviceLayerSapOutbound: SapOutboundPort = {
 
   createPartialDeliveryInventoryTransfer: (args) =>
     mockSapOutbound.createPartialDeliveryInventoryTransfer(args),
-
-  async createDispatchDocument({ tenantId, deliveryId, serialNumberIds }) {
-    const creds = await sapServiceLayerService.getCredentials(tenantId);
-    if (!creds) throw new Error("SAP Service Layer is not configured");
-
-    const delivery = await prisma.branchDelivery.findFirst({
-      where: { id: deliveryId, tenantId },
-      include: {
-        sourceWarehouse: { select: { code: true } },
-        order: {
-          include: {
-            branch: { select: { sapCode: true, dealer: { select: { sapCode: true } } } },
-            details: {
-              orderBy: { id: "asc" },
-              include: { model: { select: { skuCode: true } } },
-            },
-          },
-        },
-      },
-    });
-    if (!delivery) throw new Error("Delivery not found");
-    const order = delivery.order;
-    if (!order) throw new Error("Delivery has no order");
-    // No base document to copy from: never post a loose transfer or delivery.
-    if (order.sapDocEntry == null) throw new Error(LEGACY_ORDER_MESSAGE);
-    const docType = docTypeForOrder(order);
-
-    let sourceWhsCode = delivery.sourceWarehouse?.code ?? null;
-    if (!sourceWhsCode) {
-      const ctx = await orderRepository.findSapRoutingContext(tenantId, delivery.branchId, order.id);
-      if (!ctx.branch) throw new Error("Branch not found");
-      const routing = resolveOrderSapRouting({
-        branch: ctx.branch,
-        mainWarehouse: ctx.mainWarehouse,
-        dealer: ctx.branch.dealer,
-        orderModeOfPayment: ctx.orderModeOfPayment,
-      });
-      if (!routing.ok) throw new Error(routing.error);
-      sourceWhsCode = routing.sourceWhsCode;
-    }
-
-    const serialRows = await prisma.serialNumber.findMany({
-      where: { tenantId, id: { in: serialNumberIds } },
-      select: { serialNo: true, modelId: true, model: { select: { skuCode: true } } },
-      orderBy: { serialNo: "asc" },
-    });
-    if (serialRows.length !== serialNumberIds.length) {
-      throw new Error("One or more serials were not found");
-    }
-
-    const lines = mapSerialsToLines(
-      order.details.map((d) => ({
-        modelId: d.modelId,
-        skuCode: d.model.skuCode,
-        capacity: d.approvedQty ?? d.quantity,
-        sapLineNum: d.sapLineNum,
-      })),
-      serialRows.map((r) => ({ serialNo: r.serialNo, modelId: r.modelId, skuCode: r.model.skuCode })),
-      order.sapDocEntry,
-    );
-
-    if (docType === "SO") {
-      const cardCode = order.branch.dealer?.sapCode;
-      if (!cardCode) throw new Error("Dealer has no SAP customer code");
-      return postSapDocument(
-        creds,
-        "DR",
-        order.orderNumber,
-        buildDrBody({
-          ismsRef: order.orderNumber,
-          cardCode,
-          whs: sourceWhsCode,
-          baseSoEntry: order.sapDocEntry,
-          lines,
-        }),
-      );
-    }
-
-    if (!order.branch.sapCode) throw new Error("Branch has no SAP warehouse code");
-    return postSapDocument(
-      creds,
-      "IT",
-      order.orderNumber,
-      buildItBody({
-        ismsRef: order.orderNumber,
-        fromWhs: sourceWhsCode,
-        toWhs: order.branch.sapCode,
-        baseItrEntry: order.sapDocEntry,
-        lines,
-      }),
-    );
-  },
 
   async createDeliveryReturnDocument({ tenantId, userId, job }) {
     const returnId = job.referenceId;

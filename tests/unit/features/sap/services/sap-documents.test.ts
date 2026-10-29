@@ -3,9 +3,12 @@ jest.mock("@/features/sap/services/sap-service-layer-client", () => ({
 }));
 
 import {
-  buildDrBody,
   buildItBody,
+  buildItrBody,
+  buildSoBody,
+  fitSapText,
   buildReturnBody,
+  deliveryReturnRemarks,
   postSapDocument,
 } from "@/features/sap/services/sap-documents";
 import { sapServiceLayerClient } from "@/features/sap/services/sap-service-layer-client";
@@ -42,27 +45,133 @@ describe("SAP document builders", () => {
     expect(line.BaseType).toBe("InventoryTransferRequest");
   });
 
-  it("buildDrBody uses BaseType 17", () => {
-    const body = buildDrBody({
-      ismsRef: "D-1",
+  it("buildReturnBody is a standalone Return carrying the branch, Outright, ISMS ref and remarks per line", () => {
+    const body = buildReturnBody({
+      ismsRef: "RTN-1",
       cardCode: "C1",
       whs: "W",
-      baseSoEntry: 5,
-      lines: [{ itemCode: "X", serialNos: ["S1", "S2"], baseEntry: 5, baseLine: 1 }],
+      branchCode: "ABL003",
+      branchName: "ABENSON LCC IRIGA BRANCH",
+      lines: [{ itemCode: "X", serialNos: ["S1"], remarks: "Dent" }],
     }) as Body;
-    expect(body.DocumentLines[0].BaseType).toBe(17);
-    expect(body.DocumentLines[0].Quantity).toBe(2);
+    expect(body.CardCode).toBe("C1");
+    const line = body.DocumentLines[0];
+    expect(line).not.toHaveProperty("BaseType");
+    expect(line).not.toHaveProperty("BaseEntry");
+    expect(line).toMatchObject({
+      ItemCode: "X",
+      WarehouseCode: "W",
+      Quantity: 1,
+      CostingCode2: "ABL003",
+      CostingCode3: "OUTRIGHT",
+      U_ISMS_PONum: "RTN-1",
+      U_Branch_Name: "ABENSON LCC IRIGA B…",
+      U_Branch_Namelong: "ABENSON LCC IRIGA BRANCH",
+      U_free_text: "Dent",
+    });
   });
 
-  it("buildReturnBody uses BaseType 15", () => {
-    const body = buildReturnBody({
-      ismsRef: "R-1",
-      cardCode: "C1",
-      whs: "W",
-      baseDrEntry: 9,
-      lines: [{ itemCode: "X", serialNos: ["S1"], baseEntry: 9, baseLine: 0 }],
+  it("a delivery return names the original ITR / SO in Comments and keeps the ISMS ref as the key", () => {
+    const remarks = deliveryReturnRemarks({ requestNo: "RTN-1", orderDocType: "SO", orderDocNum: 5512, reason: "Defective" });
+    expect(remarks).toBe("Return of SO 5512 · ISMS RTN-1 · Defective");
+    const body = buildItBody({
+      ismsRef: "RTN-1",
+      remarks: deliveryReturnRemarks({ requestNo: "RTN-1", orderDocType: "ITR", orderDocNum: 88, reason: "x".repeat(400) }),
+      fromWhs: "A",
+      toWhs: "B",
+      lines: [{ itemCode: "X", serialNos: ["SN1"] }],
     }) as Body;
-    expect(body.DocumentLines[0].BaseType).toBe(15);
+    expect(body.U_ISMS_PO_No).toBe("RTN-1");
+    expect(String(body.Comments).startsWith("Return of ITR 88 · ISMS RTN-1")).toBe(true);
+    expect(String(body.Comments).length).toBeLessThanOrEqual(254);
+  });
+});
+
+describe("buildItrBody", () => {
+  const base = {
+    ismsRef: "ITR#2026-10-94860",
+    fromWhs: "FWH14P1F",
+    toWhs: "ABL003",
+    branchName: "ABENSON LCC IRIGA",
+    lines: [{ itemCode: "55QUHW01", quantity: 1 }],
+  };
+
+  it("puts the order notes in Remarks and a readable Journal Remarks on the header", () => {
+    const body = buildItrBody({ ...base, notes: "Deliver before the weekend sale." }) as Body;
+    expect(body.U_ISMS_PO_No).toBe("ITR#2026-10-94860");
+    expect(body.Comments).toBe("Deliver before the weekend sale.");
+    expect(body.JournalMemo).toBe("ISMS ITR#2026-10-94860 · ABENSON LCC IRIGA");
+  });
+
+  it("sends the order's delivery due date, and leaves Due Date to SAP when there is none", () => {
+    expect((buildItrBody({ ...base, dueDate: "2026-11-03" }) as Body).DueDate).toBe("2026-11-03");
+    expect(buildItrBody({ ...base, dueDate: null })).not.toHaveProperty("DueDate");
+    expect(buildItrBody(base)).not.toHaveProperty("DueDate");
+  });
+
+  it("falls back to the ISMS reference in Remarks when the order has no notes", () => {
+    const body = buildItrBody({ ...base, notes: "  " }) as Body;
+    expect(body.Comments).toBe("ISMS ITR#2026-10-94860");
+  });
+
+  it("stamps the order number and branch name on every line, within SAP's column sizes", () => {
+    const body = buildItrBody({ ...base, branchName: "ABENSON ABREEZA DAVAO" }) as Body;
+    expect(body.StockTransferLines[0]).toMatchObject({
+      ItemCode: "55QUHW01",
+      U_ISMS_PONum: "ITR#2026-10-94860",
+      U_Branch_Name: "ABENSON ABREEZA DAV…",
+      U_Branch_Namelong: "ABENSON ABREEZA DAVAO",
+    });
+    expect(String(body.StockTransferLines[0].U_Branch_Name)).toHaveLength(20);
+  });
+
+  it("keeps long notes and journal remarks inside SAP's limits", () => {
+    const body = buildItrBody({
+      ...base,
+      branchName: "A".repeat(60),
+      notes: "x ".repeat(300),
+    }) as Body;
+    expect(String(body.Comments).length).toBeLessThanOrEqual(254);
+    expect(String(body.JournalMemo).length).toBeLessThanOrEqual(50);
+  });
+});
+
+describe("buildSoBody", () => {
+  it("carries the ITR's text fields plus the Branch and Outright business type dimensions", () => {
+    const body = buildSoBody({
+      ismsRef: "SO#2026-10-00034",
+      cardCode: "C001",
+      whs: "FWH14P1F",
+      branchCode: "ABP001",
+      dueDate: "2026-11-03",
+      branchName: "ABENSON ABREEZA DAVAO",
+      notes: "Rush for the mall sale.",
+      lines: [{ itemCode: "55QUHW01", quantity: 2 }],
+    }) as Body;
+    expect(body).toMatchObject({
+      U_ISMS_PO_No: "SO#2026-10-00034",
+      Comments: "Rush for the mall sale.",
+      JournalMemo: "ISMS SO#2026-10-00034 · ABENSON ABREEZA DAVAO",
+      CardCode: "C001",
+      DocDueDate: "2026-11-03",
+    });
+    expect(body.DocumentLines[0]).toEqual({
+      ItemCode: "55QUHW01",
+      Quantity: 2,
+      WarehouseCode: "FWH14P1F",
+      CostingCode2: "ABP001",
+      CostingCode3: "OUTRIGHT",
+      U_ISMS_PONum: "SO#2026-10-00034",
+      U_Branch_Name: "ABENSON ABREEZA DAV…",
+      U_Branch_Namelong: "ABENSON ABREEZA DAVAO",
+    });
+  });
+});
+
+describe("fitSapText", () => {
+  it("collapses whitespace and only cuts when it must", () => {
+    expect(fitSapText("  line one\n line   two ", 30)).toBe("line one line two");
+    expect(fitSapText("abcdef", 4)).toBe("abc…");
   });
 });
 

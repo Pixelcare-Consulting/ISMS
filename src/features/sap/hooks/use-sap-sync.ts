@@ -257,8 +257,8 @@ export function runSapSync(
           showResultToast("info", key, `Stopped syncing ${noun.many}`, {
             description:
               lastProcessed > 0
-                ? `${progressDetail(lastProcessed, lastTotal)}. The scheduled sync will continue later.`
-                : "The scheduled sync will continue later.",
+                ? `${progressDetail(lastProcessed, lastTotal)}. Run Sync from SAP again to pick up the rest.`
+                : "Run Sync from SAP again to pick up the rest.",
           });
           break;
         }

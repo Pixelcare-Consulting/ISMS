@@ -3,7 +3,7 @@ import {
   OrderRecordPage,
   type OrderRecordLine,
 } from "@/app/(app)/orders/_components/order-history-sections";
-import { formatOrderSapDocument } from "@/features/orders/constants/order-sap-doc-type";
+import { orderSapDocumentFields } from "@/features/orders/constants/order-sap-doc-type";
 import { BRANCH_ORDER_TYPE_LABELS } from "@/features/orders/constants/order-status";
 import { buildSubmittedOrderProgress } from "@/features/orders/lib/order-history-tracker";
 import type { SubmittedOrderSummary } from "@/features/orders/services/order-history-detail";
@@ -79,7 +79,7 @@ export function SubmittedOrderView({ order }: { order: SubmittedOrderSummary }) 
       dealerName={order.dealerName}
       branchName={order.branchName}
       paymentLabel={order.paymentLabel}
-      sapLabel={formatOrderSapDocument({
+      sapDocument={orderSapDocumentFields({
         sapDocType: order.sapDocType,
         sapDocNum: order.sapDocNum,
       })}

@@ -62,6 +62,22 @@ export interface SapSyncSegment<TContext = unknown> {
 }
 
 /**
+ * A narrower read of a segmentable entity: only rows whose `field` holds one of `keys`.
+ *
+ * Built by the entity's own service from what the user picked (a model, a warehouse, a
+ * list of serials), then walked by `runSapTargetedSync` the same way a segment is walked
+ * in a pass. The keys need not be the entity's usual segment field: a serial target
+ * matches `SerialNumber` where a pass matches `ItemCode`.
+ */
+export interface SapSyncTarget {
+  field: string;
+  kind: SapSyncKeyKind;
+  keys: string[];
+  /** What was picked, e.g. `MODEL:abc123`. Names the lock and the audit record. */
+  label: string;
+}
+
+/**
  * Keep ISMS's *membership* in step with SAP, not only its fields.
  *
  * A sync pass reads everything SAP currently returns for the entity, so a row ISMS holds
@@ -117,9 +133,10 @@ export interface SapSyncEntity<TRecord = unknown, TContext = unknown> {
 
   /**
    * Write one page. Implementations look up only the keys in `records` — never a whole
-   * table — so memory stays flat however large the entity is.
+   * table — so memory stays flat however large the entity is. `context` is what `prepare`
+   * loaded, so per-run lookups are not repeated on every page.
    */
-  applyPage(tenantId: string, records: TRecord[]): Promise<SapSyncApplyResult>;
+  applyPage(tenantId: string, records: TRecord[], context: TContext): Promise<SapSyncApplyResult>;
 
   reconcile: SapSyncReconcile<TRecord>;
 }

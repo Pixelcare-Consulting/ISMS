@@ -5,6 +5,7 @@ jest.mock("@/features/sap/services/sap-service-layer-client", () => ({
 import {
   ensureSapOnHandQuery,
   fetchSapSerialLocations,
+  fetchSapSerialsInWarehouse,
 } from "@/features/sap/services/sap-onhand-stock";
 import { sapServiceLayerClient } from "@/features/sap/services/sap-service-layer-client";
 import type { SapServiceLayerCredentials } from "@/features/sap/types/sap-service-layer";
@@ -109,5 +110,23 @@ describe("ensureSapOnHandQuery", () => {
     await expect(ensureSapOnHandQuery(fresh("refused"))).rejects.toThrow(
       /could not create the SAP saved query ISMS_SN_LOC_RANGE.*No permission.*setup-sap-serial-onhand-query\.mjs/,
     );
+  });
+});
+
+describe("fetchSapSerialsInWarehouse", () => {
+  it("quotes the warehouse code, doubling any quote inside it", async () => {
+    request
+      // Query existence check: present.
+      .mockResolvedValueOnce(ok({ SqlCode: "ISMS_SN_LOC_WHS" }))
+      .mockResolvedValueOnce(
+        ok({ value: [{ AbsEntry: 7, DistNumber: "SN7", ItemCode: "A", WhsCode: "O'B1" }] }),
+      );
+
+    const rows = await fetchSapSerialsInWarehouse(creds, "O'B1");
+
+    expect(request.mock.calls[1][0].path).toBe(
+      `/SQLQueries('ISMS_SN_LOC_WHS')/List?whs=${encodeURIComponent("'O''B1'")}`,
+    );
+    expect(rows).toEqual([{ serialNo: "SN7", itemCode: "A", warehouseCode: "O'B1" }]);
   });
 });

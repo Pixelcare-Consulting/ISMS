@@ -9,16 +9,25 @@ jest.mock("@/lib/database/client", () => ({
     branchDeliveryLine: { findMany: jest.fn() },
     branchOrderDetail: { findMany: jest.fn() },
     branchSalesTransactionDetail: { findMany: jest.fn() },
+    branchQuota: { findMany: jest.fn() },
   },
 }));
 
 jest.mock("@/features/planogram/repositories/planogram.repository", () => ({
   planogramRepository: {
     listPlanogramModelsForAnalytics: jest.fn(),
+    listMilByBranch: jest.fn(),
+  },
+}));
+
+jest.mock("@/features/reason-status/repositories/reason-status.repository", () => ({
+  reasonStatusRepository: {
+    listActiveCodesByCategory: jest.fn(),
   },
 }));
 
 import { planogramRepository } from "@/features/planogram/repositories/planogram.repository";
+import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import { orderAnalyticsService } from "@/features/orders/services/order-analytics.service";
 import { NO_SALES_DII_REASON, OFF_PLANOGRAM_SUGGESTION_REASON } from "@/features/orders/types/order-analytics";
 import { prisma } from "@/lib/database/client";
@@ -56,6 +65,9 @@ function resetDb() {
     dealer: { id: "dealer-1", name: "North Dealer" },
   });
   (planogramRepository.listPlanogramModelsForAnalytics as jest.Mock).mockResolvedValue([]);
+  (planogramRepository.listMilByBranch as jest.Mock).mockResolvedValue([]);
+  (reasonStatusRepository.listActiveCodesByCategory as jest.Mock).mockResolvedValue([]);
+  (prisma.branchQuota.findMany as jest.Mock).mockResolvedValue([]);
   (prisma.productModel.findMany as jest.Mock).mockResolvedValue([]);
   (prisma.branchPlanogram.findMany as jest.Mock).mockResolvedValue([]);
   (prisma.branchInventory.findMany as jest.Mock).mockResolvedValue([]);
@@ -251,6 +263,18 @@ describe("loadOrderWorksheet", () => {
     expect(payload.summary.salesPeriodLabel).toBe("October 1\u201319, 2026 (Asia/Manila)");
     expect(payload.summary.inventoryAsOf).toBe(NOW.toISOString());
     expect(payload.dealerName).toBe("North Dealer");
+    expect(payload.deliveryFrequencyCode).toBeNull();
+    expect(payload.brandQuotas).toEqual([]);
+    expect(bySku.get("SKU-ZERO")?.milDays).toBe(30);
+    expect(prisma.branchQuota.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          tenantId: "tenant-1",
+          branchId: "branch-1",
+          quotaDate: new Date(Date.UTC(2026, 9, 1)),
+        }),
+      }),
+    );
 
     expect(prisma.branchInventory.findMany).toHaveBeenCalledTimes(1);
     expect(prisma.branchPulloutLine.findMany).toHaveBeenCalledTimes(1);
@@ -451,6 +475,64 @@ describe("loadOrderWorksheet", () => {
     expect(payload.summary.offBrandRowCount).toBe(1);
     expect(payload.lines.find((line) => line.modelId === "m-b")?.newlyOrderable).toBe(true);
     expect(prisma.productModel.findMany).not.toHaveBeenCalled();
+  });
+
+  it("loads delivery frequency, the current-month quota, MIL days, and status colors", async () => {
+    (prisma.branch.findFirst as jest.Mock).mockResolvedValue({
+      id: "branch-1",
+      name: "Ayala Cebu",
+      dealerId: null,
+      dealer: null,
+      deliveryScheduleConfig: { frequencyCode: { code: "F4" } },
+    });
+    (planogramRepository.listPlanogramModelsForAnalytics as jest.Mock).mockResolvedValue([
+      planogramModel({
+        id: "m1",
+        sku: "SKU-1",
+        name: "Model",
+        brandId: "brand-1",
+        brandName: "Devant",
+        maxQty: 2,
+      }),
+    ]);
+    (planogramRepository.listMilByBranch as jest.Mock).mockResolvedValue([
+      { modelId: "m1", daysThreshold: 14 },
+    ]);
+    (reasonStatusRepository.listActiveCodesByCategory as jest.Mock).mockResolvedValue([
+      { code: "STK", color: "green" },
+      { code: "DU", color: "amber" },
+    ]);
+    (prisma.branchQuota.findMany as jest.Mock).mockResolvedValue([
+      { brandId: "brand-1", quotaAmount: 40 },
+    ]);
+    (prisma.branchInventory.findMany as jest.Mock).mockResolvedValue([
+      {
+        serialNumberId: "du-1",
+        statusCode: { code: "DU" },
+        serialNumber: { modelId: "m1" },
+        defectReports: [],
+      },
+    ]);
+
+    const payload = await orderAnalyticsService.getWorksheet("tenant-1", {
+      branchId: "branch-1",
+      orderType: "manual",
+      now: NOW,
+    });
+
+    expect(payload.deliveryFrequencyCode).toBe("F4");
+    expect(payload.brandQuotas).toEqual([{ brandId: "brand-1", quantity: 40 }]);
+    expect(payload.lines[0]?.milDays).toBe(14);
+    expect(payload.lines[0]?.inventory.byStatus).toEqual(
+      expect.arrayContaining([
+        { code: "STK", count: 0, color: "green" },
+        { code: "DU", count: 1, color: "amber" },
+      ]),
+    );
+    expect(reasonStatusRepository.listActiveCodesByCategory).toHaveBeenCalledWith(
+      "tenant-1",
+      "inventory_system",
+    );
   });
 
   it("rejects an unknown branch", async () => {

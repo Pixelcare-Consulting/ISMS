@@ -71,6 +71,7 @@ import {
 } from "@/components/ui/table";
 import { usePersistedBoolean } from "@/hooks/use-persisted-boolean";
 import { cn } from "@/utils/cn";
+import { SAP_DOC_DATE_LABEL, SAP_DOC_NO_LABEL } from "@/features/logistics/lib/sap-doc-number";
 
 type RelatedUnit = SerialTraceability["relatedUnits"]["sameSku"]["units"][number];
 
@@ -342,7 +343,7 @@ function DetailHeader({ serial }: { serial: SerialTraceability }) {
           mono
         />
         <HeaderField
-          label="DR#"
+          label={SAP_DOC_NO_LABEL}
           value={
             serial.deliveryReceipt.deliveryNo ? (
               <Link
@@ -857,7 +858,7 @@ function LocationCard({ serial }: { serial: SerialTraceability }) {
               }
             />
             <DetailRow
-              label="DR date"
+              label={SAP_DOC_DATE_LABEL}
               value={
                 serial.deliveryReceipt.deliveryDate
                   ? dateFormatter.format(serial.deliveryReceipt.deliveryDate)

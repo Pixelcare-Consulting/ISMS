@@ -11,14 +11,13 @@ import type { LookupRecordStatus } from "@prisma/client";
 import {
   createSerialNumberAction,
   setSerialNumberStatusAction,
-  syncSerialNumbersFromSapAction,
   updateSerialNumberAction,
 } from "@/features/serial-numbers/actions/serial-number.actions";
 import {
   FLAT_SERIAL_DEFAULT_SORT,
   FLAT_SERIAL_DEFAULT_SORT_DIR,
 } from "@/features/serial-numbers/constants/flat-serial-sort";
-import { SapSyncButton } from "@/features/sap/components/sap-sync-button";
+import { SerialSapSyncDialog } from "@/features/serial-numbers/components/serial-sap-sync-dialog";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { uniqueSearchSuggestions } from "@/components/data-table";
 import {
@@ -431,13 +430,7 @@ export function SerialNumberTable({
             <Button variant="outline" size="sm" asChild>
               <Link href="/inventory/serial-numbers?view=by-model">By model</Link>
             </Button>
-            {canSync ? (
-              <SapSyncButton
-                syncKey="serial-number"
-                noun={{ one: "serial number", many: "serial numbers" }}
-                onSync={syncSerialNumbersFromSapAction}
-              />
-            ) : null}
+            {canSync ? <SerialSapSyncDialog /> : null}
             <SearchableSelect
               id="serial-status"
               className="sm:w-40"

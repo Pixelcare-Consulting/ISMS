@@ -27,9 +27,16 @@ import {
   buildLogisticsPageHref,
   LOGISTICS_DELIVERIES_PATH,
 } from "@/app/(app)/logistics/_components/logistics-paths";
+import { CheckSapNowButton } from "@/app/(app)/logistics/_components/check-sap-now-button";
 import { CompactProgressRail } from "@/app/(app)/logistics/_components/compact-progress-rail";
 import { buildDeliveryTracker } from "@/app/(app)/logistics/_components/delivery-tracker";
 import type { WorkflowStatusOption } from "@/features/logistics/constants/workflow-codes";
+import {
+  formatSapDocNo,
+  SAP_DOC_DATE_LABEL,
+  SAP_DOC_NO_LABEL,
+} from "@/features/logistics/lib/sap-doc-number";
+import type { OrderSapDocType } from "@/features/orders/constants/order-sap-doc-type";
 import {
   LogisticsListViewSwitch,
   useLogisticsListProgressView,
@@ -58,27 +65,33 @@ interface DeliveryRow {
   drDate: Date | string | null;
   statusCode: StatusCodeRef;
   branch: { name: string };
-  order: { orderNumber: string } | null;
-  /** Latest return request, newest first (at most one). */
+  order: { orderNumber: string; sapDocType: OrderSapDocType | null } | null;
+  /** Reject requests, newest first. */
   returnRequests: LatestDeliveryReturn[];
 }
 
 interface DeliveriesPanelProps {
   deliveries: PaginatedList<DeliveryRow>;
   workflowStatuses: readonly WorkflowStatusOption[];
+  /** Shows "Check SAP now" (dispatch or logistics manage permission). */
+  canCheckSap?: boolean;
   initialSort?: string;
   initialSortDir?: string;
 }
 
 const deliveryColumn = createColumnHelper<DataTableFeatures, DeliveryRow>();
 
-/** Same feed pattern as order approval; the SAP post is the slow step. */
+function sapDocNo(row: DeliveryRow): string | null {
+  return formatSapDocNo(row.drNo, row.order?.sapDocType);
+}
+
 type DeliverySortField = "deliveryNo" | "orderNumber" | "branch" | "status";
 type DeliverySortDir = "asc" | "desc";
 
 export function DeliveriesPanel({
   deliveries,
   workflowStatuses,
+  canCheckSap = false,
   initialSort = "",
   initialSortDir = "desc",
 }: DeliveriesPanelProps) {
@@ -110,7 +123,7 @@ export function DeliveriesPanel({
       deliveries.items.filter((d) =>
         matchesTableSearch(query, [
           d.deliveryNo,
-          d.drNo,
+          sapDocNo(d),
           d.branch.name,
           d.order?.orderNumber,
           d.statusCode.name,
@@ -124,7 +137,7 @@ export function DeliveriesPanel({
     () =>
       uniqueSearchSuggestions(
         deliveries.items.map((d) => d.deliveryNo),
-        deliveries.items.map((d) => d.drNo),
+        deliveries.items.map(sapDocNo),
         deliveries.items.map((d) => d.branch.name),
         deliveries.items.map((d) => d.order?.orderNumber),
         deliveries.items.map((d) => d.statusCode.name),
@@ -176,15 +189,15 @@ export function DeliveriesPanel({
         ),
         meta: { className: "w-52 min-w-52" },
       }),
-      deliveryColumn.accessor((row) => row.drNo ?? "", {
+      deliveryColumn.accessor((row) => sapDocNo(row) ?? "", {
         id: "drNo",
-        header: "DR#",
+        header: SAP_DOC_NO_LABEL,
         enableSorting: false,
-        cell: ({ row }) => row.original.drNo ?? "—",
+        cell: ({ row }) => sapDocNo(row.original) ?? "—",
       }),
       deliveryColumn.accessor((row) => row.drDate ?? "", {
         id: "drDate",
-        header: "DR date",
+        header: SAP_DOC_DATE_LABEL,
         enableSorting: false,
         cell: ({ row }) => formatInventoryDrDate(row.original.drDate),
       }),
@@ -213,9 +226,9 @@ export function DeliveriesPanel({
       }),
       deliveryColumn.display({
         id: "return",
-        header: "Return",
+        header: "Rejected",
         enableSorting: false,
-        cell: ({ row }) => <DeliveryReturnCell latest={row.original.returnRequests[0]} />,
+        cell: ({ row }) => <DeliveryReturnCell returns={row.original.returnRequests} />,
       }),
       deliveryColumn.display({
         id: "actions",
@@ -256,7 +269,12 @@ export function DeliveriesPanel({
       }}
       stickyHeader
       search={{ value: query, onChange: setQuery, placeholder: "Search deliveries…", suggestions }}
-      toolbarActions={<LogisticsListViewSwitch />}
+      toolbarActions={
+        <>
+          {canCheckSap ? <CheckSapNowButton /> : null}
+          <LogisticsListViewSwitch />
+        </>
+      }
       pagination={{
         total: deliveries.total,
         page: deliveries.page,

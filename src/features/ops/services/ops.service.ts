@@ -1,7 +1,10 @@
 import type { Prisma } from "@prisma/client";
 
 import { deliveryPostingService } from "@/features/logistics/services/delivery-posting.service";
-import { deliveryReturnService } from "@/features/logistics/services/delivery-return.service";
+import {
+  deliveryReturnService,
+  type DeliveryReturnUnitInput,
+} from "@/features/logistics/services/delivery-return.service";
 import {
   pulloutPostingService,
   type PulloutCreateInput,
@@ -43,12 +46,12 @@ export const opsService = {
     });
   },
 
-  requestDeliveryReturn(actor: PostingActor, input: { deliveryId: string; reason: string }) {
+  requestDeliveryReturn(actor: PostingActor, input: { deliveryId: string; reason?: string | null; units?: DeliveryReturnUnitInput[] | null }) {
     return deliveryReturnService.request(actor, input);
   },
 
-  getDeliveryReturn(actor: PostingActor, deliveryId: string) {
-    return deliveryReturnService.getLatestForDelivery(actor, deliveryId);
+  getDeliveryReturn(actor: PostingActor, returnId: string) {
+    return deliveryReturnService.get(actor, returnId);
   },
 
   decideDeliveryReturn(actor: PostingActor, returnId: string, action: "APPROVE" | "REJECT", note?: string | null) {

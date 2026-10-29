@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { DeliveryTransfersPanel } from "@/app/(app)/logistics/_components/delivery-transfers-panel";
 import { TransfersPageTabs } from "@/app/(app)/logistics/_components/transfers-page-tabs";
@@ -21,7 +21,7 @@ import {
 } from "@/features/logistics/constants/logistics-permissions";
 import {
   TRANSFERS_LIST_PATH,
-  TRANSFERS_PAGE_TABS,
+  VISIBLE_TRANSFERS_PAGE_TABS,
   parseTransfersPageTab,
   transfersListHref,
   type TransfersPageTab,
@@ -52,8 +52,10 @@ function canViewBranchTransfers(permissions: string[] | undefined): boolean {
 }
 
 function visibleTabs(permissions: string[] | undefined): readonly TransfersPageTab[] {
-  if (canViewBranchTransfers(permissions)) return TRANSFERS_PAGE_TABS;
-  return ["unit"];
+  const allowed: readonly TransfersPageTab[] = canViewBranchTransfers(permissions)
+    ? VISIBLE_TRANSFERS_PAGE_TABS
+    : ["unit"];
+  return allowed.filter((tab) => VISIBLE_TRANSFERS_PAGE_TABS.includes(tab));
 }
 
 export default async function TransfersPage({ searchParams }: TransfersPageProps) {
@@ -62,8 +64,10 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
   const page = Number(params.page) || 1;
   const limit = parseTablePageSize(params.limit);
   const tabs = visibleTabs(session.user.permissions);
+  // Someone who could only see the (now hidden) Unit transfers tab has nothing here.
+  if (tabs.length === 0) notFound();
   const requestedTab = parseTransfersPageTab(params.tab);
-  const activeTab: TransfersPageTab = tabs.includes(requestedTab) ? requestedTab : "unit";
+  const activeTab: TransfersPageTab = tabs.includes(requestedTab) ? requestedTab : tabs[0];
 
   if (activeTab === "unit" && params.tab !== "unit") {
     redirect(transfersListHref("unit", page, limit));

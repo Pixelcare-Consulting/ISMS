@@ -14,6 +14,7 @@ jest.mock("@/features/orders/repositories/order.repository", () => ({
     addApproval: jest.fn(),
     updateStatus: jest.fn(),
     finalizeApproved: jest.fn(),
+    revertSupplyPlanningApproval: jest.fn(),
     findSapRoutingContext: jest.fn(),
   },
 }));
@@ -72,6 +73,7 @@ jest.mock("@/lib/auth/permissions", () => ({
 import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
 
 import { auditService } from "@/features/audit/services/audit.service";
+import { notificationService } from "@/features/notifications/services/notification.service";
 import { orderRepository } from "@/features/orders/repositories/order.repository";
 import { orderService } from "@/features/orders/services/order.service";
 import { orderingPolicyService } from "@/features/ordering/services/ordering-policy.service";
@@ -82,6 +84,7 @@ const findById = orderRepository.findById as jest.Mock;
 const addApproval = orderRepository.addApproval as jest.Mock;
 const updateStatus = orderRepository.updateStatus as jest.Mock;
 const finalizeApproved = orderRepository.finalizeApproved as jest.Mock;
+const revertSupplyPlanningApproval = orderRepository.revertSupplyPlanningApproval as jest.Mock;
 const findSapRoutingContext = orderRepository.findSapRoutingContext as jest.Mock;
 
 const ROUTING_CONTEXT = {
@@ -98,6 +101,13 @@ const ROUTING_CONTEXT = {
   mainWarehouse: { id: "w-main", code: "WM" },
 };
 const emitApprovedOrder = sapService.emitApprovedOrder as jest.Mock;
+const processPendingJobs = sapService.processPendingJobs as jest.Mock;
+
+function completeSapPost() {
+  processPendingJobs.mockResolvedValue([
+    { jobId: "job-1", status: "completed", sapDocRef: "ITR-100" },
+  ]);
+}
 
 const LOADED_AT = new Date("2026-10-19T02:00:00.000Z");
 
@@ -132,7 +142,10 @@ beforeEach(() => {
   (sendWorkflowEmail as jest.Mock).mockResolvedValue(undefined);
   emitApprovedOrder.mockResolvedValue(undefined);
   findSapRoutingContext.mockResolvedValue(ROUTING_CONTEXT);
-  (sapService.processPendingJobs as jest.Mock).mockResolvedValue(undefined);
+  processPendingJobs.mockResolvedValue(undefined);
+  revertSupplyPlanningApproval.mockResolvedValue({
+    updatedAt: new Date("2026-10-19T03:01:00.000Z"),
+  });
   addApproval.mockResolvedValue({});
   updateStatus.mockResolvedValue({});
 });
@@ -237,6 +250,7 @@ describe("order approval integrity", () => {
 
   it("stores the routed SAP document type on final approval", async () => {
     findById.mockResolvedValue(reviewOrder());
+    completeSapPost();
     await orderService.approve("tenant-1", "user-1", "order-1", ["sp"], {
       expectedUpdatedAt: LOADED_AT.toISOString(),
     });
@@ -265,6 +279,7 @@ describe("order approval integrity", () => {
     emitApprovedOrder.mockImplementation(async () => {
       calls.push("sap");
     });
+    completeSapPost();
 
     await orderService.approve("tenant-1", "user-1", "order-1", ["sp"], {
       comment: "Approved for the window",
@@ -294,9 +309,68 @@ describe("order approval integrity", () => {
     );
     expect(emitApprovedOrder).toHaveBeenCalledTimes(1);
     // Only this order's job runs inline, never the tenant's whole backlog.
-    expect(sapService.processPendingJobs).toHaveBeenCalledWith("tenant-1", "user-1", 1, {
+    expect(processPendingJobs).toHaveBeenCalledWith("tenant-1", "user-1", 1, {
       referenceType: "BranchOrder",
       referenceId: "order-1",
     });
+    expect(revertSupplyPlanningApproval).not.toHaveBeenCalled();
+    expect(sendWorkflowEmail).toHaveBeenCalled();
+  });
+
+  it("rolls final approval back when SAP does not complete", async () => {
+    const order = reviewOrder();
+    findById.mockResolvedValueOnce(order).mockResolvedValueOnce({
+      ...order,
+      status: "approved",
+      orderNumber: "SO#2026-10-00001",
+      processedAt: new Date("2026-10-19T03:00:00.000Z"),
+      details: [{ ...order.details[0], approvedQty: 2, spRemarks: "Align to shelf" }],
+    });
+    processPendingJobs.mockResolvedValue([
+      {
+        jobId: "job-1",
+        status: "failed",
+        error: "SAP returned 400: Actualice el tipo de cambio , 'USD'",
+      },
+    ]);
+
+    await expect(
+      orderService.approve("tenant-1", "user-1", "order-1", ["sp"], {
+        comment: "Approved for the window",
+        expectedUpdatedAt: LOADED_AT.toISOString(),
+        lineAdjustments: [{ detailId: "detail-1", approvedQty: 2, spRemarks: "Align to shelf" }],
+      }),
+    ).rejects.toThrow(
+      "Today's US dollar rate is missing. The order cannot go through until that rate is set.",
+    );
+
+    expect(finalizeApproved).toHaveBeenCalledTimes(1);  
+    expect(revertSupplyPlanningApproval).toHaveBeenCalledWith("tenant-1", "order-1", 1);
+    expect(sendWorkflowEmail).not.toHaveBeenCalled();
+    expect(notificationService.createNotification).not.toHaveBeenCalled();
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "order.sap_emit_failed",
+        metadata: { error: "SAP returned 400: Actualice el tipo de cambio , 'USD'" },
+      }),
+    );
+    expect(auditService.log).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: "order.approved" }),
+    );
+  });
+
+  it("rejects final approval when the SAP result is not a completed document", async () => {
+    findById.mockResolvedValue(reviewOrder());
+    processPendingJobs.mockResolvedValue([{ jobId: "job-1", status: "completed" }]);
+
+    await expect(
+      orderService.approve("tenant-1", "user-1", "order-1", ["sp"], {
+        expectedUpdatedAt: LOADED_AT.toISOString(),
+      }),
+    ).rejects.toThrow("SAP could not finish this order.");
+
+    expect(finalizeApproved).toHaveBeenCalledTimes(1);
+    expect(revertSupplyPlanningApproval).toHaveBeenCalledWith("tenant-1", "order-1", 1);
+    expect(sendWorkflowEmail).not.toHaveBeenCalled();
   });
 });

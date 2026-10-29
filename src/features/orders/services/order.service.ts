@@ -18,9 +18,11 @@ import {
   getRoleSlugForApproval,
   isOrderEditable,
   isSuperAdminOrderOverride,
+  isSupplyPlanningApprovalStep,
   nextStatusAfterApprove,
   SUPPLY_PLANNING_APPROVER_SLUGS,
 } from "@/features/orders/constants/order-workflow";
+import { SapOrderPostRejectedError } from "@/features/orders/lib/sap-order-rejection";
 import { notificationService } from "@/features/notifications/services/notification.service";
 import {
   ORDER_CHANGED_MESSAGE,
@@ -240,6 +242,56 @@ async function priceOrderDetails<T extends { modelId: string; quantity: number }
     const srp = model ? resolveActiveOrderPrice(model.priceLists, model.srp) : 0;
     return { ...line, amount: line.quantity * srp };
   });
+}
+
+type SapPostRead = { ok: true } | { ok: false; sapMessage: string | null };
+
+function readSapPostResult(
+  results: { status: string; sapDocRef?: string; error?: string }[] | null | undefined,
+): SapPostRead {
+  const result = results?.[0];
+  if (result?.status === "completed" && result.sapDocRef) return { ok: true };
+  const sapMessage = result?.error?.trim();
+  return { ok: false, sapMessage: sapMessage ? sapMessage : null };
+}
+
+/** Post this order's existing SAP job. Success is a completed document. */
+async function postSupplyPlanningOrder(
+  tenantId: string,
+  userId: string,
+  order: {
+    id: string;
+    orderNumber: string;
+    branchId: string;
+    branch: { sapCode: string };
+    sapDocType: string | null;
+    processedAt: Date | null;
+    details: { model: { skuCode: string }; approvedQty: number | null; quantity: number }[];
+  },
+): Promise<SapPostRead> {
+  try {
+    await sapService.emitApprovedOrder(tenantId, {
+      id: order.id,
+      orderNumber: order.orderNumber,
+      branchId: order.branchId,
+      branchSapCode: order.branch.sapCode,
+      docType: order.sapDocType,
+      processedAt: order.processedAt,
+      lines: order.details.map((d) => ({
+        skuCode: d.model.skuCode,
+        approvedQty: d.approvedQty,
+        quantity: d.quantity,
+      })),
+    });
+    const results = await sapService.processPendingJobs(tenantId, userId, 1, {
+      referenceType: SAP_REFERENCE_TYPES.BranchOrder,
+      referenceId: order.id,
+    });
+    return readSapPostResult(results);
+  } catch (e) {
+    const message = e instanceof Error ? e.message.trim() : "";
+    return { ok: false, sapMessage: message || null };
+  }
 }
 
 export const orderService = {
@@ -947,9 +999,48 @@ export const orderService = {
       });
 
       const refreshed = await orderRepository.findById(tenantId, orderId);
-      if (refreshed) {
-        // Order is already committed as approved — SAP emission/processing must
-        // never fail the approval. Capture errors instead of bubbling them up.
+      if (isSupplyPlanningApprovalStep(order.status, order.orderType)) {
+        const post = refreshed
+          ? await postSupplyPlanningOrder(tenantId, userId, refreshed)
+          : { ok: false as const, sapMessage: null };
+        if (!post.ok) {
+          let updatedAt: Date | null = null;
+          try {
+            const reverted = await orderRepository.revertSupplyPlanningApproval(
+              tenantId,
+              orderId,
+              level,
+            );
+            updatedAt = reverted.updatedAt;
+          } catch (rollbackError) {
+            await auditService.log({
+              tenantId,
+              userId,
+              action: "order.sap_emit_failed",
+              entityType: "BranchOrder",
+              entityId: orderId,
+              metadata: {
+                error: post.sapMessage ?? "SAP did not complete",
+                rollback:
+                  rollbackError instanceof Error ? rollbackError.message : "unknown",
+              },
+            });
+            throw new Error(
+              "SAP did not accept this order, and it could not be returned to Pending Supply Planning. Refresh and check the order before approving again.",
+            );
+          }
+          await auditService.log({
+            tenantId,
+            userId,
+            action: "order.sap_emit_failed",
+            entityType: "BranchOrder",
+            entityId: orderId,
+            metadata: { error: post.sapMessage ?? "SAP did not complete" },
+          });
+          throw new SapOrderPostRejectedError(post.sapMessage, updatedAt);
+        }
+      } else if (refreshed) {
+        // Older logistics final steps still post SAP without blocking the step.
         try {
           await sapService.emitApprovedOrder(tenantId, {
             id: refreshed.id,
@@ -964,7 +1055,6 @@ export const orderService = {
               quantity: d.quantity,
             })),
           });
-          // Only this order's job: a backlog of other jobs must not delay or block it.
           await sapService.processPendingJobs(tenantId, userId, 1, {
             referenceType: SAP_REFERENCE_TYPES.BranchOrder,
             referenceId: orderId,

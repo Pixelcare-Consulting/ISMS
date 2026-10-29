@@ -4,6 +4,7 @@ jest.mock("@/lib/database/client", () => {
     branchDelivery: { updateMany: jest.fn(), findFirst: jest.fn() },
     branchInventory: { updateMany: jest.fn(), count: jest.fn(), deleteMany: jest.fn() },
     deliveryTransferLine: { findMany: jest.fn() },
+    deliveryReturnLine: { findMany: jest.fn() },
     deliveryReturnRequest: { count: jest.fn() },
     reasonStatusCode: { findFirst: jest.fn() },
     serialNumberHistory: { createMany: jest.fn() },
@@ -16,6 +17,7 @@ jest.mock("@/lib/database/client", () => {
       branchInventory: { findMany: jest.fn() },
       deliveryTransferLine: { findMany: jest.fn() },
       deliveryReturnRequest: { count: jest.fn() },
+      deliveryReturnLine: { findMany: jest.fn() },
       $transaction: jest.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)),
     },
   };
@@ -66,11 +68,12 @@ beforeEach(() => {
     { serialNumberId: "s3", statusCode: { code: "DIT" } },
   ]);
   mockPrisma.deliveryTransferLine.findMany.mockResolvedValue([]);
+  mockPrisma.deliveryReturnLine.findMany.mockResolvedValue([]);
   mockTx.deliveryTransferLine.findMany.mockResolvedValue([]);
   mockTx.branchInventory.updateMany.mockResolvedValue({ count: 1 });
   mockTx.branchDelivery.updateMany.mockResolvedValue({ count: 1 });
   mockPrisma.deliveryReturnRequest.count.mockResolvedValue(0);
-  mockTx.deliveryReturnRequest.count.mockResolvedValue(0);
+  mockTx.deliveryReturnLine.findMany.mockResolvedValue([]);
 });
 
 describe("deliveryPostingService.accept with unit transfers (R7)", () => {
@@ -135,39 +138,45 @@ describe("deliveryPostingService.accept with unit transfers (R7)", () => {
   });
 });
 
-describe("deliveryPostingService.accept with an open return", () => {
-  it("refuses before the transaction when a return is open", async () => {
-    mockPrisma.deliveryReturnRequest.count.mockResolvedValue(1);
-    await expect(deliveryPostingService.accept(input)).rejects.toThrow(
-      "A return request for this delivery is waiting for approval",
+const heldOnReject = [
+  { serialNumberId: "s2", serialNumber: { serialNo: "SN-2" }, returnRequest: { id: "r0", requestNo: "RTN-0" } },
+];
+
+describe("deliveryPostingService.accept with an open reject request", () => {
+  it("refuses a unit on a pending reject request before the transaction", async () => {
+    mockPrisma.deliveryReturnLine.findMany.mockResolvedValue(heldOnReject);
+    await expect(deliveryPostingService.accept({ ...input, serialNumberIds: ["s2"] })).rejects.toThrow(
+      "Unit SN-2 is waiting on reject request RTN-0",
     );
-    expect(mockPrisma.deliveryReturnRequest.count).toHaveBeenCalledWith({
-      where: { tenantId: "t1", deliveryId: "del1", status: { in: ["PENDING_APPROVAL", "APPROVED"] } },
-    });
     expect(mockPrisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it("re-checks under the delivery row lock and moves nothing", async () => {
-    mockTx.deliveryReturnRequest.count.mockResolvedValue(1);
-    await expect(deliveryPostingService.accept({ ...input, serialNumberIds: ["s2"] })).rejects.toThrow(
-      "A return request for this delivery is waiting for approval",
+  it("accepts the delivery's other units while a reject request holds one", async () => {
+    mockPrisma.deliveryReturnLine.findMany.mockImplementation(async ({ where }: { where: { serialNumberId: { in: string[] } } }) =>
+      heldOnReject.filter((row) => where.serialNumberId.in.includes(row.serialNumberId)),
     );
-    const lock = queryRaw().mock.calls[0];
-    expect((lock[0] as TemplateStringsArray).join("?")).toMatch(/FROM branch_deliveries [\s\S]*FOR UPDATE/);
-    expect(queryRaw().mock.invocationCallOrder[0]).toBeLessThan(
-      mockTx.deliveryReturnRequest.count.mock.invocationCallOrder[0],
+    mockTx.branchDelivery.findFirst
+      .mockResolvedValueOnce({
+        branchId: "b1",
+        acceptedAt: null,
+        statusCodeId: "id-partial",
+        statusCode: { code: "partial" },
+        lines: [{ serialNumberId: "s1" }, { serialNumberId: "s2" }, { serialNumberId: "s3" }],
+      })
+      .mockResolvedValue({ deliveryNo: "DEL-1", branch: { name: "Branch" } });
+    mockTx.branchInventory.count.mockResolvedValue(1);
+    await deliveryPostingService.accept({ ...input, serialNumberIds: ["s3"] });
+    expect(mockTx.branchInventory.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ serialNumberId: { in: ["s3"] } }) }),
+    );
+  });
+
+  it("re-checks under the serial locks and moves nothing", async () => {
+    mockTx.deliveryReturnLine.findMany.mockResolvedValue(heldOnReject);
+    await expect(deliveryPostingService.accept({ ...input, serialNumberIds: ["s2"] })).rejects.toThrow(
+      "Unit SN-2 is waiting on reject request RTN-0",
     );
     expect(mockTx.branchInventory.updateMany).not.toHaveBeenCalled();
-  });
-});
-
-describe("deliveryPostingService.reject", () => {
-  it("refuses a dispatched delivery and points to a return request", async () => {
-    await expect(deliveryPostingService.reject(input)).rejects.toThrow(
-      "Request a return for a dispatched delivery.",
-    );
-    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
-    expect(mockTx.branchInventory.deleteMany).not.toHaveBeenCalled();
   });
 });
 
