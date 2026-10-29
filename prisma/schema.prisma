@@ -3305,6 +3305,8 @@ model DeliveryReturnLine {
   warehouseLocationToId String? @map("warehouse_location_to_id")
   /// Why this unit was rejected at receipt; defaults to the request remarks.
   remarks               String?
+  /// Branch flagged the unit defective at receipt; it lands in the warehouse as DEF.
+  markDefective         Boolean @default(false) @map("mark_defective")
 
   returnRequest       DeliveryReturnRequest @relation(fields: [returnId], references: [id], onDelete: Cascade)
   serialNumber        SerialNumber          @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)

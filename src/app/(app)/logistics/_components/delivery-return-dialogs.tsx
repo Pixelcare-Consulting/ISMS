@@ -5,6 +5,7 @@ import { useEffect, useId, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { DeliveryReturnStatusBadge } from "@/app/(app)/logistics/_components/delivery-transfer-status-badge";
+import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import {
   needsSapRetry,
   pendingReturnOf,
@@ -310,7 +311,10 @@ function ReviewBody({
             <ul className="space-y-2">
               {detail.units.map((unit) => (
                 <li key={unit.serialNumberId} className="flex flex-col rounded-md border px-3 py-2 text-sm">
-                  <span className="font-mono">{unit.serialNo}</span>
+                  <span className="flex items-center gap-2">
+                    <span className="font-mono">{unit.serialNo}</span>
+                    {unit.markDefective ? <StatusCodeBadge code="DEF" name="DEF" /> : null}
+                  </span>
                   <span className="truncate text-xs text-muted-foreground">
                     {unit.skuCode} · {unit.modelName}
                   </span>
