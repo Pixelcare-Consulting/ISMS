@@ -155,9 +155,24 @@ describe("deliveryReturnService.request", () => {
       units: [{ serialNumberId: "s2" }, { serialNumberId: "s3", remarks: "" }],
     });
     expect(mockTx.deliveryReturnRequest.create.mock.calls[0][0].data.lines.create).toEqual([
-      { serialNumberId: "s2", warehouseLocationToId: "loc1", remarks: "Wrong model" },
-      { serialNumberId: "s3", warehouseLocationToId: "loc2", remarks: "Wrong model" },
+      { serialNumberId: "s2", warehouseLocationToId: "loc1", remarks: "Wrong model", markDefective: false },
+      { serialNumberId: "s3", warehouseLocationToId: "loc2", remarks: "Wrong model", markDefective: false },
     ]);
+  });
+
+  it("saves the optional DEF flag per unit and lists the DEF units in the audit log", async () => {
+    await deliveryReturnService.request(requester, {
+      deliveryId: "del1",
+      reason: "Wrong model",
+      units: [{ serialNumberId: "s2", markDefective: true }, { serialNumberId: "s3" }],
+    });
+    expect(mockTx.deliveryReturnRequest.create.mock.calls[0][0].data.lines.create).toEqual([
+      expect.objectContaining({ serialNumberId: "s2", markDefective: true }),
+      expect.objectContaining({ serialNumberId: "s3", markDefective: false }),
+    ]);
+    expect(mockTx.auditLog.create.mock.calls[0][0].data.metadata).toMatchObject({
+      defectiveSerialNumberIds: ["s2"],
+    });
   });
 
   it("needs the request capability", async () => {

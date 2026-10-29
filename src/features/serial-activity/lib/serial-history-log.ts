@@ -50,6 +50,20 @@ export function historyTxnTypesForActivity(
   return types;
 }
 
+/**
+ * Opening of the ledger text a completed delivery return writes. The log lists those
+ * returns from their request (with its approval trail), so it skips these ledger rows.
+ */
+export const DELIVERY_RETURN_HISTORY_PREFIX = "Returned to warehouse on ";
+
+export function deliveryReturnHistoryDetails(
+  requestNo: string,
+  sapKind: string,
+  sapDocNo: string,
+): string {
+  return `${DELIVERY_RETURN_HISTORY_PREFIX}${requestNo} (SAP ${sapKind} ${sapDocNo})`;
+}
+
 const DETAIL_PHRASES: ReadonlyArray<{
   phrase: string;
   take: "token" | "rest";
@@ -58,6 +72,7 @@ const DETAIL_PHRASES: ReadonlyArray<{
   { phrase: "sold on new invoice ", take: "rest" },
   { phrase: "p-count session ", take: "token" },
   { phrase: "returned to warehouse from ", take: "token" },
+  { phrase: DELIVERY_RETURN_HISTORY_PREFIX.toLowerCase(), take: "token" },
   { phrase: "hold released on ", take: "token" },
   { phrase: "in transit on ", take: "token" },
   { phrase: "dispatched on ", take: "token" },
@@ -71,7 +86,7 @@ const DETAIL_PHRASES: ReadonlyArray<{
 
 /** Document prefixes written by logistics, counts, replacements, and SAP refs. */
 const DOCUMENT_PREFIX =
-  /\b((?:DLV|XFR|PLT|CNT|REPL|SCS|SCO|SAP|SP)-[A-Z0-9]+(?:-[A-Z0-9]+)*)\b/iu;
+  /\b((?:DLV|XFR|UTR|RTN|PLT|CNT|REPL|SCS|SCO|SAP|SP)-[A-Z0-9]+(?:-[A-Z0-9]+)*)\b/iu;
 
 const UNTIL_ARROW = /^(?:return|replacement)\s+(.+?)\s+→/iu;
 
@@ -125,4 +140,13 @@ export function documentReferenceFromHistoryDetails(
   if (prefixed?.[1]) return prefixed[1];
 
   return loneDocumentToken(text);
+}
+
+const RETURN_REQUEST_ID = /\(request ([^\s)]+)\)\s*$/u;
+
+/** Sales return / replacement request id the ledger text ends with, e.g. `(request ck…)`. */
+export function returnRequestIdFromHistoryDetails(
+  details: string | null | undefined,
+): string | null {
+  return RETURN_REQUEST_ID.exec(details?.trim() ?? "")?.[1] ?? null;
 }

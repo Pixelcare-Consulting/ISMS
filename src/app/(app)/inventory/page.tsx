@@ -119,7 +119,7 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
       </ModuleGuide>
       <InventorySeriesSummaryPanel summary={seriesSummary} />
       <InventoryGroupedTable
-        key={`${groupBy}:${page}:${limit}:${params.branch ?? ""}:${params.sku ?? ""}:${offPlanogram ? "1" : "0"}:${searchQuery}`}
+        key={`${groupBy}:${page}:${limit}:${params.branch ?? ""}:${params.sku ?? ""}:${offPlanogram ? "1" : "0"}`}
         groupBy={groupBy}
         result={groupResult}
         initialOffPlanogram={offPlanogram}

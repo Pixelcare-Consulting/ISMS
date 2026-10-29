@@ -107,6 +107,26 @@ describe("completeDeliveryReturn", () => {
     expect(mockTx.auditLog.create.mock.calls[0][0].data).toMatchObject({ action: "delivery_return.completed" });
   });
 
+  it("lands a unit the branch marked DEF in the warehouse as DEF", async () => {
+    mockTx.deliveryReturnRequest.findFirst.mockResolvedValue({
+      ...approvedRequest(),
+      lines: [
+        { serialNumberId: "s2", warehouseLocationToId: "loc1", markDefective: true },
+        { serialNumberId: "s3", warehouseLocationToId: "loc2", markDefective: false },
+      ],
+    });
+    await completeDeliveryReturn(input);
+
+    expect(mockTx.warehouseInventory.createMany.mock.calls[0][0].data).toEqual([
+      expect.objectContaining({ serialNumberId: "s2", systemStatus: "DEF" }),
+      expect.objectContaining({ serialNumberId: "s3", systemStatus: "Returned from delivery" }),
+    ]);
+    expect(mockTx.serialNumberHistory.createMany.mock.calls[0][0].data).toEqual([
+      expect.objectContaining({ serialNumberId: "s2", status: "DEF" }),
+      expect.objectContaining({ serialNumberId: "s3", status: "Warehouse" }),
+    ]);
+  });
+
   it("rejects a pending delivery: no unit reached stock (R8b)", async () => {
     const result = await completeDeliveryReturn(input);
     expect(result).toEqual({ deliveryStatus: "rejected" });

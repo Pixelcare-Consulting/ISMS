@@ -59,6 +59,8 @@ export const deliveryReturnUnitsSchema = z
         .trim()
         .max(RETURN_LINE_REMARKS_MAX, `A unit's remarks can be up to ${RETURN_LINE_REMARKS_MAX} characters`)
         .nullish(),
+      /** Optional: the unit returns to the warehouse as DEF. */
+      markDefective: z.boolean().optional(),
     }),
   )
   .min(1, "Tick the units to reject")
@@ -67,6 +69,7 @@ export const deliveryReturnUnitsSchema = z
 export interface DeliveryReturnUnitInput {
   serialNumberId: string;
   remarks?: string | null;
+  markDefective?: boolean;
 }
 export const deliveryReturnDecisionSchema = z.object({
   action: z.enum(["APPROVE", "REJECT"]),
@@ -99,7 +102,14 @@ export interface DeliveryReturnDetail extends DeliveryReturnSummary {
   decisionNote: string | null;
   sapDocNo: string | null;
   sapDocDate: string | null;
-  units: { serialNumberId: string; serialNo: string; skuCode: string; modelName: string; remarks: string | null }[];
+  units: {
+    serialNumberId: string;
+    serialNo: string;
+    skuCode: string;
+    modelName: string;
+    remarks: string | null;
+    markDefective: boolean;
+  }[];
 }
 
 export interface DeliveryReturnOutcome {
@@ -224,6 +234,9 @@ export const deliveryReturnService = {
     const remarksBySerial = new Map(
       (input.units ?? []).map((unit) => [unit.serialNumberId, cleanText(unit.remarks)]),
     );
+    const defectiveIds = new Set(
+      (input.units ?? []).filter((unit) => unit.markDefective).map((unit) => unit.serialNumberId),
+    );
     if (!plan.ok) throw new Error(plan.error);
     const sapReady = planReturnSapReady(delivery);
     if (!sapReady.ok) throw new Error(sapReady.error);
@@ -269,6 +282,7 @@ export const deliveryReturnService = {
               create: plan.lines.map((line) => ({
                 ...line,
                 remarks: remarksBySerial.get(line.serialNumberId) || reason,
+                markDefective: defectiveIds.has(line.serialNumberId),
               })),
             },
           },
@@ -281,7 +295,13 @@ export const deliveryReturnService = {
             action: "delivery_return.requested",
             entityType: DELIVERY_RETURN_ENTITY,
             entityId: row.id,
-            metadata: { requestNo: row.requestNo, deliveryId: delivery.id, reason, serialNumberIds: serialIds },
+            metadata: {
+              requestNo: row.requestNo,
+              deliveryId: delivery.id,
+              reason,
+              serialNumberIds: serialIds,
+              ...(defectiveIds.size > 0 ? { defectiveSerialNumberIds: [...defectiveIds] } : {}),
+            },
           },
         });
         return row;
@@ -314,6 +334,7 @@ export const deliveryReturnService = {
           select: {
             serialNumberId: true,
             remarks: true,
+            markDefective: true,
             serialNumber: { select: { serialNo: true, model: { select: { skuCode: true, name: true } } } },
           },
         },
@@ -355,6 +376,7 @@ export const deliveryReturnService = {
         skuCode: line.serialNumber.model.skuCode,
         modelName: line.serialNumber.model.name,
         remarks: line.remarks,
+        markDefective: line.markDefective,
       })),
     };
   },

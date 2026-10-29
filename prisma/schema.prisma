@@ -368,6 +368,7 @@ model User {
   deliveryTransferLinesDecided       DeliveryTransferLine[]        @relation("DeliveryTransferLineDecidedBy")
   branchOrdersApproved               BranchOrder[]                 @relation("BranchOrderApprovedBy")
   branchOrderApprovals               BranchOrderApprovalLevel[]    @relation("BranchOrderApprovalLevelApprovedBy")
+  branchOrderRejections              BranchOrderApprovalLevel[]    @relation("BranchOrderApprovalLevelRejectedBy")
   branchInventoriesUpdated           BranchInventory[]             @relation("BranchInventoryUpdatedBy")
   branchDefectReportsReported        BranchDefectReport[]          @relation("BranchDefectReportReporter")
   branchDefectReportsDecided         BranchDefectReport[]          @relation("BranchDefectReportDecider")
@@ -2251,10 +2252,12 @@ model BranchOrderApprovalLevel {
   approvedAt   DateTime? @map("approved_at")
   approvedById String?   @map("approved_by_id")
   rejectedAt   DateTime? @map("rejected_at")
+  rejectedById String?   @map("rejected_by_id")
   comment      String?
 
   order      BranchOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
   approvedBy User?       @relation("BranchOrderApprovalLevelApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  rejectedBy User?       @relation("BranchOrderApprovalLevelRejectedBy", fields: [rejectedById], references: [id], onDelete: SetNull)
 
   @@unique([orderId, level])
   @@map("branch_order_approval_levels")
@@ -3132,6 +3135,7 @@ model BranchTransferApprovalLevel {
   approvedAt   DateTime? @map("approved_at")
   approvedById String?   @map("approved_by_id")
   rejectedAt   DateTime? @map("rejected_at")
+  rejectedById String?   @map("rejected_by_id")
   comment      String?
 
   transfer BranchTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
@@ -3148,6 +3152,7 @@ model BranchPulloutApprovalLevel {
   approvedAt   DateTime? @map("approved_at")
   approvedById String?   @map("approved_by_id")
   rejectedAt   DateTime? @map("rejected_at")
+  rejectedById String?   @map("rejected_by_id")
   comment      String?
 
   pullout BranchPullout @relation(fields: [pulloutId], references: [id], onDelete: Cascade)
@@ -3300,6 +3305,8 @@ model DeliveryReturnLine {
   warehouseLocationToId String? @map("warehouse_location_to_id")
   /// Why this unit was rejected at receipt; defaults to the request remarks.
   remarks               String?
+  /// Branch flagged the unit defective at receipt; it lands in the warehouse as DEF.
+  markDefective         Boolean @default(false) @map("mark_defective")
 
   returnRequest       DeliveryReturnRequest @relation(fields: [returnId], references: [id], onDelete: Cascade)
   serialNumber        SerialNumber          @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
