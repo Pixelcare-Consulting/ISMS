@@ -665,6 +665,8 @@ export const orderRepository = {
       where: { orderId_level: { orderId, level: data.level } },
       data: {
         rejectedAt: new Date(),
+        rejectedById: data.approvedById,
+        // Order timelines still read the rejector from approvedBy.
         approvedById: data.approvedById,
         comment: data.comment ?? null,
       },

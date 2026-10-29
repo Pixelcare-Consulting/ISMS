@@ -7,6 +7,7 @@ import { assertExclusiveClaim } from "@/features/logistics/services/delivery-pos
 import { settleDeliveryAfterReturn } from "@/features/logistics/services/delivery-settle";
 import { assertNotOnOpenTransfer } from "@/features/logistics/services/delivery-transfer-open-lines";
 import { prisma } from "@/lib/database/client";
+import { deliveryReturnHistoryDetails } from "@/features/serial-activity/lib/serial-history-log";
 
 /** SAP document the return posted: Inventory Transfer (consignment) or Return (outright). */
 export type DeliveryReturnSapKind = "IT" | "RETURN";
@@ -110,7 +111,7 @@ export async function completeDeliveryReturn(input: {
         tenantId,
         serialNumberId,
         txnType: "return" as const,
-        details: `Returned to warehouse on ${request.requestNo} (SAP ${input.kind} ${input.sapDocNo})`,
+        details: deliveryReturnHistoryDetails(request.requestNo, input.kind, input.sapDocNo),
         status: "Warehouse",
         createdById: input.userId ?? null,
       })),
