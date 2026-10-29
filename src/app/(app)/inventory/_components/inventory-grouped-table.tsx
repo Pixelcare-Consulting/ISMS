@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   useCallback,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -241,9 +243,47 @@ export function InventoryGroupedTable({
     pushHref({ offPlanogram: checked, page: 1 });
   }
 
-  function applySearch() {
-    pushHref({ q: searchDraft.trim(), page: 1 });
-  }
+  const pendingSearch = useRef<string | null>(null);
+
+  useEffect(() => {
+    const next = searchDraft.trim();
+    if (next === appliedSearch) return;
+    const timer = window.setTimeout(() => {
+      pendingSearch.current = next;
+      router.replace(
+        buildStockUnitsHref({
+          view: currentView,
+          page: 1,
+          limit: pageSize,
+          offPlanogram: offPlanogramOnly,
+          q: next,
+          filters: {
+            branch: branchFilter || undefined,
+            sku: skuFilter || undefined,
+          },
+        }),
+        { scroll: false },
+      );
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [
+    appliedSearch,
+    branchFilter,
+    currentView,
+    offPlanogramOnly,
+    pageSize,
+    router,
+    searchDraft,
+    skuFilter,
+  ]);
+
+  useEffect(() => {
+    if (pendingSearch.current !== null) {
+      if (pendingSearch.current === appliedSearch) pendingSearch.current = null;
+      return;
+    }
+    setSearchDraft(appliedSearch);
+  }, [appliedSearch]);
 
   const filterSuffix = listFiltersCacheSuffix(listFilters);
   const midLabel = midLevelLabel(groupBy);
@@ -448,11 +488,6 @@ export function InventoryGroupedTable({
             ? "Search serial, SKU, model…"
             : "Search serial, SKU, model, branch…",
       }}
-      searchTrailing={
-        <Button type="button" size="sm" variant="outline" className="min-h-11" onClick={applySearch}>
-          Search
-        </Button>
-      }
       toolbarLeading={
         <StockUnitsViewSwitch
           current={currentView}
