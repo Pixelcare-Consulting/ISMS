@@ -991,7 +991,7 @@ export function OrdersTable({
         onContinue={(choice) => {
           const params = new URLSearchParams();
           params.set("type", choice.orderType);
-          params.set("dealerId", choice.dealerId);
+          if (choice.dealerId) params.set("dealerId", choice.dealerId);
           params.set("branchId", choice.branchId);
           if (choice.modeOfPaymentId) params.set("modeOfPaymentId", choice.modeOfPaymentId);
           params.set("ready", "1");

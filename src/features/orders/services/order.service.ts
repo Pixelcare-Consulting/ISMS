@@ -29,7 +29,10 @@ import {
   orderRepository,
 } from "@/features/orders/repositories/order.repository";
 import { suggestionApplyService } from "@/features/orders/services/suggestion-apply.service";
-import { resolveOrderSapRouting } from "@/features/orders/services/order-sap-routing";
+import {
+  noBranchBpCode,
+  resolveOrderSapRouting,
+} from "@/features/orders/services/order-sap-routing";
 import { validateOrderLines } from "@/features/orders/services/order-line-validation";
 import type {
   OrderListSort,
@@ -496,12 +499,13 @@ export const orderService = {
     );
 
     let modeOfPaymentOverride: string | null = null;
+    const choice = await orderRepository.findModeOfPaymentChoice(
+      tenantId,
+      data.branchId,
+      data.modeOfPaymentId || null,
+    );
+    if (!choice.branch) throw new Error("Branch not found");
     if (data.modeOfPaymentId) {
-      const choice = await orderRepository.findModeOfPaymentChoice(
-        tenantId,
-        data.branchId,
-        data.modeOfPaymentId,
-      );
       if (!choice.modeOfPayment) throw new Error("That mode of payment is not available.");
       if (!choice.modeOfPayment.kind) {
         throw new Error(
@@ -512,6 +516,11 @@ export const orderService = {
       if (choice.modeOfPayment.id !== choice.dealerModeOfPaymentId) {
         modeOfPaymentOverride = choice.modeOfPayment.id;
       }
+    }
+    // Outright bills the branch's BP Code: catch a missing one now, not at final approval.
+    const kind = choice.modeOfPayment?.kind ?? choice.dealerModeOfPaymentKind;
+    if (kind === "OUTRIGHT" && !choice.branch.bpCode) {
+      throw new Error(noBranchBpCode(choice.branch));
     }
 
     const order = await orderRepository.create(tenantId, {
@@ -994,6 +1003,7 @@ export const orderService = {
         deliveryDueDate: deliveryResolution.dueDate ?? undefined,
         brandId,
         sapDocType: routing.docType,
+        sapCardCode: routing.cardCode,
         reviewSnapshot: input?.reviewSnapshot,
         lines,
       });

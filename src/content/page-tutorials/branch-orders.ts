@@ -25,7 +25,7 @@ export const BRANCH_ORDERS_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "Create a branch order",
       bullets: [
-        "Create order opens a wide workspace: dealer, branch, optional brand, and notes on the left; models on the right. Leave brand empty to see every model at the branch, or pick a brand to narrow the list.",
+        "Create order starts with the mode of payment. Consignment then asks for the dealer and branch; outright asks only for the branch and bills its BP Code from SAP. The workspace shows the order details, optional brand, and notes, with models below. Leave brand empty to see every model at the branch, or pick a brand to narrow the list.",
         "Additional item sits to the right of the filters. On a special order it opens a search window for active models that are not already on the sheet. On a manual order it opens a separate special order and does not add those lines here.",
         "Enter a branch quantity of 1 or more to include a model. Manual starts at 0; Auto replenish starts from the suggested quantity. Full shelves stay visible but stay locked on Manual and Auto replenish.",
         "Manual and Auto replenish extras come from other planogram models at the branch. Special can add an extra item that is not on the planogram.",

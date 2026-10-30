@@ -1364,6 +1364,9 @@ model Branch {
   /// Which SAP sync last saw this row (`branch` = OBRA, `branch-from-warehouse` = OWHS).
   /// Branches have two SAP sources, so each sync only retires the rows it owns.
   sapSyncSource      String?      @map("sap_sync_source")
+  /// SAP customer for outright Sales Orders: the warehouse's BP Code UDF (`OWHS.U_CardCode`),
+  /// synced by `branch-from-warehouse`. Null until set in SAP and synced.
+  bpCode             String?      @map("bp_code")
 
   tenant                    Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   area                      Area?                     @relation(fields: [areaId], references: [id], onDelete: SetNull)
@@ -2167,6 +2170,9 @@ model BranchOrder {
   sapDocNum       Int?              @map("sap_doc_num")
   /// Per-order override of the dealer's mode of payment. Null follows the dealer.
   modeOfPaymentId String?           @map("mode_of_payment_id")
+  /// SAP CardCode of an SO, stored at final approval with `sapDocType` so a later BP Code
+  /// change in SAP never re-routes the SO, DR or Return. Null for ITR orders.
+  sapCardCode     String?           @map("sap_card_code")
   createdById     String            @map("created_by_id")
   approvedById    String?           @map("approved_by_id")
   createdAt       DateTime          @default(now()) @map("created_at")

@@ -22,6 +22,12 @@
 /** Service Layer property name for the UDF (SAP prefixes user fields with `U_`). */
 export const SAP_WAREHOUSE_TYPE_FIELD = "U_Warehouse_Type";
 
+/**
+ * The warehouse's "BP Code" UDF, linked to Business Partners: the customer an outright
+ * Sales Order for that branch bills. Confirmed live 2026-10-30 (SNR031 → CSNR1000).
+ */
+export const SAP_WAREHOUSE_BP_CODE_FIELD = "U_CardCode";
+
 /** The three values SAP's list field accepts, spelled exactly as SAP stores them. */
 export const SAP_WAREHOUSE_TYPES = {
   branch: "Branch",

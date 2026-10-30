@@ -1,6 +1,7 @@
 import {
   docTypeForOrder,
   resolveOrderSapRouting,
+  resolveStoredOrderSapPlaces,
 } from "@/features/orders/services/order-sap-routing";
 import { SAP_ORDER_DOC_TYPE_LABELS } from "@/features/orders/constants/order-sap-doc-type";
 
@@ -11,6 +12,7 @@ function input(overrides: Partial<Input> = {}): Input {
     branch: {
       name: "Branch A",
       sapCode: "WH-A",
+      bpCode: "CBP-A",
       primaryWarehouse: { id: "w-primary", code: "WP" },
     },
     mainWarehouse: { id: "w-main", code: "WM" },
@@ -63,17 +65,31 @@ describe("resolveOrderSapRouting", () => {
     expect(result).toEqual({ ok: false, error: "Branch A has no SAP warehouse code." });
   });
 
-  it("blocks OUTRIGHT when the dealer has no SAP code", () => {
-    const base = input();
-    const result = resolveOrderSapRouting({
-      ...base,
-      dealer: {
-        ...base.dealer!,
-        sapCode: null,
-        modeOfPayment: { name: "Cash", kind: "OUTRIGHT" },
-      },
+  it("blocks OUTRIGHT when the branch has no BP Code", () => {
+    const base = input({ orderModeOfPayment: { name: "Cash", kind: "OUTRIGHT" } });
+    const result = resolveOrderSapRouting({ ...base, branch: { ...base.branch, bpCode: null } });
+    expect(result).toEqual({
+      ok: false,
+      error:
+        "Branch A has no BP Code. Set the BP Code on warehouse WH-A in SAP, then sync branches in Settings → Branches.",
     });
-    expect(result).toEqual({ ok: false, error: "Dealer Dealer X has no SAP customer code." });
+  });
+
+  it("OUTRIGHT needs no dealer and bills the branch BP Code", () => {
+    const result = resolveOrderSapRouting(
+      input({ dealer: null, orderModeOfPayment: { name: "Cash", kind: "OUTRIGHT" } }),
+    );
+    expect(result).toMatchObject({ ok: true, docType: "SO", cardCode: "CBP-A" });
+  });
+
+  it("CONSIGNMENT still needs the branch dealer", () => {
+    const result = resolveOrderSapRouting(
+      input({ dealer: null, orderModeOfPayment: { name: "Consign", kind: "CONSIGNMENT" } }),
+    );
+    expect(result).toEqual({
+      ok: false,
+      error: "Branch A has no dealer. Set the dealer before final approval.",
+    });
   });
 
   it("blocks when there is no primary or main warehouse", () => {
@@ -100,13 +116,13 @@ describe("resolveOrderSapRouting", () => {
     });
   });
 
-  it("OUTRIGHT routes to SO with cardCode", () => {
+  it("OUTRIGHT routes to SO billing the branch BP Code, not the dealer", () => {
     const base = input();
     const result = resolveOrderSapRouting({
       ...base,
       dealer: { ...base.dealer!, modeOfPayment: { name: "Cash", kind: "OUTRIGHT" } },
     });
-    expect(result).toMatchObject({ ok: true, docType: "SO", cardCode: "C001" });
+    expect(result).toMatchObject({ ok: true, docType: "SO", cardCode: "CBP-A" });
   });
 
   it("primary warehouse wins over main, main is the fallback", () => {
@@ -125,13 +141,13 @@ describe("resolveOrderSapRouting with an order mode of payment", () => {
     const result = resolveOrderSapRouting(
       input({ orderModeOfPayment: { name: "Outright Cash", kind: "OUTRIGHT" } }),
     );
-    expect(result).toMatchObject({ ok: true, docType: "SO", cardCode: "C001" });
+    expect(result).toMatchObject({ ok: true, docType: "SO", cardCode: "CBP-A" });
   });
 
-  it("an override still needs the dealer's SAP customer code for SO", () => {
+  it("an outright override ignores the dealer's SAP customer code", () => {
     const base = input({ orderModeOfPayment: { name: "Outright Cash", kind: "OUTRIGHT" } });
     const result = resolveOrderSapRouting({ ...base, dealer: { ...base.dealer!, sapCode: null } });
-    expect(result).toEqual({ ok: false, error: "Dealer Dealer X has no SAP customer code." });
+    expect(result).toMatchObject({ ok: true, cardCode: "CBP-A" });
   });
 
   it("blocks an override that has no type", () => {
@@ -147,6 +163,33 @@ describe("resolveOrderSapRouting with an order mode of payment", () => {
     expect(resolveOrderSapRouting(input({ orderModeOfPayment: null }))).toMatchObject({
       ok: true,
       docType: "ITR",
+    });
+  });
+});
+
+describe("resolveStoredOrderSapPlaces", () => {
+  it("SO uses the CardCode stored at approval over the branch's current BP Code", () => {
+    const result = resolveStoredOrderSapPlaces("SO", input({ storedCardCode: "C-STORED" }));
+    expect(result).toMatchObject({ ok: true, cardCode: "C-STORED" });
+  });
+
+  it("SO without a stored CardCode falls back to the branch BP Code", () => {
+    expect(resolveStoredOrderSapPlaces("SO", input())).toMatchObject({ ok: true, cardCode: "CBP-A" });
+  });
+
+  it("SO with neither blocks with the BP Code message", () => {
+    const base = input();
+    const result = resolveStoredOrderSapPlaces("SO", {
+      ...base,
+      branch: { ...base.branch, bpCode: null },
+    });
+    expect(result).toMatchObject({ ok: false });
+  });
+
+  it("ITR carries no CardCode", () => {
+    expect(resolveStoredOrderSapPlaces("ITR", input({ storedCardCode: "C-STORED" }))).toMatchObject({
+      ok: true,
+      cardCode: null,
     });
   });
 });

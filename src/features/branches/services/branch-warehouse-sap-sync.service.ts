@@ -2,6 +2,7 @@ import { branchRepository } from "@/features/branches/repositories/branch.reposi
 import { parseSapFlag, sapText } from "@/features/sap/services/sap-master-data";
 import { runSapSync } from "@/features/sap/services/sap-sync-engine";
 import {
+  SAP_WAREHOUSE_BP_CODE_FIELD,
   SAP_WAREHOUSE_TYPES,
   sapWarehouseTypeFilter,
 } from "@/features/sap/services/sap-warehouse-type";
@@ -22,7 +23,8 @@ import type { SapSyncResult } from "@/features/sap/schemas/sap-master-sync.schem
  * theirs: a row reaches exactly one of the three, so this sync's skip list stays about
  * genuine problems rather than about the ~1,300 rows that were never branches.
  *
- * Syncs `name`, plus SAP's Inactive flag: an inactive warehouse soft-deletes its branch
+ * Syncs `name` and the BP Code UDF (`U_CardCode`, the customer an outright Sales Order
+ * bills; null when blank), plus SAP's Inactive flag: an inactive warehouse soft-deletes its branch
  * and sets it `inactive`, and a branch SAP stops returning (deleted, or retyped away from
  * `Branch`) is retired the same way when the pass completes. Either comes back restored
  * and `active` once SAP returns it active. Area, dealer, primary warehouse and the rest
@@ -33,6 +35,7 @@ import type { SapSyncResult } from "@/features/sap/schemas/sap-master-sync.schem
 interface BranchRecord {
   sapCode: string;
   name: string;
+  bpCode: string | null;
   isInactive: boolean;
 }
 
@@ -41,7 +44,7 @@ export const branchWarehouseSyncEntity: SapSyncEntity<BranchRecord> = {
   noun: { one: "branch", many: "branches" },
 
   entity: "Warehouses",
-  select: "WarehouseCode,WarehouseName,Inactive",
+  select: `WarehouseCode,WarehouseName,Inactive,${SAP_WAREHOUSE_BP_CODE_FIELD}`,
   filter: sapWarehouseTypeFilter(SAP_WAREHOUSE_TYPES.branch),
   keyField: "WarehouseCode",
   keyKind: "string",
@@ -55,7 +58,14 @@ export const branchWarehouseSyncEntity: SapSyncEntity<BranchRecord> = {
     const name = sapText(row.WarehouseName);
     if (!name) return { skip: "SAP branch has no name", example: sapCode };
 
-    return { record: { sapCode, name, isInactive: parseSapFlag(row.Inactive) } };
+    return {
+      record: {
+        sapCode,
+        name,
+        bpCode: sapText(row[SAP_WAREHOUSE_BP_CODE_FIELD]) || null,
+        isInactive: parseSapFlag(row.Inactive),
+      },
+    };
   },
 
   applyPage(tenantId, records) {

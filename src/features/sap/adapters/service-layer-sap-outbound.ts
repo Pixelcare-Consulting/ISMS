@@ -96,8 +96,8 @@ async function postDeliveryReturn(
           sapDocEntry: true,
           drNo: true,
           sourceWarehouse: { select: { code: true } },
-          branch: { select: { name: true, sapCode: true, dealer: { select: { sapCode: true } } } },
-          order: { select: { sapDocType: true, sapDocNum: true } },
+          branch: { select: { name: true, sapCode: true } },
+          order: { select: { sapDocType: true, sapDocNum: true, sapCardCode: true } },
         },
       },
     },
@@ -141,8 +141,9 @@ async function postDeliveryReturn(
   const lines = groupSerialsBySku(serials);
   let body: Record<string, unknown>;
   if (docType === "SO") {
-    const cardCode = delivery.branch.dealer?.sapCode;
-    if (!cardCode) throw new Error("Dealer has no SAP customer code");
+    // The SO's own customer, so the Return credits whoever the SO billed.
+    const cardCode = delivery.order?.sapCardCode;
+    if (!cardCode) throw new Error("The original SO has no SAP customer (BP Code) stored");
     body = buildReturnBody({
       ismsRef: request.requestNo,
       remarks,
@@ -306,6 +307,7 @@ export const serviceLayerSapOutbound: SapOutboundPort = {
       mainWarehouse: ctx.mainWarehouse,
       dealer: ctx.branch.dealer,
       orderModeOfPayment: ctx.orderModeOfPayment,
+      storedCardCode: ctx.storedCardCode,
     };
     // The type stored at approval wins: a later mode-of-payment change must not
     // block or re-route the order. Orders approved before routing existed have
@@ -331,7 +333,7 @@ export const serviceLayerSapOutbound: SapOutboundPort = {
     const plainLines = lines.map(({ itemCode, quantity }) => ({ itemCode, quantity }));
     let body: Record<string, unknown>;
     if (docType === "SO") {
-      if (!routing.cardCode) throw new Error("Dealer has no SAP customer code");
+      if (!routing.cardCode) throw new Error("This SO has no SAP customer (BP Code)");
       body = buildSoBody({
         ismsRef: order.orderNumber,
         cardCode: routing.cardCode,
