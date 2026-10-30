@@ -85,7 +85,7 @@ const ORDER_PARTY_BLOCK_CLASS =
   "rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive";
 
 const SPECIAL_ORDER_NOTICE =
-  "This is a special order. You can add models that are not on the shelf plan. Supply Planning still approves it.";
+  "This order is Special because it has items that are not on the shelf plan. Supply Planning approves it. Remove those items to make it Manual again.";
 
 type CreatableOrderType = "manual" | "special";
 
@@ -101,7 +101,6 @@ interface SpecialModelOption {
 type PendingConfirm =
   | { kind: "dealer"; dealerId: string }
   | { kind: "branch"; branchId: string }
-  | { kind: "type"; orderType: CreatableOrderType }
   | { kind: "setup"; choice: BranchOrderSetupChoice }
   | { kind: "leave"; href: string };
 
@@ -150,12 +149,11 @@ function confirmCopy(pending: PendingConfirm): { title: string; description: str
   switch (pending.kind) {
     case "dealer":
     case "branch":
-    case "type":
     case "setup":
       return {
         title: "Clear the lines on this order?",
         description:
-          "Changing the mode of payment, dealer, branch, or order type clears quantities and extra items. The note for this order stays.",
+          "Changing the mode of payment, dealer, or branch clears quantities and extra items. The note for this order stays.",
         action: "Continue",
       };
     case "leave":
@@ -172,7 +170,6 @@ function confirmCopy(pending: PendingConfirm): { title: string; description: str
 }
 
 export function CreateOrderForm({
-  initialType,
   canCreateManual,
   canCreateSpecial,
   canCreateServiceCenter = false,
@@ -180,7 +177,6 @@ export function CreateOrderForm({
   initialReady = false,
   initialModeOfPaymentId = "",
 }: {
-  initialType: CreatableOrderType;
   canCreateManual: boolean;
   canCreateSpecial: boolean;
   canCreateServiceCenter?: boolean;
@@ -196,7 +192,6 @@ export function CreateOrderForm({
   const [pending, startTransition] = useTransition();
   const [ready, setReady] = useState(startReady);
   const [setupOpen, setSetupOpen] = useState(!startReady);
-  const [orderType, setOrderType] = useState<CreatableOrderType>(initialType);
   const [touched, setTouched] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const [dealers, setDealers] = useState<OrderDealerOption[]>([]);
@@ -220,6 +215,14 @@ export function CreateOrderForm({
   const [submitOpen, setSubmitOpen] = useState(false);
   const [loadingWorksheet, setLoadingWorksheet] = useState(false);
   const additionalKey = additionalIds.join("\n");
+  /** Manual unless the user may only create special orders. Lookups use it for permissions. */
+  const baseType: CreatableOrderType = canCreateManual ? "manual" : "special";
+  // The order type follows the lines: an off-plan (additional) item makes it Special,
+  // removing the last one makes it Manual again. Entered quantities are kept either way.
+  const hasAdditionalItem =
+    additionalIds.length > 0 || Object.values(drafts).some((draft) => draft?.additionalItem);
+  const orderType: CreatableOrderType =
+    hasAdditionalItem && canCreateSpecial ? "special" : baseType;
   const branchIdRef = useRef(branchId);
   useEffect(() => {
     branchIdRef.current = branchId;
@@ -295,19 +298,9 @@ export function CreateOrderForm({
     resetBranchWorksheet();
   }
 
-  function commitType(next: CreatableOrderType) {
-    setTouched(true);
-    setOrderType(next);
-    resetBranchWorksheet();
-  }
-
   function applySetup(choice: BranchOrderSetupChoice) {
-    const identityChanged =
-      choice.dealerId !== dealerId ||
-      choice.branchId !== branchId ||
-      choice.orderType !== orderType;
+    const identityChanged = choice.dealerId !== dealerId || choice.branchId !== branchId;
     setTouched(true);
-    setOrderType(choice.orderType);
     setDealerId(choice.dealerId);
     setBranchId(choice.branchId);
     setModeOfPaymentId(choice.modeOfPaymentId);
@@ -320,7 +313,6 @@ export function CreateOrderForm({
     const needsLineConfirm =
       next.kind === "dealer" ||
       next.kind === "branch" ||
-      next.kind === "type" ||
       next.kind === "setup";
     if (needsLineConfirm && !hasLineEdits()) {
       applyConfirm(next);
@@ -341,9 +333,6 @@ export function CreateOrderForm({
         return;
       case "branch":
         commitBranch(next.branchId);
-        return;
-      case "type":
-        commitType(next.orderType);
         return;
       case "setup":
         applySetup(next.choice);
@@ -428,8 +417,8 @@ export function CreateOrderForm({
     let cancelled = false;
     void (async () => {
       const [dealerRows, modeRows] = await Promise.all([
-        listActiveDealersForOrderAction(orderType),
-        listModesOfPaymentForOrderAction(orderType),
+        listActiveDealersForOrderAction(baseType),
+        listModesOfPaymentForOrderAction(baseType),
       ]);
       if (cancelled) return;
       setDealers(dealerRows);
@@ -439,14 +428,14 @@ export function CreateOrderForm({
     return () => {
       cancelled = true;
     };
-  }, [orderType]);
+  }, [baseType]);
 
   useEffect(() => {
     if (!loaded) return;
     const dealerFilter = branchDealerFilter(paymentKind, dealerId);
     if (dealerFilter === null) return;
     let cancelled = false;
-    void listBranchesForOrderAction(dealerFilter || undefined, orderType).then((branchRows) => {
+    void listBranchesForOrderAction(dealerFilter || undefined, baseType).then((branchRows) => {
       if (cancelled) return;
       setBranches(branchRows);
       const current = branchIdRef.current;
@@ -464,7 +453,7 @@ export function CreateOrderForm({
     return () => {
       cancelled = true;
     };
-  }, [dealerId, loaded, orderType, paymentKind]);
+  }, [baseType, dealerId, loaded, paymentKind]);
 
   useEffect(() => {
     let cancelled = false;
@@ -509,7 +498,7 @@ export function CreateOrderForm({
   }, [additionalKey, branchId, orderType]);
 
   useEffect(() => {
-    if (orderType !== "special" || !branchId) return;
+    if (!canCreateSpecial || !branchId) return;
     let cancelled = false;
     void listSpecialOrderModelsAction().then((result) => {
       if (cancelled) return;
@@ -523,7 +512,7 @@ export function CreateOrderForm({
     return () => {
       cancelled = true;
     };
-  }, [branchId, orderType]);
+  }, [branchId, canCreateSpecial]);
 
   const addableModels = useMemo(() => {
     const onSheet = new Set(sheetLines.map((line) => line.modelId));
@@ -654,35 +643,23 @@ export function CreateOrderForm({
     createDetails.length === 0;
   const confirm = pendingConfirm ? confirmCopy(pendingConfirm) : null;
   const noteDisabled = pending || !loaded;
-  const additionalItemAction =
-    orderType === "special" ? (
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="h-8 px-2 font-medium text-primary hover:bg-primary/10 hover:text-primary"
-        disabled={!worksheet || pending}
-        onClick={() => setAdditionalOpen(true)}
-      >
-        Additional item
-      </Button>
-    ) : (
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="h-8 px-2 font-medium text-primary hover:bg-primary/10 hover:text-primary"
-        disabled={!canCreateSpecial || !branchId || pending}
-        title={
-          canCreateSpecial
-            ? "Switches this order to Special so you can add a model that is not on the shelf plan."
-            : "You do not have permission to order an extra item."
-        }
-        onClick={() => requestConfirm({ kind: "type", orderType: "special" })}
-      >
-        Additional item
-      </Button>
-    );
+  const additionalItemAction = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="h-8 px-2 font-medium text-primary hover:bg-primary/10 hover:text-primary"
+      disabled={!canCreateSpecial || !worksheet || pending}
+      title={
+        canCreateSpecial
+          ? "Add a model that is not on the shelf plan. The order becomes Special."
+          : "You do not have permission to order an extra item."
+      }
+      onClick={() => setAdditionalOpen(true)}
+    >
+      Additional item
+    </Button>
+  );
   const dealerName = dealers.find((dealer) => dealer.id === dealerId)?.name ?? "";
   const branchName = branch?.name ?? "";
   const paymentName = modeOfPayment
@@ -701,10 +678,7 @@ export function CreateOrderForm({
       requestConfirm({ kind: "leave", href: orderSetupHref(choice) });
       return;
     }
-    const identityChanged =
-      choice.dealerId !== dealerId ||
-      choice.branchId !== branchId ||
-      choice.orderType !== orderType;
+    const identityChanged = choice.dealerId !== dealerId || choice.branchId !== branchId;
     if (ready && identityChanged) {
       setSetupOpen(false);
       requestConfirm({ kind: "setup", choice });
@@ -760,7 +734,13 @@ export function CreateOrderForm({
               </div>
               <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
                 <OrderReadout label="Mode of payment" value={paymentName || "Not set"} />
-                <OrderReadout label="Order type" value={BRANCH_ORDER_TYPE_LABELS[orderType]} />
+                <div className="min-w-0">
+                  <OrderReadout label="Order type" value={BRANCH_ORDER_TYPE_LABELS[orderType]} />
+                  <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+                    Set automatically. Adding an item that is not on the shelf plan makes it
+                    Special.
+                  </p>
+                </div>
                 <OrderReadout label={party.label} value={party.value} />
                 <OrderReadout label="Branch" value={branchName || "—"} />
                 <div className="min-w-0 sm:col-span-2">
@@ -837,7 +817,6 @@ export function CreateOrderForm({
         canCreateManual={canCreateManual}
         canCreateSpecial={canCreateSpecial}
         canCreateServiceCenter={canCreateServiceCenter}
-        initialType={orderType}
         initialDealerId={ready ? dealerId : (prefill?.dealerId ?? "")}
         initialBranchId={ready ? branchId : (prefill?.branchId ?? "")}
         initialModeOfPaymentId={ready ? modeOfPaymentId : initialModeOfPaymentId}
@@ -855,7 +834,7 @@ export function CreateOrderForm({
         }}
         onContinue={continueSetup}
       />
-      {orderType === "special" && additionalOpen ? (
+      {additionalOpen ? (
         <AdditionalItemDialog
           open
           models={addableModels}

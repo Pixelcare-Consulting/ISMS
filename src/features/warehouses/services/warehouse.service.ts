@@ -4,7 +4,7 @@ import { warehouseRepository } from "@/features/warehouses/repositories/warehous
 import {
   duplicateLocationCodeMessage,
   sameLocationCode,
-} from "@/features/warehouses/utils/location-code";
+} from "@/utils/location-code";
 
 export const warehouseService = {
   listWarehouses(tenantId: string) {

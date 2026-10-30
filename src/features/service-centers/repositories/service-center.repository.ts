@@ -8,6 +8,7 @@ import {
 } from "@/features/sap/services/sap-sync-writer";
 import type { SapSyncApplyResult } from "@/features/sap/types/sap-sync-entity";
 import type { BranchStatus } from "@/lib/database/generated/prisma/client";
+import { duplicateLocationCodeMessage, sameLocationCode } from "@/utils/location-code";
 
 export const serviceCenterRepository = {
   listByTenant(tenantId: string) {
@@ -41,7 +42,12 @@ export const serviceCenterRepository = {
     });
   },
 
-  addLocation(
+  /**
+   * Adds a location to a service center of this tenant. Codes are unique per center,
+   * ignoring case and spaces (see `sameLocationCode`). Throws with a user-facing message.
+   */
+  async addLocation(
+    tenantId: string,
     serviceCenterId: string,
     data: {
       code: string;
@@ -53,22 +59,35 @@ export const serviceCenterRepository = {
       branchAreaId?: string | null;
     },
   ) {
+    const center = await prisma.serviceCenter.findFirst({
+      where: { id: serviceCenterId, tenantId, deletedAt: null },
+      select: { locations: { select: { code: true } } },
+    });
+    if (!center) throw new Error("Service center not found");
+    if (center.locations.some((location) => sameLocationCode(location.code, data.code))) {
+      throw new Error(duplicateLocationCodeMessage(data.code, "service center"));
+    }
     return prisma.serviceCenterLocation.create({
       data: {
         serviceCenterId,
-        code: data.code,
-        name: data.name,
+        code: data.code.trim(),
+        name: data.name.trim(),
         areaId: data.areaId ?? null,
         dealerAreaId: data.dealerAreaId ?? null,
         regionId: data.regionId ?? null,
         provinceId: data.provinceId ?? null,
         branchAreaId: data.branchAreaId ?? null,
       },
+      select: { id: true, code: true, name: true },
     });
   },
 
-  deleteLocation(id: string) {
-    return prisma.serviceCenterLocation.delete({ where: { id } });
+  /** Deletes a location only when its service center belongs to this tenant. */
+  async deleteLocation(tenantId: string, id: string) {
+    const deleted = await prisma.serviceCenterLocation.deleteMany({
+      where: { id, serviceCenter: { tenantId } },
+    });
+    if (deleted.count !== 1) throw new Error("Location not found");
   },
 
   /**

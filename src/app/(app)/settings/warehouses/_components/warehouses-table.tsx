@@ -31,7 +31,7 @@ import { matchesTableSearch } from "@/utils/match-table-search";
 
 const warehouseColumn = createColumnHelper<DataTableFeatures, WarehouseRow>();
 
-import { WarehouseLocationsDialog } from "./warehouse-locations-dialog";
+import { LocationsDialog } from "@/components/locations-dialog";
 
 interface LocationRow {
   id: string;
@@ -332,8 +332,10 @@ export function WarehousesTable({
         }}
       />
 
-      <WarehouseLocationsDialog
-        warehouse={locationsWarehouse}
+      <LocationsDialog
+        owner={locationsWarehouse}
+        ownerNoun="warehouse"
+        descriptionLead="Bins or aisles inside"
         pending={pending}
         onOpenChange={(open) => {
           if (!open) setLocationsWarehouseId(null);
