@@ -449,7 +449,6 @@ export function CreateServiceCenterOrderForm({
         canCreateSpecial={canCreateSpecial}
         canCreateServiceCenter
         initialOrderFor="service_center"
-        initialType={canCreateManual ? "manual" : "special"}
         initialServiceCenterId={serviceCenterId}
         initialCardCode={cardCode}
         onOpenChange={(open) => {

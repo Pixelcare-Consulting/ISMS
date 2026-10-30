@@ -311,12 +311,6 @@ export function OrdersTable({
   const canCreateSpecial =
     createByType?.special ?? (fixedOrderType === "special" ? canEdit : false);
   const showCreateOrder = Boolean(createHref) || canCreateManual || canCreateSpecial;
-  const setupInitialType =
-    listFilter === "special" && canCreateSpecial
-      ? "special"
-      : canCreateManual
-        ? "manual"
-        : "special";
   const suggestedType = suggestionOrderType ?? (canEdit ? fixedOrderType : undefined);
   const pageSize = parseTablePageSize(result.limit);
   const pageTab = searchParams.get("tab");
@@ -991,7 +985,6 @@ export function OrdersTable({
         canCreateManual={canCreateManual}
         canCreateSpecial={canCreateSpecial}
         canCreateServiceCenter={canCreateServiceCenter}
-        initialType={setupInitialType}
         onOpenChange={setCreateSetupOpen}
         onContinue={(choice) => {
           setCreateSetupOpen(false);

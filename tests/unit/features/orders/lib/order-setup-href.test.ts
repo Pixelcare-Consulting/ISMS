@@ -16,9 +16,8 @@ describe("orderSetupHref", () => {
         orderFor: "branch",
         dealerId: "",
         branchId: "b1",
-        orderType: "manual",
         modeOfPaymentId: "m1",
       }),
-    ).toBe("/orders/manual/new?type=manual&branchId=b1&modeOfPaymentId=m1&ready=1");
+    ).toBe("/orders/manual/new?branchId=b1&modeOfPaymentId=m1&ready=1");
   });
 });

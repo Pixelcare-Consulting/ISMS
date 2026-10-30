@@ -21,7 +21,6 @@ export type OrderSetupChoice =
       /** Empty for outright: the SO bills the branch's BP Code, not a dealer. */
       dealerId: string;
       branchId: string;
-      orderType: "manual" | "special";
       modeOfPaymentId: string;
     }
   | { orderFor: "service_center"; serviceCenterId: string; cardCode: string };
@@ -36,7 +35,6 @@ export function orderSetupHref(choice: OrderSetupChoice): string {
     params.set("serviceCenterId", choice.serviceCenterId);
     params.set("cardCode", choice.cardCode);
   } else {
-    params.set("type", choice.orderType);
     if (choice.dealerId) params.set("dealerId", choice.dealerId);
     params.set("branchId", choice.branchId);
     if (choice.modeOfPaymentId) params.set("modeOfPaymentId", choice.modeOfPaymentId);

@@ -954,7 +954,6 @@ export function CreateOrderSetupDialog({
   canCreateSpecial,
   canCreateServiceCenter = false,
   initialOrderFor = "branch",
-  initialType,
   initialDealerId = "",
   initialBranchId = "",
   initialModeOfPaymentId = "",
@@ -968,7 +967,6 @@ export function CreateOrderSetupDialog({
   canCreateSpecial: boolean;
   canCreateServiceCenter?: boolean;
   initialOrderFor?: OrderFor;
-  initialType: CreatableOrderType;
   initialDealerId?: string;
   initialBranchId?: string;
   initialModeOfPaymentId?: string;
@@ -989,7 +987,9 @@ export function CreateOrderSetupDialog({
   const [draftCardCode, setDraftCardCode] = useState(initialCardCode);
   const isBranch = orderFor === "branch";
   const sc = useScOrderSetup(open && orderFor === "service_center");
-  const [draftType, setDraftType] = useState<CreatableOrderType>(initialType);
+  // The order type is decided on the order page from its lines; lookups only need a type
+  // the user may create, for their permission checks.
+  const draftType: CreatableOrderType = canCreateManual ? "manual" : "special";
   const [draftDealerId, setDraftDealerId] = useState(initialDealerId);
   const [draftBranchId, setDraftBranchId] = useState(initialBranchId);
   const [draftPaymentId, setDraftPaymentId] = useState(initialModeOfPaymentId);
@@ -998,13 +998,6 @@ export function CreateOrderSetupDialog({
   const [modesOfPayment, setModesOfPayment] = useState<OrderModeOfPaymentOption[]>([]);
   const [loaded, setLoaded] = useState(false);
   const branchIdRef = useRef(draftBranchId);
-
-  const typeOptions = useMemo(() => {
-    const options: CreatableOrderType[] = [];
-    if (canCreateManual) options.push("manual");
-    if (canCreateSpecial) options.push("special");
-    return options;
-  }, [canCreateManual, canCreateSpecial]);
 
   const paymentKind = modesOfPayment.find((mode) => mode.id === draftPaymentId)?.kind ?? null;
 
@@ -1019,11 +1012,7 @@ export function CreateOrderSetupDialog({
     }
     if (wasOpen.current) return;
     wasOpen.current = true;
-    const nextType = typeOptions.includes(initialType)
-      ? initialType
-      : (typeOptions[0] ?? initialType);
     setOrderFor(forOptions.includes(initialOrderFor) ? initialOrderFor : (forOptions[0] ?? "branch"));
-    setDraftType(nextType);
     setDraftDealerId(initialDealerId);
     setDraftBranchId(initialBranchId);
     setDraftPaymentId(initialModeOfPaymentId);
@@ -1038,9 +1027,7 @@ export function CreateOrderSetupDialog({
     initialModeOfPaymentId,
     initialOrderFor,
     initialServiceCenterId,
-    initialType,
     open,
-    typeOptions,
   ]);
 
   useEffect(() => {
@@ -1083,8 +1070,7 @@ export function CreateOrderSetupDialog({
   const branchOptions = branchDealerFilter(paymentKind, draftDealerId) === null ? [] : branches;
   const branch = branchOptions.find((option) => option.id === draftBranchId) ?? null;
   const partyBlock = orderPartyBlock({ kind: paymentKind, dealerId: draftDealerId, branch });
-  const typeAllowed =
-    (draftType === "manual" && canCreateManual) || (draftType === "special" && canCreateSpecial);
+  const typeAllowed = canCreateManual || canCreateSpecial;
   const scPrimary = sc.setup?.customers.find((customer) => customer.isPrimary)?.cardCode ?? "";
   const scCardCode = draftCardCode || scPrimary;
   const canContinue = isBranch
@@ -1097,7 +1083,6 @@ export function CreateOrderSetupDialog({
         orderFor: "branch",
         dealerId: paymentKind === "CONSIGNMENT" ? draftDealerId : "",
         branchId: draftBranchId,
-        orderType: draftType,
         modeOfPaymentId: draftPaymentId,
       });
       return;
@@ -1125,7 +1110,7 @@ export function CreateOrderSetupDialog({
           <DialogTitle>Create order</DialogTitle>
           <DialogDescription>
             {isBranch
-              ? "Choose the order type and mode of payment, then where the order goes."
+              ? "Choose the mode of payment, then where the order goes."
               : "Choose the service center and the SAP customer the Sales Order bills."}
           </DialogDescription>
         </DialogHeader>
@@ -1166,36 +1151,6 @@ export function CreateOrderSetupDialog({
             ) : (
               <p className="text-sm text-muted-foreground">Loading service centers…</p>
             )
-          ) : null}
-          {isBranch ? (
-          <div className="space-y-2">
-            <p className="text-sm font-normal text-muted-foreground">Order type</p>
-            {typeOptions.length > 1 ? (
-              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Order type">
-                {typeOptions.map((option) => {
-                  const selected = option === draftType;
-                  return (
-                    <Button
-                      key={option}
-                      type="button"
-                      size="sm"
-                      variant={selected ? "default" : "outline"}
-                      role="radio"
-                      aria-checked={selected}
-                      onClick={() => {
-                        if (option === draftType) return;
-                        setDraftType(option);
-                      }}
-                    >
-                      {BRANCH_ORDER_TYPE_LABELS[option]}
-                    </Button>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-sm font-medium">{BRANCH_ORDER_TYPE_LABELS[draftType]}</p>
-            )}
-          </div>
           ) : null}
           {!isBranch ? null : !loaded ? (
             <p className="text-sm text-muted-foreground">Loading modes of payment…</p>

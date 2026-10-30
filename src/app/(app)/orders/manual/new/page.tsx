@@ -11,6 +11,7 @@ import { hasPermission, requireAnyPermission } from "@/lib/auth/permissions";
 
 interface PageProps {
   searchParams: Promise<{
+    /** Ignored: the order type follows the order's lines (old links still carry it). */
     type?: string;
     dealerId?: string;
     branchId?: string;
@@ -53,26 +54,8 @@ export default async function NewManualOrderPage({ searchParams }: PageProps) {
     );
   }
 
-  if (params.type && params.type !== "manual" && params.type !== "special") {
-    redirect("/dashboard?error=forbidden");
-  }
-  if (params.type === "manual" && !canCreateManual) {
-    redirect("/dashboard?error=forbidden");
-  }
-  if (params.type === "special" && !canCreateSpecial) {
-    redirect("/dashboard?error=forbidden");
-  }
-
-  const initialType =
-    params.type === "special" || params.type === "manual"
-      ? params.type
-      : canCreateManual
-        ? "manual"
-        : "special";
-
   return (
     <CreateOrderForm
-      initialType={initialType}
       canCreateManual={canCreateManual}
       canCreateSpecial={canCreateSpecial}
       canCreateServiceCenter={canCreateServiceCenter}
