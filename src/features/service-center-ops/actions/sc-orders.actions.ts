@@ -8,12 +8,14 @@ import {
   SC_ORDERS_CREATE,
   SC_ORDERS_VIEW,
 } from "@/features/service-center-ops/constants/sc-permissions";
-import { orderAnalyticsService } from "@/features/orders/services/order-analytics.service";
 import { scOpsRepository } from "@/features/service-center-ops/repositories/sc-ops.repository";
 import {
   SAP_CODE_MAX,
   SC_ORDER_PO_NUMBER_MAX,
+  SC_ORDERING_NOT_SET_UP,
 } from "@/features/service-center-ordering/constants";
+import { loadScOrderWorksheet } from "@/features/service-center-ordering/services/sc-order-worksheet";
+import { scOrderingSettingsService } from "@/features/service-center-ordering/services/sc-ordering-settings.service";
 import { scOrderService } from "@/features/service-center-ordering/services/sc-order.service";
 import {
   assertScInScope,
@@ -165,8 +167,17 @@ export async function listModelsForScOrderAction(query?: string) {
   });
 }
 
-/** Every active model, for the service-center order form's model picker. */
-export async function listScOrderCatalogAction() {
+/** The models the service-center order form lists: what SAP has available in the Settings warehouse. */
+export async function getScOrderWorksheetAction() {
   const session = await requirePermission(SC_ORDERS_CREATE);
-  return orderAnalyticsService.listActiveModelsForSpecialOrder(session.user.tenantId);
+  try {
+    const { defaults } = await scOrderingSettingsService.get(session.user.tenantId);
+    if (!defaults.warehouseCode) return { error: SC_ORDERING_NOT_SET_UP };
+    return {
+      success: true as const,
+      data: await loadScOrderWorksheet(session.user.tenantId, defaults.warehouseCode),
+    };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to load warehouse stock" };
+  }
 }

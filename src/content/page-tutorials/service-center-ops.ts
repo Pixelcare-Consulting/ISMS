@@ -66,7 +66,7 @@ export const SC_ORDERS_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "Creating and approving",
       description:
-        "New order opens the Create Order page set to Service center: pick the center and SAP customer, add models, and optionally a PO number and SAP project. Approving posts a SAP Sales Order with the defaults from Settings → Ordering policy; if SAP refuses it, the order stays pending with SAP's reason.",
+        "New order opens the Create Order page set to Service center: pick the center and SAP customer, then enter quantities against what SAP has available in the ordering warehouse (Settings → Ordering policy), plus an optional PO number and SAP project. Approving posts a SAP Sales Order with the defaults from Settings → Ordering policy; if SAP refuses it, the order stays pending with SAP's reason.",
     },
   ],
 };

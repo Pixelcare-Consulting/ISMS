@@ -1,11 +1,10 @@
 "use client";
 
-import { ChevronLeft, Trash2 } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { AdditionalItemDialog } from "@/app/(app)/orders/_components/additional-item-dialog";
 import { CreateOrderSetupDialog } from "@/app/(app)/orders/_components/create-order-form";
 import {
   orderSetupHref,
@@ -23,9 +22,13 @@ import {
   SC_ORDERING_DEFAULT_LABELS,
   type ScOrderingDefaultKey,
 } from "@/features/service-center-ordering/constants";
+import type {
+  ScOrderWorksheet,
+  ScOrderWorksheetLine,
+} from "@/features/service-center-ordering/services/sc-order-worksheet";
 import {
   createScOrderAction,
-  listScOrderCatalogAction,
+  getScOrderWorksheetAction,
 } from "@/features/service-center-ops/actions/sc-orders.actions";
 
 const SC_ORDERS_HREF = "/service-centers/orders";
@@ -35,9 +38,6 @@ const DEFAULT_KEYS = Object.keys(
 const BLOCK_CLASS =
   "rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive";
 
-type CatalogModel = Awaited<
-  ReturnType<typeof listScOrderCatalogAction>
->[number];
 
 function Readout({ label, value }: { label: string; value: string }) {
   return (
@@ -53,7 +53,7 @@ function Readout({ label, value }: { label: string; value: string }) {
 /**
  * The Create Order page for a service center: same setup popup and layout as a branch
  * order, but it bills a service-center customer, posts with the Settings defaults, and
- * takes any active model since a service center has no shelf plan.
+ * lists what SAP has available in the Settings warehouse instead of a branch shelf plan.
  */
 export function CreateServiceCenterOrderForm({
   serviceCenterId,
@@ -80,43 +80,61 @@ export function CreateServiceCenterOrderForm({
     { code: string; name: string | null }[] | null
   >(null);
   const [projectsError, setProjectsError] = useState<string | null>(null);
-  const [catalog, setCatalog] = useState<CatalogModel[]>([]);
-  const [lines, setLines] = useState<{ modelId: string; quantity: number }[]>(
-    [],
-  );
-  const [addOpen, setAddOpen] = useState(false);
+  const [worksheet, setWorksheet] = useState<ScOrderWorksheet | null>(null);
+  const [worksheetError, setWorksheetError] = useState<string | null>(null);
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [query, setQuery] = useState("");
+  const [brandId, setBrandId] = useState("");
 
   useEffect(() => {
     let cancelled = false;
-    void Promise.all([
-      listSapProjectsForScOrderAction(),
-      listScOrderCatalogAction(),
-    ]).then(([projectResult, models]) => {
-      if (cancelled) return;
-      if ("error" in projectResult) {
-        setProjectsError(projectResult.error ?? "Failed to load SAP projects");
-        setProjects([]);
-      } else {
-        setProjects(projectResult.data);
-      }
-      setCatalog(models);
-    });
+    void Promise.all([listSapProjectsForScOrderAction(), getScOrderWorksheetAction()]).then(
+      ([projectResult, worksheetResult]) => {
+        if (cancelled) return;
+        if ("error" in projectResult) {
+          setProjectsError(projectResult.error ?? "Failed to load SAP projects");
+          setProjects([]);
+        } else {
+          setProjects(projectResult.data);
+        }
+        if ("error" in worksheetResult) {
+          setWorksheetError(worksheetResult.error ?? "Failed to load warehouse stock");
+        } else {
+          setWorksheet(worksheetResult.data);
+        }
+      },
+    );
     return () => {
       cancelled = true;
     };
   }, []);
 
   const center = centers.find((row) => row.id === serviceCenterId) ?? null;
-  const customer =
-    setup?.customers.find((row) => row.cardCode === cardCode) ?? null;
-  const modelById = useMemo(
-    () => new Map(catalog.map((model) => [model.id, model])),
-    [catalog],
+  const customer = setup?.customers.find((row) => row.cardCode === cardCode) ?? null;
+  const brands = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const line of worksheet?.lines ?? []) {
+      if (line.brandId) byId.set(line.brandId, line.brandName ?? line.brandId);
+    }
+    return [...byId].map(([id, label]) => ({ id, label })).sort((a, b) => a.label.localeCompare(b.label));
+  }, [worksheet]);
+  const visibleLines = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    return (worksheet?.lines ?? []).filter(
+      (line) =>
+        (!brandId || line.brandId === brandId) &&
+        (!term ||
+          line.skuCode.toLowerCase().includes(term) ||
+          line.name.toLowerCase().includes(term)),
+    );
+  }, [brandId, query, worksheet]);
+  const orderLines = useMemo(
+    () =>
+      Object.entries(quantities)
+        .filter(([, quantity]) => quantity > 0)
+        .map(([modelId, quantity]) => ({ modelId, quantity })),
+    [quantities],
   );
-  const addable = useMemo(() => {
-    const onOrder = new Set(lines.map((line) => line.modelId));
-    return catalog.filter((model) => !onOrder.has(model.id));
-  }, [catalog, lines]);
 
   const setupBlock = !setup
     ? null
@@ -125,31 +143,16 @@ export function CreateServiceCenterOrderForm({
       : !customer
         ? `${cardCode || "No customer"} is not a service center ordering customer. Choose another with Change.`
         : null;
-  const totalQuantity = lines.reduce((sum, line) => sum + line.quantity, 0);
+  const totalQuantity = orderLines.reduce((sum, line) => sum + line.quantity, 0);
   const submitDisabled =
-    pending ||
-    !ready ||
-    !setup ||
-    setupBlock !== null ||
-    lines.length === 0 ||
-    lines.some((l) => l.quantity < 1);
+    pending || !ready || !setup || setupBlock !== null || orderLines.length === 0;
 
-  function addModels(ids: string[]) {
-    setLines((prev) => [
-      ...prev,
-      ...ids.map((modelId) => ({ modelId, quantity: 1 })),
-    ]);
-  }
-
-  function setQuantity(modelId: string, quantity: number) {
+  /** Whole units, capped at what the warehouse has available. */
+  function setQuantity(line: ScOrderWorksheetLine, quantity: number) {
     const value = Number.isFinite(quantity)
-      ? Math.max(0, Math.floor(quantity))
+      ? Math.min(line.available, Math.max(0, Math.floor(quantity)))
       : 0;
-    setLines((prev) =>
-      prev.map((line) =>
-        line.modelId === modelId ? { ...line, quantity: value } : line,
-      ),
-    );
+    setQuantities((prev) => ({ ...prev, [line.modelId]: value }));
   }
 
   function submit() {
@@ -162,7 +165,7 @@ export function CreateServiceCenterOrderForm({
         poNumber: poNumber.trim() || null,
         projectCode: projectCode || null,
         notes: notes.trim() || null,
-        lines,
+        lines: orderLines,
       });
       if ("error" in result && result.error) {
         toast.error(result.error);
@@ -335,113 +338,111 @@ export function CreateServiceCenterOrderForm({
               {setupBlock ? <p className={BLOCK_CLASS}>{setupBlock}</p> : null}
             </section>
             <section className="space-y-4 border-t border-border/70 pt-8">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-base font-semibold text-foreground">
-                    Models
-                  </h2>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Add the models this service center needs and enter a
-                    quantity for each.
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={pending || catalog.length === 0}
-                  onClick={() => setAddOpen(true)}
-                >
-                  Add models
-                </Button>
+              <div>
+                <h2 className="text-base font-semibold text-foreground">Models</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {worksheet
+                    ? `What SAP has available in ${worksheet.warehouseCode}. Enter a quantity on each model you want.`
+                    : "What SAP has available in the ordering warehouse."}
+                </p>
               </div>
-              {lines.length === 0 ? (
+              {worksheetError ? (
+                <p className={BLOCK_CLASS}>{worksheetError}</p>
+              ) : !worksheet ? (
+                <p className="text-sm text-muted-foreground">Loading warehouse stock from SAP…</p>
+              ) : worksheet.lines.length === 0 ? (
                 <p className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
-                  No models yet. Use Add models to pick them.
+                  SAP has nothing available in {worksheet.warehouseCode} that ISMS can order.
                 </p>
               ) : (
-                <div className="overflow-x-auto rounded-lg border">
-                  <table className="w-full text-sm">
-                    <thead className="bg-muted/50 text-left text-muted-foreground">
-                      <tr>
-                        <th className="px-3 py-2 font-medium">SKU</th>
-                        <th className="px-3 py-2 font-medium">Model</th>
-                        <th className="w-32 px-3 py-2 font-medium">Quantity</th>
-                        <th className="w-12 px-3 py-2" aria-label="Remove" />
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {lines.map((line) => {
-                        const model = modelById.get(line.modelId);
-                        return (
-                          <tr key={line.modelId}>
-                            <td className="px-3 py-2 font-medium">
-                              {model?.skuCode ?? "—"}
-                            </td>
-                            <td className="px-3 py-2 text-muted-foreground">
-                              {model?.name ?? "—"}
-                            </td>
-                            <td className="px-3 py-2">
-                              <Input
-                                type="number"
-                                inputMode="numeric"
-                                min={1}
-                                value={line.quantity}
-                                aria-label={`Quantity for ${model?.skuCode ?? "model"}`}
-                                onChange={(event) =>
-                                  setQuantity(
-                                    line.modelId,
-                                    event.target.valueAsNumber,
-                                  )
-                                }
-                                disabled={pending}
-                                className="h-9 tabular-nums"
-                              />
-                            </td>
-                            <td className="px-3 py-2 text-right">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                aria-label={`Remove ${model?.skuCode ?? "model"}`}
-                                disabled={pending}
-                                onClick={() =>
-                                  setLines((prev) =>
-                                    prev.filter(
-                                      (row) => row.modelId !== line.modelId,
-                                    ),
-                                  )
-                                }
-                              >
-                                <Trash2 className="size-4" />
-                              </Button>
+                <>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <label htmlFor="sc-order-search" className="text-sm text-muted-foreground">
+                        Search
+                      </label>
+                      <Input
+                        id="sc-order-search"
+                        value={query}
+                        placeholder="SKU or model name"
+                        onChange={(event) => setQuery(event.target.value)}
+                      />
+                    </div>
+                    {brands.length > 1 ? (
+                      <SearchableSelect
+                        label="Brand"
+                        className="w-full sm:w-56"
+                        options={brands}
+                        value={brandId}
+                        onChange={setBrandId}
+                        allowClear
+                        placeholder="All brands"
+                        searchPlaceholder="Search brands…"
+                      />
+                    ) : null}
+                  </div>
+                  <div className="overflow-x-auto rounded-lg border">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/50 text-left text-muted-foreground">
+                        <tr>
+                          <th className="px-3 py-2 font-medium">SKU</th>
+                          <th className="px-3 py-2 font-medium">Model</th>
+                          <th className="px-3 py-2 font-medium">Brand</th>
+                          <th className="px-3 py-2 text-right font-medium">Available</th>
+                          <th className="w-32 px-3 py-2 font-medium">Quantity</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {visibleLines.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
+                              No models match your search.
                             </td>
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                        ) : (
+                          visibleLines.map((line) => (
+                            <tr key={line.modelId}>
+                              <td className="px-3 py-2 font-medium">{line.skuCode}</td>
+                              <td className="px-3 py-2 text-muted-foreground">{line.name}</td>
+                              <td className="px-3 py-2 text-muted-foreground">
+                                {line.brandName ?? "—"}
+                              </td>
+                              <td className="px-3 py-2 text-right tabular-nums">
+                                {line.available.toLocaleString()}
+                              </td>
+                              <td className="px-3 py-2">
+                                <Input
+                                  type="number"
+                                  inputMode="numeric"
+                                  min={0}
+                                  max={line.available}
+                                  value={quantities[line.modelId] ?? 0}
+                                  aria-label={`Quantity for ${line.skuCode}`}
+                                  onChange={(event) =>
+                                    setQuantity(line, event.target.valueAsNumber)
+                                  }
+                                  disabled={pending}
+                                  className="h-9 tabular-nums"
+                                />
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {orderLines.length.toLocaleString()} models ·{" "}
+                    {totalQuantity.toLocaleString()} units
+                    {worksheet.skippedItemCount > 0
+                      ? `. ${worksheet.skippedItemCount} SAP items in ${worksheet.warehouseCode} are not ISMS models and are not listed.`
+                      : ""}
+                  </p>
+                </>
               )}
-              {lines.length > 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  {lines.length.toLocaleString()} models ·{" "}
-                  {totalQuantity.toLocaleString()} units
-                </p>
-              ) : null}
             </section>
           </div>
         </div>
-      ) : null}
-      {addOpen ? (
-        <AdditionalItemDialog
-          open
-          models={addable}
-          title="Add models"
-          description="Search active models that are not already on this order."
-          onOpenChange={setAddOpen}
-          onAdd={addModels}
-        />
       ) : null}
       <CreateOrderSetupDialog
         open={setupOpen}
@@ -461,10 +462,8 @@ export function CreateServiceCenterOrderForm({
         onContinue={(choice) => {
           setSetupOpen(false);
           if (
-            lines.length > 0 &&
-            !confirm(
-              "Changing the order setup clears the models on this order. Continue?",
-            )
+            orderLines.length > 0 &&
+            !confirm("Changing the order setup clears the quantities on this order. Continue?")
           ) {
             return;
           }

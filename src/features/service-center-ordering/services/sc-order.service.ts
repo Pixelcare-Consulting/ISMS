@@ -4,12 +4,23 @@ import { auditService } from "@/features/audit/services/audit.service";
 import { SAP_REFERENCE_TYPES } from "@/features/sap/constants/sap-job-types";
 import { readSapPostResult } from "@/features/sap/services/sap-post-result";
 import { sapService } from "@/features/sap/services/sap.service";
+import {
+  assertWithinWarehouseStock,
+  loadScOrderWorksheet,
+} from "@/features/service-center-ordering/services/sc-order-worksheet";
 import { isSapProject } from "@/features/service-center-ordering/services/sc-ordering-sap";
 import { scOrderingSettingsService } from "@/features/service-center-ordering/services/sc-ordering-settings.service";
 import { prisma } from "@/lib/database/client";
 
 /** Statuses an order can be approved from. Approval is a single step today. */
 const APPROVABLE: BranchOrderStatus[] = ["pending_tl", "pending_sp"];
+
+/** One line per model, quantities summed, so a repeated model can't dodge the stock check. */
+function mergeLines(lines: { modelId: string; quantity: number }[]) {
+  const byModel = new Map<string, number>();
+  for (const line of lines) byModel.set(line.modelId, (byModel.get(line.modelId) ?? 0) + line.quantity);
+  return [...byModel].map(([modelId, quantity]) => ({ modelId, quantity }));
+}
 
 function nextOrderNo() {
   return `SCO-${Date.now().toString(36).toUpperCase()}`;
@@ -47,6 +58,13 @@ export const scOrderService = {
     if (!center) throw new Error("Service center not found");
     if (models.length !== modelIds.length) throw new Error("One or more models not found");
 
+    // Re-read SAP: stock may have moved since the form loaded.
+    const merged = mergeLines(input.lines);
+    assertWithinWarehouseStock(
+      await loadScOrderWorksheet(tenantId, snapshot.sapWarehouseCode),
+      merged,
+    );
+
     const projectCode = input.projectCode?.trim() || null;
     if (projectCode && !(await isSapProject(tenantId, projectCode))) {
       throw new Error(`SAP has no active project ${projectCode}.`);
@@ -67,7 +85,7 @@ export const scOrderService = {
         ...snapshot,
         createdById: userId,
         details: {
-          create: input.lines.map((line) => ({
+          create: merged.map((line) => ({
             modelId: line.modelId,
             quantity: line.quantity,
             approvedQty: line.quantity,

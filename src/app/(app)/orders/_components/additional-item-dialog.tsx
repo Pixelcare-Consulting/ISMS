@@ -28,16 +28,12 @@ export function AdditionalItemDialog({
   onOpenChange,
   models,
   stacked = false,
-  title = "Additional item",
-  description = "Search active models that are not already on this order. Adding one does not change the branch shelf plan.",
   onAdd,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   models: readonly AdditionalItemChoice[];
   stacked?: boolean;
-  title?: string;
-  description?: string;
   onAdd: (ids: string[]) => void;
 }) {
   const [query, setQuery] = useState("");
@@ -75,8 +71,11 @@ export function AdditionalItemDialog({
         )}
       >
         <DialogHeader className="shrink-0 space-y-1 border-b px-4 py-4 text-left sm:px-5">
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
+          <DialogTitle>Additional item</DialogTitle>
+          <DialogDescription>
+            Search active models that are not already on this order. Adding one does not change the
+            branch shelf plan.
+          </DialogDescription>
         </DialogHeader>
         <div className="shrink-0 px-4 pt-3 sm:px-5">
           <Input
