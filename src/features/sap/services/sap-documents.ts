@@ -82,7 +82,6 @@ const ORDER_DOC_TEXT_LIMITS = {
   comments: 254,
   journalMemo: 50,
   lineIsmsRef: 21,
-  lineBranchName: 20,
   lineBranchNameLong: 100,
 } as const;
 
@@ -113,8 +112,7 @@ interface OrderDocumentText {
  * The ISMS text an approved order carries into SAP, ITR or SO alike. Header: Remarks
  * carry the order notes (the ISMS reference when there are none), and Journal Remarks
  * read `ISMS <order #> · <branch>` instead of SAP's generic default. Lines: the order
- * number (ISMS PO#) and the branch name, full name in Branch Namelong and the
- * 20-character Branch Name column filled as far as it fits.
+ * number (ISMS PO#) and the full branch name in Branch Namelong.
  */
 function orderDocumentText(i: OrderDocumentText): {
   header: Record<string, unknown>;
@@ -136,19 +134,15 @@ function orderDocumentText(i: OrderDocumentText): {
 }
 
 /**
- * Line UDFs every ISMS document carries: the ISMS reference (ISMS PO#) and the branch name,
- * full name in Branch Namelong and the 20-character Branch Name column filled as far as it fits.
+ * Line UDFs every ISMS document carries: the ISMS reference (ISMS PO#) and the full branch
+ * name in Branch Namelong. The 20-character Branch Name column (U_Branch_Name) is left
+ * unset on purpose: users fill it as free text in SAP.
  */
 export function orderLineText(ismsRef: string, branchName: string): Record<string, unknown> {
   const name = branchName.trim();
   return {
     U_ISMS_PONum: fitSapText(ismsRef, ORDER_DOC_TEXT_LIMITS.lineIsmsRef),
-    ...(name
-      ? {
-          U_Branch_Name: fitSapText(name, ORDER_DOC_TEXT_LIMITS.lineBranchName),
-          U_Branch_Namelong: fitSapText(name, ORDER_DOC_TEXT_LIMITS.lineBranchNameLong),
-        }
-      : {}),
+    ...(name ? { U_Branch_Namelong: fitSapText(name, ORDER_DOC_TEXT_LIMITS.lineBranchNameLong) } : {}),
   };
 }
 

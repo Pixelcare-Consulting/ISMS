@@ -472,9 +472,9 @@ describe("serviceLayerSapOutbound.createDeliveryReturnDocument", () => {
     expect(kind).toBe("RETURN");
     expect(body).toMatchObject({ U_ISMS_PO_No: "RTN-1", CardCode: "C001" });
     const lines = (body as { DocumentLines: Record<string, unknown>[] }).DocumentLines;
-    expect(lines.map((l) => [l.ItemCode, l.Quantity, l.CostingCode2, l.CostingCode3, l.U_Branch_Name, l.U_ISMS_PONum])).toEqual([
-      ["SKU-A", 2, "BR1", "OUTRIGHT", "Branch One", "RTN-1"],
-      ["SKU-B", 1, "BR1", "OUTRIGHT", "Branch One", "RTN-1"],
+    expect(lines.map((l) => [l.ItemCode, l.Quantity, l.CostingCode2, l.CostingCode3, l.U_Branch_Namelong, l.U_Branch_Name, l.U_ISMS_PONum])).toEqual([
+      ["SKU-A", 2, "BR1", "OUTRIGHT", "Branch One", undefined, "RTN-1"],
+      ["SKU-B", 1, "BR1", "OUTRIGHT", "Branch One", undefined, "RTN-1"],
     ]);
     expect(lines.every((l) => !("BaseEntry" in l) && !("BaseType" in l))).toBe(true);
     expect(complete).toHaveBeenCalledWith(expect.objectContaining({ kind: "RETURN", sapDocNo: "900" }));

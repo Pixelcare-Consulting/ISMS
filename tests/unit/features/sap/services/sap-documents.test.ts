@@ -65,7 +65,6 @@ describe("SAP document builders", () => {
       CostingCode2: "ABL003",
       CostingCode3: "OUTRIGHT",
       U_ISMS_PONum: "RTN-1",
-      U_Branch_Name: "ABENSON LCC IRIGA B…",
       U_Branch_Namelong: "ABENSON LCC IRIGA BRANCH",
       U_free_text: "Dent",
     });
@@ -114,15 +113,14 @@ describe("buildItrBody", () => {
     expect(body.Comments).toBe("ISMS ITR#2026-10-94860");
   });
 
-  it("stamps the order number and branch name on every line, within SAP's column sizes", () => {
+  it("stamps the order number and full branch name on every line, leaving Branch Name free for SAP users", () => {
     const body = buildItrBody({ ...base, branchName: "ABENSON ABREEZA DAVAO" }) as Body;
     expect(body.StockTransferLines[0]).toMatchObject({
       ItemCode: "55QUHW01",
       U_ISMS_PONum: "ITR#2026-10-94860",
-      U_Branch_Name: "ABENSON ABREEZA DAV…",
       U_Branch_Namelong: "ABENSON ABREEZA DAVAO",
     });
-    expect(String(body.StockTransferLines[0].U_Branch_Name)).toHaveLength(20);
+    expect(body.StockTransferLines[0]).not.toHaveProperty("U_Branch_Name");
   });
 
   it("keeps long notes and journal remarks inside SAP's limits", () => {
@@ -162,7 +160,6 @@ describe("buildSoBody", () => {
       CostingCode2: "ABP001",
       CostingCode3: "OUTRIGHT",
       U_ISMS_PONum: "SO#2026-10-00034",
-      U_Branch_Name: "ABENSON ABREEZA DAV…",
       U_Branch_Namelong: "ABENSON ABREEZA DAVAO",
     });
   });
