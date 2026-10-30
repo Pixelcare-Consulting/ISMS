@@ -29,6 +29,7 @@ import {
   orderRepository,
 } from "@/features/orders/repositories/order.repository";
 import { suggestionApplyService } from "@/features/orders/services/suggestion-apply.service";
+import { readSapPostResult, type SapPostRead } from "@/features/sap/services/sap-post-result";
 import {
   noBranchBpCode,
   resolveOrderSapRouting,
@@ -245,17 +246,6 @@ async function priceOrderDetails<T extends { modelId: string; quantity: number }
     const srp = model ? resolveActiveOrderPrice(model.priceLists, model.srp) : 0;
     return { ...line, amount: line.quantity * srp };
   });
-}
-
-type SapPostRead = { ok: true } | { ok: false; sapMessage: string | null };
-
-function readSapPostResult(
-  results: { status: string; sapDocRef?: string; error?: string }[] | null | undefined,
-): SapPostRead {
-  const result = results?.[0];
-  if (result?.status === "completed" && result.sapDocRef) return { ok: true };
-  const sapMessage = result?.error?.trim();
-  return { ok: false, sapMessage: sapMessage ? sapMessage : null };
 }
 
 /** Post this order's existing SAP job. Success is a completed document. */

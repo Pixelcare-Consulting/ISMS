@@ -63,6 +63,11 @@ export const SC_ORDERS_PAGE_TUTORIAL: PageTutorialContent = {
       description:
         "Request stock for a service center. After approval, create a delivery and accept serials into inventory.",
     },
+    {
+      title: "Creating and approving",
+      description:
+        "New order opens the Create Order page set to Service center: pick the center and SAP customer, add models, and optionally a PO number and SAP project. Approving posts a SAP Sales Order with the defaults from Settings → Ordering policy; if SAP refuses it, the order stays pending with SAP's reason.",
+    },
   ],
 };
 

@@ -125,6 +125,7 @@ enum SapIntegrationJobType {
   delivery_partial_return
   delivery_return
   delivery_transfer
+  service_center_order
 }
 
 enum ModeOfPaymentKind {
@@ -295,6 +296,8 @@ model Tenant {
   serialNumberHistories       SerialNumberHistory[]
   serviceCenterInventories    ServiceCenterInventory[]
   serviceCenterOrders         ServiceCenterOrder[]
+  serviceCenterOrderingSettings ServiceCenterOrderingSettings?
+  serviceCenterOrderCustomers ServiceCenterOrderCustomer[]
   serviceCenterDeliveries     ServiceCenterDelivery[]
   serviceBackloads            ServiceBackload[]
   serviceCenterSales          ServiceCenterSalesTransaction[]
@@ -3413,6 +3416,20 @@ model ServiceCenterOrder {
   status                  BranchOrderStatus @default(pending_tl)
   orderNumber             String            @map("order_number")
   notes                   String?
+  /// Customer PO number: SO header Customer Ref. No. and line PO Number (U_PO_Number, 20 chars).
+  poNumber                String?           @map("po_number")
+  /// SAP project code (OPRJ) on every SO line.
+  projectCode             String?           @map("project_code")
+  /// SO posting values, copied from Settings → Ordering policy when the order is created
+  /// so a later settings change never alters what an approved order posts.
+  sapCardCode             String?           @map("sap_card_code")
+  sapWarehouseCode        String?           @map("sap_warehouse_code")
+  sapBranchCode           String?           @map("sap_branch_code")
+  sapDepartmentCode       String?           @map("sap_department_code")
+  sapCogsBranchCode       String?           @map("sap_cogs_branch_code")
+  sapDocRef               String?           @map("sap_doc_ref")
+  sapDocEntry             Int?              @map("sap_doc_entry")
+  sapDocNum               Int?              @map("sap_doc_num")
   createdById             String?           @map("created_by_id")
   createdAt               DateTime          @default(now()) @map("created_at")
   updatedAt               DateTime          @updatedAt @map("updated_at")
@@ -3429,6 +3446,43 @@ model ServiceCenterOrder {
   @@unique([tenantId, orderNumber])
   @@index([tenantId, serviceCenterId, status])
   @@map("service_center_orders")
+}
+
+/// Defaults a service-center Sales Order posts with (Settings → Ordering policy). One row per
+/// tenant. Codes are SAP's: a warehouse, and distribution rules on dimension 2 (branch) and 1
+/// (department). The service center itself goes on dimension 5.
+model ServiceCenterOrderingSettings {
+  id             String   @id @default(cuid())
+  tenantId       String   @unique @map("tenant_id")
+  warehouseCode  String?  @map("warehouse_code")
+  branchCode     String?  @map("branch_code")
+  departmentCode String?  @map("department_code")
+  cogsBranchCode String?  @map("cogs_branch_code")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("service_center_ordering_settings")
+}
+
+/// SAP customers a service-center order may bill. The primary one is preselected on the
+/// order form; at most one per tenant (partial unique index in the migration).
+model ServiceCenterOrderCustomer {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  cardCode  String   @map("card_code")
+  /// SAP CardName, read when the code is added.
+  cardName  String?  @map("card_name")
+  isPrimary Boolean  @default(false) @map("is_primary")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, cardCode])
+  @@index([tenantId])
+  @@map("service_center_order_customers")
 }
 
 model ServiceCenterOrderDetail {

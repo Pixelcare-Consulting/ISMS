@@ -19,6 +19,7 @@ import { OrderKpisSummary } from "@/features/orders/components/order-kpis";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { ModuleGuide } from "@/components/module-guide";
 import { hasPermission, requireAnyPermission } from "@/lib/auth/permissions";
+import { SC_ORDERS_CREATE } from "@/features/service-center-ops/constants/sc-permissions";
 import { ordersModuleGuideForType } from "@/content/module-guides/orders";
 import { BRANCH_ORDERS_PAGE_TUTORIAL } from "@/content/page-tutorials/branch-orders";
 import { PageHeader } from "@/app/(app)/_components/page-header";
@@ -362,6 +363,10 @@ export async function OrdersTypePage({
                     combinedManualSpecial
                       ? { manual: canCreateManual, special: canCreateSpecial }
                       : undefined
+                  }
+                  canCreateServiceCenter={
+                    combinedManualSpecial &&
+                    hasPermission(session.user.permissions, SC_ORDERS_CREATE)
                   }
                   suggestionOrderType={
                     combinedManualSpecial

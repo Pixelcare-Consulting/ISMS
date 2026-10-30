@@ -7,6 +7,7 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { CreateOrderSetupDialog } from "@/app/(app)/orders/_components/create-order-form";
+import { orderSetupHref } from "@/app/(app)/orders/_components/service-center-order-setup";
 import {
   adminBulkCancelOrdersAction,
   approveOrderAction,
@@ -141,6 +142,8 @@ interface OrdersTableProps {
   createHref?: string | null;
   /** Create permission per row type. Falls back to `canEdit` when omitted. */
   createByType?: Partial<Record<BranchOrderType, boolean>>;
+  /** The create popup also offers a service-center order. */
+  canCreateServiceCenter?: boolean;
   /** Suggested orders dialog type. Falls back to `fixedOrderType`. */
   suggestionOrderType?: BranchOrderType;
   /** Base path for pagination links (defaults to `/orders`). */
@@ -267,6 +270,7 @@ export function OrdersTable({
   listFilter,
   createHref,
   createByType,
+  canCreateServiceCenter = false,
   suggestionOrderType,
   basePath = "/orders",
   initialSort = "",
@@ -986,17 +990,12 @@ export function OrdersTable({
         open={createSetupOpen}
         canCreateManual={canCreateManual}
         canCreateSpecial={canCreateSpecial}
+        canCreateServiceCenter={canCreateServiceCenter}
         initialType={setupInitialType}
         onOpenChange={setCreateSetupOpen}
         onContinue={(choice) => {
-          const params = new URLSearchParams();
-          params.set("type", choice.orderType);
-          if (choice.dealerId) params.set("dealerId", choice.dealerId);
-          params.set("branchId", choice.branchId);
-          if (choice.modeOfPaymentId) params.set("modeOfPaymentId", choice.modeOfPaymentId);
-          params.set("ready", "1");
           setCreateSetupOpen(false);
-          router.push(`/orders/manual/new?${params.toString()}`);
+          router.push(orderSetupHref(choice));
         }}
       />
       <LoadingModal
