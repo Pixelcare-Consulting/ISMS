@@ -187,4 +187,15 @@ export const mockSapOutbound: SapOutboundPort = {
   async createDeliveryTransferDocument({ tenantId, userId, job }) {
     return completeStub(tenantId, userId, job, SAP_REFERENCE_TYPES.DeliveryTransfer);
   },
+
+  async createServiceCenterOrderDocument({ tenantId, userId, job }) {
+    const sapDocRef = await completeStub(tenantId, userId, job, SAP_REFERENCE_TYPES.ServiceCenterOrder);
+    if (job.referenceId) {
+      await prisma.serviceCenterOrder.update({
+        where: { id: job.referenceId, tenantId },
+        data: { sapDocRef },
+      });
+    }
+    return sapDocRef;
+  },
 };

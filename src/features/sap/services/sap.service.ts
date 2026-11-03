@@ -277,6 +277,18 @@ export const sapService = {
     });
   },
 
+  /** Approved service-center order → SO (ORDR). */
+  async emitServiceCenterOrder(tenantId: string, order: { id: string; orderNumber: string }) {
+    return enqueueJob({
+      tenantId,
+      jobType: "service_center_order",
+      idempotencyKey: `service_center_order:${order.id}`,
+      referenceType: SAP_REFERENCE_TYPES.ServiceCenterOrder,
+      referenceId: order.id,
+      payload: { orderNumber: order.orderNumber },
+    });
+  },
+
   /** Pull-out → Inventory Transfer Request (ITR / OWTQ). */
   async emitPulloutItr(
     tenantId: string,
@@ -482,6 +494,13 @@ export const sapService = {
             break;
           case "delivery_transfer":
             sapDocRef = await outbound.createDeliveryTransferDocument({
+              tenantId,
+              userId,
+              job: updated,
+            });
+            break;
+          case "service_center_order":
+            sapDocRef = await outbound.createServiceCenterOrderDocument({
               tenantId,
               userId,
               job: updated,

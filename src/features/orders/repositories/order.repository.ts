@@ -320,21 +320,40 @@ export const orderRepository = {
   },
 
   /**
-   * The chosen mode of payment (active, with a type) and the branch dealer's own,
-   * so an order stores an override only when it differs from the dealer's.
+   * The chosen mode of payment (active, with a type; null when none was picked), the
+   * branch dealer's own, and the branch's BP Code. An order stores an override only when
+   * it differs from the dealer's, and an outright order needs the BP Code.
    */
-  async findModeOfPaymentChoice(tenantId: string, branchId: string, modeOfPaymentId: string) {
+  async findModeOfPaymentChoice(
+    tenantId: string,
+    branchId: string,
+    modeOfPaymentId: string | null,
+  ) {
     const [modeOfPayment, branch] = await Promise.all([
-      prisma.modeOfPayment.findFirst({
-        where: { id: modeOfPaymentId, tenantId, recordStatus: "active" },
-        select: { id: true, name: true, kind: true },
-      }),
+      modeOfPaymentId
+        ? prisma.modeOfPayment.findFirst({
+            where: { id: modeOfPaymentId, tenantId, recordStatus: "active" },
+            select: { id: true, name: true, kind: true },
+          })
+        : Promise.resolve(null),
       prisma.branch.findFirst({
         where: { id: branchId, tenantId },
-        select: { dealer: { select: { modeOfPaymentId: true } } },
+        select: {
+          name: true,
+          sapCode: true,
+          bpCode: true,
+          dealer: {
+            select: { modeOfPaymentId: true, modeOfPayment: { select: { kind: true } } },
+          },
+        },
       }),
     ]);
-    return { modeOfPayment, dealerModeOfPaymentId: branch?.dealer?.modeOfPaymentId ?? null };
+    return {
+      modeOfPayment,
+      dealerModeOfPaymentId: branch?.dealer?.modeOfPaymentId ?? null,
+      dealerModeOfPaymentKind: branch?.dealer?.modeOfPayment?.kind ?? null,
+      branch: branch ? { name: branch.name, sapCode: branch.sapCode, bpCode: branch.bpCode } : null,
+    };
   },
 
   /** Pass `orderId` to include that order's own mode of payment (its override of the dealer's). */
@@ -345,6 +364,7 @@ export const orderRepository = {
         select: {
           name: true,
           sapCode: true,
+          bpCode: true,
           primaryWarehouse: { select: { id: true, code: true } },
           dealer: {
             select: {
@@ -363,11 +383,19 @@ export const orderRepository = {
       orderId
         ? prisma.branchOrder.findFirst({
             where: { id: orderId, tenantId },
-            select: { modeOfPayment: { select: { name: true, kind: true } } },
+            select: {
+              sapCardCode: true,
+              modeOfPayment: { select: { name: true, kind: true } },
+            },
           })
         : Promise.resolve(null),
     ]);
-    return { branch, mainWarehouse, orderModeOfPayment: order?.modeOfPayment ?? null };
+    return {
+      branch,
+      mainWarehouse,
+      orderModeOfPayment: order?.modeOfPayment ?? null,
+      storedCardCode: order?.sapCardCode ?? null,
+    };
   },
 
   async create(
@@ -665,6 +693,8 @@ export const orderRepository = {
       where: { orderId_level: { orderId, level: data.level } },
       data: {
         rejectedAt: new Date(),
+        rejectedById: data.approvedById,
+        // Order timelines still read the rejector from approvedBy.
         approvedById: data.approvedById,
         comment: data.comment ?? null,
       },
@@ -694,6 +724,8 @@ export const orderRepository = {
       deliveryDueDate?: Date;
       brandId?: string | null;
       sapDocType?: SapOrderDocType;
+      /** SO customer; stored with `sapDocType`. */
+      sapCardCode?: string | null;
       reviewSnapshot?: Prisma.InputJsonValue | null;
       lines: {
         detailId: string;
@@ -736,6 +768,7 @@ export const orderRepository = {
           approvedById: data.approvedById,
           brandId: data.brandId ?? null,
           ...(data.sapDocType ? { sapDocType: data.sapDocType } : {}),
+          ...(data.sapDocType ? { sapCardCode: data.sapCardCode ?? null } : {}),
         },
       });
 

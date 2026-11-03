@@ -237,8 +237,8 @@ async function stampApproval(
   });
   const data =
     decision === "approved"
-      ? { approvedAt: new Date(), approvedById: userId, rejectedAt: null }
-      : { rejectedAt: new Date(), approvedAt: null, approvedById: null };
+      ? { approvedAt: new Date(), approvedById: userId, rejectedAt: null, rejectedById: null }
+      : { rejectedAt: new Date(), rejectedById: userId, approvedAt: null, approvedById: null };
   if (!existing) {
     await tx.branchPulloutApprovalLevel.create({
       data: { pulloutId, level: 1, roleSlug: "tl", ...data },

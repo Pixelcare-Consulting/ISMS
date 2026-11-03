@@ -51,12 +51,12 @@ export async function createServiceCenterAction(input: unknown) {
 }
 
 export async function addServiceCenterLocationAction(input: unknown) {
-  await requirePermission("service_centers.manage");
+  const session = await requirePermission("service_centers.manage");
   const parsed = z
     .object({
       serviceCenterId: z.string().min(1),
-      code: z.string().min(1).max(32),
-      name: z.string().min(1).max(120),
+      code: z.string().trim().min(1).max(32),
+      name: z.string().trim().min(1).max(120),
       areaId: z.string().optional().nullable(),
       dealerAreaId: z.string().optional().nullable(),
       regionId: z.string().optional().nullable(),
@@ -67,7 +67,11 @@ export async function addServiceCenterLocationAction(input: unknown) {
   if (!parsed.success) return { error: "Invalid input" };
   try {
     const { serviceCenterId, ...data } = parsed.data;
-    const location = await serviceCenterRepository.addLocation(serviceCenterId, data);
+    const location = await serviceCenterRepository.addLocation(
+      session.user.tenantId,
+      serviceCenterId,
+      data,
+    );
     revalidate();
     return { success: true as const, location };
   } catch (e) {
@@ -76,9 +80,9 @@ export async function addServiceCenterLocationAction(input: unknown) {
 }
 
 export async function deleteServiceCenterLocationAction(id: string) {
-  await requirePermission("service_centers.manage");
+  const session = await requirePermission("service_centers.manage");
   try {
-    await serviceCenterRepository.deleteLocation(id);
+    await serviceCenterRepository.deleteLocation(session.user.tenantId, id);
     revalidate();
     return { success: true as const };
   } catch (e) {

@@ -17,35 +17,41 @@ import { Label } from "@/components/ui/label";
 import {
   duplicateLocationCodeMessage,
   sameLocationCode,
-} from "@/features/warehouses/utils/location-code";
+} from "@/utils/location-code";
 
-interface LocationRow {
+export interface LocationRow {
   id: string;
   code: string;
   name: string;
 }
 
-interface WarehouseLocationsDialogProps {
-  /** The warehouse whose locations are shown; null keeps the dialog closed. */
-  warehouse: { id: string; code: string; name: string; locations: LocationRow[] } | null;
+interface LocationsDialogProps {
+  /** The warehouse or service center whose locations are shown; null keeps the dialog closed. */
+  owner: { id: string; code: string; name: string; locations: LocationRow[] } | null;
+  /** What holds the locations, for the copy: "warehouse", "service center". */
+  ownerNoun: string;
+  /** Opens the description, e.g. "Bins or aisles inside". */
+  descriptionLead: string;
   pending: boolean;
   onOpenChange: (open: boolean) => void;
   /** Calls `onAdded` only when the location was saved, so the inputs keep their text on error. */
-  onAdd: (warehouseId: string, code: string, name: string, onAdded: () => void) => void;
-  onRemove: (warehouseId: string, location: LocationRow) => void;
+  onAdd: (ownerId: string, code: string, name: string, onAdded: () => void) => void;
+  onRemove: (ownerId: string, location: LocationRow) => void;
 }
 
-/** List, add and remove the bin or aisle locations inside one warehouse. */
-export function WarehouseLocationsDialog({
-  warehouse,
+/** List, add and remove the locations inside one warehouse or service center. */
+export function LocationsDialog({
+  owner,
+  ownerNoun,
+  descriptionLead,
   pending,
   onOpenChange,
   onAdd,
   onRemove,
-}: WarehouseLocationsDialogProps) {
+}: LocationsDialogProps) {
   const [locCode, setLocCode] = useState("");
   const [locName, setLocName] = useState("");
-  const locations = warehouse?.locations ?? [];
+  const locations = owner?.locations ?? [];
   const duplicate =
     locCode.trim() !== "" && locations.some((location) => sameLocationCode(location.code, locCode));
   const canAdd = Boolean(locCode.trim() && locName.trim()) && !duplicate && !pending;
@@ -60,15 +66,15 @@ export function WarehouseLocationsDialog({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!warehouse || !canAdd) return;
-    onAdd(warehouse.id, locCode, locName, () => {
+    if (!owner || !canAdd) return;
+    onAdd(owner.id, locCode, locName, () => {
       setLocCode("");
       setLocName("");
     });
   }
 
   return (
-    <Dialog open={warehouse !== null} onOpenChange={changeOpen}>
+    <Dialog open={owner !== null} onOpenChange={changeOpen}>
       {/* Header and add form keep their height; the list scrolls once it passes a few rows
           (or the space left on a short screen), so the dialog stays compact. */}
       <DialogContent className="flex flex-col gap-3 overflow-hidden sm:max-w-lg">
@@ -80,8 +86,7 @@ export function WarehouseLocationsDialog({
             </Badge>
           </DialogTitle>
           <DialogDescription>
-            Bins or aisles inside{" "}
-            <span className="font-mono">{warehouse?.code}</span> {warehouse?.name}.
+            {descriptionLead} <span className="font-mono">{owner?.code}</span> {owner?.name}.
           </DialogDescription>
         </DialogHeader>
 
@@ -107,7 +112,7 @@ export function WarehouseLocationsDialog({
                   disabled={pending}
                   className="size-11 shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                   aria-label={`Remove location ${loc.code}`}
-                  onClick={() => warehouse && onRemove(warehouse.id, loc)}
+                  onClick={() => owner && onRemove(owner.id, loc)}
                 >
                   <Trash2 className="size-4" />
                 </Button>
@@ -148,7 +153,7 @@ export function WarehouseLocationsDialog({
           </div>
           {duplicate ? (
             <p id="loc-code-error" className="text-sm text-destructive" role="alert">
-              {duplicateLocationCodeMessage(locCode)}
+              {duplicateLocationCodeMessage(locCode, ownerNoun)}
             </p>
           ) : null}
         </form>

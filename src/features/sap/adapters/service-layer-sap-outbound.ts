@@ -20,6 +20,7 @@ import {
   orderLineText,
   buildSoBody,
   postSapDocument,
+  serviceCenterSoExtra,
   type SapSerialLine,
 } from "@/features/sap/services/sap-documents";
 import {
@@ -96,8 +97,8 @@ async function postDeliveryReturn(
           sapDocEntry: true,
           drNo: true,
           sourceWarehouse: { select: { code: true } },
-          branch: { select: { name: true, sapCode: true, dealer: { select: { sapCode: true } } } },
-          order: { select: { sapDocType: true, sapDocNum: true } },
+          branch: { select: { name: true, sapCode: true } },
+          order: { select: { sapDocType: true, sapDocNum: true, sapCardCode: true } },
         },
       },
     },
@@ -141,8 +142,9 @@ async function postDeliveryReturn(
   const lines = groupSerialsBySku(serials);
   let body: Record<string, unknown>;
   if (docType === "SO") {
-    const cardCode = delivery.branch.dealer?.sapCode;
-    if (!cardCode) throw new Error("Dealer has no SAP customer code");
+    // The SO's own customer, so the Return credits whoever the SO billed.
+    const cardCode = delivery.order?.sapCardCode;
+    if (!cardCode) throw new Error("The original SO has no SAP customer (BP Code) stored");
     body = buildReturnBody({
       ismsRef: request.requestNo,
       remarks,
@@ -306,6 +308,7 @@ export const serviceLayerSapOutbound: SapOutboundPort = {
       mainWarehouse: ctx.mainWarehouse,
       dealer: ctx.branch.dealer,
       orderModeOfPayment: ctx.orderModeOfPayment,
+      storedCardCode: ctx.storedCardCode,
     };
     // The type stored at approval wins: a later mode-of-payment change must not
     // block or re-route the order. Orders approved before routing existed have
@@ -331,7 +334,7 @@ export const serviceLayerSapOutbound: SapOutboundPort = {
     const plainLines = lines.map(({ itemCode, quantity }) => ({ itemCode, quantity }));
     let body: Record<string, unknown>;
     if (docType === "SO") {
-      if (!routing.cardCode) throw new Error("Dealer has no SAP customer code");
+      if (!routing.cardCode) throw new Error("This SO has no SAP customer (BP Code)");
       body = buildSoBody({
         ismsRef: order.orderNumber,
         cardCode: routing.cardCode,
@@ -485,5 +488,63 @@ export const serviceLayerSapOutbound: SapOutboundPort = {
       });
       throw error;
     }
+  },
+
+  async createServiceCenterOrderDocument({ tenantId, job }) {
+    const orderId = job.referenceId;
+    if (!orderId) throw new Error("Missing service center order reference");
+
+    const creds = await sapServiceLayerService.getCredentials(tenantId);
+    if (!creds) throw new Error("SAP Service Layer is not configured");
+
+    const order = await prisma.serviceCenterOrder.findFirst({
+      where: { id: orderId, tenantId },
+      include: {
+        serviceCenter: { select: { name: true, sapCode: true } },
+        details: { orderBy: { id: "asc" }, include: { model: { select: { skuCode: true } } } },
+      },
+    });
+    if (!order) throw new Error("Service center order not found");
+    if (order.status !== "approved") throw new Error("Only an approved order can be posted to SAP");
+    if (order.sapDocRef) {
+      // Posted on an earlier attempt that stopped before the job was marked.
+      await sapIntegrationRepository.markCompleted(job.id, order.sapDocRef);
+      return order.sapDocRef;
+    }
+    if (!order.sapCardCode || !order.sapWarehouseCode) {
+      throw new Error("This order has no SAP customer or warehouse. Check Settings → Ordering policy.");
+    }
+
+    const lines = order.details
+      .map((d) => ({ itemCode: d.model.skuCode, quantity: d.approvedQty ?? d.quantity }))
+      .filter((l) => l.quantity > 0);
+    if (lines.length === 0) throw new Error("Order has no lines with an approved quantity");
+
+    const body = buildSoBody({
+      ismsRef: order.orderNumber,
+      cardCode: order.sapCardCode,
+      whs: order.sapWarehouseCode,
+      branchCode: order.sapBranchCode,
+      dueDate: isoDate(new Date()),
+      branchName: order.serviceCenter.name,
+      notes: order.notes,
+      lines,
+      extra: serviceCenterSoExtra({
+        serviceCenterCode: order.serviceCenter.sapCode,
+        departmentCode: order.sapDepartmentCode,
+        cogsBranchCode: order.sapCogsBranchCode,
+        projectCode: order.projectCode,
+        poNumber: order.poNumber,
+      }),
+    });
+
+    const ref = await postSapDocument(creds, "SO", order.orderNumber, body);
+    const sapDocRef = `SO-${ref.docNum}`;
+    await prisma.serviceCenterOrder.update({
+      where: { id: orderId },
+      data: { sapDocEntry: ref.docEntry, sapDocNum: ref.docNum, sapDocRef },
+    });
+    await sapIntegrationRepository.markCompleted(job.id, sapDocRef);
+    return sapDocRef;
   },
 };

@@ -4,19 +4,33 @@ import { prisma } from "@/lib/database/client";
 import { resolvePagination, toPaginatedResult } from "@/lib/shared/pagination";
 import { STOCK_COUNT_SESSION_LABELS } from "@/features/stock-audit/constants/stock-count-workflow";
 import { formatPeso } from "@/utils/format-currency";
-import type {
-  SerialActivityEvent,
-  SerialActivityType,
+import {
+  DELIVERY_RETURN_STATUS_LABELS,
+  DELIVERY_TRANSFER_LINE_STATUS_LABELS,
+  DELIVERY_TRANSFER_STATUS_LABELS,
+  returnSapFailedMessage,
+} from "@/features/logistics/constants/delivery-workflow-labels";
+import {
+  SERIAL_ACTIVITY_LABELS,
+  SERIAL_ACTIVITY_TYPES,
+  type SerialActivityEvent,
+  type SerialActivityType,
 } from "@/features/serial-activity/constants/serial-activity-display";
 import {
   approvalReferenceLines,
   approverIds,
+  approverName,
+  auditTrailLines,
+  decisionReferenceLine,
   type ApproverRef,
+  type AuditTrailEntry,
 } from "@/features/serial-activity/lib/approval-reference";
 import {
+  DELIVERY_RETURN_HISTORY_PREFIX,
   documentReferenceFromHistoryDetails,
   historyActivityForTxn,
   historyTxnTypesForActivity,
+  returnRequestIdFromHistoryDetails,
 } from "@/features/serial-activity/lib/serial-history-log";
 
 export type SerialActivitySortDir = "asc" | "desc";
@@ -93,7 +107,15 @@ const userSelect = {
 } as const;
 
 const approvalLevelSelect = {
-  select: { level: true, roleSlug: true, approvedAt: true, approvedById: true, rejectedAt: true },
+  select: {
+    level: true,
+    roleSlug: true,
+    approvedAt: true,
+    approvedById: true,
+    rejectedAt: true,
+    rejectedById: true,
+    comment: true,
+  },
   orderBy: { level: "asc" },
 } as const;
 
@@ -111,6 +133,38 @@ async function loadApprovers(
     select: { id: true, name: true, email: true },
   });
   return new Map(users.map((user) => [user.id, { name: user.name, email: user.email }]));
+}
+
+/**
+ * Audit-log steps of the given documents, grouped by document id, for the
+ * workflows whose decisions are kept only there.
+ */
+async function loadAuditTrails(
+  tenantId: string,
+  entityIds: string[],
+  actions: readonly string[],
+): Promise<Map<string, AuditTrailEntry[]>> {
+  const trails = new Map<string, AuditTrailEntry[]>();
+  const ids = [...new Set(entityIds)];
+  if (ids.length === 0) return trails;
+  const rows = await prisma.auditLog.findMany({
+    where: { tenantId, entityId: { in: ids }, action: { in: [...actions] } },
+    orderBy: { createdAt: "asc" },
+    select: { entityId: true, action: true, createdAt: true, metadata: true, user: userSelect },
+  });
+  for (const row of rows) {
+    if (!row.entityId) continue;
+    const metadata = auditMetadataRecord(row.metadata);
+    const entry: AuditTrailEntry = {
+      action: row.action,
+      at: row.createdAt,
+      by: row.user,
+      lineId: auditMetadataString(metadata, "lineId"),
+      note: auditMetadataString(metadata, "note"),
+    };
+    trails.set(row.entityId, [...(trails.get(row.entityId) ?? []), entry]);
+  }
+  return trails;
 }
 
 const RECORD_STATUS_LABELS: Record<string, string> = {
@@ -551,6 +605,215 @@ async function pulledOutSource(
   };
 }
 
+/** Unit-transfer steps the audit log keeps; line steps carry `lineId` in metadata. */
+const UNIT_TRANSFER_TRAIL_LABELS: Record<string, string> = {
+  "delivery_transfer.line_approved": "Approved",
+  "delivery_transfer.line_removed": "Removed",
+  "delivery_transfer.released": "Released",
+  "delivery_transfer.cancelled_in_transit": "Cancelled in transit",
+  "delivery_transfer.line_received": "Received",
+};
+
+function placeLabel(
+  branch: { name: string } | null,
+  warehouse: { name: string } | null,
+  location?: { code: string } | null,
+): string | null {
+  if (branch) return branch.name;
+  if (!warehouse) return null;
+  return location ? `${warehouse.name} · ${location.code}` : warehouse.name;
+}
+
+/** Units moved off a delivery on a unit transfer (UTR), with each line's approval trail. */
+async function unitTransferSource(
+  tenantId: string,
+  { window, q, dateFilter, dir }: SourceOptions,
+): Promise<SourceResult> {
+  const where: Prisma.DeliveryTransferLineWhereInput = {
+    transfer: { tenantId, ...(dateFilter ? { createdAt: dateFilter } : {}) },
+    ...(q
+      ? {
+          OR: [
+            { serialNumber: { serialNo: textContains(q) } },
+            { transfer: { transferNo: textContains(q) } },
+          ],
+        }
+      : {}),
+  };
+  const [rows, count] = await Promise.all([
+    prisma.deliveryTransferLine.findMany({
+      where,
+      orderBy: { transfer: { createdAt: dir } },
+      take: window,
+      select: {
+        id: true,
+        status: true,
+        remarks: true,
+        serialNumber: { select: { serialNo: true, model: modelSelect } },
+        transfer: {
+          select: {
+            id: true,
+            transferNo: true,
+            status: true,
+            createdAt: true,
+            sapDocNo: true,
+            delivery: { select: { deliveryNo: true } },
+            releaseBranch: { select: { name: true } },
+            releaseWarehouse: { select: { name: true } },
+            receiveBranch: { select: { name: true } },
+            receiveWarehouse: { select: { name: true } },
+            receiveWarehouseLocation: { select: { code: true } },
+            createdBy: userSelect,
+          },
+        },
+      },
+    }),
+    prisma.deliveryTransferLine.count({ where }),
+  ]);
+  const trails = await loadAuditTrails(
+    tenantId,
+    rows.map((r) => r.transfer.id),
+    Object.keys(UNIT_TRANSFER_TRAIL_LABELS),
+  );
+  return {
+    count,
+    events: rows.flatMap((r) => {
+      const serial = serialFields(r.serialNumber);
+      if (!serial) return [];
+      const { transfer } = r;
+      const from = placeLabel(transfer.releaseBranch, transfer.releaseWarehouse);
+      const to = placeLabel(
+        transfer.receiveBranch,
+        transfer.receiveWarehouse,
+        transfer.receiveWarehouseLocation,
+      );
+      return [
+        {
+          id: `unit_transfer:${r.id}`,
+          type: "transferred" as const,
+          typeLabel: "Unit transfer",
+          timestamp: transfer.createdAt,
+          serialNo: serial.serialNo,
+          modelLabel: serial.modelLabel,
+          location: to,
+          reference: transfer.transferNo,
+          referenceDetails: referenceDetails(
+            from && to ? route(from, to) : null,
+            `Delivery ${transfer.delivery.deliveryNo}`,
+            transfer.sapDocNo ? `SAP IT ${transfer.sapDocNo}` : null,
+            r.remarks ? `Note: ${r.remarks}` : null,
+            ...auditTrailLines(trails.get(transfer.id) ?? [], UNIT_TRANSFER_TRAIL_LABELS, r.id),
+          ),
+          status: `Transfer: ${DELIVERY_TRANSFER_STATUS_LABELS[transfer.status]} · Unit: ${DELIVERY_TRANSFER_LINE_STATUS_LABELS[r.status]}`,
+          performedBy: performedByLabel(transfer.createdBy),
+        },
+      ];
+    }),
+  };
+}
+
+/** Delivery return steps; a TL "cancel" of a pending request is the rejection. */
+const DELIVERY_RETURN_TRAIL_LABELS: Record<string, string> = {
+  "delivery_return.approved": "Approved",
+  "delivery_return.cancelled": "Rejected",
+  "delivery_return.cancelled_after_approval": "Cancelled after approval",
+  "delivery_return.completed": "Posted to SAP",
+};
+
+/**
+ * Units rejected on arrival and sent back to the warehouse (RTN), listed from the
+ * request so pending and rejected requests show too, with the approval trail.
+ */
+async function deliveryReturnSource(
+  tenantId: string,
+  { window, q, dateFilter, dir }: SourceOptions,
+): Promise<SourceResult> {
+  const where: Prisma.DeliveryReturnLineWhereInput = {
+    returnRequest: { tenantId, ...(dateFilter ? { requestedAt: dateFilter } : {}) },
+    ...(q
+      ? {
+          OR: [
+            { serialNumber: { serialNo: textContains(q) } },
+            { returnRequest: { requestNo: textContains(q) } },
+          ],
+        }
+      : {}),
+  };
+  const [rows, count] = await Promise.all([
+    prisma.deliveryReturnLine.findMany({
+      where,
+      orderBy: { returnRequest: { requestedAt: dir } },
+      take: window,
+      select: {
+        id: true,
+        remarks: true,
+        serialNumber: { select: { serialNo: true, model: modelSelect } },
+        warehouseLocationTo: { select: { code: true, warehouse: { select: { name: true } } } },
+        returnRequest: {
+          select: {
+            id: true,
+            requestNo: true,
+            status: true,
+            reason: true,
+            requestedAt: true,
+            sapDocNo: true,
+            sapError: true,
+            requestedBy: userSelect,
+            delivery: {
+              select: {
+                deliveryNo: true,
+                branch: { select: { name: true } },
+                sourceWarehouse: { select: { name: true } },
+              },
+            },
+          },
+        },
+      },
+    }),
+    prisma.deliveryReturnLine.count({ where }),
+  ]);
+  const trails = await loadAuditTrails(
+    tenantId,
+    rows.map((r) => r.returnRequest.id),
+    Object.keys(DELIVERY_RETURN_TRAIL_LABELS),
+  );
+  return {
+    count,
+    events: rows.flatMap((r) => {
+      const serial = serialFields(r.serialNumber);
+      if (!serial) return [];
+      const request = r.returnRequest;
+      const destination = r.warehouseLocationTo
+        ? `${r.warehouseLocationTo.warehouse.name} · ${r.warehouseLocationTo.code}`
+        : request.delivery.sourceWarehouse?.name ?? null;
+      return [
+        {
+          id: `delivery_return:${r.id}`,
+          type: "transferred" as const,
+          typeLabel: "Delivery return",
+          timestamp: request.requestedAt,
+          serialNo: serial.serialNo,
+          modelLabel: serial.modelLabel,
+          location: destination,
+          reference: request.requestNo,
+          referenceDetails: referenceDetails(
+            destination ? route(request.delivery.branch.name, destination) : null,
+            `Delivery ${request.delivery.deliveryNo}`,
+            `Reason: ${r.remarks?.trim() || request.reason}`,
+            request.sapDocNo ? `SAP ${request.sapDocNo}` : null,
+            request.status === "APPROVED" && request.sapError
+              ? returnSapFailedMessage(request.sapError)
+              : null,
+            ...auditTrailLines(trails.get(request.id) ?? [], DELIVERY_RETURN_TRAIL_LABELS),
+          ),
+          status: `Return: ${DELIVERY_RETURN_STATUS_LABELS[request.status]}`,
+          performedBy: performedByLabel(request.requestedBy),
+        },
+      ];
+    }),
+  };
+}
+
 const OFFICIAL_SALES_AUDIT_ACTIONS = [
   "official_sales.add",
   "official_sales.del",
@@ -865,11 +1128,6 @@ async function countedSource(
 }
 
 /**
- * Ledger rows the live tables do not already list. Reference is the document
- * number inside `details`; reference details are the full details text.
- * Transfer, sale, pull-out, and count stay on their live sources only.
- */
-/**
  * For delivery ledger rows: the order behind each delivery and who approved it, keyed by
  * delivery number (the reference the ledger details carry).
  */
@@ -908,6 +1166,162 @@ async function loadDeliveryOrderApprovals(
   );
 }
 
+/** Lines in time order; steps that have not happened drop out. */
+function timedLines(steps: { at: Date | null; line: string | null }[]): string[] {
+  return steps
+    .filter((step): step is { at: Date; line: string } => Boolean(step.at && step.line))
+    .sort((a, b) => a.at.getTime() - b.at.getTime())
+    .map((step) => step.line);
+}
+
+/** For sales return / replacement ledger rows: who moved the request through each step. */
+async function loadReturnRequestApprovals(
+  tenantId: string,
+  requestIds: (string | null)[],
+): Promise<Map<string, string[]>> {
+  const ids = [...new Set(requestIds.filter((id): id is string => Boolean(id)))];
+  if (ids.length === 0) return new Map();
+
+  const requests = await prisma.branchReturnRequest.findMany({
+    where: { tenantId, id: { in: ids } },
+    select: {
+      id: true,
+      createdAt: true,
+      acceptedAt: true,
+      evaluatedAt: true,
+      approvedAt: true,
+      requestNotes: true,
+      evaluationNotes: true,
+      requestedBy: userSelect,
+      acceptedBy: userSelect,
+      evaluatedBy: userSelect,
+      approvedBy: userSelect,
+    },
+  });
+  return new Map(
+    requests.map((request) => [
+      request.id,
+      timedLines([
+        {
+          at: request.createdAt,
+          line: decisionReferenceLine(
+            "Requested",
+            approverName(request.requestedBy),
+            request.createdAt,
+            request.requestNotes,
+          ),
+        },
+        {
+          at: request.acceptedAt,
+          line: decisionReferenceLine("Accepted", approverName(request.acceptedBy), request.acceptedAt),
+        },
+        {
+          at: request.evaluatedAt,
+          line: decisionReferenceLine(
+            "Evaluated",
+            approverName(request.evaluatedBy),
+            request.evaluatedAt,
+            request.evaluationNotes,
+          ),
+        },
+        {
+          at: request.approvedAt,
+          line: decisionReferenceLine("Approved", approverName(request.approvedBy), request.approvedAt),
+        },
+      ]),
+    ]),
+  );
+}
+
+interface DefectReportRef {
+  reportedAt: Date;
+  branchName: string;
+  lines: string[];
+}
+
+/**
+ * A defect ledger row is written in the same request that files or decides the report,
+ * so a short allowance covers the gap between the two writes.
+ */
+const DEFECT_REPORT_MATCH_MS = 5_000;
+
+/** Defect reports of the given serials, newest first, with who reported and decided each. */
+async function loadDefectReports(
+  tenantId: string,
+  serialNumberIds: string[],
+): Promise<Map<string, DefectReportRef[]>> {
+  const ids = [...new Set(serialNumberIds)];
+  if (ids.length === 0) return new Map();
+
+  const reports = await prisma.branchDefectReport.findMany({
+    where: { tenantId, serialNumberId: { in: ids } },
+    orderBy: { reportedAt: "desc" },
+    select: {
+      serialNumberId: true,
+      status: true,
+      reason: true,
+      reportedAt: true,
+      decidedAt: true,
+      decisionRemarks: true,
+      branch: { select: { name: true } },
+      reporter: userSelect,
+      decider: userSelect,
+    },
+  });
+  const bySerial = new Map<string, DefectReportRef[]>();
+  for (const report of reports) {
+    const ref: DefectReportRef = {
+      reportedAt: report.reportedAt,
+      branchName: report.branch.name,
+      lines: timedLines([
+        {
+          at: report.reportedAt,
+          line: decisionReferenceLine(
+            "Reported",
+            approverName(report.reporter),
+            report.reportedAt,
+            report.reason,
+          ),
+        },
+        {
+          at: report.decidedAt,
+          line: decisionReferenceLine(
+            report.status === "approved" ? "Approved" : "Rejected",
+            approverName(report.decider),
+            report.decidedAt,
+            report.decisionRemarks,
+          ),
+        },
+      ]),
+    };
+    bySerial.set(report.serialNumberId, [...(bySerial.get(report.serialNumberId) ?? []), ref]);
+  }
+  return bySerial;
+}
+
+function defectReportFor(
+  reports: DefectReportRef[] | undefined,
+  historyAt: Date,
+): DefectReportRef | null {
+  return (
+    reports?.find(
+      (report) => report.reportedAt.getTime() <= historyAt.getTime() + DEFECT_REPORT_MATCH_MS,
+    ) ?? null
+  );
+}
+
+/** Delivery-return ledger rows; `deliveryReturnSource` lists those returns from the request. */
+const DELIVERY_RETURN_LEDGER_ROWS: Prisma.SerialNumberHistoryWhereInput = {
+  txnType: "return",
+  details: { startsWith: DELIVERY_RETURN_HISTORY_PREFIX },
+};
+
+/**
+ * Ledger rows the live tables do not already list. Reference is the document
+ * number inside `details`; reference details are the full details text plus the
+ * approvals behind it (order, sales return request, defect report).
+ * Transfer, sale, pull-out, count and delivery return stay on their live sources only.
+ */
 async function historyLedgerSource(
   tenantId: string,
   { window, q, dateFilter, dir }: SourceOptions,
@@ -921,6 +1335,7 @@ async function historyLedgerSource(
   const where: Prisma.SerialNumberHistoryWhereInput = {
     tenantId,
     txnType: { in: txnTypes },
+    NOT: DELIVERY_RETURN_LEDGER_ROWS,
     ...(dateFilter ? { createdAt: dateFilter } : {}),
     ...(q
       ? {
@@ -939,6 +1354,7 @@ async function historyLedgerSource(
       take: window,
       select: {
         id: true,
+        serialNumberId: true,
         txnType: true,
         details: true,
         status: true,
@@ -950,12 +1366,26 @@ async function historyLedgerSource(
     prisma.serialNumberHistory.count({ where }),
   ]);
 
-  const deliveryApprovals = await loadDeliveryOrderApprovals(
-    tenantId,
-    rows.flatMap((row) =>
-      row.txnType === "delivery" ? [documentReferenceFromHistoryDetails(row.details)] : [],
+  const [deliveryApprovals, returnApprovals, defectReports] = await Promise.all([
+    loadDeliveryOrderApprovals(
+      tenantId,
+      rows.flatMap((row) =>
+        row.txnType === "delivery" ? [documentReferenceFromHistoryDetails(row.details)] : [],
+      ),
     ),
-  );
+    loadReturnRequestApprovals(
+      tenantId,
+      rows.flatMap((row) =>
+        row.txnType === "return" || row.txnType === "replacement"
+          ? [returnRequestIdFromHistoryDetails(row.details)]
+          : [],
+      ),
+    ),
+    loadDefectReports(
+      tenantId,
+      rows.flatMap((row) => (row.txnType === "defect" ? [row.serialNumberId] : [])),
+    ),
+  ]);
 
   return {
     count,
@@ -965,8 +1395,17 @@ async function historyLedgerSource(
       if (!serial || !activity) return [];
       const details = row.details?.trim() || null;
       const reference = documentReferenceFromHistoryDetails(details);
+      const requestId = returnRequestIdFromHistoryDetails(details);
+      const defect =
+        row.txnType === "defect"
+          ? defectReportFor(defectReports.get(row.serialNumberId), row.createdAt)
+          : null;
       const approvals =
-        row.txnType === "delivery" && reference ? deliveryApprovals.get(reference) ?? [] : [];
+        row.txnType === "delivery" && reference
+          ? deliveryApprovals.get(reference) ?? []
+          : requestId
+            ? returnApprovals.get(requestId) ?? []
+            : defect?.lines ?? [];
       return [
         {
           id: `history:${row.id}`,
@@ -975,7 +1414,7 @@ async function historyLedgerSource(
           timestamp: row.createdAt,
           serialNo: serial.serialNo,
           modelLabel: serial.modelLabel,
-          location: null,
+          location: defect?.branchName ?? null,
           reference,
           referenceDetails: referenceDetails(details, ...approvals),
           status: row.status?.trim() || null,
@@ -986,23 +1425,23 @@ async function historyLedgerSource(
   };
 }
 
+function emptyActivityCounts(): Record<SerialActivityType, number> {
+  return Object.fromEntries(SERIAL_ACTIVITY_TYPES.map((type) => [type, 0])) as Record<
+    SerialActivityType,
+    number
+  >;
+}
+
 async function historyCountsByActivity(
   tenantId: string,
 ): Promise<Record<SerialActivityType, number>> {
-  const counts: Record<SerialActivityType, number> = {
-    registered: 0,
-    status: 0,
-    transferred: 0,
-    sold: 0,
-    pulled_out: 0,
-    counted: 0,
-  };
+  const counts = emptyActivityCounts();
   const txnTypes = historyTxnTypesForActivity();
   if (txnTypes.length === 0) return counts;
 
   const groups = await prisma.serialNumberHistory.groupBy({
     by: ["txnType"],
-    where: { tenantId, txnType: { in: txnTypes } },
+    where: { tenantId, txnType: { in: txnTypes }, NOT: DELIVERY_RETURN_LEDGER_ROWS },
     _count: { id: true },
   });
 
@@ -1015,16 +1454,20 @@ async function historyCountsByActivity(
   return counts;
 }
 
-const SOURCES: Record<
-  SerialActivityType,
-  (tenantId: string, options: SourceOptions) => Promise<SourceResult>
-> = {
-  registered: registeredSource,
-  status: statusSource,
-  transferred: transferredSource,
-  sold: soldSource,
-  pulled_out: pulledOutSource,
-  counted: countedSource,
+type ActivitySource = (tenantId: string, options: SourceOptions) => Promise<SourceResult>;
+
+/**
+ * Live sources per event type. Official Sales ADD/DEL/WHSE_ADD/stock_adj audits are
+ * `sold` with a typeLabel override; unit transfers and delivery returns are
+ * `transferred`. History rows (added in `list`) fill movements these do not describe.
+ */
+const SOURCES: Record<SerialActivityType, ActivitySource[]> = {
+  registered: [registeredSource],
+  status: [statusSource],
+  transferred: [transferredSource, unitTransferSource, deliveryReturnSource],
+  sold: [soldSource, officialSalesAuditSource],
+  pulled_out: [pulledOutSource],
+  counted: [countedSource],
 };
 
 export const serialActivityRepository = {
@@ -1044,21 +1487,13 @@ export const serialActivityRepository = {
     const dir: SerialActivitySortDir = params.sortDir === "asc" ? "asc" : "desc";
     const mul = dir === "asc" ? 1 : -1;
 
-    // Official Sales ADD/DEL/WHSE_ADD/stock_adj audits use type `sold` with a
-    // typeLabel override so they appear in the full feed and Sales filter.
-    // History rows fill movements those live tables do not already describe.
-    const historySource = (
-      sourceTenantId: string,
-      options: SourceOptions,
-    ): Promise<SourceResult> =>
+    const historySource: ActivitySource = (sourceTenantId, options) =>
       historyLedgerSource(sourceTenantId, options, params.type);
 
-    const active =
-      params.type == null
-        ? [...Object.values(SOURCES), officialSalesAuditSource, historySource]
-        : params.type === "sold"
-          ? [SOURCES.sold, officialSalesAuditSource, historySource]
-          : [SOURCES[params.type], historySource];
+    const active = [
+      ...(params.type == null ? Object.values(SOURCES).flat() : SOURCES[params.type]),
+      historySource,
+    ];
 
     const results = await Promise.all(
       active.map((source) => source(tenantId, { window, q, dateFilter, dir })),
@@ -1077,50 +1512,23 @@ export const serialActivityRepository = {
    * All-time activity counts by event type (unfiltered — matches list KPI strips).
    */
   async getKpis(tenantId: string) {
-    const dir: SerialActivitySortDir = "desc";
-    const opts: SourceOptions = { window: 0, dir };
+    const opts: SourceOptions = { window: 0, dir: "desc" };
 
-    const [
-      registered,
-      status,
-      transferred,
-      sold,
-      pulledOut,
-      counted,
-      officialSales,
-      historyCounts,
-    ] = await Promise.all([
-      registeredSource(tenantId, opts),
-      statusSource(tenantId, opts),
-      transferredSource(tenantId, opts),
-      soldSource(tenantId, opts),
-      pulledOutSource(tenantId, opts),
-      countedSource(tenantId, opts),
-      officialSalesAuditSource(tenantId, opts),
+    const [liveCounts, historyCounts] = await Promise.all([
+      Promise.all(
+        SERIAL_ACTIVITY_TYPES.map(async (type) => {
+          const results = await Promise.all(SOURCES[type].map((source) => source(tenantId, opts)));
+          return results.reduce((sum, r) => sum + r.count, 0);
+        }),
+      ),
       historyCountsByActivity(tenantId),
     ]);
 
-    const soldCount = sold.count + officialSales.count + historyCounts.sold;
-    const statuses = [
-      {
-        code: "registered",
-        name: "Registered",
-        count: registered.count + historyCounts.registered,
-      },
-      {
-        code: "status",
-        name: "Status update",
-        count: status.count + historyCounts.status,
-      },
-      {
-        code: "transferred",
-        name: "Transferred",
-        count: transferred.count + historyCounts.transferred,
-      },
-      { code: "sold", name: "Sales transaction", count: soldCount },
-      { code: "pulled_out", name: "Pulled out", count: pulledOut.count },
-      { code: "counted", name: "Counted", count: counted.count },
-    ];
+    const statuses = SERIAL_ACTIVITY_TYPES.map((type, index) => ({
+      code: type,
+      name: SERIAL_ACTIVITY_LABELS[type],
+      count: liveCounts[index] + historyCounts[type],
+    }));
 
     return {
       totalEvents: statuses.reduce((sum, row) => sum + row.count, 0),

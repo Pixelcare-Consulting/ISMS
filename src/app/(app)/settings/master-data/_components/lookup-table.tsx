@@ -82,6 +82,8 @@ interface LookupTableProps {
   childRows?: LookupRowData[];
   /** Keep the list at 10 rows and hide the rows-per-page menu. */
   fixedPageSize?: boolean;
+  /** Extra toolbar buttons (e.g. an import trigger) shown before "Add". */
+  toolbarExtra?: React.ReactNode;
 }
 
 export function LookupTable({
@@ -90,6 +92,7 @@ export function LookupTable({
   parentOptions,
   childRows,
   fixedPageSize,
+  toolbarExtra,
 }: LookupTableProps) {
   const config = LOOKUP_ENTITIES[entity];
   const childConfig = config.child ? LOOKUP_ENTITIES[config.child] : null;
@@ -110,6 +113,7 @@ export function LookupTable({
           parentOptions={parentOptions}
           title={config.label}
           fixedPageSize={fixedPageSize}
+          toolbarExtra={toolbarExtra}
         />
         <LookupSection
           entity={childConfig.key}
@@ -128,6 +132,7 @@ export function LookupTable({
       rows={rows}
       parentOptions={parentOptions}
       fixedPageSize={fixedPageSize}
+      toolbarExtra={toolbarExtra}
     />
   );
 }
@@ -138,6 +143,7 @@ interface LookupSectionProps {
   parentOptions?: LookupOption[];
   title?: string;
   fixedPageSize?: boolean;
+  toolbarExtra?: React.ReactNode;
 }
 
 function sentenceCase(value: string) {
@@ -150,6 +156,7 @@ function LookupSection({
   parentOptions,
   title,
   fixedPageSize = false,
+  toolbarExtra,
 }: LookupSectionProps) {
   const config = LOOKUP_ENTITIES[entity];
   const router = useRouter();
@@ -429,9 +436,12 @@ function LookupSection({
           suggestions,
         }}
         toolbarActions={
-          <Button onClick={openCreate} disabled={addDisabled}>
-            <Plus className="size-4" /> Add {config.singular}
-          </Button>
+          <>
+            {toolbarExtra}
+            <Button onClick={openCreate} disabled={addDisabled}>
+              <Plus className="size-4" /> Add {config.singular}
+            </Button>
+          </>
         }
         empty={pageItems.length === 0}
         emptyMessage={

@@ -320,6 +320,8 @@ export async function listBranchesForOrderAction(
     .map((b) => ({
       id: b.id,
       name: b.name,
+      sapCode: b.sapCode,
+      bpCode: b.bpCode,
       dealerId: b.dealerId,
     }));
 }

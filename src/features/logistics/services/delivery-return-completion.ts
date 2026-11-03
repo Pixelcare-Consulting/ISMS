@@ -7,11 +7,15 @@ import { assertExclusiveClaim } from "@/features/logistics/services/delivery-pos
 import { settleDeliveryAfterReturn } from "@/features/logistics/services/delivery-settle";
 import { assertNotOnOpenTransfer } from "@/features/logistics/services/delivery-transfer-open-lines";
 import { prisma } from "@/lib/database/client";
+import { deliveryReturnHistoryDetails } from "@/features/serial-activity/lib/serial-history-log";
 
 /** SAP document the return posted: Inventory Transfer (consignment) or Return (outright). */
 export type DeliveryReturnSapKind = "IT" | "RETURN";
 
 export const DELIVERY_RETURN_ENTITY = "DeliveryReturnRequest";
+
+/** Warehouse stock has no status code, so a unit the branch marked defective carries DEF as its system status. */
+const DEFECTIVE_STATUS = "DEF";
 
 /**
  * Local half of an approved return, run once SAP has the document. One
@@ -43,7 +47,7 @@ export async function completeDeliveryReturn(input: {
         delivery: {
           select: { branchId: true, sourceWarehouse: { select: { code: true, deletedAt: true } } },
         },
-        lines: { select: { serialNumberId: true, warehouseLocationToId: true } },
+        lines: { select: { serialNumberId: true, warehouseLocationToId: true, markDefective: true } },
       },
     });
     if (!request) throw new Error("Return request not found");
@@ -78,7 +82,13 @@ export async function completeDeliveryReturn(input: {
     const now = new Date();
     const toLocation = request.lines.flatMap((line) =>
       line.warehouseLocationToId
-        ? [{ serialNumberId: line.serialNumberId, warehouseLocationId: line.warehouseLocationToId }]
+        ? [
+            {
+              serialNumberId: line.serialNumberId,
+              warehouseLocationId: line.warehouseLocationToId,
+              systemStatus: line.markDefective ? DEFECTIVE_STATUS : "Returned from delivery",
+            },
+          ]
         : [],
     );
     const toSapWarehouse = request.lines
@@ -90,7 +100,6 @@ export async function completeDeliveryReturn(input: {
         data: toLocation.map((line) => ({
           tenantId,
           ...line,
-          systemStatus: "Returned from delivery",
           systemUpdatedAt: now,
         })),
       });
@@ -106,12 +115,12 @@ export async function completeDeliveryReturn(input: {
       });
     }
     await tx.serialNumberHistory.createMany({
-      data: serialIds.map((serialNumberId) => ({
+      data: request.lines.map((line) => ({
         tenantId,
-        serialNumberId,
+        serialNumberId: line.serialNumberId,
         txnType: "return" as const,
-        details: `Returned to warehouse on ${request.requestNo} (SAP ${input.kind} ${input.sapDocNo})`,
-        status: "Warehouse",
+        details: deliveryReturnHistoryDetails(request.requestNo, input.kind, input.sapDocNo),
+        status: line.markDefective ? DEFECTIVE_STATUS : "Warehouse",
         createdById: input.userId ?? null,
       })),
     });

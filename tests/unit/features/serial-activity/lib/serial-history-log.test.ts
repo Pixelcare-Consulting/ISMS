@@ -1,5 +1,7 @@
 import {
+  deliveryReturnHistoryDetails,
   documentReferenceFromHistoryDetails,
+  returnRequestIdFromHistoryDetails,
   historyActivityForTxn,
   historyTxnTypesForActivity,
 } from "@/features/serial-activity/lib/serial-history-log";
@@ -29,6 +31,8 @@ describe("documentReferenceFromHistoryDetails", () => {
     ["Replacement sold on same invoice SI-100", "SI-100"],
     ["Replacement sold on new invoice SI-200", "SI-200"],
     ["Posted against SAP-ITR-ABCD1234 yesterday", "SAP-ITR-ABCD1234"],
+    ["Returned to warehouse on RTN-MH7K2 (SAP RETURN 991)", "RTN-MH7K2"],
+    ["Received on UTR-K3J9 at Makati", "UTR-K3J9"],
     ["4500123456", "4500123456"],
     ["Received into WH01 from a local fixture", null],
     ["Stocked in to WH01 / A-01", null],
@@ -75,5 +79,24 @@ describe("historyTxnTypesForActivity", () => {
       "replacement",
       "return",
     ]);
+  });
+});
+
+describe("deliveryReturnHistoryDetails", () => {
+  it("writes text whose reference is the request number", () => {
+    const details = deliveryReturnHistoryDetails("RTN-AB1", "IT", "12345");
+    expect(details).toBe("Returned to warehouse on RTN-AB1 (SAP IT 12345)");
+    expect(documentReferenceFromHistoryDetails(details)).toBe("RTN-AB1");
+  });
+});
+
+describe("returnRequestIdFromHistoryDetails", () => {
+  it.each([
+    ["Return SI 100 → STK at branch sold (request ckabc123)", "ckabc123"],
+    ["Replacement INV-9 → DEF at branch sold (request ckxyz) ", "ckxyz"],
+    ["Replacement sold on new invoice SI-200", null],
+    [null, null],
+  ])("reads %j as %j", (details, expected) => {
+    expect(returnRequestIdFromHistoryDetails(details)).toBe(expected);
   });
 });

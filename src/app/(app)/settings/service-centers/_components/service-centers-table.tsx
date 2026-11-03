@@ -1,8 +1,9 @@
 ﻿"use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 import { createColumnHelper } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
+import { MapPin } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -24,6 +25,7 @@ import {
   type DataTableColumn,
   type DataTableFeatures,
 } from "@/lib/data-table";
+import { LocationsDialog, type LocationRow } from "@/components/locations-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,12 +41,6 @@ import {
 import { matchesTableSearch } from "@/utils/match-table-search";
 
 const centerColumn = createColumnHelper<DataTableFeatures, CenterRow>();
-
-interface LocationRow {
-  id: string;
-  code: string;
-  name: string;
-}
 
 interface CenterRow {
   id: string;
@@ -86,9 +82,11 @@ export function ServiceCentersTable({
   const [name, setName] = useState("");
   const [areaId, setAreaId] = useState("");
   const [areas, setAreas] = useState<{ id: string; name: string }[]>([]);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [locCode, setLocCode] = useState("");
-  const [locName, setLocName] = useState("");
+  const [locationsCenterId, setLocationsCenterId] = useState<string | null>(null);
+  const locationsCenter = useMemo(() => {
+    const center = rows.find((row) => row.id === locationsCenterId);
+    return center ? { ...center, code: center.sapCode } : null;
+  }, [rows, locationsCenterId]);
 
   const filtered = useMemo(
     () =>
@@ -170,23 +168,31 @@ export function ServiceCentersTable({
     });
   }
 
-  function addLocation(serviceCenterId: string) {
-    startTransition(async () => {
-      const result = await addServiceCenterLocationAction({
-        serviceCenterId,
-        code: locCode,
-        name: locName,
+  const addLocation = useCallback(
+    (serviceCenterId: string, code: string, name: string, onAdded: () => void) => {
+      startTransition(async () => {
+        const result = await addServiceCenterLocationAction({ serviceCenterId, code, name });
+        if (result.error) {
+          toast.error(String(result.error));
+          return;
+        }
+        toast.success("Location added");
+        if (result.location) {
+          const location = result.location;
+          setRows((currentRows) =>
+            currentRows.map((center) =>
+              center.id === serviceCenterId
+                ? { ...center, locations: [...center.locations, location] }
+                : center,
+            ),
+          );
+        }
+        onAdded();
+        router.refresh();
       });
-      if (result.error) {
-        toast.error(String(result.error));
-        return;
-      }
-      toast.success("Location added");
-      setLocCode("");
-      setLocName("");
-      router.refresh();
-    });
-  }
+    },
+    [router],
+  );
 
   function removeLocation() {
     if (!deletingLocation) return;
@@ -243,70 +249,17 @@ export function ServiceCentersTable({
         id: "locations",
         header: "Locations",
         enableSorting: false,
-        cell: ({ row }) => {
-          const open = expandedId === row.original.id;
-          return (
-            <div className="space-y-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setExpandedId(open ? null : row.original.id)}
-              >
-                {row.original.locations.length} location(s)
-              </Button>
-              {open ? (
-                <div className="space-y-2 rounded-md border bg-muted/30 p-3">
-                  {row.original.locations.map((loc) => (
-                    <div key={loc.id} className="flex items-center justify-between text-sm">
-                      <span>
-                        {loc.code} — {loc.name}
-                      </span>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={pending}
-                        onClick={() =>
-                          setDeletingLocation({
-                            centerId: row.original.id,
-                            location: loc,
-                          })
-                        }
-                      >
-                        Remove
-                      </Button>
-                    </div>
-                  ))}
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    <Input
-                      placeholder="Code"
-                      value={locCode}
-                      onChange={(e) => setLocCode(e.target.value)}
-                      className="w-28"
-                    />
-                    <Input
-                      placeholder="Name"
-                      value={locName}
-                      onChange={(e) => setLocName(e.target.value)}
-                      className="w-40"
-                    />
-                    <Button
-                      size="sm"
-                      disabled={pending || !locCode || !locName}
-                      onClick={() => addLocation(row.original.id)}
-                    >
-                      Add location
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          );
-        },
-        meta: { wrap: true, className: "min-w-[24rem]" },
+        cell: ({ row }) => (
+          <Button size="sm" variant="ghost" onClick={() => setLocationsCenterId(row.original.id)}>
+            <MapPin className="mr-1 h-3.5 w-3.5" />
+            {row.original.locations.length} location
+            {row.original.locations.length === 1 ? "" : "s"}
+          </Button>
+        ),
       }),
     ];
     return cols;
-  }, [expandedId, locCode, locName, pending]);
+  }, []);
 
   return (
     <div className="space-y-4">
@@ -417,6 +370,18 @@ export function ServiceCentersTable({
           </form>
         </SheetContent>
       </Sheet>
+
+      <LocationsDialog
+        owner={locationsCenter}
+        ownerNoun="service center"
+        descriptionLead="Stock locations inside"
+        pending={pending}
+        onOpenChange={(open) => {
+          if (!open) setLocationsCenterId(null);
+        }}
+        onAdd={addLocation}
+        onRemove={(centerId, location) => setDeletingLocation({ centerId, location })}
+      />
 
       <DeleteConfirmDialog
         open={Boolean(deletingLocation)}

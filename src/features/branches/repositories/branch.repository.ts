@@ -65,6 +65,7 @@ export const branchRepository = {
         id: true,
         name: true,
         sapCode: true,
+        bpCode: true,
         dealerId: true,
       },
       orderBy: { name: "asc" },
@@ -283,23 +284,25 @@ export const branchRepository = {
    */
   async applySapSyncPage(
     tenantId: string,
-    records: { sapCode: string; name: string; isInactive?: boolean }[],
+    /** `bpCode` undefined = this source doesn't carry it (OBRA), so it is left untouched. */
+    records: { sapCode: string; name: string; bpCode?: string | null; isInactive?: boolean }[],
   ): Promise<SapSyncApplyResult> {
     // Paged by Code, so a repeat within a page would be a SAP anomaly; first wins.
     const rows = [...new Map(records.map((row) => [row.sapCode, row])).values()];
 
     const existing = await prisma.branch.findMany({
       where: { tenantId, sapCode: { in: rows.map((row) => row.sapCode) } },
-      select: { id: true, sapCode: true, name: true, deletedAt: true },
+      select: { id: true, sapCode: true, name: true, bpCode: true, deletedAt: true },
     });
     const bySapCode = new Map(existing.map((branch) => [branch.sapCode, branch]));
 
     const failures: SapWriteFailure[] = [];
-    const toCreate: { sapCode: string; name: string }[] = [];
+    const toCreate: { sapCode: string; name: string; bpCode?: string | null }[] = [];
     const toUpdate: {
       id: string;
       sapCode: string;
       name: string;
+      bpCode?: string | null;
       /** Only set when the row moves between live and soft-deleted. */
       lifecycle?: { deletedAt: Date | null; status: BranchStatus };
     }[] = [];
@@ -307,7 +310,11 @@ export const branchRepository = {
 
     for (const row of rows) {
       const match = bySapCode.get(row.sapCode);
-      const fields = { sapCode: row.sapCode, name: row.name };
+      const fields = {
+        sapCode: row.sapCode,
+        name: row.name,
+        ...(row.bpCode !== undefined ? { bpCode: row.bpCode } : {}),
+      };
       if (!match) {
         // Don't create dead master data.
         if (row.isInactive) {
@@ -325,7 +332,8 @@ export const branchRepository = {
         lifecycle = { deletedAt: null, status: "active" };
       }
 
-      if (match.name === row.name && !lifecycle) {
+      const bpCodeChanged = row.bpCode !== undefined && match.bpCode !== row.bpCode;
+      if (match.name === row.name && !bpCodeChanged && !lifecycle) {
         unchanged += 1;
         continue;
       }
@@ -349,7 +357,11 @@ export const branchRepository = {
       updateOne: async (row) => {
         await prisma.branch.update({
           where: { id: row.id, tenantId },
-          data: { name: row.name, ...row.lifecycle },
+          data: {
+            name: row.name,
+            ...(row.bpCode !== undefined ? { bpCode: row.bpCode } : {}),
+            ...row.lifecycle,
+          },
         });
       },
       describe: (row) => row.sapCode,

@@ -127,6 +127,8 @@ function ReceiveBody({
   const [step, setStep] = useState<"select" | "reject">("select");
   const [remarks, setRemarks] = useState("");
   const [lineRemarks, setLineRemarks] = useState<Record<string, string>>({});
+  /** Units the branch marks DEF (optional); they return to the warehouse as defective. */
+  const [defectiveIds, setDefectiveIds] = useState<string[]>([]);
   const [rejectError, setRejectError] = useState<string | null>(null);
   const remarksId = useId();
 
@@ -203,6 +205,7 @@ function ReceiveBody({
         ticked.map((line) => ({
           serialNumberId: line.serialNumberId,
           remarks: lineRemarks[line.serialNumberId]?.trim() || null,
+          markDefective: defectiveIds.includes(line.serialNumberId),
         })),
       );
       if ("error" in result) {
@@ -226,7 +229,7 @@ function ReceiveBody({
           <DialogDescription>
             This creates an {requestTerm} for the TL. Once approved, SAP gets the{" "}
             {target.sapDocType === "ITR" ? "IT" : "Return"} and the units go back to the warehouse. Until then
-            they stay in transit. Remarks are optional.
+            they stay in transit. Remarks and Mark DEF are optional; a unit marked DEF returns to the warehouse as defective.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-1.5">
@@ -253,7 +256,24 @@ function ReceiveBody({
           >
           {ticked.map((line) => (
             <li key={line.serialNumberId} className="space-y-2 rounded-md border px-3 py-2 text-sm">
-              <SerialLabel line={line} />
+              <div className="flex items-center gap-3">
+                <SerialLabel line={line} />
+                <label className="ml-auto flex min-h-11 shrink-0 items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={defectiveIds.includes(line.serialNumberId)}
+                    disabled={pending}
+                    onCheckedChange={(value) =>
+                      setDefectiveIds((current) =>
+                        value === true
+                          ? [...current, line.serialNumberId]
+                          : current.filter((id) => id !== line.serialNumberId),
+                      )
+                    }
+                    aria-label={`Mark ${line.serialNo} as DEF`}
+                  />
+                  Mark DEF
+                </label>
+              </div>
               <Input
                 value={lineRemarks[line.serialNumberId] ?? ""}
                 maxLength={RETURN_LINE_REMARKS_MAX}

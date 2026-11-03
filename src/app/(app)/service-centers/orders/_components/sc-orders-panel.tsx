@@ -9,8 +9,6 @@ import { listScCentersForOpsAction } from "@/features/service-center-ops/actions
 import { createScDeliveryFromOrderAction } from "@/features/service-center-ops/actions/sc-logistics.actions";
 import {
   approveScOrderAction,
-  createScOrderAction,
-  listModelsForScOrderAction,
   listScOrdersAction,
   rejectScOrderAction,
 } from "@/features/service-center-ops/actions/sc-orders.actions";
@@ -23,23 +21,15 @@ import {
 } from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { SearchableSelect } from "@/components/ui/searchable-select";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
 type OrderRow = Awaited<ReturnType<typeof listScOrdersAction>>["items"][number];
 type CenterOption = Awaited<ReturnType<typeof listScCentersForOpsAction>>[number];
 
 const orderColumn = createColumnHelper<DataTableFeatures, OrderRow>();
+
+/** Service-center orders are created on the shared Create Order page. */
+const NEW_SC_ORDER_HREF = "/orders/manual/new?for=service_center";
 
 export function ScOrdersPanel({
   items,
@@ -57,23 +47,6 @@ export function ScOrdersPanel({
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [serviceCenterId, setServiceCenterId] = useState("");
-  const [locationId, setLocationId] = useState("");
-  const [modelId, setModelId] = useState("");
-  const [quantity, setQuantity] = useState("1");
-  const [modelOptions, setModelOptions] = useState<{ id: string; label: string }[]>(
-    [],
-  );
-
-  const locations = useMemo(() => {
-    const center = centers.find((c) => c.id === serviceCenterId);
-    return (center?.locations ?? []).map((l) => ({
-      id: l.id,
-      label: `${l.name} (${l.code})`,
-    }));
-  }, [centers, serviceCenterId]);
-
   const filtered = useMemo(
     () =>
       items.filter((row) =>
@@ -81,6 +54,8 @@ export function ScOrdersPanel({
           row.orderNumber,
           row.serviceCenter.name,
           row.status,
+          row.poNumber ?? "",
+          row.sapDocNum != null ? String(row.sapDocNum) : "",
         ]),
       ),
     [items, query],
@@ -103,42 +78,6 @@ export function ScOrdersPanel({
   } = useClientTablePagination(sort.sorted, {
     resetKey: `${query}:${sort.sortKey}:${sort.sortDir}`,
   });
-
-  function openCreate() {
-    setServiceCenterId(centers[0]?.id ?? "");
-    setLocationId(centers[0]?.locations[0]?.id ?? "");
-    setModelId("");
-    setQuantity("1");
-    setSheetOpen(true);
-    startTransition(async () => {
-      const models = await listModelsForScOrderAction();
-      setModelOptions(
-        models.map((m) => ({ id: m.id, label: `${m.skuCode} · ${m.name}` })),
-      );
-    });
-  }
-
-  function submitCreate() {
-    const qty = Number(quantity);
-    if (!serviceCenterId || !modelId || !Number.isInteger(qty) || qty < 1) {
-      toast.error("Select center, model, and quantity");
-      return;
-    }
-    startTransition(async () => {
-      const result = await createScOrderAction({
-        serviceCenterId,
-        serviceCenterLocationId: locationId || null,
-        lines: [{ modelId, quantity: qty }],
-      });
-      if (result.error) {
-        toast.error(result.error);
-        return;
-      }
-      toast.success(`Order ${result.orderNumber} created`);
-      setSheetOpen(false);
-      router.refresh();
-    });
-  }
 
   function run(
     action: () => Promise<{ error?: string; success?: true }>,
@@ -176,6 +115,26 @@ export function ScOrdersPanel({
         enableSorting: true,
       }),
       orderColumn.display({
+        id: "customer",
+        header: "Customer",
+        enableSorting: false,
+        cell: ({ row }) => row.original.sapCardCode ?? "—",
+      }),
+      orderColumn.display({
+        id: "po",
+        header: "PO / Project",
+        enableSorting: false,
+        cell: ({ row }) =>
+          [row.original.poNumber, row.original.projectCode].filter(Boolean).join(" · ") || "—",
+      }),
+      orderColumn.display({
+        id: "so",
+        header: "SO no.",
+        enableSorting: false,
+        cell: ({ row }) => row.original.sapDocNum ?? "—",
+        meta: { className: "tabular-nums" },
+      }),
+      orderColumn.display({
         id: "lines",
         header: "Lines",
         enableSorting: false,
@@ -204,7 +163,7 @@ export function ScOrdersPanel({
                     size="sm"
                     variant="outline"
                     disabled={pending}
-                    onClick={() => run(() => approveScOrderAction(order.id), "Order approved")}
+                    onClick={() => run(() => approveScOrderAction(order.id), "Order approved and posted to SAP")}
                   >
                     Approve
                   </Button>
@@ -257,11 +216,14 @@ export function ScOrdersPanel({
         search={{
           value: query,
           onChange: setQuery,
-          placeholder: "Search order or center…",
+          placeholder: "Search order, center, PO or SO…",
         }}
         toolbarActions={
           canCreate ? (
-            <Button onClick={openCreate} disabled={pending || centers.length === 0}>
+            <Button
+              onClick={() => router.push(NEW_SC_ORDER_HREF)}
+              disabled={pending || centers.length === 0}
+            >
               New order
             </Button>
           ) : null
@@ -280,72 +242,6 @@ export function ScOrdersPanel({
         }}
       />
 
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
-          <SheetHeader className="border-b px-4 py-4 text-left">
-            <SheetTitle>New service center order</SheetTitle>
-            <SheetDescription>
-              Create a manual order for approval, then delivery accept.
-            </SheetDescription>
-          </SheetHeader>
-          <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
-            <SearchableSelect
-              label="Service center"
-              options={centers.map((c) => ({
-                id: c.id,
-                label: `${c.name} (${c.sapCode})`,
-              }))}
-              value={serviceCenterId}
-              onChange={(id) => {
-                setServiceCenterId(id);
-                setLocationId(
-                  centers.find((c) => c.id === id)?.locations[0]?.id ?? "",
-                );
-              }}
-              placeholder="Select center…"
-              searchPlaceholder="Search…"
-              disabled={pending}
-            />
-            <SearchableSelect
-              label="Location"
-              options={locations}
-              value={locationId}
-              onChange={setLocationId}
-              placeholder="Select location…"
-              searchPlaceholder="Search…"
-              disabled={pending}
-            />
-            <SearchableSelect
-              label="Model"
-              options={modelOptions}
-              value={modelId}
-              onChange={setModelId}
-              placeholder="Select model…"
-              searchPlaceholder="Filter models…"
-              disabled={pending}
-            />
-            <div className="space-y-2">
-              <Label htmlFor="qty">Quantity</Label>
-              <Input
-                id="qty"
-                type="number"
-                min={1}
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                disabled={pending}
-              />
-            </div>
-          </div>
-          <SheetFooter className="border-t">
-            <Button variant="outline" onClick={() => setSheetOpen(false)} disabled={pending}>
-              Cancel
-            </Button>
-            <Button onClick={submitCreate} disabled={pending}>
-              {pending ? "Saving…" : "Create order"}
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
     </div>
   );
 }

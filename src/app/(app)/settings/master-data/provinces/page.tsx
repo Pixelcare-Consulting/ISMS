@@ -5,6 +5,7 @@ import {
 import { requirePermission } from "@/lib/auth/permissions";
 import { SectionPageLead } from "@/components/navigation/section-page-lead";
 import { LookupTable } from "@/app/(app)/settings/master-data/_components/lookup-table";
+import { ImportProvincesButton } from "@/app/(app)/settings/master-data/_components/import-provinces-dialog";
 
 export default async function MasterDataProvincesPage() {
   await requirePermission("master_data.manage");
@@ -16,7 +17,12 @@ export default async function MasterDataProvincesPage() {
   return (
     <div className="space-y-4">
       <SectionPageLead>Provinces, optionally assigned to a region.</SectionPageLead>
-      <LookupTable entity="province" rows={rows} parentOptions={regions} />
+      <LookupTable
+        entity="province"
+        rows={rows}
+        parentOptions={regions}
+        toolbarExtra={<ImportProvincesButton />}
+      />
     </div>
   );
 }

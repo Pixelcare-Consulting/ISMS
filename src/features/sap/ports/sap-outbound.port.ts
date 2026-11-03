@@ -54,4 +54,14 @@ export interface SapOutboundPort {
     userId?: string;
     job: SapIntegrationJob;
   }): Promise<string>;
+
+  /**
+   * Approved service-center order (`service_center_order`) → Sales Order (ORDR) billing the
+   * customer and defaults stored on the order, with the service center on dimension 5.
+   */
+  createServiceCenterOrderDocument(input: {
+    tenantId: string;
+    userId?: string;
+    job: SapIntegrationJob;
+  }): Promise<string>;
 }

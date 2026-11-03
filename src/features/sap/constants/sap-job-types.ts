@@ -20,6 +20,7 @@ export const SAP_JOB_TYPE_LABELS: Record<SapIntegrationJobType, string> = {
     "Partial delivery return → Inventory Transfer (OWTR)",
   delivery_return: "Delivery return → IT or Return",
   delivery_transfer: "Unit transfer → Inventory Transfer (OWTR)",
+  service_center_order: "Service center order → SO",
 };
 
 export const SAP_JOB_STATUS_LABELS: Record<SapIntegrationJobStatus, string> = {
@@ -38,4 +39,5 @@ export const SAP_REFERENCE_TYPES = {
   DeliveryReturnRequest: "DeliveryReturnRequest",
   StockVariance: "StockVariance",
   StockCountSession: "StockCountSession",
+  ServiceCenterOrder: "ServiceCenterOrder",
 } as const;
