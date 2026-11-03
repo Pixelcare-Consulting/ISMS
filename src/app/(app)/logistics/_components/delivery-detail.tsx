@@ -430,7 +430,7 @@ function RejectRequestsSection({
   return (
     <RecordSection
       title="Rejected units"
-      description="Each reject goes to the TL on its own and, once approved, posts its own SAP IT or Return."
+      description="Each reject posts its own SAP IT or Return as soon as it is confirmed."
       divided
     >
       <ul className="divide-y rounded-md border">

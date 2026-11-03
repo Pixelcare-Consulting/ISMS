@@ -942,7 +942,14 @@ export async function requestDeliveryReturnAction(deliveryId: string, remarks: u
   try {
     const row = await deliveryReturnService.request(postingActor(session), { deliveryId, reason: parsed.data, units: parsedUnits.data });
     revalidateDelivery(deliveryId);
-    return { success: true as const, id: row.id, requestNo: row.requestNo };
+    return {
+      success: true as const,
+      id: row.id,
+      requestNo: row.requestNo,
+      status: row.status,
+      sapDocNo: row.sapDocNo,
+      sapError: row.sapError,
+    };
   } catch (error) {
     return actionError(error, "Failed to request the return");
   }
@@ -979,7 +986,7 @@ export async function decideDeliveryReturnAction(returnId: string, input: unknow
 }
 
 export async function cancelDeliveryReturnAction(returnId: string, note: unknown) {
-  const session = await requireAnyPermission([LOGISTICS_DELIVERY_RETURN_APPROVE]);
+  const session = await requireAnyPermission([LOGISTICS_DELIVERY_RETURN_APPROVE, LOGISTICS_DELIVERY_RETURN_REQUEST]);
   const parsed = deliveryReturnCancelNoteSchema.safeParse(note);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Enter the reason for cancelling the return" };
   try {

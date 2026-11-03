@@ -527,6 +527,8 @@ export const ROLES = [
       "logistics.manage",
       "logistics.delivery.dispatch",
       "logistics.delivery.receive",
+      // Rejects units at receipt; the SAP IT / Return posts with no approval step.
+      "logistics.delivery_return.request",
       "sap.view",
       "sap.manage",
       "sales.view",

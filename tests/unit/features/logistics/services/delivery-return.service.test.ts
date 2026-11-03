@@ -105,10 +105,27 @@ beforeEach(() => {
 });
 
 describe("deliveryReturnService.request", () => {
-  it("creates a pending request for the in-transit units only, under serial then delivery locks", async () => {
+  beforeEach(() => {
+    // The outcome read after the inline SAP post.
+    mockPrisma.deliveryReturnRequest.findFirst.mockResolvedValue({
+      status: "COMPLETED",
+      sapDocNo: "494410",
+      sapError: null,
+    });
+  });
+
+  it("approves the reject on request and posts it to SAP, for the in-transit units only, under serial then delivery locks", async () => {
     const row = await deliveryReturnService.request(requester, { deliveryId: "del1", reason: "  Wrong model  " });
 
-    expect(row).toEqual({ id: "r1", requestNo: "RTN-1" });
+    expect(row).toEqual({
+      id: "r1",
+      requestNo: "RTN-1",
+      status: "COMPLETED",
+      sapDocNo: "494410",
+      sapError: null,
+    });
+    expect(emit).toHaveBeenCalledWith("t1", { id: "r1", requestNo: "RTN-1" });
+    expect(processJobs).toHaveBeenCalledWith("t1", "u1", 1, expect.objectContaining({ referenceId: "r1" }));
     expect(authorizeDeliveryScope).toHaveBeenCalledWith(requester, expect.objectContaining({ branchId: "b1" }));
     expect(lockSerialNumbers).toHaveBeenCalledWith(mockTx, ["s2", "s3"]);
     const lock = queryRaw().mock.calls[0];
@@ -122,6 +139,8 @@ describe("deliveryReturnService.request", () => {
       deliveryId: "del1",
       reason: "Wrong model",
       requestedById: "u1",
+      status: "APPROVED",
+      decidedById: "u1",
       lines: {
         create: [
           { serialNumberId: "s2", warehouseLocationToId: "loc1" },
@@ -201,7 +220,7 @@ describe("deliveryReturnService.request", () => {
 
   it("allows an outright (SO) delivery without its DR in SAP: the Return is standalone", async () => {
     (loadDelivery as jest.Mock).mockResolvedValue({ ...partialDelivery(), orderSapDocType: "SO", sapDocEntry: null });
-    await expect(deliveryReturnService.request(requester, { deliveryId: "del1", reason: "x" })).resolves.toEqual({
+    await expect(deliveryReturnService.request(requester, { deliveryId: "del1", reason: "x" })).resolves.toMatchObject({
       id: "r1",
       requestNo: "RTN-1",
     });
@@ -209,7 +228,7 @@ describe("deliveryReturnService.request", () => {
 
   it("allows an outright (SO) delivery with its DR", async () => {
     (loadDelivery as jest.Mock).mockResolvedValue({ ...partialDelivery(), orderSapDocType: "SO" });
-    await expect(deliveryReturnService.request(requester, { deliveryId: "del1", reason: "x" })).resolves.toEqual({
+    await expect(deliveryReturnService.request(requester, { deliveryId: "del1", reason: "x" })).resolves.toMatchObject({
       id: "r1",
       requestNo: "RTN-1",
     });
@@ -225,7 +244,7 @@ describe("deliveryReturnService.request", () => {
     mockTx.branchInventory.count.mockResolvedValue(1);
     await expect(
       deliveryReturnService.request(requester, { deliveryId: "del1", units: [{ serialNumberId: "s3" }] }),
-    ).resolves.toEqual({ id: "r1", requestNo: "RTN-1" });
+    ).resolves.toMatchObject({ id: "r1", requestNo: "RTN-1" });
   });
 
   it("re-checks the units under the serial locks", async () => {
@@ -426,8 +445,9 @@ describe("deliveryReturnService.cancelApproved", () => {
     );
   });
 
-  it("needs the approve capability", async () => {
-    await expect(deliveryReturnService.cancelApproved(requester, "r1", "x")).rejects.toThrow(
+  it("needs the approve or the reject (request) capability", async () => {
+    const viewer = { tenantId: "t1", userId: "u3", permissions: ["logistics.view"] };
+    await expect(deliveryReturnService.cancelApproved(viewer, "r1", "x")).rejects.toThrow(
       "You do not have permission to approve delivery returns",
     );
   });
