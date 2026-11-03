@@ -227,6 +227,8 @@ export async function listInventoryGroupsAction(input: {
   statusCodeId?: string;
   offPlanogram?: boolean;
   q?: string;
+  /** Return every group so the table can filter the full list while typing. */
+  all?: boolean;
 }): Promise<
   PaginatedResult<InventoryGroupBranchItemDto | InventoryGroupModelItemDto>
 > {
@@ -236,7 +238,7 @@ export async function listInventoryGroupsAction(input: {
     throw new Error("Invalid inventory group view");
   }
   const unrestricted = isUnrestricted(session.user.permissions);
-  const limit = parseTablePageSize(input.limit);
+  const limit = input.all ? 10_000 : parseTablePageSize(input.limit);
   return inventoryService.listGroupsForUser(
     session.user.tenantId,
     session.user.id,
