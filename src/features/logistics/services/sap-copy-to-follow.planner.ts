@@ -16,7 +16,15 @@ export const SAP_FOLLOW_STATUS = {
   FAILED: "FAILED",
   /** Needs a person: cancelled in SAP, or not based on this order's ITR/SO. Not retried. */
   FLAGGED: "FLAGGED",
+  /** A person settled a FLAGGED entry in ISMS (e.g. closed the order); no longer notified. */
+  RESOLVED: "RESOLVED",
 } as const;
+
+/**
+ * `delivery_sap_documents.doc_kind` for the base SO of an order made in SAP, recorded when
+ * SAP closed or cancelled that SO without a DR (nothing will ever arrive for the delivery).
+ */
+export const CLOSED_SALES_ORDER_KIND = "SO";
 export type SapFollowStatus = (typeof SAP_FOLLOW_STATUS)[keyof typeof SAP_FOLLOW_STATUS];
 
 /** The document each order type is followed into: an ITR becomes an IT, an SO a DR. */

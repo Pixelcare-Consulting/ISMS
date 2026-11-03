@@ -21,6 +21,7 @@ jest.mock("@/lib/database/client", () => {
         findMany: jest.fn(),
         updateMany: jest.fn(),
         create: jest.fn(),
+        upsert: jest.fn(),
       },
       $transaction: jest.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)),
     },
@@ -46,6 +47,7 @@ jest.mock("@/features/logistics/services/sap-copy-to-follow.notifier", () => ({
 jest.mock("@/features/orders/services/sap-sales-order-import.service", () => ({
   importSapSalesOrders: jest.fn(async () => ({ imported: 0, skipped: 0 })),
   findDeliveryNotesBySalesOrder: jest.fn(async () => new Map()),
+  findSalesOrderStates: jest.fn(async () => new Map()),
 }));
 jest.mock("@/features/inventory/services/serial-placement", () => ({
   loadCurrentPlacements: jest.fn(),
@@ -58,6 +60,7 @@ import { loadCurrentPlacements } from "@/features/inventory/services/serial-plac
 import { runSapCopyToFollow } from "@/features/logistics/services/sap-copy-to-follow.service";
 import {
   findDeliveryNotesBySalesOrder,
+  findSalesOrderStates,
   importSapSalesOrders,
 } from "@/features/orders/services/sap-sales-order-import.service";
 import { sapSyncCursorRepository } from "@/features/sap/repositories/sap-sync-cursor.repository";
@@ -281,6 +284,48 @@ it("imports SAP-made Sales Orders, then follows their DRs by base SO", async () 
   expect(mockPrisma.deliverySapDocument.create).toHaveBeenCalledWith({
     data: expect.objectContaining({ deliveryId: "del-sap", docKind: "DR", docEntry: 175224, status: "FLAGGED" }),
   });
+});
+
+it("flags a SAP-made SO closed without a DR once, so logistics can close the order", async () => {
+  mockPrisma.branchDelivery.findMany.mockImplementation(
+    async ({ where }: { where: { order?: { source?: string } } }) =>
+      where.order?.source === "SAP"
+        ? [
+            { id: "del-closed", order: { orderNumber: "SAP-SO-1", sapDocType: "SO", sapDocEntry: 501 } },
+            { id: "del-open", order: { orderNumber: "SAP-SO-2", sapDocType: "SO", sapDocEntry: 502 } },
+            { id: "del-known", order: { orderNumber: "SAP-SO-3", sapDocType: "SO", sapDocEntry: 503 } },
+          ]
+        : [],
+  );
+  (findDeliveryNotesBySalesOrder as jest.Mock).mockResolvedValue(new Map());
+  mockPrisma.deliverySapDocument.findMany.mockImplementation(async ({ where }: { where: { docKind?: string } }) =>
+    where.docKind === "SO" ? [{ docEntry: 503 }] : [],
+  );
+  (findSalesOrderStates as jest.Mock).mockResolvedValue(
+    new Map([
+      [501, { docNum: 97001, closed: true, cancelled: false }],
+      [502, { docNum: 97002, closed: false, cancelled: false }],
+    ]),
+  );
+  request.mockResolvedValue(ok({ value: [] }));
+
+  await runSapCopyToFollow("t1");
+
+  expect(findSalesOrderStates).toHaveBeenCalledWith({ id: "c1" }, [501, 502]);
+  expect(mockPrisma.deliverySapDocument.upsert).toHaveBeenCalledTimes(1);
+  expect(mockPrisma.deliverySapDocument.upsert).toHaveBeenCalledWith(
+    expect.objectContaining({
+      create: expect.objectContaining({
+        deliveryId: "del-closed",
+        docKind: "SO",
+        docEntry: 501,
+        displayNo: "97001",
+        status: "FLAGGED",
+        error: expect.stringContaining("SO 97001 was closed in SAP without a DR"),
+      }),
+      update: {},
+    }),
+  );
 });
 
 it("fills a missing DR# from DCS Remarks typed after the IT was followed", async () => {

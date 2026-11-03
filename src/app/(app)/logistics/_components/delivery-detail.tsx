@@ -11,6 +11,8 @@ import {
 } from "@/app/(app)/logistics/_components/logistics-shipment-section";
 import { shipmentPrintDocument } from "@/app/(app)/logistics/_components/shipment-print";
 import { CheckSapNowButton } from "@/app/(app)/logistics/_components/check-sap-now-button";
+import { CloseSapClosedOrderButton } from "@/app/(app)/logistics/_components/close-sap-closed-order-button";
+import { CLOSED_SALES_ORDER_KIND } from "@/features/logistics/services/sap-copy-to-follow.planner";
 import {
   DocumentDetailBand,
   LogisticsHistoryBody,
@@ -165,7 +167,9 @@ function SapDocumentsSection({
   const base = orderSapDocumentFields({ sapDocType: order.sapDocType, sapDocNum: order.sapDocNum });
   const waiting =
     detail.status.code === DELIVERY_WORKFLOW_CODE.approved &&
-    !detail.sapDocuments.some((doc) => doc.status === "APPLIED");
+    !detail.sapDocuments.some(
+      (doc) => doc.status === "APPLIED" || doc.docKind === CLOSED_SALES_ORDER_KIND,
+    );
 
   return (
     <RecordSection
@@ -211,7 +215,17 @@ function SapDocumentsSection({
                 </Badge>
               </div>
               {doc.error ? <p className="text-destructive">{doc.error}</p> : null}
-              {SAP_FOLLOW_STATUS_HINTS[doc.status] ? (
+              {doc.docKind === CLOSED_SALES_ORDER_KIND && doc.status === "FLAGGED" ? (
+                canCheckSap ? (
+                  <div>
+                    <CloseSapClosedOrderButton
+                      deliveryId={detail.id}
+                      orderNumber={order.orderNumber}
+                      sapSoNumber={doc.displayNo}
+                    />
+                  </div>
+                ) : null
+              ) : SAP_FOLLOW_STATUS_HINTS[doc.status] ? (
                 <p className="text-xs text-muted-foreground">{SAP_FOLLOW_STATUS_HINTS[doc.status]}</p>
               ) : null}
             </li>

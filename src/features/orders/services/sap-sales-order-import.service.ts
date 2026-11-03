@@ -113,6 +113,36 @@ export async function findDeliveryNotesBySalesOrder(
   return byOrder;
 }
 
+export interface SalesOrderState {
+  docNum: number;
+  /** Closed in SAP (by a DR, or by hand) or cancelled. */
+  closed: boolean;
+  cancelled: boolean;
+}
+
+/** Status of these SOs in SAP, by DocEntry. One `$select` call. */
+export async function findSalesOrderStates(
+  creds: SapServiceLayerCredentials,
+  soDocEntries: readonly number[],
+): Promise<Map<number, SalesOrderState>> {
+  const states = new Map<number, SalesOrderState>();
+  if (soDocEntries.length === 0) return states;
+  const filter = soDocEntries.map((entry) => `DocEntry eq ${entry}`).join(" or ");
+  const data = await sapGet<{ value?: Record<string, unknown>[] }>(
+    creds,
+    `/Orders?$filter=${encodeURIComponent(filter)}&$select=DocEntry,DocNum,DocumentStatus,Cancelled`,
+    "Orders",
+  );
+  for (const row of data?.value ?? []) {
+    const docEntry = Number(row.DocEntry);
+    const docNum = Number(row.DocNum);
+    if (!Number.isInteger(docEntry) || !Number.isInteger(docNum)) continue;
+    const cancelled = row.Cancelled === "tYES";
+    states.set(docEntry, { docNum, cancelled, closed: cancelled || row.DocumentStatus === "bost_Close" });
+  }
+  return states;
+}
+
 async function loadLookups(tenantId: string, page: SapSalesOrder[]): Promise<SapSalesOrderLookups> {
   const lines = page.flatMap((so) => so.lines);
   const [branches, warehouses, models] = await Promise.all([

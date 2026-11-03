@@ -8,6 +8,7 @@ import { lockDeliveryRow, txWorkflowCodeId } from "@/features/logistics/services
 import { notifyCopyToAttention } from "@/features/logistics/services/sap-copy-to-follow.notifier";
 import {
   checkFollowedDocument,
+  CLOSED_SALES_ORDER_KIND,
   dcsRemarksDrNo,
   deliveryStatusAfterFollow,
   parseFollowedDocument,
@@ -20,6 +21,7 @@ import {
 import type { OrderSapDocType } from "@/features/orders/constants/order-sap-doc-type";
 import {
   findDeliveryNotesBySalesOrder,
+  findSalesOrderStates,
   importSapSalesOrders,
 } from "@/features/orders/services/sap-sales-order-import.service";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
@@ -644,6 +646,11 @@ async function followSapSourcedDeliveries(
       creds,
       batch.map((delivery) => delivery.sapDocEntry),
     );
+    await flagSalesOrdersClosedWithoutDr(
+      creds,
+      tenantId,
+      batch.filter((delivery) => !drsBySo.has(delivery.sapDocEntry)),
+    );
     const drEntries = [...drsBySo.values()].flat();
     if (drEntries.length === 0) continue;
     const known = await prisma.deliverySapDocument.findMany({
@@ -657,6 +664,67 @@ async function followSapSourcedDeliveries(
         await followDocument(creds, tenantId, "DR", drEntry, delivery, codes, result);
       }
     }
+  }
+}
+
+/**
+ * An SO made in SAP can be closed by hand (or cancelled) with no DR, so its delivery would
+ * wait forever. Record it as a FLAGGED entry on the delivery: logistics is notified through
+ * the attention notification and can close the order from the delivery page. Recorded
+ * once; a resolved entry stays resolved.
+ */
+async function flagSalesOrdersClosedWithoutDr(
+  creds: SapServiceLayerCredentials,
+  tenantId: string,
+  deliveries: readonly OpenDelivery[],
+): Promise<void> {
+  if (deliveries.length === 0) return;
+  const known = await prisma.deliverySapDocument.findMany({
+    where: {
+      tenantId,
+      docKind: CLOSED_SALES_ORDER_KIND,
+      docEntry: { in: deliveries.map((delivery) => delivery.sapDocEntry) },
+    },
+    select: { docEntry: true },
+  });
+  const seen = new Set(known.map((row) => row.docEntry));
+  const unchecked = deliveries.filter((delivery) => !seen.has(delivery.sapDocEntry));
+  if (unchecked.length === 0) return;
+
+  const states = await findSalesOrderStates(
+    creds,
+    unchecked.map((delivery) => delivery.sapDocEntry),
+  );
+  for (const delivery of unchecked) {
+    const state = states.get(delivery.sapDocEntry);
+    if (!state?.closed) continue;
+    const how = state.cancelled ? "cancelled" : "closed";
+    const error = `SO ${state.docNum} was ${how} in SAP without a DR, so nothing will be delivered for ${delivery.orderNumber}. Close the order in ISMS, or check the SO in SAP.`;
+    await prisma.deliverySapDocument.upsert({
+      where: {
+        tenantId_docKind_docEntry: {
+          tenantId,
+          docKind: CLOSED_SALES_ORDER_KIND,
+          docEntry: delivery.sapDocEntry,
+        },
+      },
+      create: {
+        tenantId,
+        deliveryId: delivery.id,
+        docKind: CLOSED_SALES_ORDER_KIND,
+        docEntry: delivery.sapDocEntry,
+        docNum: state.docNum,
+        displayNo: String(state.docNum),
+        status: SAP_FOLLOW_STATUS.FLAGGED,
+        serialCount: 0,
+        error,
+      },
+      update: {},
+    });
+    logger.warn(
+      { tenantId, deliveryId: delivery.id, sapDocNum: state.docNum, how },
+      "sap copy-to follow: SAP-made SO closed without a DR",
+    );
   }
 }
 
