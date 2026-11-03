@@ -5,12 +5,15 @@ import { PageHeader } from "@/app/(app)/_components/page-header";
 import { SettingsSection } from "@/features/settings/components/settings-section";
 import { OrderingPolicyForm } from "@/app/(app)/settings/ordering/_components/ordering-policy-form";
 import { FrequencyCodesPanel } from "@/app/(app)/settings/ordering/_components/frequency-codes-panel";
+import { ServiceCenterOrderingPanel } from "@/app/(app)/settings/ordering/_components/service-center-ordering-panel";
+import { scOrderingSettingsService } from "@/features/service-center-ordering/services/sc-ordering-settings.service";
 
 export default async function OrderingSettingsPage() {
   const session = await requirePermission("ordering_settings.manage");
-  const [policy, frequencyCodes] = await Promise.all([
+  const [policy, frequencyCodes, scOrdering] = await Promise.all([
     orderingPolicyService.getPolicy(session.user.tenantId),
     frequencyCodeService.list(session.user.tenantId),
+    scOrderingSettingsService.get(session.user.tenantId),
   ]);
   const canEdit = hasPermission(session.user.permissions, "ordering_settings.manage");
 
@@ -45,6 +48,16 @@ export default async function OrderingSettingsPage() {
             description: c.description,
             usedBy: c._count.branchSchedules,
           }))}
+          canEdit={canEdit}
+        />
+      </SettingsSection>
+      <SettingsSection
+        title="Service center ordering"
+        description="Who a service center Sales Order bills and the SAP codes on its lines."
+      >
+        <ServiceCenterOrderingPanel
+          customers={scOrdering.customers}
+          defaults={scOrdering.defaults}
           canEdit={canEdit}
         />
       </SettingsSection>

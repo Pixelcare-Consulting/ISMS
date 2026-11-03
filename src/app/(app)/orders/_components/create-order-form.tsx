@@ -12,6 +12,16 @@ import {
 } from "@/app/(app)/orders/_components/order-worksheet";
 import type { CreateOrderPrefill } from "@/app/(app)/orders/_components/orders-create-workspace-context";
 import {
+  ORDER_FOR_LABELS,
+  orderSetupHref,
+  scOrderSetupBlock,
+  ServiceCenterSetupFields,
+  useScOrderSetup,
+  type BranchOrderSetupChoice,
+  type OrderFor,
+  type OrderSetupChoice,
+} from "@/app/(app)/orders/_components/service-center-order-setup";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -48,6 +58,13 @@ import {
 } from "@/features/orders/actions/order-worksheet.actions";
 import { BRANCH_ORDER_TYPE_LABELS } from "@/features/orders/constants/order-status";
 import { buildOrderCreateDetails } from "@/features/orders/lib/order-create-details";
+import {
+  branchDealerFilter,
+  orderPartyBlock,
+  type OrderBranchOption,
+  type OrderDealerOption,
+  type OrderModeOfPaymentOption,
+} from "@/features/orders/lib/order-party";
 import { worksheetOrderTotals } from "@/features/orders/lib/order-worksheet-filters";
 import { formatWorksheetCbm } from "@/features/orders/lib/order-worksheet-metrics";
 import {
@@ -64,8 +81,11 @@ const SUBMIT_PREVIEW_LIMIT = 8;
 const SPECIAL_ORDER_NOTICE_CLASS =
   "rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950";
 
+const ORDER_PARTY_BLOCK_CLASS =
+  "rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive";
+
 const SPECIAL_ORDER_NOTICE =
-  "This is a special order. You can add models that are not on the shelf plan. Supply Planning still approves it.";
+  "This order is Special because it has items that are not on the shelf plan. Supply Planning approves it. Remove those items to make it Manual again.";
 
 type CreatableOrderType = "manual" | "special";
 
@@ -77,19 +97,11 @@ interface SpecialModelOption {
   brandName: string | null;
 }
 
-export interface OrderSetupChoice {
-  dealerId: string;
-  branchId: string;
-  orderType: CreatableOrderType;
-  /** Resolved mode for this order. Empty when the dealer has no default and none was picked. */
-  modeOfPaymentId: string;
-}
 
 type PendingConfirm =
   | { kind: "dealer"; dealerId: string }
   | { kind: "branch"; branchId: string }
-  | { kind: "type"; orderType: CreatableOrderType }
-  | { kind: "setup"; choice: OrderSetupChoice }
+  | { kind: "setup"; choice: BranchOrderSetupChoice }
   | { kind: "leave"; href: string };
 
 function delay(ms: number): Promise<void> {
@@ -137,12 +149,11 @@ function confirmCopy(pending: PendingConfirm): { title: string; description: str
   switch (pending.kind) {
     case "dealer":
     case "branch":
-    case "type":
     case "setup":
       return {
         title: "Clear the lines on this order?",
         description:
-          "Changing the dealer, branch, or order type clears quantities and extra items. The note for this order stays.",
+          "Changing the mode of payment, dealer, or branch clears quantities and extra items. The note for this order stays.",
         action: "Continue",
       };
     case "leave":
@@ -159,16 +170,16 @@ function confirmCopy(pending: PendingConfirm): { title: string; description: str
 }
 
 export function CreateOrderForm({
-  initialType,
   canCreateManual,
   canCreateSpecial,
+  canCreateServiceCenter = false,
   prefill,
   initialReady = false,
   initialModeOfPaymentId = "",
 }: {
-  initialType: CreatableOrderType;
   canCreateManual: boolean;
   canCreateSpecial: boolean;
+  canCreateServiceCenter?: boolean;
   prefill?: CreateOrderPrefill;
   /** Set after the setup popup's Continue. A direct visit stays in the popup. */
   initialReady?: boolean;
@@ -177,25 +188,18 @@ export function CreateOrderForm({
   const router = useRouter();
   const allowLeave = useRef(false);
   const submitStarted = useRef(false);
-  const startReady = Boolean(initialReady && prefill?.dealerId && prefill?.branchId);
+  const startReady = Boolean(initialReady && initialModeOfPaymentId && prefill?.branchId);
   const [pending, startTransition] = useTransition();
   const [ready, setReady] = useState(startReady);
   const [setupOpen, setSetupOpen] = useState(!startReady);
-  const [orderType, setOrderType] = useState<CreatableOrderType>(initialType);
   const [touched, setTouched] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
-  const [dealers, setDealers] = useState<
-    { id: string; name: string; modeOfPaymentId: string | null }[]
-  >([]);
-  const [modesOfPayment, setModesOfPayment] = useState<
-    { id: string; name: string; kind: "CONSIGNMENT" | "OUTRIGHT" | null }[]
-  >([]);
-  const [modeOfPaymentChoice, setModeOfPaymentChoice] = useState(
+  const [dealers, setDealers] = useState<OrderDealerOption[]>([]);
+  const [modesOfPayment, setModesOfPayment] = useState<OrderModeOfPaymentOption[]>([]);
+  const [modeOfPaymentId, setModeOfPaymentId] = useState(
     startReady ? initialModeOfPaymentId : "",
   );
-  const [branches, setBranches] = useState<
-    { id: string; name: string; dealerId: string | null }[]
-  >([]);
+  const [branches, setBranches] = useState<OrderBranchOption[]>([]);
   const [dealerId, setDealerId] = useState(startReady ? (prefill?.dealerId ?? "") : "");
   const [branchId, setBranchId] = useState(startReady ? (prefill?.branchId ?? "") : "");
   const [notes, setNotes] = useState("");
@@ -211,6 +215,14 @@ export function CreateOrderForm({
   const [submitOpen, setSubmitOpen] = useState(false);
   const [loadingWorksheet, setLoadingWorksheet] = useState(false);
   const additionalKey = additionalIds.join("\n");
+  /** Manual unless the user may only create special orders. Lookups use it for permissions. */
+  const baseType: CreatableOrderType = canCreateManual ? "manual" : "special";
+  // The order type follows the lines: an off-plan (additional) item makes it Special,
+  // removing the last one makes it Manual again. Entered quantities are kept either way.
+  const hasAdditionalItem =
+    additionalIds.length > 0 || Object.values(drafts).some((draft) => draft?.additionalItem);
+  const orderType: CreatableOrderType =
+    hasAdditionalItem && canCreateSpecial ? "special" : baseType;
   const branchIdRef = useRef(branchId);
   useEffect(() => {
     branchIdRef.current = branchId;
@@ -247,18 +259,10 @@ export function CreateOrderForm({
   }, [createDetails, projectedLines]);
   const submitQuantity = submitLines.reduce((sum, line) => sum + line.quantity, 0);
 
-  const dealerModeOfPaymentId =
-    dealers.find((dealer) => dealer.id === dealerId)?.modeOfPaymentId ?? null;
-  const dealerModeOfPayment =
-    modesOfPayment.find((mode) => mode.id === dealerModeOfPaymentId) ?? null;
-  const selectedModeOfPaymentId = modeOfPaymentChoice || dealerModeOfPayment?.id || "";
-  const isModeOfPaymentOverride =
-    Boolean(selectedModeOfPaymentId) && selectedModeOfPaymentId !== dealerModeOfPayment?.id;
-  const modeOfPaymentHint = isModeOfPaymentOverride
-    ? `Override for this order only. The dealer's default is ${dealerModeOfPayment?.name ?? "not set"}.`
-    : dealerModeOfPayment
-      ? "The dealer's default. Change it to use another mode of payment for this order only."
-      : "This dealer has no mode of payment with a type. Pick one for this order.";
+  const modeOfPayment = modesOfPayment.find((mode) => mode.id === modeOfPaymentId) ?? null;
+  const paymentKind = modeOfPayment?.kind ?? null;
+  const branch = branches.find((option) => option.id === branchId) ?? null;
+  const partyBlock = orderPartyBlock({ kind: paymentKind, dealerId, branch });
 
   const listHref = listHrefFor(orderType);
 
@@ -284,7 +288,6 @@ export function CreateOrderForm({
   function commitDealer(next: string) {
     setTouched(true);
     setDealerId(next);
-    setModeOfPaymentChoice("");
     setBranchId("");
     resetBranchWorksheet();
   }
@@ -295,22 +298,12 @@ export function CreateOrderForm({
     resetBranchWorksheet();
   }
 
-  function commitType(next: CreatableOrderType) {
+  function applySetup(choice: BranchOrderSetupChoice) {
+    const identityChanged = choice.dealerId !== dealerId || choice.branchId !== branchId;
     setTouched(true);
-    setOrderType(next);
-    resetBranchWorksheet();
-  }
-
-  function applySetup(choice: OrderSetupChoice) {
-    const identityChanged =
-      choice.dealerId !== dealerId ||
-      choice.branchId !== branchId ||
-      choice.orderType !== orderType;
-    setTouched(true);
-    setOrderType(choice.orderType);
     setDealerId(choice.dealerId);
     setBranchId(choice.branchId);
-    setModeOfPaymentChoice(choice.modeOfPaymentId);
+    setModeOfPaymentId(choice.modeOfPaymentId);
     if (identityChanged) resetBranchWorksheet();
     setReady(true);
     setSetupOpen(false);
@@ -320,7 +313,6 @@ export function CreateOrderForm({
     const needsLineConfirm =
       next.kind === "dealer" ||
       next.kind === "branch" ||
-      next.kind === "type" ||
       next.kind === "setup";
     if (needsLineConfirm && !hasLineEdits()) {
       applyConfirm(next);
@@ -341,9 +333,6 @@ export function CreateOrderForm({
         return;
       case "branch":
         commitBranch(next.branchId);
-        return;
-      case "type":
-        commitType(next.orderType);
         return;
       case "setup":
         applySetup(next.choice);
@@ -427,38 +416,33 @@ export function CreateOrderForm({
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const [dealerRows, branchRows, modeRows] = await Promise.all([
-        listActiveDealersForOrderAction(orderType),
-        listBranchesForOrderAction(prefill?.dealerId || undefined, orderType),
-        listModesOfPaymentForOrderAction(orderType),
+      const [dealerRows, modeRows] = await Promise.all([
+        listActiveDealersForOrderAction(baseType),
+        listModesOfPaymentForOrderAction(baseType),
       ]);
       if (cancelled) return;
       setDealers(dealerRows);
       setModesOfPayment(modeRows);
-      if (!dealerId) {
-        setBranches(branchRows);
-        if (prefill?.branchId && !prefill.dealerId) {
-          const match = branchRows.find((branch) => branch.id === prefill.branchId);
-          if (match?.dealerId) setDealerId(match.dealerId);
-        }
-      }
       setLoaded(true);
     })();
     return () => {
       cancelled = true;
     };
-  }, [dealerId, orderType, prefill?.branchId, prefill?.dealerId]);
+  }, [baseType]);
 
   useEffect(() => {
-    if (!loaded || !dealerId) return;
+    if (!loaded) return;
+    const dealerFilter = branchDealerFilter(paymentKind, dealerId);
+    if (dealerFilter === null) return;
     let cancelled = false;
-    void listBranchesForOrderAction(dealerId, orderType).then((branchRows) => {
+    void listBranchesForOrderAction(dealerFilter || undefined, baseType).then((branchRows) => {
       if (cancelled) return;
       setBranches(branchRows);
       const current = branchIdRef.current;
-      const next = branchRows.some((branch) => branch.id === current)
-        ? current
-        : (branchRows[0]?.id ?? "");
+      // A dealer's first branch is a safe fallback; for outright another branch would
+      // bill another customer, so it is never picked silently.
+      const fallback = dealerFilter ? (branchRows[0]?.id ?? "") : "";
+      const next = branchRows.some((branch) => branch.id === current) ? current : fallback;
       if (next !== current) {
         setDrafts({});
         setAdditionalIds([]);
@@ -469,7 +453,7 @@ export function CreateOrderForm({
     return () => {
       cancelled = true;
     };
-  }, [dealerId, loaded, orderType]);
+  }, [baseType, dealerId, loaded, paymentKind]);
 
   useEffect(() => {
     let cancelled = false;
@@ -514,7 +498,7 @@ export function CreateOrderForm({
   }, [additionalKey, branchId, orderType]);
 
   useEffect(() => {
-    if (orderType !== "special" || !branchId) return;
+    if (!canCreateSpecial || !branchId) return;
     let cancelled = false;
     void listSpecialOrderModelsAction().then((result) => {
       if (cancelled) return;
@@ -528,7 +512,7 @@ export function CreateOrderForm({
     return () => {
       cancelled = true;
     };
-  }, [branchId, orderType]);
+  }, [branchId, canCreateSpecial]);
 
   const addableModels = useMemo(() => {
     const onSheet = new Set(sheetLines.map((line) => line.modelId));
@@ -624,7 +608,7 @@ export function CreateOrderForm({
       const result = await createOrderAction({
         branchId,
         orderType,
-        modeOfPaymentId: selectedModeOfPaymentId || null,
+        modeOfPaymentId: modeOfPaymentId || null,
         notes: notes.trim() || undefined,
         details: createDetails,
       });
@@ -652,53 +636,49 @@ export function CreateOrderForm({
     pending ||
     !typeAllowed ||
     !loaded ||
-    !dealerId ||
-    !branchId ||
+    partyBlock !== null ||
     windowBlock !== null ||
     loadingWorksheet ||
     !worksheet ||
     createDetails.length === 0;
   const confirm = pendingConfirm ? confirmCopy(pendingConfirm) : null;
-  const noteDisabled = pending || !loaded || dealers.length === 0;
-  const additionalItemAction =
-    orderType === "special" ? (
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="h-8 px-2 font-medium text-primary hover:bg-primary/10 hover:text-primary"
-        disabled={!worksheet || pending}
-        onClick={() => setAdditionalOpen(true)}
-      >
-        Additional item
-      </Button>
-    ) : (
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="h-8 px-2 font-medium text-primary hover:bg-primary/10 hover:text-primary"
-        disabled={!canCreateSpecial || !branchId || pending}
-        title={
-          canCreateSpecial
-            ? "Switches this order to Special so you can add a model that is not on the shelf plan."
-            : "You do not have permission to order an extra item."
-        }
-        onClick={() => requestConfirm({ kind: "type", orderType: "special" })}
-      >
-        Additional item
-      </Button>
-    );
+  const noteDisabled = pending || !loaded;
+  const additionalItemAction = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="h-8 px-2 font-medium text-primary hover:bg-primary/10 hover:text-primary"
+      disabled={!canCreateSpecial || !worksheet || pending}
+      title={
+        canCreateSpecial
+          ? "Add a model that is not on the shelf plan. The order becomes Special."
+          : "You do not have permission to order an extra item."
+      }
+      onClick={() => setAdditionalOpen(true)}
+    >
+      Additional item
+    </Button>
+  );
   const dealerName = dealers.find((dealer) => dealer.id === dealerId)?.name ?? "";
-  const branchName = branches.find((branch) => branch.id === branchId)?.name ?? "";
-  const paymentName =
-    modesOfPayment.find((mode) => mode.id === selectedModeOfPaymentId)?.name ?? "";
+  const branchName = branch?.name ?? "";
+  const paymentName = modeOfPayment
+    ? `${modeOfPayment.name}${paymentKind ? ` (${MODE_OF_PAYMENT_KIND_LABELS[paymentKind]})` : ""}`
+    : "";
+  // Consignment names the dealer; outright names the SAP customer the SO bills.
+  const party =
+    paymentKind === "OUTRIGHT"
+      ? { label: "BP Code (SAP customer)", value: branch?.bpCode ?? "Not set" }
+      : { label: "Dealer", value: dealerName || "—" };
 
   function continueSetup(choice: OrderSetupChoice) {
-    const identityChanged =
-      choice.dealerId !== dealerId ||
-      choice.branchId !== branchId ||
-      choice.orderType !== orderType;
+    if (choice.orderFor === "service_center") {
+      // A service-center order is its own page; leaving this one may drop entered lines.
+      setSetupOpen(false);
+      requestConfirm({ kind: "leave", href: orderSetupHref(choice) });
+      return;
+    }
+    const identityChanged = choice.dealerId !== dealerId || choice.branchId !== branchId;
     if (ready && identityChanged) {
       setSetupOpen(false);
       requestConfirm({ kind: "setup", choice });
@@ -739,7 +719,7 @@ export function CreateOrderForm({
                 <div className="min-w-0">
                   <h2 className="text-base font-semibold text-foreground">Order</h2>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Dealer, branch, and payment for this order.
+                    Payment, branch, and who SAP bills for this order.
                   </p>
                 </div>
                 <Button
@@ -753,17 +733,16 @@ export function CreateOrderForm({
                 </Button>
               </div>
               <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
-                <OrderReadout label="Dealer" value={dealerName || "—"} />
-                <OrderReadout label="Branch" value={branchName || "—"} />
+                <OrderReadout label="Mode of payment" value={paymentName || "Not set"} />
                 <div className="min-w-0">
-                  <OrderReadout label="Mode of payment" value={paymentName || "Not set"} />
-                  {dealerId ? (
-                    <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                      {modeOfPaymentHint}
-                    </p>
-                  ) : null}
+                  <OrderReadout label="Order type" value={BRANCH_ORDER_TYPE_LABELS[orderType]} />
+                  <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+                    Set automatically. Adding an item that is not on the shelf plan makes it
+                    Special.
+                  </p>
                 </div>
-                <OrderReadout label="Order type" value={BRANCH_ORDER_TYPE_LABELS[orderType]} />
+                <OrderReadout label={party.label} value={party.value} />
+                <OrderReadout label="Branch" value={branchName || "—"} />
                 <div className="min-w-0 sm:col-span-2">
                   <label htmlFor="create-order-note" className="text-sm text-muted-foreground">
                     Note for this order
@@ -783,11 +762,10 @@ export function CreateOrderForm({
                   />
                 </div>
               </div>
-              {windowBlock ? (
-                <p className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                  {windowBlock}
-                </p>
+              {loaded && branches.length > 0 && partyBlock ? (
+                <p className={ORDER_PARTY_BLOCK_CLASS}>{partyBlock}</p>
               ) : null}
+              {windowBlock ? <p className={ORDER_PARTY_BLOCK_CLASS}>{windowBlock}</p> : null}
             </section>
             <section className="space-y-4 border-t border-border/70 pt-8">
               <div>
@@ -838,10 +816,10 @@ export function CreateOrderForm({
         open={setupOpen}
         canCreateManual={canCreateManual}
         canCreateSpecial={canCreateSpecial}
-        initialType={orderType}
+        canCreateServiceCenter={canCreateServiceCenter}
         initialDealerId={ready ? dealerId : (prefill?.dealerId ?? "")}
         initialBranchId={ready ? branchId : (prefill?.branchId ?? "")}
-        initialModeOfPaymentId={ready ? selectedModeOfPaymentId : initialModeOfPaymentId}
+        initialModeOfPaymentId={ready ? modeOfPaymentId : initialModeOfPaymentId}
         onOpenChange={(open) => {
           if (open) {
             setSetupOpen(true);
@@ -856,7 +834,7 @@ export function CreateOrderForm({
         }}
         onContinue={continueSetup}
       />
-      {orderType === "special" && additionalOpen ? (
+      {additionalOpen ? (
         <AdditionalItemDialog
           open
           models={addableModels}
@@ -904,8 +882,8 @@ export function CreateOrderForm({
           <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
             <dt className="text-muted-foreground">Order type</dt>
             <dd className="min-w-0 break-words font-medium">{BRANCH_ORDER_TYPE_LABELS[orderType]}</dd>
-            <dt className="text-muted-foreground">Dealer</dt>
-            <dd className="min-w-0 break-words font-medium">{dealerName || "—"}</dd>
+            <dt className="text-muted-foreground">{party.label}</dt>
+            <dd className="min-w-0 break-words font-medium">{party.value}</dd>
             <dt className="text-muted-foreground">Branch</dt>
             <dd className="min-w-0 break-words font-medium">{branchName || "—"}</dd>
             <dt className="text-muted-foreground">Mode of payment</dt>
@@ -974,50 +952,58 @@ export function CreateOrderSetupDialog({
   open,
   canCreateManual,
   canCreateSpecial,
-  initialType,
+  canCreateServiceCenter = false,
+  initialOrderFor = "branch",
   initialDealerId = "",
   initialBranchId = "",
   initialModeOfPaymentId = "",
+  initialServiceCenterId = "",
+  initialCardCode = "",
   onOpenChange,
   onContinue,
 }: {
   open: boolean;
   canCreateManual: boolean;
   canCreateSpecial: boolean;
-  initialType: CreatableOrderType;
+  canCreateServiceCenter?: boolean;
+  initialOrderFor?: OrderFor;
   initialDealerId?: string;
   initialBranchId?: string;
   initialModeOfPaymentId?: string;
+  initialServiceCenterId?: string;
+  initialCardCode?: string;
   onOpenChange: (open: boolean) => void;
   onContinue: (choice: OrderSetupChoice) => void;
 }) {
   const wasOpen = useRef(false);
-  const [draftType, setDraftType] = useState<CreatableOrderType>(initialType);
+  const forOptions = useMemo(() => {
+    const options: OrderFor[] = [];
+    if (canCreateManual || canCreateSpecial) options.push("branch");
+    if (canCreateServiceCenter) options.push("service_center");
+    return options;
+  }, [canCreateManual, canCreateServiceCenter, canCreateSpecial]);
+  const [orderFor, setOrderFor] = useState<OrderFor>(initialOrderFor);
+  const [draftServiceCenterId, setDraftServiceCenterId] = useState(initialServiceCenterId);
+  const [draftCardCode, setDraftCardCode] = useState(initialCardCode);
+  const isBranch = orderFor === "branch";
+  const sc = useScOrderSetup(open && orderFor === "service_center");
+  // The order type is decided on the order page from its lines; lookups only need a type
+  // the user may create, for their permission checks.
+  const draftType: CreatableOrderType = canCreateManual ? "manual" : "special";
   const [draftDealerId, setDraftDealerId] = useState(initialDealerId);
   const [draftBranchId, setDraftBranchId] = useState(initialBranchId);
   const [draftPaymentId, setDraftPaymentId] = useState(initialModeOfPaymentId);
-  const [dealers, setDealers] = useState<
-    { id: string; name: string; modeOfPaymentId: string | null }[]
-  >([]);
-  const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
-  const [modesOfPayment, setModesOfPayment] = useState<
-    { id: string; name: string; kind: "CONSIGNMENT" | "OUTRIGHT" | null }[]
-  >([]);
+  const [dealers, setDealers] = useState<OrderDealerOption[]>([]);
+  const [branches, setBranches] = useState<OrderBranchOption[]>([]);
+  const [modesOfPayment, setModesOfPayment] = useState<OrderModeOfPaymentOption[]>([]);
   const [loaded, setLoaded] = useState(false);
   const branchIdRef = useRef(draftBranchId);
-  const dealerIdRef = useRef(draftDealerId);
 
-  const typeOptions = useMemo(() => {
-    const options: CreatableOrderType[] = [];
-    if (canCreateManual) options.push("manual");
-    if (canCreateSpecial) options.push("special");
-    return options;
-  }, [canCreateManual, canCreateSpecial]);
+  const paymentKind = modesOfPayment.find((mode) => mode.id === draftPaymentId)?.kind ?? null;
 
   useEffect(() => {
     branchIdRef.current = draftBranchId;
-    dealerIdRef.current = draftDealerId;
-  }, [draftBranchId, draftDealerId]);
+  }, [draftBranchId]);
 
   useEffect(() => {
     if (!open) {
@@ -1026,18 +1012,26 @@ export function CreateOrderSetupDialog({
     }
     if (wasOpen.current) return;
     wasOpen.current = true;
-    const nextType = typeOptions.includes(initialType)
-      ? initialType
-      : (typeOptions[0] ?? initialType);
-    setDraftType(nextType);
+    setOrderFor(forOptions.includes(initialOrderFor) ? initialOrderFor : (forOptions[0] ?? "branch"));
     setDraftDealerId(initialDealerId);
     setDraftBranchId(initialBranchId);
     setDraftPaymentId(initialModeOfPaymentId);
+    setDraftServiceCenterId(initialServiceCenterId);
+    setDraftCardCode(initialCardCode);
     setLoaded(false);
-  }, [initialBranchId, initialDealerId, initialModeOfPaymentId, initialType, open, typeOptions]);
+  }, [
+    forOptions,
+    initialBranchId,
+    initialCardCode,
+    initialDealerId,
+    initialModeOfPaymentId,
+    initialOrderFor,
+    initialServiceCenterId,
+    open,
+  ]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !isBranch) return;
     let cancelled = false;
     void (async () => {
       const [dealerRows, modeRows] = await Promise.all([
@@ -1047,49 +1041,67 @@ export function CreateOrderSetupDialog({
       if (cancelled) return;
       setDealers(dealerRows);
       setModesOfPayment(modeRows);
-      if (!dealerRows.some((dealer) => dealer.id === dealerIdRef.current)) {
-        setDraftDealerId("");
-        setDraftBranchId("");
-        setBranches([]);
-      }
       setLoaded(true);
     })();
     return () => {
       cancelled = true;
     };
-  }, [draftType, open]);
+  }, [draftType, isBranch, open]);
 
+  // Consignment lists the dealer's branches; outright lists every branch (no dealer).
   useEffect(() => {
-    if (!open || !loaded || !draftDealerId) return;
+    if (!open || !loaded) return;
+    const dealerFilter = branchDealerFilter(paymentKind, draftDealerId);
+    if (dealerFilter === null) return;
     let cancelled = false;
-    void listBranchesForOrderAction(draftDealerId, draftType).then((branchRows) => {
+    void listBranchesForOrderAction(dealerFilter || undefined, draftType).then((branchRows) => {
       if (cancelled) return;
       setBranches(branchRows);
-      const current = branchIdRef.current;
-      if (!branchRows.some((branch) => branch.id === current)) {
+      if (!branchRows.some((branch) => branch.id === branchIdRef.current)) {
         setDraftBranchId("");
       }
     });
     return () => {
       cancelled = true;
     };
-  }, [draftDealerId, draftType, loaded, open]);
+  }, [draftDealerId, draftType, loaded, open, paymentKind]);
 
-  const dealerDefault =
-    modesOfPayment.find(
-      (mode) => mode.id === dealers.find((dealer) => dealer.id === draftDealerId)?.modeOfPaymentId,
-    ) ?? null;
-  const selectedPaymentId = draftPaymentId || dealerDefault?.id || "";
-  const paymentIsOverride =
-    Boolean(selectedPaymentId) && selectedPaymentId !== dealerDefault?.id;
-  const paymentHint = paymentIsOverride
-    ? `Override for this order only. The dealer's default is ${dealerDefault?.name ?? "not set"}.`
-    : dealerDefault
-      ? "The dealer's default. Change it to use another mode of payment for this order only."
-      : "This dealer has no mode of payment with a type. Pick one for this order.";
-  const typeAllowed =
-    (draftType === "manual" && canCreateManual) || (draftType === "special" && canCreateSpecial);
-  const canContinue = loaded && typeAllowed && Boolean(draftDealerId) && Boolean(draftBranchId);
+  // Rows from an earlier mode of payment or dealer never show while the next list loads.
+  const branchOptions = branchDealerFilter(paymentKind, draftDealerId) === null ? [] : branches;
+  const branch = branchOptions.find((option) => option.id === draftBranchId) ?? null;
+  const partyBlock = orderPartyBlock({ kind: paymentKind, dealerId: draftDealerId, branch });
+  const typeAllowed = canCreateManual || canCreateSpecial;
+  const scPrimary = sc.setup?.customers.find((customer) => customer.isPrimary)?.cardCode ?? "";
+  const scCardCode = draftCardCode || scPrimary;
+  const canContinue = isBranch
+    ? loaded && typeAllowed && partyBlock === null
+    : sc.loaded && scOrderSetupBlock(sc.setup) === null && Boolean(draftServiceCenterId && scCardCode);
+
+  function continueWithChoice() {
+    if (isBranch) {
+      onContinue({
+        orderFor: "branch",
+        dealerId: paymentKind === "CONSIGNMENT" ? draftDealerId : "",
+        branchId: draftBranchId,
+        modeOfPaymentId: draftPaymentId,
+      });
+      return;
+    }
+    onContinue({
+      orderFor: "service_center",
+      serviceCenterId: draftServiceCenterId,
+      cardCode: scCardCode,
+    });
+  }
+
+  function changePayment(next: string) {
+    if (next === draftPaymentId) return;
+    const nextKind = modesOfPayment.find((mode) => mode.id === next)?.kind ?? null;
+    setDraftPaymentId(next);
+    if (nextKind === paymentKind) return;
+    // Outright has no dealer; the branch stays only if the new list still has it.
+    if (nextKind !== "CONSIGNMENT") setDraftDealerId("");
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1097,16 +1109,18 @@ export function CreateOrderSetupDialog({
         <DialogHeader>
           <DialogTitle>Create order</DialogTitle>
           <DialogDescription>
-            Choose the dealer, branch, and order type for this order.
+            {isBranch
+              ? "Choose the mode of payment, then where the order goes."
+              : "Choose the service center and the SAP customer the Sales Order bills."}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="space-y-2">
-            <p className="text-sm font-normal text-muted-foreground">Order type</p>
-            {typeOptions.length > 1 ? (
-              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Order type">
-                {typeOptions.map((option) => {
-                  const selected = option === draftType;
+          {forOptions.length > 1 ? (
+            <div className="space-y-2">
+              <p className="text-sm font-normal text-muted-foreground">Order for</p>
+              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Order for">
+                {forOptions.map((option) => {
+                  const selected = option === orderFor;
                   return (
                     <Button
                       key={option}
@@ -1115,76 +1129,102 @@ export function CreateOrderSetupDialog({
                       variant={selected ? "default" : "outline"}
                       role="radio"
                       aria-checked={selected}
-                      onClick={() => {
-                        if (option === draftType) return;
-                        setDraftType(option);
-                        setDraftPaymentId("");
-                      }}
+                      onClick={() => setOrderFor(option)}
                     >
-                      {BRANCH_ORDER_TYPE_LABELS[option]}
+                      {ORDER_FOR_LABELS[option]}
                     </Button>
                   );
                 })}
               </div>
+            </div>
+          ) : null}
+          {!isBranch ? (
+            sc.setup ? (
+              <ServiceCenterSetupFields
+                centers={sc.centers}
+                setup={sc.setup}
+                serviceCenterId={draftServiceCenterId}
+                cardCode={draftCardCode}
+                onServiceCenterChange={setDraftServiceCenterId}
+                onCardCodeChange={setDraftCardCode}
+              />
             ) : (
-              <p className="text-sm font-medium">{BRANCH_ORDER_TYPE_LABELS[draftType]}</p>
-            )}
-          </div>
-          {!loaded ? (
-            <p className="text-sm text-muted-foreground">Loading dealers and branches…</p>
-          ) : dealers.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No dealers are available for this order.
-            </p>
+              <p className="text-sm text-muted-foreground">Loading service centers…</p>
+            )
+          ) : null}
+          {!isBranch ? null : !loaded ? (
+            <p className="text-sm text-muted-foreground">Loading modes of payment…</p>
           ) : (
             <>
               <SearchableSelect
-                label="Dealer"
+                label="Mode of payment"
                 className="w-full"
-                options={dealers.map((dealer) => ({ id: dealer.id, label: dealer.name }))}
-                value={draftDealerId}
-                onChange={(next) => {
-                  if (next === draftDealerId) return;
-                  setDraftDealerId(next);
-                  setDraftBranchId("");
-                  setDraftPaymentId("");
-                  setBranches([]);
-                }}
-                allowClear
-                placeholder="Select dealer…"
-                searchPlaceholder="Search dealers…"
+                options={modesOfPayment.map((mode) => ({
+                  id: mode.id,
+                  label: mode.name,
+                  description: mode.kind ? MODE_OF_PAYMENT_KIND_LABELS[mode.kind] : undefined,
+                }))}
+                value={draftPaymentId}
+                onChange={changePayment}
+                placeholder="Select mode of payment…"
+                searchPlaceholder="Search modes of payment…"
+                emptyMessage="No mode of payment has a type yet. Set one in Settings, Master data."
               />
-              <SearchableSelect
-                label="Branch"
-                className="w-full"
-                options={branches.map((branch) => ({ id: branch.id, label: branch.name }))}
-                value={draftBranchId}
-                onChange={setDraftBranchId}
-                placeholder={draftDealerId ? "Select branch…" : "Select a dealer first…"}
-                searchPlaceholder="Search branches…"
-                disabled={!draftDealerId}
-                emptyMessage="No active branches for this dealer."
-              />
-              <div className="space-y-2">
+              {paymentKind === "CONSIGNMENT" ? (
+                dealers.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No dealers are available for this order.
+                  </p>
+                ) : (
+                  <SearchableSelect
+                    label="Dealer"
+                    className="w-full"
+                    options={dealers.map((dealer) => ({ id: dealer.id, label: dealer.name }))}
+                    value={draftDealerId}
+                    onChange={(next) => {
+                      if (next === draftDealerId) return;
+                      setDraftDealerId(next);
+                      setDraftBranchId("");
+                      setBranches([]);
+                    }}
+                    allowClear
+                    placeholder="Select dealer…"
+                    searchPlaceholder="Search dealers…"
+                  />
+                )
+              ) : null}
+              {paymentKind ? (
                 <SearchableSelect
-                  label="Mode of payment"
+                  label="Branch"
                   className="w-full"
-                  options={modesOfPayment.map((mode) => ({
-                    id: mode.id,
-                    label: mode.name,
-                    description: mode.kind ? MODE_OF_PAYMENT_KIND_LABELS[mode.kind] : undefined,
+                  options={branchOptions.map((option) => ({
+                    id: option.id,
+                    label: option.name,
+                    description: option.sapCode,
                   }))}
-                  value={selectedPaymentId}
-                  onChange={setDraftPaymentId}
-                  placeholder={draftDealerId ? "Select mode of payment…" : "Select a dealer first…"}
-                  searchPlaceholder="Search modes of payment…"
-                  disabled={!draftDealerId}
-                  emptyMessage="No mode of payment has a type yet. Set one in Settings, Master data."
+                  value={draftBranchId}
+                  onChange={setDraftBranchId}
+                  placeholder={
+                    paymentKind === "CONSIGNMENT" && !draftDealerId
+                      ? "Select a dealer first…"
+                      : "Select branch…"
+                  }
+                  searchPlaceholder="Search branches…"
+                  disabled={paymentKind === "CONSIGNMENT" && !draftDealerId}
+                  emptyMessage={
+                    paymentKind === "CONSIGNMENT"
+                      ? "No active branches for this dealer."
+                      : "No active branches."
+                  }
                 />
-                {draftDealerId ? (
-                  <p className="text-xs leading-relaxed text-muted-foreground">{paymentHint}</p>
-                ) : null}
-              </div>
+              ) : null}
+              {paymentKind === "OUTRIGHT" && branch ? (
+                branch.bpCode ? (
+                  <OrderReadout label="BP Code (SAP customer)" value={branch.bpCode} />
+                ) : (
+                  <p className={ORDER_PARTY_BLOCK_CLASS}>{partyBlock}</p>
+                )
+              ) : null}
             </>
           )}
         </div>
@@ -1192,18 +1232,7 @@ export function CreateOrderSetupDialog({
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            type="button"
-            disabled={!canContinue}
-            onClick={() =>
-              onContinue({
-                dealerId: draftDealerId,
-                branchId: draftBranchId,
-                orderType: draftType,
-                modeOfPaymentId: selectedPaymentId,
-              })
-            }
-          >
+          <Button type="button" disabled={!canContinue} onClick={continueWithChoice}>
             Continue
           </Button>
         </DialogFooter>

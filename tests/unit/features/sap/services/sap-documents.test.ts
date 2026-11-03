@@ -10,6 +10,7 @@ import {
   buildReturnBody,
   deliveryReturnRemarks,
   postSapDocument,
+  serviceCenterSoExtra,
 } from "@/features/sap/services/sap-documents";
 import { sapServiceLayerClient } from "@/features/sap/services/sap-service-layer-client";
 import type { SapServiceLayerCredentials } from "@/features/sap/types/sap-service-layer";
@@ -65,7 +66,6 @@ describe("SAP document builders", () => {
       CostingCode2: "ABL003",
       CostingCode3: "OUTRIGHT",
       U_ISMS_PONum: "RTN-1",
-      U_Branch_Name: "ABENSON LCC IRIGA B…",
       U_Branch_Namelong: "ABENSON LCC IRIGA BRANCH",
       U_free_text: "Dent",
     });
@@ -114,15 +114,14 @@ describe("buildItrBody", () => {
     expect(body.Comments).toBe("ISMS ITR#2026-10-94860");
   });
 
-  it("stamps the order number and branch name on every line, within SAP's column sizes", () => {
+  it("stamps the order number and full branch name on every line, leaving Branch Name free for SAP users", () => {
     const body = buildItrBody({ ...base, branchName: "ABENSON ABREEZA DAVAO" }) as Body;
     expect(body.StockTransferLines[0]).toMatchObject({
       ItemCode: "55QUHW01",
       U_ISMS_PONum: "ITR#2026-10-94860",
-      U_Branch_Name: "ABENSON ABREEZA DAV…",
       U_Branch_Namelong: "ABENSON ABREEZA DAVAO",
     });
-    expect(String(body.StockTransferLines[0].U_Branch_Name)).toHaveLength(20);
+    expect(body.StockTransferLines[0]).not.toHaveProperty("U_Branch_Name");
   });
 
   it("keeps long notes and journal remarks inside SAP's limits", () => {
@@ -162,9 +161,63 @@ describe("buildSoBody", () => {
       CostingCode2: "ABP001",
       CostingCode3: "OUTRIGHT",
       U_ISMS_PONum: "SO#2026-10-00034",
-      U_Branch_Name: "ABENSON ABREEZA DAV…",
       U_Branch_Namelong: "ABENSON ABREEZA DAVAO",
     });
+  });
+
+  it("a service-center SO matches SO 25488: defaults, service center, project and PO", () => {
+    const body = buildSoBody({
+      ismsRef: "SCO-ABC",
+      cardCode: "CELG004",
+      whs: "FWH14P1F",
+      branchCode: "ELG004",
+      dueDate: "2026-10-30",
+      branchName: "SC Makati",
+      lines: [{ itemCode: "65UHD201", quantity: 1 }],
+      extra: serviceCenterSoExtra({
+        serviceCenterCode: "SC001",
+        departmentCode: "CS",
+        cogsBranchCode: "ELG004",
+        projectCode: "DV",
+        poNumber: " CSATR-3068 ",
+      }),
+    }) as Body;
+    expect(body).toMatchObject({ CardCode: "CELG004", NumAtCard: "CSATR-3068" });
+    expect(body.DocumentLines[0]).toMatchObject({
+      WarehouseCode: "FWH14P1F",
+      CostingCode: "CS",
+      CostingCode2: "ELG004",
+      CostingCode3: "OUTRIGHT",
+      CostingCode5: "SC001",
+      COGSCostingCode2: "ELG004",
+      ProjectCode: "DV",
+      U_PO_Number: "CSATR-3068",
+    });
+  });
+
+  it("leaves unset service-center defaults to SAP", () => {
+    const body = buildSoBody({
+      ismsRef: "SCO-ABC",
+      cardCode: "CELG004",
+      whs: "FWH14P1F",
+      branchCode: null,
+      dueDate: "2026-10-30",
+      branchName: "SC Makati",
+      lines: [{ itemCode: "65UHD201", quantity: 1 }],
+      extra: serviceCenterSoExtra({
+        serviceCenterCode: "SC001",
+        departmentCode: null,
+        cogsBranchCode: null,
+        projectCode: null,
+        poNumber: null,
+      }),
+    }) as Body;
+    expect(body.NumAtCard).toBeUndefined();
+    const line = body.DocumentLines[0];
+    for (const field of ["CostingCode", "CostingCode2", "COGSCostingCode2", "ProjectCode", "U_PO_Number"]) {
+      expect(line).not.toHaveProperty(field);
+    }
+    expect(line).toMatchObject({ CostingCode5: "SC001", CostingCode3: "OUTRIGHT" });
   });
 });
 

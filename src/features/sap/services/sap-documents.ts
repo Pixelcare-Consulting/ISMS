@@ -1,3 +1,4 @@
+import { SAP_LINE_PO_NUMBER_MAX } from "@/features/sap/constants/sap-line-fields";
 import { sapErrorMessage, sapText } from "@/features/sap/services/sap-master-data";
 import { sapServiceLayerClient } from "@/features/sap/services/sap-service-layer-client";
 import type { SapServiceLayerCredentials } from "@/features/sap/types/sap-service-layer";
@@ -82,7 +83,6 @@ const ORDER_DOC_TEXT_LIMITS = {
   comments: 254,
   journalMemo: 50,
   lineIsmsRef: 21,
-  lineBranchName: 20,
   lineBranchNameLong: 100,
 } as const;
 
@@ -113,8 +113,7 @@ interface OrderDocumentText {
  * The ISMS text an approved order carries into SAP, ITR or SO alike. Header: Remarks
  * carry the order notes (the ISMS reference when there are none), and Journal Remarks
  * read `ISMS <order #> · <branch>` instead of SAP's generic default. Lines: the order
- * number (ISMS PO#) and the branch name, full name in Branch Namelong and the
- * 20-character Branch Name column filled as far as it fits.
+ * number (ISMS PO#) and the full branch name in Branch Namelong.
  */
 function orderDocumentText(i: OrderDocumentText): {
   header: Record<string, unknown>;
@@ -136,19 +135,15 @@ function orderDocumentText(i: OrderDocumentText): {
 }
 
 /**
- * Line UDFs every ISMS document carries: the ISMS reference (ISMS PO#) and the branch name,
- * full name in Branch Namelong and the 20-character Branch Name column filled as far as it fits.
+ * Line UDFs every ISMS document carries: the ISMS reference (ISMS PO#) and the full branch
+ * name in Branch Namelong. The 20-character Branch Name column (U_Branch_Name) is left
+ * unset on purpose: users fill it as free text in SAP.
  */
 export function orderLineText(ismsRef: string, branchName: string): Record<string, unknown> {
   const name = branchName.trim();
   return {
     U_ISMS_PONum: fitSapText(ismsRef, ORDER_DOC_TEXT_LIMITS.lineIsmsRef),
-    ...(name
-      ? {
-          U_Branch_Name: fitSapText(name, ORDER_DOC_TEXT_LIMITS.lineBranchName),
-          U_Branch_Namelong: fitSapText(name, ORDER_DOC_TEXT_LIMITS.lineBranchNameLong),
-        }
-      : {}),
+    ...(name ? { U_Branch_Namelong: fitSapText(name, ORDER_DOC_TEXT_LIMITS.lineBranchNameLong) } : {}),
   };
 }
 
@@ -182,13 +177,17 @@ export function buildItrBody(
 }
 
 /**
- * The company's cost-accounting dimensions (`Dimensions`, read 2026-10-28): dimension 2
- * is Branch, coded by the branch's warehouse code (the ISMS `Branch.sapCode`), and
- * dimension 3 is Business Type. Document lines carry them as `CostingCode<N>`.
+ * The company's cost-accounting dimensions (`Dimensions`, read 2026-10-28): dimension 1
+ * is Department, 2 is Branch (coded by the branch's warehouse code, the ISMS
+ * `Branch.sapCode`), 3 is Business Type and 5 is Service Center. Document lines carry
+ * them as `CostingCode<N>`, and the COGS ones as `COGSCostingCode<N>` (SO 25488, 2026-10-30).
  */
 const SAP_LINE_DIMENSION = {
+  department: "CostingCode",
   branch: "CostingCode2",
   businessType: "CostingCode3",
+  serviceCenter: "CostingCode5",
+  cogsBranch: "COGSCostingCode2",
 } as const;
 
 /** Business Type (dimension 3) cost centre for outright sales. */
@@ -197,31 +196,61 @@ const SAP_BUSINESS_TYPE_OUTRIGHT = "OUTRIGHT";
 /**
  * An approved outright order as a Sales Order. SAP requires its Delivery Date, so the
  * caller always sends one (the order's delivery due date, else today). Every line is
- * tagged with the ordering branch and the Outright business type.
+ * tagged with the Branch dimension (when given) and the Outright business type.
  */
 export function buildSoBody(
   i: OrderDocumentText & {
     cardCode: string;
     whs: string;
-    /** The ordering branch's SAP code, which is also its Branch dimension code. */
-    branchCode: string;
+    /** Branch dimension code: the ordering branch's SAP code, or a service-center default. */
+    branchCode: string | null;
     dueDate: string;
     lines: PlainLine[];
+    /** Extra header fields and line fields every line carries, e.g. a service-center SO's. */
+    extra?: { header?: Record<string, unknown>; line?: Record<string, unknown> };
   },
 ): Record<string, unknown> {
   const text = orderDocumentText(i);
   return {
     ...text.header,
+    ...i.extra?.header,
     CardCode: i.cardCode,
     DocDueDate: i.dueDate,
     DocumentLines: i.lines.map((l) => ({
       ItemCode: l.itemCode,
       Quantity: l.quantity,
       WarehouseCode: i.whs,
-      [SAP_LINE_DIMENSION.branch]: i.branchCode,
+      ...(i.branchCode ? { [SAP_LINE_DIMENSION.branch]: i.branchCode } : {}),
       [SAP_LINE_DIMENSION.businessType]: SAP_BUSINESS_TYPE_OUTRIGHT,
       ...text.line,
+      ...i.extra?.line,
     })),
+  };
+}
+
+/**
+ * The fields a service-center SO adds to an outright SO: the service center on its own
+ * dimension, the department and COGS branch defaults, the SAP project, and the customer PO
+ * number on the header (Customer Ref. No.) and every line (PO Number). Unset values are
+ * left out so SAP applies its own.
+ */
+export function serviceCenterSoExtra(i: {
+  serviceCenterCode: string;
+  departmentCode: string | null;
+  cogsBranchCode: string | null;
+  projectCode: string | null;
+  poNumber: string | null;
+}): { header: Record<string, unknown>; line: Record<string, unknown> } {
+  const po = i.poNumber?.trim();
+  return {
+    header: po ? { NumAtCard: po } : {},
+    line: {
+      [SAP_LINE_DIMENSION.serviceCenter]: i.serviceCenterCode,
+      ...(i.departmentCode ? { [SAP_LINE_DIMENSION.department]: i.departmentCode } : {}),
+      ...(i.cogsBranchCode ? { [SAP_LINE_DIMENSION.cogsBranch]: i.cogsBranchCode } : {}),
+      ...(i.projectCode ? { ProjectCode: i.projectCode } : {}),
+      ...(po ? { U_PO_Number: fitSapText(po, SAP_LINE_PO_NUMBER_MAX) } : {}),
+    },
   };
 }
 

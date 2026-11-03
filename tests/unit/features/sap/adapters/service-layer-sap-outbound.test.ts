@@ -87,11 +87,13 @@ function order(over: Record<string, unknown> = {}) {
   };
 }
 
-function ctx(kind: "CONSIGNMENT" | "OUTRIGHT" | null) {
+function ctx(kind: "CONSIGNMENT" | "OUTRIGHT" | null, storedCardCode: string | null = "C100") {
   return {
+    storedCardCode,
     branch: {
       name: "Branch One",
       sapCode: "BR1",
+      bpCode: null as string | null,
       primaryWarehouse: { id: "w1", code: "WH1" },
       dealer: { name: "Dealer", sapCode: "C100", modeOfPayment: { name: "MOP", kind } },
     },
@@ -156,7 +158,7 @@ describe("serviceLayerSapOutbound.createApprovedOrderDocument", () => {
     expect(sapIntegrationRepository.markCompleted).toHaveBeenCalledWith("j1", "ITR-501");
   });
 
-  it("SO job posts Orders with dealer CardCode", async () => {
+  it("SO job posts Orders with the CardCode stored at approval", async () => {
     mockPrisma.branchOrder.findFirst.mockResolvedValue(order({ sapDocType: "SO" }));
     routingCtx.mockResolvedValue(ctx("OUTRIGHT"));
     post.mockResolvedValue({
@@ -205,15 +207,23 @@ describe("serviceLayerSapOutbound.createApprovedOrderDocument", () => {
     expect(post.mock.calls[0][3]).toMatchObject({ FromWarehouse: "WH1", ToWarehouse: "BR1" });
   });
 
-  it("refuses a stored SO when the dealer has no SAP customer code", async () => {
+  it("refuses a stored SO with no stored CardCode and no branch BP Code", async () => {
     mockPrisma.branchOrder.findFirst.mockResolvedValue(order({ sapDocType: "SO" }));
-    const noCard = ctx("OUTRIGHT");
-    noCard.branch.dealer.sapCode = null as unknown as string;
-    routingCtx.mockResolvedValue(noCard);
+    routingCtx.mockResolvedValue(ctx("OUTRIGHT", null));
     await expect(
       serviceLayerSapOutbound.createApprovedOrderDocument({ tenantId: "t1", job }),
-    ).rejects.toThrow("Dealer Dealer has no SAP customer code.");
+    ).rejects.toThrow("Branch One has no BP Code.");
     expect(post).not.toHaveBeenCalled();
+  });
+
+  it("a stored SO with no stored CardCode bills the branch BP Code", async () => {
+    mockPrisma.branchOrder.findFirst.mockResolvedValue(order({ sapDocType: "SO" }));
+    const fallback = ctx("OUTRIGHT", null);
+    fallback.branch.bpCode = "CBP1";
+    routingCtx.mockResolvedValue(fallback);
+    post.mockResolvedValue({ docEntry: 22, docNum: 900, docDate: "2026-10-21", displayNo: "900", lineNums: [0, 1] });
+    await serviceLayerSapOutbound.createApprovedOrderDocument({ tenantId: "t1", job });
+    expect(post.mock.calls[0][3].CardCode).toBe("CBP1");
   });
 
   it("job fails with routing message when dealer kind is missing", async () => {
@@ -419,8 +429,8 @@ describe("serviceLayerSapOutbound.createDeliveryReturnDocument", () => {
         sapDocEntry: 44,
         drNo: "DR-44",
         sourceWarehouse: { code: "MAIN" },
-        branch: { name: "Branch One", sapCode: "BR1", dealer: { sapCode: "C001" } },
-        order: { sapDocType },
+        branch: { name: "Branch One", sapCode: "BR1" },
+        order: { sapDocType, sapCardCode: sapDocType === "SO" ? "C001" : null },
       },
       ...over,
     };
@@ -472,9 +482,9 @@ describe("serviceLayerSapOutbound.createDeliveryReturnDocument", () => {
     expect(kind).toBe("RETURN");
     expect(body).toMatchObject({ U_ISMS_PO_No: "RTN-1", CardCode: "C001" });
     const lines = (body as { DocumentLines: Record<string, unknown>[] }).DocumentLines;
-    expect(lines.map((l) => [l.ItemCode, l.Quantity, l.CostingCode2, l.CostingCode3, l.U_Branch_Name, l.U_ISMS_PONum])).toEqual([
-      ["SKU-A", 2, "BR1", "OUTRIGHT", "Branch One", "RTN-1"],
-      ["SKU-B", 1, "BR1", "OUTRIGHT", "Branch One", "RTN-1"],
+    expect(lines.map((l) => [l.ItemCode, l.Quantity, l.CostingCode2, l.CostingCode3, l.U_Branch_Namelong, l.U_Branch_Name, l.U_ISMS_PONum])).toEqual([
+      ["SKU-A", 2, "BR1", "OUTRIGHT", "Branch One", undefined, "RTN-1"],
+      ["SKU-B", 1, "BR1", "OUTRIGHT", "Branch One", undefined, "RTN-1"],
     ]);
     expect(lines.every((l) => !("BaseEntry" in l) && !("BaseType" in l))).toBe(true);
     expect(complete).toHaveBeenCalledWith(expect.objectContaining({ kind: "RETURN", sapDocNo: "900" }));

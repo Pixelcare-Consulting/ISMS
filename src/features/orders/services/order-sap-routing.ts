@@ -17,6 +17,8 @@ export interface OrderSapRoutingInput {
   branch: {
     name: string;
     sapCode: string | null;
+    /** The warehouse's BP Code UDF: the customer an outright SO bills. */
+    bpCode: string | null;
     primaryWarehouse: { id: string; code: string } | null;
   };
   mainWarehouse: { id: string; code: string } | null;
@@ -27,27 +29,33 @@ export interface OrderSapRoutingInput {
   } | null;
   /** The order's own mode of payment. When set it overrides the dealer's for this order. */
   orderModeOfPayment?: { name: string; kind: "CONSIGNMENT" | "OUTRIGHT" | null } | null;
+  /** CardCode stored on the order at final approval. Read only after approval. */
+  storedCardCode?: string | null;
 }
 
 const block = (error: string): OrderSapRouting => ({ ok: false, error });
 
 const noBranchSapCode = (branch: { name: string }) => `${branch.name} has no SAP warehouse code.`;
-const noDealerCardCode = (dealer: { name: string }) => `Dealer ${dealer.name} has no SAP customer code.`;
+const noDealer = (branch: { name: string }) =>
+  `${branch.name} has no dealer. Set the dealer before final approval.`;
+
+/** Outright needs the branch warehouse's BP Code, which only SAP sets. */
+export const noBranchBpCode = (branch: { name: string; sapCode: string | null }) =>
+  `${branch.name} has no BP Code. Set the BP Code on warehouse ${branch.sapCode ?? branch.name} in SAP, then sync branches in Settings → Branches.`;
 const noSourceWarehouse = (branch: { name: string }) =>
   `${branch.name} has no primary warehouse and no main warehouse is set.`;
 
 /**
- * Decides ITR (dealer pays by consignment) or SO (outright) and checks the SAP
- * data the document needs. Pure: used at final approval and again in the SAP job.
+ * Decides ITR (consignment) or SO (outright) and checks the SAP data the document needs.
+ * Consignment goes through the branch's dealer; outright bills the branch warehouse's
+ * BP Code and needs no dealer. Pure: used at final approval and again in the SAP job.
  */
 export function resolveOrderSapRouting(input: OrderSapRoutingInput): OrderSapRouting {
   const { branch, mainWarehouse, dealer } = input;
 
-  if (!dealer) {
-    return block(`${branch.name} has no dealer. Set the dealer before final approval.`);
-  }
-  const mop = input.orderModeOfPayment ?? dealer.modeOfPayment;
+  const mop = input.orderModeOfPayment ?? dealer?.modeOfPayment ?? null;
   if (!mop) {
+    if (!dealer) return block(noDealer(branch));
     return block(
       `Dealer ${dealer.name} has no mode of payment. Set it in Settings → Dealers before final approval.`,
     );
@@ -60,8 +68,11 @@ export function resolveOrderSapRouting(input: OrderSapRoutingInput): OrderSapRou
   if (!branch.sapCode) {
     return block(noBranchSapCode(branch));
   }
-  if (mop.kind === "OUTRIGHT" && !dealer.sapCode) {
-    return block(noDealerCardCode(dealer));
+  if (mop.kind === "CONSIGNMENT" && !dealer) {
+    return block(noDealer(branch));
+  }
+  if (mop.kind === "OUTRIGHT" && !branch.bpCode) {
+    return block(noBranchBpCode(branch));
   }
   const source = branch.primaryWarehouse ?? mainWarehouse;
   if (!source) {
@@ -74,7 +85,7 @@ export function resolveOrderSapRouting(input: OrderSapRoutingInput): OrderSapRou
     sourceWarehouseId: source.id,
     sourceWhsCode: source.code,
     branchWhsCode: branch.sapCode,
-    cardCode: mop.kind === "OUTRIGHT" ? dealer.sapCode : null,
+    cardCode: mop.kind === "OUTRIGHT" ? branch.bpCode : null,
   };
 }
 
@@ -84,20 +95,20 @@ export type OrderSapPlaces =
 
 /**
  * Warehouses and customer for an order whose SAP type was stored at approval.
- * The dealer's mode of payment is not read again: changing it after approval
- * must not block or re-route the order. SO still needs the dealer's CardCode.
+ * The mode of payment is not read again: changing it after approval must not block
+ * or re-route the order. SO uses the CardCode stored at approval; only an SO approved
+ * without one falls back to the branch's current BP Code.
  */
 export function resolveStoredOrderSapPlaces(
   docType: OrderSapDocType,
   input: OrderSapRoutingInput,
 ): OrderSapPlaces {
-  const { branch, mainWarehouse, dealer } = input;
+  const { branch, mainWarehouse } = input;
   if (!branch.sapCode) return { ok: false, error: noBranchSapCode(branch) };
   let cardCode: string | null = null;
   if (docType === "SO") {
-    if (!dealer) return { ok: false, error: `${branch.name} has no dealer.` };
-    if (!dealer.sapCode) return { ok: false, error: noDealerCardCode(dealer) };
-    cardCode = dealer.sapCode;
+    cardCode = input.storedCardCode || branch.bpCode;
+    if (!cardCode) return { ok: false, error: noBranchBpCode(branch) };
   }
   const source = branch.primaryWarehouse ?? mainWarehouse;
   if (!source) return { ok: false, error: noSourceWarehouse(branch) };
