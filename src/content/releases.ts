@@ -66,72 +66,37 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
-    version: "0.89.0",
+    version: "0.85.0",
     date: "2026-11-03",
     releasedAt: "2026-11-03T15:44:00+08:00",
-    title: "Order summary report",
+    title: "Order summary, faster rejects, Target DII and SAP-made orders",
     highlights: [
-      "Reports → Order summary lists every order request for today, yesterday, this week, this month or any date range, one row per order.",
-      "Pick which statuses to show, then print or export the report to PDF or Excel from the preview.",
+      "Reports → Order summary lists every order request for a day, week, month or date range by status, and prints or exports to PDF or Excel.",
+      "Rejecting units at receipt no longer waits for the TL: Logistics confirms the list and ISMS creates the IT or Return in SAP right away.",
+      "Supply Planning can approve 0, less, or more than requested, or any item that was not requested, and sees a Target DII per brand from Branch quotas.",
+      "Sales Orders made directly in SAP come into ISMS as approved orders marked SAP, and consignment deliveries show the DR number typed in SAP.",
+      "Service center orders use the same order form and post to SAP as Sales Orders when approved.",
     ],
     changes: [
       {
         type: "feature",
         description:
-          "Each row shows when the order was made, its number, source (ISMS or SAP), type, branch, brand, status, requested and approved quantities and amounts, CBM, who made it and its SAP document.",
+          "Order summary shows one row per order: when it was made, number, source (ISMS or SAP), type, branch, brand, status, requested and approved quantities and amounts, CBM, who made it and its SAP document, with totals. Pick Today, Yesterday, This week, This month or a date range, and which statuses to show.",
       },
       {
         type: "feature",
         description:
-          "Choose Pending approval, Approved, Rejected or Cancelled, or leave them all unticked for every status. Totals print at the bottom.",
-      },
-      {
-        type: "fix",
-        description: "The Inventory report preview uses the same SAP DOC# and SAP DOC DATE headings as its export again.",
-      },
-    ],
-  },
-  {
-    version: "0.88.0",
-    date: "2026-11-03",
-    title: "Reject units without waiting for approval",
-    highlights: [
-      "Rejecting units on a delivery no longer goes to the TL. Logistics checks the list of units, confirms, and ISMS creates the IT or Return in SAP right away.",
-    ],
-    changes: [
-      {
-        type: "feature",
-        description:
-          "The reject step lists every unit being rejected. Confirming posts the IT (consignment) or Return (outright) to SAP and shows its SAP number when done.",
+          "The reject step lists every unit being rejected. Confirming posts the IT (consignment) or Return (outright) to SAP and shows its SAP number when done. Each unit can be marked DEF so it goes back to the warehouse as defective.",
       },
       {
         type: "feature",
-        description: "Each rejected unit can be marked DEF so it goes back to the warehouse as defective.",
-      },
-      {
-        type: "improvement",
         description:
-          "If SAP does not take the IT or Return, the person who rejected the units can retry it or cancel it from the delivery.",
+          "Branch quotas can carry an optional Target DII (days) for each brand and month, set on the form or in the quota import (target_dii column). Orders show it as Target DII next to the Computed DII, and it follows the brand you pick.",
       },
-      {
-        type: "improvement",
-        description: "Logistics can now reject units at receipt.",
-      },
-    ],
-  },
-  {
-    version: "0.87.0",
-    date: "2026-11-03",
-    title: "Supply Planning review and Target DII",
-    highlights: [
-      "Branch quotas can carry a Target DII (days) for each brand and month. Orders show it as Target DII next to the Computed DII, and it follows the brand you pick.",
-      "In the review window Supply Planning sees every orderable item, not just the requested ones, and can approve 0, less, or more than requested, or approve an item that was not requested.",
-    ],
-    changes: [
       {
         type: "feature",
         description:
-          "Target DII is optional. Set it on Settings → Branch quotas or in the quota import (target_dii column). A blank cell clears it; a file without the column leaves it as it is.",
+          "In the review window Supply Planning sees every orderable item, not just the requested ones, and can change any approved quantity.",
       },
       {
         type: "feature",
@@ -139,7 +104,42 @@ export const RELEASES: ReleaseNote[] = [
       },
       {
         type: "feature",
-        description: "After approval, the message shows the SAP number of the ITR or SO that was created, for example SO 97581.",
+        description:
+          "After approval, the message shows the SAP number of the ITR or SO that was created, for example SO 97581. Service center orders show their SO number too.",
+      },
+      {
+        type: "feature",
+        description:
+          "Settings → Ordering has a start date for importing Sales Orders made in SAP; leave it empty to keep the import off. Open SOs come in, and closed ones only when they have a DR. Orders and Order History show where each order came from: ISMS or SAP.",
+      },
+      {
+        type: "feature",
+        description:
+          "When an SAP-made SO is closed or cancelled in SAP without a DR, logistics gets a notice and can close the order from its delivery page.",
+      },
+      {
+        type: "feature",
+        description:
+          "Settings → Ordering holds the service center Sales Order defaults: the customers it can bill, the warehouse, and the SAP codes on each line. The service center order form lists the SAP stock in the warehouse you order from.",
+      },
+      {
+        type: "feature",
+        description:
+          "Serial number logs show approval steps, unit transfers and delivery returns, including who rejected an approval.",
+      },
+      {
+        type: "feature",
+        description: "Provinces can be imported from an Excel or CSV file under Settings → Master data.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Deliveries show SAP doc#, DR# and DR date side by side. A DR number typed in SAP after the transfer was made is picked up on the next SAP check, and Check SAP now also brings in new Sales Orders made in SAP.",
+      },
+      {
+        type: "improvement",
+        description:
+          "If SAP does not take a rejected unit's IT or Return, the person who rejected it can retry or cancel it from the delivery. Logistics can now reject units at receipt.",
       },
       {
         type: "improvement",
@@ -152,49 +152,20 @@ export const RELEASES: ReleaseNote[] = [
       },
       {
         type: "improvement",
-        description: "The DII figure on orders is now called Computed DII.",
-      },
-      {
-        type: "improvement",
-        description: "Creating an order starts with the mode of payment. Manual or Special is set for you from whether you add additional items.",
-      },
-      {
-        type: "improvement",
-        description: "Sold units (SLD) no longer show in the Orders module.",
-      },
-    ],
-  },
-  {
-    version: "0.86.0",
-    date: "2026-11-03",
-    title: "Sales Orders made in SAP, and DR numbers",
-    highlights: [
-      "Sales Orders created directly in SAP for an ISMS branch now come into ISMS as approved orders marked SAP, and their DRs reach the branch like any other delivery.",
-      "Consignment deliveries show the DR number typed in SAP (DCS Remarks) as DR#, with the SAP posting date as DR date.",
-    ],
-    changes: [
-      {
-        type: "feature",
-        description:
-          "Settings → Ordering has a start date for importing SAP-made Sales Orders. Leave it empty to keep the import off. Open SOs come in; closed ones only when they have a DR.",
-      },
-      {
-        type: "feature",
-        description: "Orders and Order History show where each order came from: ISMS or SAP.",
-      },
-      {
-        type: "feature",
-        description:
-          "When an SAP-made SO is closed or cancelled in SAP without a DR, logistics gets a notice and can close the order from its delivery page.",
+        description: "The DII figure on orders is now called Computed DII, and sold units (SLD) no longer show in the Orders module.",
       },
       {
         type: "improvement",
         description:
-          "Deliveries show SAP doc#, DR# and DR date side by side. A DR number typed in SAP after the transfer was made is picked up on the next SAP check.",
+          "Creating an order starts with the mode of payment. Manual or Special is set for you from whether you add additional items.",
       },
       {
         type: "improvement",
-        description: "Check SAP now also brings in new Sales Orders made in SAP.",
+        description: "Service center locations are added and edited in a pop-up window.",
+      },
+      {
+        type: "improvement",
+        description: "Branch inventory filters as you type, with no Search button. Warehouse stock moved under Reports → Inventory.",
       },
       {
         type: "fix",
@@ -204,54 +175,9 @@ export const RELEASES: ReleaseNote[] = [
         type: "fix",
         description: "Outright Sales Orders bill the branch warehouse's customer code in SAP.",
       },
-    ],
-  },
-  {
-    version: "0.85.0",
-    date: "2026-10-30",
-    title: "Service center orders go to SAP",
-    highlights: [
-      "Service center orders are created on the same order form as branch orders and post to SAP as Sales Orders when approved.",
-    ],
-    changes: [
       {
-        type: "feature",
-        description:
-          "Settings → Ordering holds the service center Sales Order defaults: the customers it can bill, the warehouse, and the SAP codes on each line.",
-      },
-      {
-        type: "feature",
-        description: "The service center order form lists the SAP stock in the warehouse you order from.",
-      },
-      {
-        type: "improvement",
-        description: "Approving a service center order shows the SO number SAP created.",
-      },
-      {
-        type: "improvement",
-        description: "Service center locations are added and edited in a pop-up window.",
-      },
-    ],
-  },
-  {
-    version: "0.84.1",
-    date: "2026-10-29",
-    title: "Serial logs, provinces and list fixes",
-    highlights: [
-      "Serial number logs show approval steps, unit transfers and delivery returns, including who rejected an approval.",
-    ],
-    changes: [
-      {
-        type: "feature",
-        description: "Provinces can be imported from an Excel or CSV file under Settings → Master data.",
-      },
-      {
-        type: "improvement",
-        description: "Branch inventory filters as you type, with no Search button.",
-      },
-      {
-        type: "improvement",
-        description: "Warehouse stock moved under Reports → Inventory.",
+        type: "fix",
+        description: "The Inventory report preview uses the same SAP DOC# and SAP DOC DATE headings as its export again.",
       },
       {
         type: "fix",
