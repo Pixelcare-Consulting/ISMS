@@ -168,25 +168,20 @@ export function worksheetDii(input: {
 }
 
 /**
- * Most common MIL days. Ties keep the smaller number.
- * An empty list has no target.
+ * Target DII (days) from Branch Quotas for one brand. With no brand selected, every brand
+ * must share one target to show it; different targets have no single answer.
  */
-export function usualMilDays(days: readonly number[]): number | null {
-  if (days.length === 0) return null;
-  const counts = new Map<number, number>();
-  for (const value of days) {
-    if (!Number.isFinite(value)) continue;
-    counts.set(value, (counts.get(value) ?? 0) + 1);
-  }
-  let best: number | null = null;
-  let bestCount = 0;
-  for (const [value, count] of counts) {
-    if (best == null || count > bestCount || (count === bestCount && value < best)) {
-      best = value;
-      bestCount = count;
-    }
-  }
-  return best;
+export function quotaTargetDii(
+  quotas: readonly OrderWorksheetBrandQuota[],
+  brandId: string | null,
+): number | null {
+  const matched = brandId ? quotas.filter((row) => row.brandId === brandId) : quotas;
+  const targets = new Set(
+    matched
+      .map((row) => row.targetDii)
+      .filter((value): value is number => value != null && Number.isFinite(value)),
+  );
+  return targets.size === 1 ? [...targets][0]! : null;
 }
 
 export interface WorksheetSalesLine {
@@ -282,9 +277,11 @@ export function worksheetPlanningFigures(input: {
     if (line.approvedQty != null && line.approvedQty > 0) {
       approvedOrderAmount += line.approvedQty * price;
     }
-    if (line.requestedQty > 0) {
+    // Follows the approved quantity as Supply Planning edits it; the request until then.
+    const cbmQty = line.approvedQty ?? line.requestedQty;
+    if (cbmQty > 0) {
       const unitCbm = Number.isFinite(line.cbm) ? line.cbm : 0;
-      totalCbm += line.requestedQty * unitCbm;
+      totalCbm += cbmQty * unitCbm;
     }
     if (line.salesUnavailable || line.salesAmount == null) {
       salesUnavailable = true;
@@ -298,15 +295,13 @@ export function worksheetPlanningFigures(input: {
     salesUnavailable,
     daysElapsed: input.daysElapsed,
   });
-  const planogramDays = scoped.filter((line) => line.onPlanogram).map((line) => line.milDays);
-  const targetDays = planogramDays.length > 0 ? planogramDays : scoped.map((line) => line.milDays);
   return {
     quotaQty: quotaQuantity(input.brandQuotas, brandId),
     computedDii: dii.computedDii,
     diiUnavailableReason: dii.diiUnavailableReason,
     salesUnavailable,
     inventoryAmount,
-    targetDiiDays: usualMilDays(targetDays),
+    targetDiiDays: quotaTargetDii(input.brandQuotas, brandId),
     approvedOrderAmount,
     totalInventoryAmount: inventoryAmount + approvedOrderAmount,
     totalCbm,
@@ -581,7 +576,8 @@ function normalizeBrandQuotas(
   for (const quota of quotas) {
     const brandId = quota.brandId.trim();
     if (!brandId || !Number.isFinite(quota.quantity)) continue;
-    result.push({ brandId, quantity: quota.quantity });
+    const targetDii = quota.targetDii != null && Number.isFinite(quota.targetDii) ? quota.targetDii : null;
+    result.push({ brandId, quantity: quota.quantity, targetDii });
   }
   return result;
 }
@@ -739,6 +735,7 @@ export function assembleOrderWorksheet(input: {
     daysElapsed: input.window.daysElapsed,
   });
   const offBrandRowCount = lines.filter((line) => !line.matchesBrandFilter).length;
+  const brandQuotas = normalizeBrandQuotas(input.brandQuotas);
   const labels = scopeLabels({
     branchName: input.branch.name,
     brandFiltered,
@@ -755,7 +752,7 @@ export function assembleOrderWorksheet(input: {
     brandId: input.brandId,
     orderType: input.orderType,
     deliveryFrequencyCode: normalizeFrequencyCode(input.deliveryFrequencyCode),
-    brandQuotas: normalizeBrandQuotas(input.brandQuotas),
+    brandQuotas,
     lines,
     summary: {
       branchId: input.branch.id,
@@ -774,6 +771,7 @@ export function assembleOrderWorksheet(input: {
       daysElapsed: input.window.daysElapsed,
       computedDii: dii.computedDii,
       diiUnavailableReason: dii.diiUnavailableReason,
+      targetDiiDays: quotaTargetDii(brandQuotas, input.brandId),
       inventoryAmount,
       inventoryAmountBasis: WORKSHEET_INVENTORY_AMOUNT_BASIS,
       salesQty,

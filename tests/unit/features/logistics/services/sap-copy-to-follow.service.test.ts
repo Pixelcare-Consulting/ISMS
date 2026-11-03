@@ -16,11 +16,12 @@ jest.mock("@/lib/database/client", () => {
   return {
     mockTx: tx,
     prisma: {
-      branchDelivery: { findMany: jest.fn(), findFirst: jest.fn() },
+      branchDelivery: { findMany: jest.fn(), findFirst: jest.fn(), updateMany: jest.fn() },
       deliverySapDocument: {
         findMany: jest.fn(),
         updateMany: jest.fn(),
         create: jest.fn(),
+        upsert: jest.fn(),
       },
       $transaction: jest.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)),
     },
@@ -43,6 +44,11 @@ jest.mock("@/features/reason-status/services/reason-status.service", () => ({
 jest.mock("@/features/logistics/services/sap-copy-to-follow.notifier", () => ({
   notifyCopyToAttention: jest.fn(async () => "none"),
 }));
+jest.mock("@/features/orders/services/sap-sales-order-import.service", () => ({
+  importSapSalesOrders: jest.fn(async () => ({ imported: 0, skipped: 0 })),
+  findDeliveryNotesBySalesOrder: jest.fn(async () => new Map()),
+  findSalesOrderStates: jest.fn(async () => new Map()),
+}));
 jest.mock("@/features/inventory/services/serial-placement", () => ({
   loadCurrentPlacements: jest.fn(),
   lockSerialNumbers: jest.fn(),
@@ -52,6 +58,11 @@ jest.mock("@/features/inventory/services/serial-placement", () => ({
 import * as dbClient from "@/lib/database/client";
 import { loadCurrentPlacements } from "@/features/inventory/services/serial-placement";
 import { runSapCopyToFollow } from "@/features/logistics/services/sap-copy-to-follow.service";
+import {
+  findDeliveryNotesBySalesOrder,
+  findSalesOrderStates,
+  importSapSalesOrders,
+} from "@/features/orders/services/sap-sales-order-import.service";
 import { sapSyncCursorRepository } from "@/features/sap/repositories/sap-sync-cursor.repository";
 import { sapServiceLayerClient } from "@/features/sap/services/sap-service-layer-client";
 import { sapServiceLayerService } from "@/features/sap/services/sap-service-layer.service";
@@ -108,12 +119,18 @@ beforeEach(() => {
   cursor.get.mockResolvedValue({ lastKey: "491300" });
   mockPrisma.deliverySapDocument.findMany.mockResolvedValue([]);
   mockPrisma.deliverySapDocument.updateMany.mockResolvedValue({ count: 0 });
-  mockPrisma.branchDelivery.findMany.mockResolvedValue([
-    {
-      id: "del1",
-      order: { orderNumber: "ITR#2026-10-89938", sapDocType: "ITR", sapDocEntry: 368865 },
-    },
-  ]);
+  // Only the lookup by ISMS order number finds the open ITR delivery.
+  mockPrisma.branchDelivery.findMany.mockImplementation(
+    async ({ where }: { where: { order?: { orderNumber?: unknown } } }) =>
+      where.order?.orderNumber
+        ? [
+            {
+              id: "del1",
+              order: { orderNumber: "ITR#2026-10-89938", sapDocType: "ITR", sapDocEntry: 368865 },
+            },
+          ]
+        : [],
+  );
   mockTx.branchDelivery.findFirst.mockResolvedValue({
     branchId: "b1",
     deliveryNo: "DEL-1",
@@ -170,7 +187,8 @@ it("applies only the IT that belongs to an open ISMS delivery and moves the curs
     data: {
       statusCodeId: "wf-pending",
       sapDocEntry: 491349,
-      drNo: "494398",
+      sapDocNo: "494398",
+      drNo: null,
       drDate: new Date("2026-10-27"),
     },
   });
@@ -238,6 +256,108 @@ it("records a sold serial as FAILED so the document is retried, not applied", as
   expect(mockTx.branchDeliveryLine.createMany).not.toHaveBeenCalled();
   expect(mockPrisma.deliverySapDocument.create).toHaveBeenCalledWith({
     data: expect.objectContaining({ status: "FAILED", error: "SN1 is at branch Source (SLD) in ISMS" }),
+  });
+});
+
+it("imports SAP-made Sales Orders, then follows their DRs by base SO", async () => {
+  (importSapSalesOrders as jest.Mock).mockResolvedValue({ imported: 1, skipped: 0 });
+  mockPrisma.branchDelivery.findMany.mockImplementation(
+    async ({ where }: { where: { order?: { source?: string } } }) =>
+      where.order?.source === "SAP"
+        ? [{ id: "del-sap", order: { orderNumber: "SAP-SO-97557", sapDocType: "SO", sapDocEntry: 94001 } }]
+        : [],
+  );
+  (findDeliveryNotesBySalesOrder as jest.Mock).mockResolvedValue(new Map([[94001, [175224]]]));
+  request.mockImplementation(async ({ path }: { path: string }) =>
+    path.startsWith("/DeliveryNotes(175224)")
+      ? ok({ DocEntry: 175224, DocNum: 176438, Cancelled: "tYES", DocumentLines: [] })
+      : ok({ value: [] }),
+  );
+
+  const result = await runSapCopyToFollow("t1");
+
+  expect(result.importedOrders).toBe(1);
+  expect(findDeliveryNotesBySalesOrder).toHaveBeenCalledWith({ id: "c1" }, [94001]);
+  expect(request).toHaveBeenCalledWith(expect.objectContaining({ path: "/DeliveryNotes(175224)" }));
+  // The cancelled DR is flagged against the SAP order's delivery, like any other DR.
+  expect(result.flagged).toBe(1);
+  expect(mockPrisma.deliverySapDocument.create).toHaveBeenCalledWith({
+    data: expect.objectContaining({ deliveryId: "del-sap", docKind: "DR", docEntry: 175224, status: "FLAGGED" }),
+  });
+});
+
+it("flags a SAP-made SO closed without a DR once, so logistics can close the order", async () => {
+  mockPrisma.branchDelivery.findMany.mockImplementation(
+    async ({ where }: { where: { order?: { source?: string } } }) =>
+      where.order?.source === "SAP"
+        ? [
+            { id: "del-closed", order: { orderNumber: "SAP-SO-1", sapDocType: "SO", sapDocEntry: 501 } },
+            { id: "del-open", order: { orderNumber: "SAP-SO-2", sapDocType: "SO", sapDocEntry: 502 } },
+            { id: "del-known", order: { orderNumber: "SAP-SO-3", sapDocType: "SO", sapDocEntry: 503 } },
+          ]
+        : [],
+  );
+  (findDeliveryNotesBySalesOrder as jest.Mock).mockResolvedValue(new Map());
+  mockPrisma.deliverySapDocument.findMany.mockImplementation(async ({ where }: { where: { docKind?: string } }) =>
+    where.docKind === "SO" ? [{ docEntry: 503 }] : [],
+  );
+  (findSalesOrderStates as jest.Mock).mockResolvedValue(
+    new Map([
+      [501, { docNum: 97001, closed: true, cancelled: false }],
+      [502, { docNum: 97002, closed: false, cancelled: false }],
+    ]),
+  );
+  request.mockResolvedValue(ok({ value: [] }));
+
+  await runSapCopyToFollow("t1");
+
+  expect(findSalesOrderStates).toHaveBeenCalledWith({ id: "c1" }, [501, 502]);
+  expect(mockPrisma.deliverySapDocument.upsert).toHaveBeenCalledTimes(1);
+  expect(mockPrisma.deliverySapDocument.upsert).toHaveBeenCalledWith(
+    expect.objectContaining({
+      create: expect.objectContaining({
+        deliveryId: "del-closed",
+        docKind: "SO",
+        docEntry: 501,
+        displayNo: "97001",
+        status: "FLAGGED",
+        error: expect.stringContaining("SO 97001 was closed in SAP without a DR"),
+      }),
+      update: {},
+    }),
+  );
+});
+
+it("fills a missing DR# from DCS Remarks typed after the IT was followed", async () => {
+  cursor.get.mockResolvedValue({ lastKey: "491400" });
+  mockPrisma.branchDelivery.findMany.mockImplementation(async ({ where }: { where: { drNo?: null } }) =>
+    "drNo" in where
+      ? [
+          { id: "del1", sapDocEntry: 491349 },
+          { id: "del2", sapDocEntry: 491350 },
+        ]
+      : [],
+  );
+  mockPrisma.branchDelivery.updateMany.mockResolvedValue({ count: 1 });
+  request.mockImplementation(async ({ path }: { path: string }) =>
+    path.includes("U_DcsRemarks")
+      ? ok({
+          value: [
+            { DocEntry: 491349, U_DcsRemarks: "DR# 555" },
+            { DocEntry: 491350, U_DcsRemarks: null },
+          ],
+        })
+      : ok({ value: [] }),
+  );
+
+  await runSapCopyToFollow("t1");
+
+  const refresh = request.mock.calls.find(([arg]) => String(arg.path).includes("U_DcsRemarks"))?.[0];
+  expect(decodeURIComponent(refresh.path)).toContain("DocEntry eq 491349 or DocEntry eq 491350");
+  expect(mockPrisma.branchDelivery.updateMany).toHaveBeenCalledTimes(1);
+  expect(mockPrisma.branchDelivery.updateMany).toHaveBeenCalledWith({
+    where: { id: "del1", tenantId: "t1", drNo: null },
+    data: { drNo: "DR# 555" },
   });
 });
 

@@ -5,6 +5,11 @@ export const branchQuotaFormSchema = z.object({
   brandId: z.string().min(1, "Brand is required"),
   quotaDate: z.string().min(1, "Quota month is required"),
   quotaAmount: z.coerce.number().positive("Quota must be greater than 0"),
+  /** Days. Blank clears it. */
+  targetDii: z.preprocess(
+    (value) => (value === "" || value === undefined ? null : value),
+    z.coerce.number().positive("Target DII must be greater than 0").max(9999999).nullable(),
+  ),
 });
 
 export type BranchQuotaFormValues = z.infer<typeof branchQuotaFormSchema>;

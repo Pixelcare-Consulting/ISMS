@@ -15,6 +15,15 @@ export const orderingPolicyRepository = {
     return prisma.orderingPolicy.findUnique({ where: { tenantId } });
   },
 
+  /** Only the SAP Sales Order import start date; the lock fields keep their values. */
+  setSapSoImportSince(tenantId: string, sapSoImportSince: Date | null) {
+    return prisma.orderingPolicy.upsert({
+      where: { tenantId },
+      create: { tenantId, sapSoImportSince },
+      update: { sapSoImportSince },
+    });
+  },
+
   upsert(tenantId: string, data: OrderingPolicyUpsertInput) {
     return prisma.orderingPolicy.upsert({
       where: { tenantId },

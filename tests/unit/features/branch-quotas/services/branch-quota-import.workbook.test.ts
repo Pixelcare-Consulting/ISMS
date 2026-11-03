@@ -13,6 +13,7 @@ describe("branch quota import workbook", () => {
         brandName: "Devant",
         month: "2026-10",
         quotaAmount: "100",
+        targetDii: "30",
       },
     ]);
     const workbook = new ExcelJS.Workbook();
@@ -24,8 +25,10 @@ describe("branch quota import workbook", () => {
       "brand_name",
       "month",
       "quota_amount",
+      "target_dii",
     ]);
     expect(sheet?.getRow(2).getCell(1).value).toBe("Western Makati");
+    expect(sheet?.getRow(2).getCell(5).value).toBe("30");
   });
 
   it("reads the branch name column", async () => {
@@ -33,6 +36,15 @@ describe("branch quota import workbook", () => {
       Buffer.from("branch_name,brand_name,month,quota_amount\nWestern Makati,Devant,2026-10,100\n"),
     );
     expect(sheet.rows[0]?.values.branchname).toBe("Western Makati");
+    expect(sheet.columns.has("targetdii")).toBe(false);
+  });
+
+  it("reads the optional target_dii column", async () => {
+    const sheet = await readBranchQuotaImportWorkbook(
+      Buffer.from("branch_name,brand_name,month,quota_amount,target_dii\nWestern Makati,Devant,2026-10,100,21.5\n"),
+    );
+    expect(sheet.columns.has("targetdii")).toBe(true);
+    expect(sheet.rows[0]?.values.targetdii).toBe("21.5");
   });
 
   it("rejects a file that still uses the branch SAP code", async () => {

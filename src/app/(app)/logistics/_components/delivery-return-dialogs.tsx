@@ -78,7 +78,8 @@ export function DeliveryReturnCell({ returns }: { returns: readonly LatestDelive
   );
 }
 
-function toastOutcome(outcome: DeliveryReturnOutcome) {
+/** One toast for where a return stands: completed with its SAP number, failed, or posting. */
+export function toastOutcome(outcome: DeliveryReturnOutcome) {
   if (outcome.status === "COMPLETED") {
     toast.success(
       `Return completed${outcome.sapDocNo ? ` (SAP ${outcome.sapDocNo})` : ""}. The units are back in the warehouse.`,
@@ -98,9 +99,9 @@ export interface ReviewReturnActions {
 }
 
 /**
- * Latest return of a delivery. An approver can approve or reject a pending
- * request; an approved request whose SAP post failed shows the error and a
- * retry, and an approver can cancel it while SAP has no document for it.
+ * Latest return of a delivery. A return whose SAP post failed shows the error and a retry,
+ * and can be cancelled while SAP has no document for it. Only requests made before rejects
+ * stopped needing approval can still be approved or declined here.
  */
 export function DeliveryReturnReviewDialog({
   target,
@@ -184,8 +185,8 @@ function ReviewBody({
   const detail = state.kind === "ready" ? state.detail : null;
   const canDecide = canApprove && detail?.status === "PENDING_APPROVAL";
   const showRetry = canRetry && needsSapRetry(detail);
-  // Approved but SAP has no document yet: the approver can still back out.
-  const canCancel = canApprove && detail?.status === "APPROVED" && !detail.sapDocNo;
+  // Approved but SAP has no document yet: whoever can retry can also back out.
+  const canCancel = canRetry && detail?.status === "APPROVED" && !detail.sapDocNo;
   const cancelNoteTrimmed = cancelNote.trim();
 
   /** After a decision or retry: refresh the list, and stay open when SAP still needs attention. */

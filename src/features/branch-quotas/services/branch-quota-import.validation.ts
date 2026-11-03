@@ -75,6 +75,17 @@ export function parseImportQuotaAmount(
   return { amount };
 }
 
+/** Target DII in days: blank or a dash clears it, otherwise a number above 0. */
+export function parseImportTargetDii(
+  raw: string,
+): { targetDii: number | null } | { error: string } {
+  if (isBlankOrDash(raw)) return { targetDii: null };
+  const value = Number.parseFloat(raw.replace(/,/g, "").trim());
+  if (!Number.isFinite(value)) return { error: `Invalid target_dii "${raw.trim()}".` };
+  if (value <= 0) return { error: "target_dii must be greater than 0." };
+  return { targetDii: Math.round(value * 10) / 10 };
+}
+
 /** Stable unique key for branch + brand + month within a file / DB. */
 export function quotaImportUniqueKey(
   branchId: string,

@@ -53,6 +53,8 @@ export interface WorksheetFilterableLine {
   name: string;
   brandId: string | null;
   requestedQty: number;
+  /** Rows Supply Planning approved without a request count as having a quantity. */
+  approvedQty?: number | null;
 }
 
 export interface WorksheetTotalLine {
@@ -80,7 +82,7 @@ export function visibleWorksheetLines<T extends WorksheetFilterableLine>(
   const search = filter.modelSearch.trim().toLowerCase();
   const brandId = filter.brandId.trim();
   return lines.filter((line) => {
-    if (filter.orderedOnly && line.requestedQty < 1) return false;
+    if (filter.orderedOnly && line.requestedQty < 1 && !((line.approvedQty ?? 0) > 0)) return false;
     if (brandId && line.brandId !== brandId) return false;
     if (!search) return true;
     const haystack = `${line.skuCode} ${line.name}`.toLowerCase();
@@ -100,11 +102,14 @@ export function worksheetOrderTotals(
   const includeApproved = options?.includeApproved === true;
 
   for (const line of lines) {
-    if (line.requestedQty < 1) continue;
-    requestedAmount += line.requestedQty * line.srp;
-    requestedCbm += line.requestedQty * line.cbm;
+    if (line.requestedQty >= 1) {
+      requestedAmount += line.requestedQty * line.srp;
+      requestedCbm += line.requestedQty * line.cbm;
+    }
     if (!includeApproved) continue;
-    const approved = line.approvedQty ?? line.requestedQty;
+    // Supply Planning may approve a model that was not requested.
+    const approved = line.approvedQty ?? (line.requestedQty >= 1 ? line.requestedQty : 0);
+    if (approved < 1) continue;
     approvedAmount += approved * line.srp;
     approvedCbm += approved * line.cbm;
   }

@@ -132,6 +132,8 @@ export const orderRepository = {
       statuses?: BranchOrderStatus[];
       /** One query. Each entry is that type's own status set. Replaces orderType + statuses. */
       typeScopes?: OrderTypeScope[];
+      /** Only orders with at least one line of this brand. */
+      brandId?: string;
     },
     sort?: { field?: OrderListSort; dir?: OrderListSortDir },
   ) {
@@ -143,7 +145,7 @@ export const orderRepository = {
     } else if (pagination?.statuses && pagination.statuses.length === 0) {
       return toPaginatedResult([], 0, page, limit);
     }
-    const where = pagination?.typeScopes
+    const scopeWhere = pagination?.typeScopes
       ? orderScopeWhere(tenantId, branchIds, { typeScopes: pagination.typeScopes })
       : singleTypeScopeWhere(
           tenantId,
@@ -151,6 +153,9 @@ export const orderRepository = {
           pagination?.orderType,
           pagination?.statuses,
         );
+    const where: Prisma.BranchOrderWhereInput = pagination?.brandId
+      ? { AND: [scopeWhere, { details: { some: { model: { brandId: pagination.brandId } } } }] }
+      : scopeWhere;
     const orderBy = sort?.field
       ? orderPrismaOrderBy(sort.field, sort.dir ?? "desc")
       : { createdAt: "desc" as const };
@@ -732,6 +737,8 @@ export const orderRepository = {
         approvedQty: number;
         spRemarks?: string | null;
       }[];
+      /** Models Supply Planning approved without a request: new lines with requested 0. */
+      addedLines?: { modelId: string; approvedQty: number; spRemarks?: string | null }[];
     },
   ) {
     const processedAt = new Date();
@@ -788,6 +795,18 @@ export const orderRepository = {
         }
       }
 
+      if (data.addedLines?.length) {
+        await tx.branchOrderDetail.createMany({
+          data: data.addedLines.map((line) => ({
+            orderId,
+            modelId: line.modelId,
+            quantity: 0,
+            approvedQty: line.approvedQty,
+            spRemarks: line.spRemarks ?? null,
+          })),
+        });
+      }
+
       await tx.branchOrderApprovalLevel.update({
         where: { orderId_level: { orderId, level: data.level } },
         data: {
@@ -796,6 +815,14 @@ export const orderRepository = {
           comment: data.comment ?? null,
         },
       });
+    });
+  },
+
+  /** Models an approval may add, by id. */
+  findOrderableModels(tenantId: string, modelIds: readonly string[]) {
+    return prisma.productModel.findMany({
+      where: { tenantId, deletedAt: null, id: { in: [...modelIds] } },
+      select: { id: true, brandId: true },
     });
   },
 

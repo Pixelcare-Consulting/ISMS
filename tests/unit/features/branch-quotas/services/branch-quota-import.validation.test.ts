@@ -4,6 +4,7 @@ import {
   lookupKey,
   parseImportMonth,
   parseImportQuotaAmount,
+  parseImportTargetDii,
   quotaImportUniqueKey,
 } from "@/features/branch-quotas/services/branch-quota-import.validation";
 
@@ -82,6 +83,20 @@ describe("branch-quota-import validation", () => {
       expect(isBlankOrDash("x")).toBe(false);
       expect(formatQuotaAmount(100)).toBe("100");
       expect(formatQuotaAmount("42.5")).toBe("42.5");
+    });
+  });
+
+  describe("parseImportTargetDii", () => {
+    it("reads days, rounding to one decimal, and clears on blank or dash", () => {
+      expect(parseImportTargetDii("21.46")).toEqual({ targetDii: 21.5 });
+      expect(parseImportTargetDii("1,000")).toEqual({ targetDii: 1000 });
+      expect(parseImportTargetDii("")).toEqual({ targetDii: null });
+      expect(parseImportTargetDii("-")).toEqual({ targetDii: null });
+    });
+
+    it("rejects text and values of zero or less", () => {
+      expect(parseImportTargetDii("abc")).toEqual({ error: 'Invalid target_dii "abc".' });
+      expect(parseImportTargetDii("0")).toEqual({ error: "target_dii must be greater than 0." });
     });
   });
 });

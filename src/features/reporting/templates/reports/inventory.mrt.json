@@ -1,10 +1,10 @@
 {
   "ReportVersion": "2026.4.1",
-  "ReportGuid": "ad0bfaf95f9c5f610b4d87921d1c69ba",
+  "ReportGuid": "544e4b343609d8e6f409c2725dcc29cd",
   "ReportName": "inventory",
   "ReportAlias": "Inventory",
-  "ReportCreated": "/Date(1792388050000+0800)/",
-  "ReportChanged": "/Date(1792388050000+0800)/",
+  "ReportCreated": "/Date(1793690668000+0800)/",
+  "ReportChanged": "/Date(1793690668000+0800)/",
   "EngineVersion": "EngineV2",
   "ReportUnit": "Centimeters",
   "ScriptLanguage": "CSharp",
@@ -161,7 +161,7 @@
     "0": {
       "Ident": "StiPage",
       "Name": "Page1",
-      "Guid": "e92fd3352772e0aef5d6ee8005ef9eea",
+      "Guid": "ea8d2fe6600e52e397a19a994823162f",
       "Interaction": {
         "Ident": "StiInteraction"
       },
@@ -920,7 +920,7 @@
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "SAP doc#"
+                "Value": "SAP DOC#"
               },
               "VertAlignment": "Center",
               "Font": "Geist;6;Bold;",
@@ -947,7 +947,7 @@
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "DR DATE"
+                "Value": "SAP DOC DATE"
               },
               "VertAlignment": "Center",
               "Font": "Geist;6;Bold;",

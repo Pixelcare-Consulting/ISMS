@@ -245,7 +245,7 @@ function orderFigures(input: {
       input.summary.diiUnavailableReason,
       input.summary.salesUnavailable,
     );
-    figures.push({ label: "DII", value: dii.value, hint: dii.hint });
+    figures.push({ label: "Computed DII", value: dii.value, hint: dii.hint });
     figures.push({
       label: "Stock value",
       value: formatPeso(input.summary.inventoryAmount),
@@ -268,7 +268,7 @@ function snapshotFigures(snapshot: OrderReviewSnapshot): OrderFigure[] {
     snapshot.salesUnavailable,
   );
   return [
-    { label: "DII", value: dii.value, hint: dii.hint },
+    { label: "Computed DII", value: dii.value, hint: dii.hint },
     { label: "Stock value", value: formatPeso(snapshot.inventoryAmount), hint: null },
     { label: "Requested", value: formatPeso(snapshot.requestedAmount), hint: null },
     { label: "Total CBM", value: formatWorksheetCbm(snapshot.requestedCbm), hint: null },

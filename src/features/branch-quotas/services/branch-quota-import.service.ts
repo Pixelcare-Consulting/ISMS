@@ -16,6 +16,7 @@ import {
   lookupKey,
   parseImportMonth,
   parseImportQuotaAmount,
+  parseImportTargetDii,
   quotaImportUniqueKey,
 } from "@/features/branch-quotas/services/branch-quota-import.validation";
 import {
@@ -44,6 +45,8 @@ interface QuotaWriteFields {
   brandId: string;
   quotaDate: Date;
   quotaAmount: number;
+  /** Undefined when the file has no target_dii column: the stored value is left as is. */
+  targetDii?: number | null;
 }
 
 interface RowPlanInternal extends BranchQuotaImportRowPlan {
@@ -80,6 +83,10 @@ function pushChange(
   });
 }
 
+function formatTargetDii(value: number | null | undefined): string | null {
+  return value == null ? null : String(value);
+}
+
 function monthLabelFromDate(date: Date): string {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
 }
@@ -90,6 +97,7 @@ async function loadTemplateRows(tenantId: string): Promise<BranchQuotaTemplateRo
     select: {
       quotaDate: true,
       quotaAmount: true,
+      targetDii: true,
       branch: { select: { name: true } },
       brand: { select: { name: true } },
     },
@@ -101,6 +109,7 @@ async function loadTemplateRows(tenantId: string): Promise<BranchQuotaTemplateRo
     brandName: row.brand.name,
     month: monthLabelFromDate(row.quotaDate),
     quotaAmount: formatQuotaAmount(Number(row.quotaAmount)),
+    targetDii: formatTargetDii(row.targetDii == null ? null : Number(row.targetDii)) ?? "",
   }));
 }
 
@@ -136,9 +145,11 @@ export async function buildPlanFromSheet(
         brandId: true,
         quotaDate: true,
         quotaAmount: true,
+        targetDii: true,
       },
     }),
   ]);
+  const hasTargetDiiColumn = sheet.columns.has("targetdii");
 
   const branchByName = indexBranchesByName(branches);
   const brandByName = new Map(brands.map((b) => [lookupKey(b.name), b]));
@@ -158,6 +169,7 @@ export async function buildPlanFromSheet(
     const brandName = row.values.brandname?.trim() ?? "";
     const monthRaw = row.values.month?.trim() ?? "";
     const amountRaw = row.values.quotaamount?.trim() ?? "";
+    const targetDiiRaw = row.values.targetdii?.trim() ?? "";
     const identity = [branchName, brandName, monthRaw].filter(Boolean).join(" / ") || "—";
 
     if (isBlankOrDash(branchName)) {
@@ -229,6 +241,17 @@ export async function buildPlanFromSheet(
       continue;
     }
 
+    const targetDiiParsed = hasTargetDiiColumn ? parseImportTargetDii(targetDiiRaw) : null;
+    if (targetDiiParsed && "error" in targetDiiParsed) {
+      errors.push({
+        sheet: BRANCH_QUOTA_SHEET_NAME,
+        rowNumber: row.rowNumber,
+        identity,
+        message: targetDiiParsed.error,
+      });
+      continue;
+    }
+
     const key = quotaImportUniqueKey(branch.id, brand.id, monthParsed.monthLabel);
     const existing = existingByKey.get(key);
     const changes: BranchQuotaImportFieldChange[] = [];
@@ -237,10 +260,12 @@ export async function buildPlanFromSheet(
       brandId: brand.id,
       quotaDate: monthParsed.quotaDate,
       quotaAmount: amountParsed.amount,
+      ...(targetDiiParsed ? { targetDii: targetDiiParsed.targetDii } : {}),
     };
 
     if (!existing) {
       pushChange(changes, "quotaAmount", null, formatQuotaAmount(amountParsed.amount));
+      pushChange(changes, "targetDii", null, formatTargetDii(fields.targetDii));
       plannedByKey.set(key, {
         rowNumber: row.rowNumber,
         branchSapCode: branch.sapCode,
@@ -255,10 +280,21 @@ export async function buildPlanFromSheet(
       continue;
     }
 
-    const currentAmount = Number(existing.quotaAmount);
-    const fromAmount = formatQuotaAmount(currentAmount);
-    const toAmount = formatQuotaAmount(amountParsed.amount);
-    if (fromAmount === toAmount) {
+    pushChange(
+      changes,
+      "quotaAmount",
+      formatQuotaAmount(Number(existing.quotaAmount)),
+      formatQuotaAmount(amountParsed.amount),
+    );
+    if (fields.targetDii !== undefined) {
+      pushChange(
+        changes,
+        "targetDii",
+        formatTargetDii(existing.targetDii == null ? null : Number(existing.targetDii)),
+        formatTargetDii(fields.targetDii),
+      );
+    }
+    if (changes.length === 0) {
       plannedByKey.set(key, {
         rowNumber: row.rowNumber,
         branchSapCode: branch.sapCode,
@@ -271,7 +307,6 @@ export async function buildPlanFromSheet(
       continue;
     }
 
-    pushChange(changes, "quotaAmount", fromAmount, toAmount);
     plannedByKey.set(key, {
       rowNumber: row.rowNumber,
       branchSapCode: branch.sapCode,
@@ -329,6 +364,7 @@ async function applyWriteSlice(
           brandId: row.fields.brandId,
           quotaDate: row.fields.quotaDate,
           quotaAmount: row.fields.quotaAmount,
+          targetDii: row.fields.targetDii ?? null,
         },
       });
       created += 1;
@@ -344,6 +380,7 @@ async function applyWriteSlice(
           brandName: row.brandName,
           month: row.month,
           quotaAmount: row.fields.quotaAmount,
+          targetDii: row.fields.targetDii ?? null,
         },
       });
     });
@@ -355,6 +392,7 @@ async function applyWriteSlice(
         where: { id: row.quotaId!, tenantId },
         data: {
           quotaAmount: row.fields.quotaAmount,
+          ...(row.fields.targetDii !== undefined ? { targetDii: row.fields.targetDii } : {}),
         },
       });
       updated += 1;
@@ -370,6 +408,7 @@ async function applyWriteSlice(
           brandName: row.brandName,
           month: row.month,
           quotaAmount: row.fields.quotaAmount,
+          ...(row.fields.targetDii !== undefined ? { targetDii: row.fields.targetDii } : {}),
           changes: row.changes.map((change) => change.field),
         },
       });

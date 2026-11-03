@@ -19,6 +19,7 @@ import {
 import { logisticsRepository } from "@/features/logistics/repositories/logistics.repository";
 import { deliveryPostingService } from "@/features/logistics/services/delivery-posting.service";
 import { runSapCopyToFollow } from "@/features/logistics/services/sap-copy-to-follow.service";
+import { closeOrderClosedInSap } from "@/features/logistics/services/sap-closed-order.service";
 import {
   deliveryReturnCancelNoteSchema,
   deliveryReturnDecisionSchema,
@@ -367,9 +368,23 @@ export async function checkSapCopyToNowAction() {
   try {
     const result = await runSapCopyToFollow(session.user.tenantId, { budgetMs: 45_000 });
     revalidateLogisticsPaths();
+    if (result.importedOrders > 0) revalidatePath("/orders", "layout");
     return { success: true as const, ...result };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Could not check SAP" };
+  }
+}
+
+/** Cancels an order whose SAP-made SO was closed in SAP without a DR, and closes its empty delivery. */
+export async function closeOrderClosedInSapAction(deliveryId: string) {
+  const session = await requireAnyPermission([...DISPATCH_PERMISSIONS]);
+  try {
+    const result = await closeOrderClosedInSap(postingActor(session), deliveryId);
+    revalidateLogisticsPaths();
+    revalidatePath("/orders", "layout");
+    return { success: true as const, ...result };
+  } catch (e) {
+    return actionError(e, "Could not close the order");
   }
 }
 
@@ -941,7 +956,14 @@ export async function requestDeliveryReturnAction(deliveryId: string, remarks: u
   try {
     const row = await deliveryReturnService.request(postingActor(session), { deliveryId, reason: parsed.data, units: parsedUnits.data });
     revalidateDelivery(deliveryId);
-    return { success: true as const, id: row.id, requestNo: row.requestNo };
+    return {
+      success: true as const,
+      id: row.id,
+      requestNo: row.requestNo,
+      status: row.status,
+      sapDocNo: row.sapDocNo,
+      sapError: row.sapError,
+    };
   } catch (error) {
     return actionError(error, "Failed to request the return");
   }
@@ -978,7 +1000,7 @@ export async function decideDeliveryReturnAction(returnId: string, input: unknow
 }
 
 export async function cancelDeliveryReturnAction(returnId: string, note: unknown) {
-  const session = await requireAnyPermission([LOGISTICS_DELIVERY_RETURN_APPROVE]);
+  const session = await requireAnyPermission([LOGISTICS_DELIVERY_RETURN_APPROVE, LOGISTICS_DELIVERY_RETURN_REQUEST]);
   const parsed = deliveryReturnCancelNoteSchema.safeParse(note);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Enter the reason for cancelling the return" };
   try {

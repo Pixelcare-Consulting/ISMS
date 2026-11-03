@@ -7,6 +7,7 @@ import {
   listManualSpecialTeamLeadersAction,
   listOrderHistoryAction,
   listOrdersAction,
+  listOrderBrandOptionsAction,
   listOrderTeamLeadersAction,
 } from "@/features/orders/actions/order.actions";
 import {
@@ -50,6 +51,8 @@ interface OrdersTypePageProps {
     dir?: string;
     /** Team Leader user id filter on the Orders tab. */
     tl?: string;
+    /** Brand id filter on the Orders tab: orders with at least one line of that brand. */
+    brand?: string;
     /** all | manual | special. Default all. Combined list only. */
     type?: string;
   }>;
@@ -120,6 +123,7 @@ function combinedListHref(
     sort?: string;
     dir?: string;
     tl?: string;
+    brand?: string;
   },
 ): string {
   const params = new URLSearchParams();
@@ -129,6 +133,7 @@ function combinedListHref(
   if (current.sort) params.set("sort", current.sort);
   if (current.sort && current.dir) params.set("dir", current.dir);
   if (current.tl && current.tab !== "history") params.set("tl", current.tl);
+  if (current.brand && current.tab !== "history") params.set("brand", current.brand);
   const query = params.toString();
   return query ? `/orders/manual?${query}` : "/orders/manual";
 }
@@ -221,10 +226,12 @@ export async function OrdersTypePage({
     sort: params.sort,
     dir: params.dir,
     tl: params.tl,
+    brand: params.brand,
   };
 
   const teamLeaderId = params.tl?.trim() || undefined;
-  const [kpis, ordersResult, historyResult, teamLeaders] = await Promise.all([
+  const brandId = params.brand?.trim() || undefined;
+  const [kpis, ordersResult, historyResult, teamLeaders, brands] = await Promise.all([
     combinedManualSpecial
       ? getOrdersKpisAction(undefined, listFilter)
       : getOrdersKpisAction(orderType),
@@ -238,6 +245,7 @@ export async function OrdersTypePage({
                 sort: params.sort,
                 sortDir: params.dir,
                 teamLeaderId,
+                brandId,
               }
             : {
                 page,
@@ -246,6 +254,7 @@ export async function OrdersTypePage({
                 sort: params.sort,
                 sortDir: params.dir,
                 teamLeaderId,
+                brandId,
               },
         )
       : Promise.resolve(null),
@@ -272,6 +281,9 @@ export async function OrdersTypePage({
       ? combinedManualSpecial
         ? listManualSpecialTeamLeadersAction()
         : listOrderTeamLeadersAction(orderType)
+      : Promise.resolve([]),
+    activeTab === "orders"
+      ? listOrderBrandOptionsAction(combinedManualSpecial ? undefined : orderType)
       : Promise.resolve([]),
   ]);
 
@@ -377,6 +389,7 @@ export async function OrdersTypePage({
                   initialSort={params.sort ?? ""}
                   initialSortDir={params.dir ?? "desc"}
                   teamLeaders={teamLeaders}
+                  brands={brands}
                 />
               </div>
             ) : null

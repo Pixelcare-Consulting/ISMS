@@ -80,7 +80,8 @@ const WORKSHEET_COLUMN_HELP = {
     "Comes from the released plan. This is the remaining Drop 1 for this branch and model after quantities already on a draft or order. When the model has a shelf maximum, it is shown under the suggestion.",
   cbm: "Cubic meters for this line. When a quantity is entered, this is that quantity times the model's CBM. Otherwise it is the model's own CBM. 0.0000 means the model has no CBM.",
   requested: "Quantity the branch asked for. Zero means the row is not part of the order.",
-  approved: "Quantity Supply Planning is allowing. It cannot be higher than the request.",
+  approved:
+    "Quantity Supply Planning is allowing. It can be 0, lower, or higher than the request, and any model on the sheet can be approved.",
   note: "Remark from the person who created the order.",
   spNote:
     "Remark from Supply Planning for this line. Only filled while Supply Planning is reviewing.",
@@ -93,7 +94,8 @@ const WORKSHEET_COLUMN_HELP = {
   rate: "This model's sales this month divided by that brand's sales this month.",
   milQty: "Shelf maximum for this model.",
   order: "Quantity the branch asked for.",
-  spCbm: "Cubic meters for the quantity asked for. This is the model's CBM times that quantity.",
+  spCbm:
+    "Cubic meters for the approved quantity (the request until Supply Planning changes it). This is the model's CBM times that quantity.",
 } as const;
 
 export type OrderWorksheetColumnSet = "default" | "supply-planning";
@@ -1125,7 +1127,7 @@ function supplyPlanningColumns(
     {
       id: "spRemarks",
       header: () => <WorksheetHeader label="SP remarks" help={WORKSHEET_COLUMN_HELP.spNote} />,
-      meta: fitColumn("7rem"),
+      meta: fitColumn("12rem", undefined, "top"),
       cell: SpRemarksColumnCell,
     },
   ];
@@ -1332,7 +1334,7 @@ function ReadOnlyRemarksColumnCell({ row }: WorksheetBodyCellProps) {
 }
 
 function SupplyPlanningCbmColumnCell({ row }: WorksheetBodyCellProps) {
-  const quantity = row.original.requestedQty;
+  const quantity = row.original.approvedQty ?? row.original.requestedQty;
   const unit = Number.isFinite(row.original.cbm) ? row.original.cbm : 0;
   const total = Number.isFinite(quantity) && quantity > 0 ? quantity * unit : 0;
   return <>{formatWorksheetCbm(total)}</>;
@@ -1750,7 +1752,6 @@ function ApprovedCell({
   editable: boolean;
   onApprovedQtyChange?: OrderWorksheetProps["onApprovedQtyChange"];
 }) {
-  const approvalLocked = row.requestedQty < 1;
   if (!editable) {
     return <span>{row.approvedQty == null ? "—" : formatQty(row.approvedQty)}</span>;
   }
@@ -1758,15 +1759,13 @@ function ApprovedCell({
     <Input
       type="number"
       size={4}
-      min={1}
-      max={row.requestedQty}
-      disabled={approvalLocked}
-      className="ml-auto h-8 w-full min-w-0 text-right disabled:bg-muted"
-      value={approvalLocked ? "" : qtyInputValue(row.approvedQty ?? row.requestedQty)}
-      placeholder={approvalLocked ? undefined : "0"}
+      min={0}
+      step={1}
+      className="ml-auto h-8 w-full min-w-0 text-right"
+      value={row.approvedQty == null ? "" : qtyInputValue(row.approvedQty)}
+      placeholder="0"
       inputMode="numeric"
       aria-label={`Approved quantity for ${row.skuCode}`}
-      title={approvalLocked ? "Approval applies only to lines with a requested quantity." : undefined}
       onChange={(event) => onApprovedQtyChange?.(row.modelId, parseQtyInput(event.target.value))}
     />
   );
@@ -1827,22 +1826,16 @@ function SpRemarksCell({
   buttonLabel?: string;
   onSpRemarksChange?: OrderWorksheetProps["onSpRemarksChange"];
 }) {
-  const approvalLocked = row.requestedQty < 1;
   if (!editable) return <RemarkText value={row.spRemarks} />;
+  // Typed in place and read in full: long remarks grow up to a few lines, then scroll.
   return (
-    <LineNotePopover
-      skuCode={row.skuCode}
+    <Textarea
       value={row.spRemarks}
-      buttonLabel={buttonLabel}
-      label={`SP remarks for ${row.skuCode}`}
-      help={WORKSHEET_COLUMN_HELP.spNote}
-      placeholder={approvalLocked ? "No request" : "Optional"}
-      fieldDisabled={approvalLocked}
-      buttonClassName="whitespace-nowrap"
-      lockedTitle={
-        approvalLocked ? "SP remarks apply only to lines with a requested quantity." : undefined
-      }
-      onChange={(value) => onSpRemarksChange?.(row.modelId, value)}
+      rows={2}
+      placeholder="Optional"
+      aria-label={`${buttonLabel} for ${row.skuCode}`}
+      className="field-sizing-content max-h-28 min-h-9 resize-none overflow-y-auto px-2 py-1.5 text-sm"
+      onChange={(event) => onSpRemarksChange?.(row.modelId, event.target.value)}
     />
   );
 }
@@ -1915,9 +1908,6 @@ export function SupplyPlanningFigures({
   const dii = formatDii(figures.computedDii, figures.diiUnavailableReason, figures.salesUnavailable);
   const counted = inventoryAsOf ? formatAsOf(inventoryAsOf) : "N/A";
   const countedHint = counted === "N/A" ? null : `Counted ${counted}`;
-  const target =
-    figures.targetDiiDays == null ? "Target DII —" : `Target DII ${formatTargetDays(figures.targetDiiDays)}`;
-  const inventoryHint = [countedHint, target].filter((hint): hint is string => Boolean(hint)).join(" · ");
 
   const cards: { label: string; value: string; hint: string | null }[] = [
     {
@@ -1925,11 +1915,12 @@ export function SupplyPlanningFigures({
       value: figures.quotaQty == null ? "—" : formatQty(figures.quotaQty),
       hint: "This month",
     },
-    { label: "DII", value: dii.value, hint: dii.hint },
+    { label: "Computed DII", value: dii.value, hint: dii.hint },
+    { label: "Target DII", value: formatTargetDii(figures.targetDiiDays), hint: "Branch quota" },
     {
       label: "Inventory amount",
       value: formatPeso(figures.inventoryAmount),
-      hint: inventoryHint,
+      hint: countedHint,
     },
     {
       label: "Approved order amount",
@@ -1965,7 +1956,9 @@ export function SupplyPlanningFigures({
   );
 }
 
-function formatTargetDays(days: number): string {
+/** Branch Quotas Target DII in days, or "—" when the brand has none. */
+function formatTargetDii(days: number | null | undefined): string {
+  if (days == null || !Number.isFinite(days)) return "—";
   const rounded = Number.isInteger(days) ? String(days) : days.toFixed(1);
   return `${rounded} days`;
 }
@@ -2020,6 +2013,7 @@ function WorksheetSummary({
           value: diiBase.value,
           hint: diiBase.hint ?? plainSalesPeriod(source.salesPeriodLabel),
         }}
+        targetDii={summaryMode === "snapshot" ? undefined : formatTargetDii(summary?.targetDiiDays)}
         stockValue={formatPeso(source.inventoryAmount)}
         stockHint={countedHint}
         totals={totals}
@@ -2058,7 +2052,8 @@ export function OrderWorksheetAsideSummary({
   const diiHint = dii.hint ?? plainSalesPeriod(summary.salesPeriodLabel);
   const sentence = summarySentence("create", "current", null);
   const rows: { label: string; value: string; hint: string | null; strong?: boolean }[] = [
-    { label: "DII", value: dii.value, hint: diiHint },
+    { label: "Computed DII", value: dii.value, hint: diiHint },
+    { label: "Target DII", value: formatTargetDii(summary.targetDiiDays), hint: "Branch quota" },
     { label: "Stock value", value: formatPeso(summary.inventoryAmount), hint: countedHint },
     {
       label: "Requested value",
@@ -2131,6 +2126,7 @@ function summarySentence(
 
 function SummaryStrip({
   dii,
+  targetDii,
   stockValue,
   stockHint,
   totals,
@@ -2139,6 +2135,8 @@ function SummaryStrip({
   compact = false,
 }: {
   dii?: { value: string; hint: string | null };
+  /** Formatted Target DII; omitted where the figure is not known (saved review records). */
+  targetDii?: string;
   stockValue?: string;
   stockHint?: string | null;
   totals: ReturnType<typeof worksheetOrderTotals>;
@@ -2160,7 +2158,10 @@ function SummaryStrip({
       }
     >
       {dii ? (
-        <SummaryStat label="DII" value={dii.value} hint={dii.hint} full={fullFigures} compact={compact} />
+        <SummaryStat label="Computed DII" value={dii.value} hint={dii.hint} full={fullFigures} compact={compact} />
+      ) : null}
+      {targetDii ? (
+        <SummaryStat label="Target DII" value={targetDii} full={fullFigures} compact={compact} />
       ) : null}
       {stockValue ? (
         <SummaryStat
@@ -2243,7 +2244,9 @@ function SummaryStat({
 function RemarkText({ value }: { value: string }) {
   const trimmed = value.trim();
   if (!trimmed) return <span className="text-muted-foreground">—</span>;
-  return <p className="break-words whitespace-pre-wrap font-normal">{trimmed}</p>;
+  return (
+    <p className="max-h-28 overflow-y-auto break-words whitespace-pre-wrap font-normal">{trimmed}</p>
+  );
 }
 
 function shelfSuggestionCaption(row: ProjectedWorksheetLine): string {

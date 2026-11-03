@@ -65,6 +65,14 @@ const REQUEST_AT = new Intl.DateTimeFormat("en-PH", {
   timeZone: "Asia/Manila",
 });
 
+/**
+ * One approved line sent with the final approval: an order line by `detailId`, or a model
+ * Supply Planning approved without a request by `modelId`.
+ */
+export type OrderWorkflowLineAdjustment =
+  | { detailId: string; approvedQty: number; spRemarks?: string | null }
+  | { modelId: string; approvedQty: number; spRemarks?: string | null };
+
 export interface OrderWorkflowLine {
   detailId: string;
   modelId: string;
@@ -91,11 +99,7 @@ interface OrderWorkflowDialogProps {
   onOpenChange: (open: boolean) => void;
   onApprove: (input?: {
     comment?: string;
-    lineAdjustments?: {
-      detailId: string;
-      approvedQty: number;
-      spRemarks?: string | null;
-    }[];
+    lineAdjustments?: OrderWorkflowLineAdjustment[];
     deliveryDueDate?: string;
     expectedUpdatedAt?: string;
     reviewSnapshot?: OrderReviewSnapshot;
@@ -226,18 +230,7 @@ export function OrderWorkflowDialog({
     const projected = worksheet.payload
       ? projectWorksheetLines(worksheet.payload.lines, drafts, orderType, "readonly")
       : [];
-    const lineAdjustments = isSpFinalStep
-      ? lines
-          .filter((line) => line.quantity >= 1)
-          .map((line) => {
-            const row = projected.find((item) => item.modelId === line.modelId);
-            return {
-              detailId: line.detailId,
-              approvedQty: row?.approvedQty ?? line.quantity,
-              spRemarks: row?.spRemarks.trim() ? row.spRemarks.trim() : null,
-            };
-          })
-      : undefined;
+    const lineAdjustments = isSpFinalStep ? approvalAdjustments(lines, projected) : undefined;
     const reviewSnapshot =
       isSpFinalStep && worksheet.payload
         ? buildOrderReviewSnapshot(
@@ -368,8 +361,8 @@ export function OrderWorkflowDialog({
                   className="min-h-24"
                 />
                 <p className="text-xs leading-relaxed text-muted-foreground">
-                  This comment stays on the order. Line remarks for Supply Planning are entered on
-                  requested rows.
+                  This comment stays on the order. Supply Planning enters line remarks in the SP
+                  remarks column.
                 </p>
                 {actionError ? <p className="text-xs text-destructive">{actionError}</p> : null}
               </div>
@@ -391,7 +384,7 @@ export function OrderWorkflowDialog({
                 />
               ) : null}
               <OrderWorksheet
-                lines={orderSheetLines}
+                lines={isSpFinalStep ? (worksheet.payload?.lines ?? []) : orderSheetLines}
                 brands={worksheet.payload?.brands ?? []}
                 drafts={drafts}
                 mode="review"
@@ -480,6 +473,26 @@ export function OrderWorkflowDialog({
   );
 }
 
+/**
+ * What Supply Planning approves: every order line (0 drops it) plus any model approved
+ * without a request. Rows with no request and no approval are left out.
+ */
+function approvalAdjustments(
+  orderLines: readonly OrderWorkflowLine[],
+  projected: readonly { modelId: string; approvedQty: number | null; spRemarks: string }[],
+): OrderWorkflowLineAdjustment[] {
+  const detailByModel = new Map(orderLines.map((line) => [line.modelId, line.detailId]));
+  const adjustments: OrderWorkflowLineAdjustment[] = [];
+  for (const row of projected) {
+    const detailId = detailByModel.get(row.modelId);
+    const approvedQty = row.approvedQty ?? 0;
+    const spRemarks = row.spRemarks.trim() ? row.spRemarks.trim() : null;
+    if (detailId) adjustments.push({ detailId, approvedQty, spRemarks });
+    else if (approvedQty > 0) adjustments.push({ modelId: row.modelId, approvedQty, spRemarks });
+  }
+  return adjustments;
+}
+
 function SupplyPlanningRail({
   orderNumber,
   createdAt,
@@ -524,7 +537,7 @@ function SupplyPlanningRail({
         />
       </div>
       <RailFact label="Delivery frequency">{frequencyCode?.trim() ? frequencyCode : "—"}</RailFact>
-      <RailFact label="DII target">{formatDiiTarget(targetDiiDays)}</RailFact>
+      <RailFact label="Target DII">{formatDiiTarget(targetDiiDays)}</RailFact>
     </div>
   );
 }

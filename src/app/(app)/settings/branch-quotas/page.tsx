@@ -11,13 +11,14 @@ export default async function BranchQuotasPage() {
     <div className="space-y-6">
       <PageHeader
         title="Branch quotas"
-        description="Set monthly order limits by branch and brand. Enforced when creating branch orders."
+        description="Set monthly order limits and Target DII (days of inventory) by branch and brand. Quotas are enforced when creating branch orders; Target DII shows on orders beside the Computed DII."
         sticky={false}
       />
       <BranchQuotasTable
         quotas={quotas.map((q) => ({
           ...q,
           quotaAmount: q.quotaAmount.toString(),
+          targetDii: q.targetDii?.toString() ?? null,
         }))}
       />
     </div>
