@@ -70,11 +70,27 @@ export interface OrderKpis {
   statuses: OrderStatusKpi[];
 }
 
-export interface OrderApprovalLineAdjustment {
-  detailId: string;
+/**
+ * One line of an approval: an order line by `detailId`, or (final Supply Planning step only)
+ * a model approved without a request by `modelId`, saved as a new line with requested 0.
+ */
+export type OrderApprovalLineAdjustment =
+  | { detailId: string; approvedQty: number; spRemarks?: string | null }
+  | { modelId: string; approvedQty: number; spRemarks?: string | null };
+
+interface ApprovalLineChange {
   approvedQty: number;
   spRemarks?: string | null;
 }
+
+interface IndexedApprovalLines {
+  byDetailId: Map<string, ApprovalLineChange>;
+  /** Models approved without a request, with a quantity of at least 1. */
+  added: (ApprovalLineChange & { modelId: string })[];
+}
+
+/** Guards a typo (an extra digit) without limiting real orders. */
+const MAX_APPROVED_QTY = 100_000;
 
 function canPersistSpRemarks(status: BranchOrderStatus, roleSlugs: string[]): boolean {
   return (
@@ -83,8 +99,8 @@ function canPersistSpRemarks(status: BranchOrderStatus, roleSlugs: string[]): bo
   );
 }
 
-function isWholeApprovedQuantity(qty: number, requested: number): boolean {
-  return Number.isInteger(qty) && qty >= 1 && qty <= requested;
+function isWholeApprovedQuantity(qty: unknown): qty is number {
+  return typeof qty === "number" && Number.isInteger(qty) && qty >= 0 && qty <= MAX_APPROVED_QTY;
 }
 
 function parseExpectedUpdatedAt(value: Date | string | null | undefined): Date | undefined {
@@ -97,36 +113,68 @@ function parseExpectedUpdatedAt(value: Date | string | null | undefined): Date |
 }
 
 /**
- * Every submitted line must belong to the order. Approved quantity is checked
- * only on the final step. SP remarks are rejected outside pending SP.
+ * Every order line sent must belong to the order. On the final step the approved quantity
+ * is any whole number from 0 (0 drops the line), and models not on the order may be added.
+ * SP remarks are rejected outside pending SP. The final approval must approve something.
  */
 function indexApprovalLines(
-  details: { id: string; quantity: number }[],
-  adjustments: OrderApprovalLineAdjustment[],
+  details: { id: string; quantity: number; modelId: string }[],
+  adjustments: readonly OrderApprovalLineAdjustment[],
   opts: { validateApprovedQty: boolean; mayWriteSpRemarks: boolean },
-): Map<string, OrderApprovalLineAdjustment> {
+): IndexedApprovalLines {
   const requestedById = new Map(details.map((detail) => [detail.id, detail.quantity]));
-  const byId = new Map<string, OrderApprovalLineAdjustment>();
+  const modelsOnOrder = new Set(details.map((detail) => detail.modelId));
+  const byDetailId = new Map<string, ApprovalLineChange>();
+  const added: IndexedApprovalLines["added"] = [];
+  const addedModels = new Set<string>();
 
   for (const line of adjustments) {
-    const requested = requestedById.get(line.detailId);
-    if (requested == null) {
-      throw new Error("One or more lines do not belong to this order.");
-    }
     if (line.spRemarks !== undefined && !opts.mayWriteSpRemarks) {
       throw new Error(
         "Only Supply Planning can save line remarks while the order is pending Supply Planning.",
       );
     }
-    if (opts.validateApprovedQty && !isWholeApprovedQuantity(line.approvedQty, requested)) {
+    if (opts.validateApprovedQty && !isWholeApprovedQuantity(line.approvedQty)) {
       throw new Error(
-        `Approved quantity must be a whole number from 1 through the requested quantity (${requested}).`,
+        `Approved quantity must be a whole number from 0 through ${MAX_APPROVED_QTY.toLocaleString()}.`,
       );
     }
-    byId.set(line.detailId, line);
+    const change: ApprovalLineChange = {
+      approvedQty: line.approvedQty,
+      ...(line.spRemarks !== undefined ? { spRemarks: line.spRemarks } : {}),
+    };
+    if ("detailId" in line && typeof line.detailId === "string") {
+      if (!requestedById.has(line.detailId)) {
+        throw new Error("One or more lines do not belong to this order.");
+      }
+      byDetailId.set(line.detailId, change);
+      continue;
+    }
+    if (!("modelId" in line) || typeof line.modelId !== "string" || !line.modelId) {
+      throw new Error("Each approved line needs an order line or a model.");
+    }
+    if (!opts.validateApprovedQty) {
+      throw new Error("Only the final Supply Planning approval can add models to an order.");
+    }
+    if (modelsOnOrder.has(line.modelId) || addedModels.has(line.modelId)) {
+      throw new Error("A model was approved twice. Refresh the order and try again.");
+    }
+    addedModels.add(line.modelId);
+    if (line.approvedQty > 0) added.push({ modelId: line.modelId, ...change });
   }
 
-  return byId;
+  if (opts.validateApprovedQty) {
+    const onOrder = details.reduce(
+      (sum, detail) => sum + (byDetailId.get(detail.id)?.approvedQty ?? detail.quantity),
+      0,
+    );
+    const extra = added.reduce((sum, line) => sum + line.approvedQty, 0);
+    if (onOrder + extra < 1) {
+      throw new Error("Approve at least one unit, or cancel the request instead.");
+    }
+  }
+
+  return { byDetailId, added };
 }
 
 /**
@@ -314,6 +362,8 @@ export const orderService = {
       typeScopes?: OrderTypeScope[];
       /** Only orders from branches in this Team Leader's AOR. */
       teamLeaderId?: string;
+      /** Only orders with at least one line of this brand. */
+      brandId?: string;
     },
     sort?: { field?: OrderListSort; dir?: OrderListSortDir },
   ) {
@@ -942,7 +992,7 @@ export const orderService = {
 
     const nextStatus = nextStatusAfterApprove(order.status, order.orderType);
     const isFinal = nextStatus === "approved";
-    const adjustmentById = indexApprovalLines(order.details, input?.lineAdjustments ?? [], {
+    const approvalLines = indexApprovalLines(order.details, input?.lineAdjustments ?? [], {
       validateApprovedQty: isFinal,
       mayWriteSpRemarks: canPersistSpRemarks(order.status, roleSlugs),
     });
@@ -977,7 +1027,7 @@ export const orderService = {
       if (!routing.ok) throw new Error(routing.error);
 
       const lines = order.details.map((line) => {
-        const adjustment = adjustmentById.get(line.id);
+        const adjustment = approvalLines.byDetailId.get(line.id);
         return {
           detailId: line.id,
           approvedQty: adjustment?.approvedQty ?? line.quantity,
@@ -987,9 +1037,23 @@ export const orderService = {
         };
       });
 
-      const brandIds = order.details
-        .map((d) => d.model.brandId)
-        .filter((id): id is string => Boolean(id));
+      const addedModels =
+        approvalLines.added.length > 0
+          ? await orderRepository.findOrderableModels(
+              tenantId,
+              approvalLines.added.map((line) => line.modelId),
+            )
+          : [];
+      if (addedModels.length !== approvalLines.added.length) {
+        throw new Error("One or more approved models no longer exist. Refresh the order and try again.");
+      }
+      // Lines Supply Planning approved with no request, or dropped to 0, do not set the brand.
+      const brandIds = [
+        ...order.details
+          .filter((d) => (approvalLines.byDetailId.get(d.id)?.approvedQty ?? d.quantity) > 0)
+          .map((d) => d.model.brandId),
+        ...addedModels.map((model) => model.brandId),
+      ].filter((id): id is string => Boolean(id));
       const brandId =
         brandIds.length > 0
           ? [...new Set(brandIds)].length === 1
@@ -1010,6 +1074,7 @@ export const orderService = {
         sapCardCode: routing.cardCode,
         reviewSnapshot: input?.reviewSnapshot,
         lines,
+        addedLines: approvalLines.added,
       });
 
       const refreshed = await orderRepository.findById(tenantId, orderId);

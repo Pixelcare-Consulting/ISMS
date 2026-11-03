@@ -314,7 +314,7 @@ function AnalyticsMetricRow({
   return (
     <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
       <AnalyticsStat
-        label="DII"
+        label="Computed DII"
         value={dii}
         hint={
           metrics.computedDii == null

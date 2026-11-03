@@ -15,6 +15,7 @@ import type {
 import { branchService } from "@/features/branches/services/branch.service";
 import { branchRepository } from "@/features/branches/repositories/branch.repository";
 import { dealerRepository } from "@/features/dealers/repositories/dealer.repository";
+import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
 import { orderingPolicyService } from "@/features/ordering/services/ordering-policy.service";
 import { SapOrderPostRejectedError } from "@/features/orders/lib/sap-order-rejection";
 import { checkOrderingAllowed } from "@/features/orders/utils/order-window";
@@ -142,6 +143,8 @@ export async function listOrdersAction(input?: {
   sortDir?: string;
   /** Team Leader user id: only orders from that TL's AOR branches. */
   teamLeaderId?: string;
+  /** Brand id: only orders with at least one line of that brand. */
+  brandId?: string;
 }) {
   const session = input?.listFilter
     ? await requireManualSpecialListAccess()
@@ -175,6 +178,7 @@ export async function listOrdersAction(input?: {
       statuses: queueStatuses,
       typeScopes,
       teamLeaderId: input?.teamLeaderId?.trim() || undefined,
+      brandId: typeof input?.brandId === "string" ? input.brandId.trim() || undefined : undefined,
     },
     { field: parseOrderSort(input?.sort), dir: parseOrderSortDir(input?.sortDir) },
   );
@@ -182,6 +186,15 @@ export async function listOrdersAction(input?: {
     ...result,
     items: result.items.map((order) => toClientOrderListItem(order)),
   };
+}
+
+/** Brands for the order list filter. */
+export async function listOrderBrandOptionsAction(orderType?: BranchOrderType) {
+  const session = orderType
+    ? await requireOrderTypePageAccess(orderType)
+    : await requireAnyPermission(anyOrderTypePermissions("view"));
+  const brands = await masterDataRepository.listBrands(session.user.tenantId);
+  return brands.map((brand) => ({ id: brand.id, name: brand.name }));
 }
 
 /** Team Leaders for the order list filter, limited to the viewer's branch scope. */

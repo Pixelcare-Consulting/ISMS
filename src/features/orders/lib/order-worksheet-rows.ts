@@ -127,15 +127,18 @@ export function projectWorksheetLines(
   });
 }
 
+/**
+ * Approved quantity shown for a row. Supply Planning may approve 0, less or more than the
+ * request, and may approve a model that was not requested. Untouched rows approve what was
+ * requested; a row with no request and no approval has none.
+ */
 export function approvedQtyForRow(
   requestedQty: number,
   approvedQty: number | null,
 ): number | null {
-  if (requestedQty < 1) return null;
-  const raw = approvedQty == null ? requestedQty : approvedQty;
-  if (!Number.isInteger(raw) || raw < 1) return requestedQty;
-  if (raw > requestedQty) return requestedQty;
-  return raw;
+  const fallback = requestedQty >= 1 ? requestedQty : null;
+  if (approvedQty == null || !Number.isInteger(approvedQty) || approvedQty < 0) return fallback;
+  return approvedQty;
 }
 
 export function draftsForOrderLines(
@@ -151,7 +154,7 @@ export function draftsForOrderLines(
       requestedQty,
       remarks: orderLine?.remarks ?? "",
       spRemarks: orderLine?.spRemarks ?? "",
-      approvedQty: requestedQty >= 1 ? (orderLine?.approvedQty ?? requestedQty) : null,
+      approvedQty: orderLine?.approvedQty ?? (requestedQty >= 1 ? requestedQty : null),
       additionalItem: false,
     };
   }

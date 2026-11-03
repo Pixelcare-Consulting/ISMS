@@ -72,6 +72,7 @@ export const branchQuotaRepository = {
       brandId: string;
       quotaDate: Date;
       quotaAmount: number;
+      targetDii: number | null;
     },
   ) {
     return prisma.branchQuota.create({
@@ -81,6 +82,7 @@ export const branchQuotaRepository = {
         brandId: data.brandId,
         quotaDate: monthStart(data.quotaDate),
         quotaAmount: data.quotaAmount,
+        targetDii: data.targetDii,
       },
       include: {
         branch: { select: { id: true, name: true, sapCode: true } },
@@ -97,6 +99,7 @@ export const branchQuotaRepository = {
       brandId?: string;
       quotaDate?: Date;
       quotaAmount?: number;
+      targetDii?: number | null;
     },
   ) {
     return prisma.branchQuota.update({
@@ -106,6 +109,7 @@ export const branchQuotaRepository = {
         brandId: data.brandId,
         quotaDate: data.quotaDate ? monthStart(data.quotaDate) : undefined,
         quotaAmount: data.quotaAmount,
+        targetDii: data.targetDii,
       },
       include: {
         branch: { select: { id: true, name: true, sapCode: true } },

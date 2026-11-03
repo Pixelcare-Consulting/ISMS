@@ -112,3 +112,34 @@ describe("paginateWorksheetLines", () => {
     expect(second.total).toBe(12);
   });
 });
+
+describe("Supply Planning approvals beyond the request", () => {
+  const line = (requestedQty: number, approvedQty: number | null) => ({
+    modelId: `m-${requestedQty}-${approvedQty}`,
+    skuCode: "SKU",
+    name: "Model",
+    brandId: "b1",
+    requestedQty,
+    approvedQty,
+    srp: 100,
+    cbm: 2,
+  });
+
+  it("totals approved CBM as approved qty times each line's CBM, including unrequested lines", () => {
+    const totals = worksheetOrderTotals([line(3, 3), line(1, 0), line(0, 2), line(0, null)], {
+      includeApproved: true,
+    });
+    expect(totals.requestedCbm).toBe(8);
+    expect(totals.approvedCbm).toBe(10);
+    expect(totals.approvedAmount).toBe(500);
+  });
+
+  it("keeps a row approved without a request under 'with a quantity'", () => {
+    const visible = visibleWorksheetLines([line(0, 2), line(0, null)], {
+      orderedOnly: true,
+      modelSearch: "",
+      brandId: "",
+    });
+    expect(visible.map((row) => row.approvedQty)).toEqual([2]);
+  });
+});

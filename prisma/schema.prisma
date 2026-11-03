@@ -3231,6 +3231,9 @@ model BranchQuota {
   brandId     String   @map("brand_id")
   quotaDate   DateTime @map("quota_date") @db.Date
   quotaAmount Decimal  @map("quota_amount") @db.Decimal(14, 2)
+  /// Days of inventory the brand should carry at the branch that month. Shown on orders as
+  /// "Target DII" beside the Computed DII. Null when not set.
+  targetDii   Decimal? @map("target_dii") @db.Decimal(8, 1)
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 

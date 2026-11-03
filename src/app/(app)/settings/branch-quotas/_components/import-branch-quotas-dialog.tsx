@@ -221,8 +221,9 @@ export function ImportBranchQuotasDialog({
             <p>
               Download the <strong>Branch Quotas</strong> template — it lists your current
               quotas — edit or add rows, then upload that same file. Columns are branch
-              name, brand name, month (<code>YYYY-MM</code>), and quota amount. A file that
-              still uses the branch SAP code will not import.
+              name, brand name, month (<code>YYYY-MM</code>), quota amount, and Target DII in
+              days (optional: a blank cell clears it). A file that still uses the branch SAP
+              code will not import.
             </p>
             <p>
               Rows match by branch + brand + month. Existing quotas update; new combinations

@@ -168,6 +168,8 @@ export interface OrderWorksheetSummary {
   daysElapsed: number;
   computedDii: number | null;
   diiUnavailableReason: typeof NO_SALES_DII_REASON | null;
+  /** Branch Quotas Target DII (days) for the selected brand; see `quotaTargetDii`. */
+  targetDiiDays: number | null;
   inventoryAmount: number;
   inventoryAmountBasis: typeof WORKSHEET_INVENTORY_AMOUNT_BASIS;
   salesQty: number | null;
@@ -175,10 +177,12 @@ export interface OrderWorksheetSummary {
   salesUnavailable: boolean;
 }
 
-/** Current-month quantity stored on Branch Quotas for one brand. */
+/** Current-month quantity and Target DII stored on Branch Quotas for one brand. */
 export interface OrderWorksheetBrandQuota {
   brandId: string;
   quantity: number;
+  /** Days; null when the quota has no Target DII. */
+  targetDii: number | null;
 }
 
 export interface OrderWorksheetPayload {
