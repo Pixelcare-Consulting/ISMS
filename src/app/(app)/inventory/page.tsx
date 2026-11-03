@@ -99,12 +99,10 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
   const groupBy = isGroupedStockUnitsView(view) ? view : "by-branch";
   const groupResult = await listInventoryGroupsAction({
     groupBy,
-    page,
-    limit,
+    all: true,
     branchId: params.branch,
     sku: params.sku,
     offPlanogram,
-    q: searchQuery || undefined,
   });
 
   return (
@@ -119,7 +117,7 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
       </ModuleGuide>
       <InventorySeriesSummaryPanel summary={seriesSummary} />
       <InventoryGroupedTable
-        key={`${groupBy}:${page}:${limit}:${params.branch ?? ""}:${params.sku ?? ""}:${offPlanogram ? "1" : "0"}`}
+        key={`${groupBy}:${params.branch ?? ""}:${params.sku ?? ""}:${offPlanogram ? "1" : "0"}`}
         groupBy={groupBy}
         result={groupResult}
         initialOffPlanogram={offPlanogram}
