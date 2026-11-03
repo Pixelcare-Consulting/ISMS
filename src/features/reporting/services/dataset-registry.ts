@@ -19,6 +19,8 @@ import {
   TRANSFER_REPORT_ACCESS,
 } from "@/features/reports/constants/report-access";
 import { dailyStockReportService } from "@/features/reports/services/daily-stock-report.service";
+import { orderSummaryStatuses } from "@/features/reports/constants/order-summary";
+import { orderSummaryReportService } from "@/features/reports/services/order-summary-report.service";
 import { manilaDayWindow, manilaTodayIso } from "@/features/orders/utils/manila-calendar";
 import { buildInventoryReportRows } from "@/features/reports/services/inventory-report.service";
 import { processedOrdersReportService } from "@/features/reports/services/processed-orders-report.service";
@@ -157,6 +159,23 @@ const DATASETS: Record<DatasetKey, DatasetDefinition> = {
         processedTo: to,
         branchIds: await scopedBranchIds(ctx, params),
       }));
+    },
+  },
+  order_summary: {
+    canAccess: anyOf(REPORT_ACCESS),
+    load: async (ctx, params) => {
+      // Manila days, so "today" means the branch's today. A missing end runs to the start's day.
+      const from = manilaDayWindow(params.from ?? manilaTodayIso());
+      const to = manilaDayWindow(params.to ?? params.from ?? manilaTodayIso());
+      if (!from || !to) return [];
+      return asRows(
+        await orderSummaryReportService.listRows(ctx.tenantId, {
+          createdFrom: from.start,
+          createdTo: to.end,
+          statuses: orderSummaryStatuses(params.orderStatuses),
+          branchIds: await scopedBranchIds(ctx, params),
+        }),
+      );
     },
   },
   daily_stock: {

@@ -95,6 +95,35 @@ export const REPORT_DEFINITIONS = {
       },
     ],
   },
+  // Not a client-approved export: its own layout, with totals.
+  "order-summary": {
+    title: "Order Summary",
+    orientation: "LANDSCAPE",
+    fontSize: 7,
+    filters: ["dateRange"],
+    sections: [
+      {
+        datasetKey: "order_summary",
+        columns: [
+          { header: "Created", name: "createdAt", weight: 9 },
+          { header: "Order #", name: "orderNumber", weight: 10 },
+          { header: "Source", name: "source", weight: 4 },
+          { header: "Type", name: "orderType", weight: 6 },
+          { header: "Branch", name: "branch", weight: 13 },
+          { header: "Brand", name: "brand", weight: 7 },
+          { header: "Status", name: "status", weight: 8 },
+          { header: "Lines", name: "lineCount", weight: 4, total: true },
+          { header: "Requested Qty", name: "requestedQty", weight: 5, total: true },
+          { header: "Approved Qty", name: "approvedQty", weight: 5, total: true },
+          { header: "Requested Amount", name: "requestedAmount", weight: 8, total: true },
+          { header: "Approved Amount", name: "approvedAmount", weight: 8, total: true },
+          { header: "Total CBM", name: "totalCbm", weight: 5, total: true },
+          { header: "Created By", name: "createdBy", weight: 8 },
+          { header: "SAP Document", name: "sapDocument", weight: 7 },
+        ],
+      },
+    ],
+  },
   "daily-stock": {
     title: "Daily Stock",
     orientation: "PORTRAIT",
