@@ -477,7 +477,12 @@ export function OrdersTable({
         toast.error(result.error);
         return;
       }
-      toast.success("Approval recorded");
+      const sapDocument = "sapDocument" in result ? result.sapDocument : null;
+      if (sapDocument) {
+        toast.success(`Approved. ${sapDocument.type} ${sapDocument.docNum} created in SAP`);
+      } else {
+        toast.success("Approval recorded");
+      }
       setWorkflowOrder(null);
       router.refresh();
     });

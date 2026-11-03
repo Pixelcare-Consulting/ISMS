@@ -79,9 +79,9 @@ export function ScOrdersPanel({
     resetKey: `${query}:${sort.sortKey}:${sort.sortDir}`,
   });
 
-  function run(
-    action: () => Promise<{ error?: string; success?: true }>,
-    ok: string,
+  function run<T extends { error?: string; success?: true }>(
+    action: () => Promise<T>,
+    ok: string | ((result: T) => string),
   ) {
     startTransition(async () => {
       const result = await action();
@@ -89,7 +89,7 @@ export function ScOrdersPanel({
         toast.error(result.error);
         return;
       }
-      toast.success(ok);
+      toast.success(typeof ok === "function" ? ok(result) : ok);
       router.refresh();
     });
   }
@@ -163,7 +163,15 @@ export function ScOrdersPanel({
                     size="sm"
                     variant="outline"
                     disabled={pending}
-                    onClick={() => run(() => approveScOrderAction(order.id), "Order approved and posted to SAP")}
+                    onClick={() =>
+                      run(
+                        () => approveScOrderAction(order.id),
+                        (result) =>
+                          "sapDocNum" in result && result.sapDocNum != null
+                            ? `Approved. SO ${result.sapDocNum} created in SAP`
+                            : "Order approved and posted to SAP",
+                      )
+                    }
                   >
                     Approve
                   </Button>

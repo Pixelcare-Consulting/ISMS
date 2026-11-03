@@ -3,6 +3,7 @@ import type { BranchOrderStatus, BranchOrderType, Prisma } from "@prisma/client"
 import { aorRepository } from "@/features/aors/repositories/aor.repository";
 import { auditService } from "@/features/audit/services/audit.service";
 import { hasOrdersForceCancelPermission } from "@/features/orders/constants/order-permissions";
+import type { OrderSapDocType } from "@/features/orders/constants/order-sap-doc-type";
 import {
   BRANCH_ORDER_STATUS_LABELS,
   BRANCH_ORDER_TYPE_LABELS,
@@ -249,6 +250,18 @@ async function priceOrderDetails<T extends { modelId: string; quantity: number }
 }
 
 /** Post this order's existing SAP job. Success is a completed document. */
+/** The ITR or SO a Supply Planning approval posted to SAP. */
+export interface ApprovedOrderSapDocument {
+  type: OrderSapDocType;
+  docNum: number;
+}
+
+/** "SO-97580" → SO 97580. Anything else (an older reference shape) shows no number. */
+function parseOrderSapDocRef(sapDocRef: string): ApprovedOrderSapDocument | null {
+  const match = /^(ITR|SO)-(\d+)$/.exec(sapDocRef.trim());
+  return match ? { type: match[1] as OrderSapDocType, docNum: Number(match[2]) } : null;
+}
+
 async function postSupplyPlanningOrder(
   tenantId: string,
   userId: string,
@@ -946,6 +959,7 @@ export const orderService = {
           )
         : { dueDate: null as Date | null, rescheduled: false, rescheduledFrom: undefined as string | undefined };
 
+    let sapDocument: ApprovedOrderSapDocument | null = null;
     if (isFinal) {
       // Decide ITR or SO and block before anything is written, so the order stays at its step.
       const routingContext = await orderRepository.findSapRoutingContext(
@@ -1039,6 +1053,7 @@ export const orderService = {
           });
           throw new SapOrderPostRejectedError(post.sapMessage, updatedAt);
         }
+        sapDocument = parseOrderSapDocRef(post.sapDocRef);
       } else if (refreshed) {
         // Older logistics final steps still post SAP without blocking the step.
         try {
@@ -1138,6 +1153,7 @@ export const orderService = {
         body: "Approved by the team leader. Waiting for supply planning.",
       });
     }
+    return { sapDocument };
   },
 
   async reject(

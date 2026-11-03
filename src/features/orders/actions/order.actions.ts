@@ -555,7 +555,7 @@ export async function approveOrderAction(
     return { error: "You are not allowed to approve this order at its current step." };
   }
   try {
-    await orderService.approve(
+    const { sapDocument } = await orderService.approve(
       session.user.tenantId,
       session.user.id,
       orderId,
@@ -575,7 +575,7 @@ export async function approveOrderAction(
     revalidateOrderPaths(existing.orderType);
     revalidatePath("/logistics/deliveries");
     revalidatePath("/operations");
-    return { success: true as const };
+    return { success: true as const, sapDocument };
   } catch (e) {
     if (e instanceof SapOrderPostRejectedError) {
       revalidateOrderPaths(existing.orderType);
