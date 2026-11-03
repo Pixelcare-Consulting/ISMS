@@ -1,5 +1,6 @@
 "use client";
 
+import { DrNoText } from "@/app/(app)/logistics/_components/dr-no-text";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -54,7 +55,8 @@ import type { DeliveryDetail } from "@/features/logistics/services/delivery-post
 import {
   formatRejectSapDocNo,
   formatSapDocNo,
-  SAP_DOC_DATE_LABEL,
+  DR_DATE_LABEL,
+  DR_NO_LABEL,
   SAP_DOC_NO_LABEL,
 } from "@/features/logistics/lib/sap-doc-number";
 import {
@@ -229,8 +231,9 @@ function deliveryPrintDocument(detail: DeliveryDetail) {
     fields: [
       { label: "Order", value: detail.order?.orderNumber ?? "—" },
       { label: "Branch", value: detail.branch.name },
-      { label: SAP_DOC_NO_LABEL, value: formatSapDocNo(detail.drNo, detail.order?.sapDocType) ?? "—" },
-      { label: SAP_DOC_DATE_LABEL, value: formatInventoryDrDate(detail.drDate) },
+      { label: SAP_DOC_NO_LABEL, value: formatSapDocNo(detail.sapDocNo, detail.order?.sapDocType) ?? "—" },
+      { label: DR_NO_LABEL, value: detail.drNo?.trim().replace(/\n/g, ", ") || "—" },
+      { label: DR_DATE_LABEL, value: formatInventoryDrDate(detail.drDate) },
     ],
     lines: hasSerials
       ? detail.serials.map((line) => ({
@@ -326,9 +329,10 @@ export function DeliveryDetailView({
             <RecordReadout label="Branch" value={detail.branch.name} />
             <RecordReadout
               label={SAP_DOC_NO_LABEL}
-              value={formatSapDocNo(detail.drNo, detail.order?.sapDocType) ?? "—"}
+              value={formatSapDocNo(detail.sapDocNo, detail.order?.sapDocType) ?? "—"}
             />
-            <RecordReadout label={SAP_DOC_DATE_LABEL} value={formatInventoryDrDate(detail.drDate)} />
+            <RecordReadout label={DR_NO_LABEL} value={<DrNoText value={detail.drNo} />} />
+            <RecordReadout label={DR_DATE_LABEL} value={formatInventoryDrDate(detail.drDate)} />
           </RecordFieldGrid>
         </RecordSection>
         <SapDocumentsSection

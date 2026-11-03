@@ -23,6 +23,12 @@ enum BranchOrderStatus {
   cancelled
 }
 
+/// Where an order was made: in ISMS, or as a Sales Order directly in SAP and imported.
+enum BranchOrderSource {
+  ISMS
+  SAP
+}
+
 enum BranchOrderType {
   auto_replenish
   manual
@@ -1430,6 +1436,9 @@ model OrderingPolicy {
   dailyLockEndMinutes     Int?              @map("daily_lock_end_minutes")
   /// Order modules company weekday + daily time locks apply to.
   lockAppliesToOrderTypes BranchOrderType[] @default([manual]) @map("lock_applies_to_order_types")
+  /// Sales Orders made directly in SAP on or after this date are imported as orders.
+  /// Null turns the import off.
+  sapSoImportSince        DateTime?         @db.Date @map("sap_so_import_since")
   createdAt               DateTime          @default(now()) @map("created_at")
   updatedAt               DateTime          @updatedAt @map("updated_at")
 
@@ -2159,6 +2168,8 @@ model BranchOrder {
   brandId         String?           @map("brand_id")
   packageTypeId   String?           @map("package_type_id")
   orderType       BranchOrderType   @map("order_type")
+  /// SAP: imported from a Sales Order made in SAP (no ISMS approval; it never posts to SAP).
+  source          BranchOrderSource @default(ISMS)
   status          BranchOrderStatus @default(pending_tl)
   orderNumber     String            @map("order_number")
   notes            String?
@@ -2285,7 +2296,11 @@ model BranchDelivery {
   sapDocRef    String?   @map("sap_doc_ref")
   sourceWarehouseId String? @map("source_warehouse_id")
   sapDocEntry  Int?      @map("sap_doc_entry")
+  /// SAP number of the first Copy To document (IT DocNum, or the DR's number).
+  sapDocNo     String?   @map("sap_doc_no")
+  /// Delivery receipt number: the IT's DCS Remarks (`U_DcsRemarks`), or the DR's number.
   drNo         String?   @map("dr_no")
+  /// Posting date of that IT / DR.
   drDate       DateTime? @db.Date @map("dr_date")
   /// Logistics waybill. Print stays off until this, the courier, and the schedule date are saved.
   waybillNo    String?   @map("waybill_no")

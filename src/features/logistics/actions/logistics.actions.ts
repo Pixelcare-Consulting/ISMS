@@ -367,6 +367,7 @@ export async function checkSapCopyToNowAction() {
   try {
     const result = await runSapCopyToFollow(session.user.tenantId, { budgetMs: 45_000 });
     revalidateLogisticsPaths();
+    if (result.importedOrders > 0) revalidatePath("/orders", "layout");
     return { success: true as const, ...result };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Could not check SAP" };

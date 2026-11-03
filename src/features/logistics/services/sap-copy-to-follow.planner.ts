@@ -47,6 +47,8 @@ export interface FollowedDocument {
   docDate: string | null;
   /** What users see: the DR number when SAP has one, else DocNum. */
   displayNo: string;
+  /** Delivery receipt number: an IT's DCS Remarks (null when blank), a DR's display number. */
+  drNo: string | null;
   /** Header `U_ISMS_PO_No`: the ISMS order number, copied over from the ITR / SO. */
   ismsRef: string;
   /** Cancelled, or itself a cancellation document (DRs only; ITs carry no such flag). */
@@ -63,6 +65,19 @@ function text(value: unknown): string {
 function int(value: unknown): number | null {
   const parsed = typeof value === "number" ? value : Number.parseInt(text(value), 10);
   return Number.isInteger(parsed) ? parsed : null;
+}
+
+/**
+ * The DR# a SAP user types into an IT's DCS Remarks: free text such as "DR# 555" or several
+ * RSP codes on their own lines (SAP stores bare CRs). Kept as typed, line breaks normalized.
+ */
+export function dcsRemarksDrNo(value: unknown): string | null {
+  const normalized = text(value)
+    .split(/\r\n|\r|\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n");
+  return normalized || null;
 }
 
 /** Turn a Service Layer StockTransfer / DeliveryNote into the fields the follow-up uses. */
@@ -88,12 +103,14 @@ export function parseFollowedDocument(
 
   const drNumber = kind === "DR" ? text(raw.U_DR_NUMBER) : "";
   const docDate = text(raw.DocDate).slice(0, 10);
+  const displayNo = drNumber || String(docNum);
   return {
     kind,
     docEntry,
     docNum,
     docDate: /^\d{4}-\d{2}-\d{2}$/.test(docDate) ? docDate : null,
-    displayNo: drNumber || String(docNum),
+    displayNo,
+    drNo: kind === "IT" ? dcsRemarksDrNo(raw.U_DcsRemarks) : displayNo,
     ismsRef: text(raw.U_ISMS_PO_No),
     cancelled: raw.Cancelled === "tYES" || raw.CancelStatus === "csCancellation",
     toWarehouse: kind === "IT" ? text(raw.ToWarehouse) || null : null,

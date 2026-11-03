@@ -1,4 +1,4 @@
-import type { BranchOrderStatus, BranchOrderType, SkuStatus } from "@prisma/client";
+import type { BranchOrderSource, BranchOrderStatus, BranchOrderType, SkuStatus } from "@prisma/client";
 import type {
   OrderSapDocType,
   ResolvedOrderModeOfPayment,
@@ -234,6 +234,8 @@ export interface OrderHistoryRow {
   id: string;
   orderNumber: string;
   orderType: BranchOrderType;
+  /** ISMS, or SAP for a Sales Order made directly in SAP. */
+  source: BranchOrderSource;
   status: string;
   branchId: string;
   branchName: string;

@@ -1,5 +1,6 @@
 "use client";
 
+import { DrNoText } from "@/app/(app)/logistics/_components/dr-no-text";
 import { createColumnHelper } from "@tanstack/react-table";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -33,7 +34,8 @@ import { buildDeliveryTracker } from "@/app/(app)/logistics/_components/delivery
 import type { WorkflowStatusOption } from "@/features/logistics/constants/workflow-codes";
 import {
   formatSapDocNo,
-  SAP_DOC_DATE_LABEL,
+  DR_DATE_LABEL,
+  DR_NO_LABEL,
   SAP_DOC_NO_LABEL,
 } from "@/features/logistics/lib/sap-doc-number";
 import type { OrderSapDocType } from "@/features/orders/constants/order-sap-doc-type";
@@ -61,6 +63,7 @@ interface PaginatedList<T> {
 interface DeliveryRow {
   id: string;
   deliveryNo: string;
+  sapDocNo: string | null;
   drNo: string | null;
   drDate: Date | string | null;
   statusCode: StatusCodeRef;
@@ -82,7 +85,7 @@ interface DeliveriesPanelProps {
 const deliveryColumn = createColumnHelper<DataTableFeatures, DeliveryRow>();
 
 function sapDocNo(row: DeliveryRow): string | null {
-  return formatSapDocNo(row.drNo, row.order?.sapDocType);
+  return formatSapDocNo(row.sapDocNo, row.order?.sapDocType);
 }
 
 type DeliverySortField = "deliveryNo" | "orderNumber" | "branch" | "status";
@@ -190,14 +193,20 @@ export function DeliveriesPanel({
         meta: { className: "w-52 min-w-52" },
       }),
       deliveryColumn.accessor((row) => sapDocNo(row) ?? "", {
-        id: "drNo",
+        id: "sapDocNo",
         header: SAP_DOC_NO_LABEL,
         enableSorting: false,
         cell: ({ row }) => sapDocNo(row.original) ?? "—",
       }),
+      deliveryColumn.accessor((row) => row.drNo ?? "", {
+        id: "drNo",
+        header: DR_NO_LABEL,
+        enableSorting: false,
+        cell: ({ row }) => <DrNoText value={row.original.drNo} />,
+      }),
       deliveryColumn.accessor((row) => row.drDate ?? "", {
         id: "drDate",
-        header: SAP_DOC_DATE_LABEL,
+        header: DR_DATE_LABEL,
         enableSorting: false,
         cell: ({ row }) => formatInventoryDrDate(row.original.drDate),
       }),

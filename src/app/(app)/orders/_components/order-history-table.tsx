@@ -12,6 +12,7 @@ import {
 } from "@/components/data-table/table-page-size";
 import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
+import { OrderSourceBadge } from "@/features/orders/components/order-source-badge";
 import { OrderTypeBadge } from "@/features/orders/components/order-type-badge";
 import { ORDER_TYPE_ROUTE } from "@/features/orders/constants/order-type-route";
 import { BRANCH_ORDER_STATUS_LABELS } from "@/features/orders/constants/order-status";
@@ -138,6 +139,12 @@ export function OrderHistoryTable({
         header: "Type",
         enableSorting: true,
         cell: ({ row }) => <OrderTypeBadge orderType={row.original.orderType} />,
+      }),
+      historyColumn.display({
+        id: "source",
+        header: "Source",
+        enableSorting: false,
+        cell: ({ row }) => <OrderSourceBadge source={row.original.source} />,
       }),
       historyColumn.display({
         id: "modeOfPayment",

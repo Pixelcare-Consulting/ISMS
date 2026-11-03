@@ -13,8 +13,9 @@ function plural(count: number, one: string, many = `${one}s`): string {
 }
 
 /**
- * Check SAP for Copy To documents (ITR → IT, SO → DR) now, instead of waiting for the
- * scheduled check. Applies whatever it finds, the same as the scheduled check does.
+ * Check SAP for Copy To documents (ITR → IT, SO → DR) and Sales Orders made in SAP now,
+ * instead of waiting for the scheduled check. Applies whatever it finds, the same as the
+ * scheduled check does.
  */
 export function CheckSapNowButton({ size = "sm" }: { size?: "sm" | "default" }) {
   const router = useRouter();
@@ -28,18 +29,25 @@ export function CheckSapNowButton({ size = "sm" }: { size?: "sm" | "default" }) 
         return;
       }
       const notApplied = result.failed + result.flagged;
+      const imported =
+        result.importedOrders > 0
+          ? `Imported ${plural(result.importedOrders, "Sales Order")} made in SAP.`
+          : undefined;
       if (result.applied === 0 && notApplied === 0) {
-        toast.info("No new SAP documents for deliveries");
+        if (imported) toast.success(imported);
+        else toast.info("No new SAP documents for deliveries");
       } else if (notApplied === 0) {
-        toast.success(`Added ${plural(result.applied, "SAP document")} to deliveries`);
+        toast.success(`Added ${plural(result.applied, "SAP document")} to deliveries`, {
+          description: imported,
+        });
       } else {
         toast.warning(
           `${plural(notApplied, "SAP document")} could not be added`,
           {
             description:
               result.applied > 0
-                ? `${plural(result.applied, "other")} were added. Open the delivery to see why.`
-                : "Open the delivery to see why.",
+                ? `${plural(result.applied, "other")} were added. Open the delivery to see why.${imported ? ` ${imported}` : ""}`
+                : `Open the delivery to see why.${imported ? ` ${imported}` : ""}`,
           },
         );
       }

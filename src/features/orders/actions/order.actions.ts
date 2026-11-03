@@ -693,6 +693,7 @@ export async function listOrderHistoryAction(input?: {
       id: order.id,
       orderNumber: order.orderNumber,
       orderType: order.orderType,
+      source: order.source,
       status: order.status,
       branchId: order.branchId,
       branchName: order.branch.name,

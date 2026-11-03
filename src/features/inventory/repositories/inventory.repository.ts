@@ -374,7 +374,7 @@ export const inventoryRepository = {
         delivery: {
           select: {
             deliveryNo: true,
-            drNo: true,
+            sapDocNo: true,
             drDate: true,
             acceptedAt: true,
             createdAt: true,
@@ -388,7 +388,7 @@ export const inventoryRepository = {
       serialNumberId: string;
       delivery: {
         deliveryNo: string;
-        drNo: string | null;
+        sapDocNo: string | null;
         drDate: Date | null;
         acceptedAt: Date | null;
         createdAt: Date;
@@ -410,7 +410,7 @@ export const inventoryRepository = {
         latest.set(line.serialNumberId, {
           serialNumberId: line.serialNumberId,
           deliveryNo:
-            formatSapDocNo(line.delivery.drNo, line.delivery.order?.sapDocType) ??
+            formatSapDocNo(line.delivery.sapDocNo, line.delivery.order?.sapDocType) ??
             line.delivery.deliveryNo,
           internalDeliveryNo: line.delivery.deliveryNo,
           deliveryDate,

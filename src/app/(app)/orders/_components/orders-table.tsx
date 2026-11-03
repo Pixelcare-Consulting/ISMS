@@ -16,7 +16,7 @@ import {
   rejectOrderAction,
   submitDraftOrderAction,
 } from "@/features/orders/actions/order.actions";
-import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
+import type { BranchOrderSource, BranchOrderStatus, BranchOrderType } from "@prisma/client";
 import {
   canApproveOrder,
   isOrderPendingApproval,
@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { BRANCH_ORDER_STATUS_LABELS } from "@/features/orders/constants/order-status";
+import { OrderSourceBadge } from "@/features/orders/components/order-source-badge";
 import { OrderTypeBadge } from "@/features/orders/components/order-type-badge";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import {
@@ -70,6 +71,7 @@ interface OrderRow {
   id: string;
   orderNumber: string;
   orderType: string;
+  source?: BranchOrderSource;
   status: string;
   branchId: string;
   brandId?: string | null;
@@ -534,6 +536,12 @@ export function OrdersTable({
         header: "Type",
         enableSorting: true,
         cell: ({ row }) => <OrderTypeBadge orderType={row.original.orderType} />,
+      }),
+      orderColumn.display({
+        id: "source",
+        header: "Source",
+        enableSorting: false,
+        cell: ({ row }) => <OrderSourceBadge source={row.original.source} />,
       }),
       orderColumn.display({
         id: "modeOfPayment",
