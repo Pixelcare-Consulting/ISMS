@@ -23,6 +23,7 @@ import {
   isSuperAdminOrderOverride,
   PRODUCT_SPECIALIST_ROLE_SLUG,
 } from "@/features/orders/constants/order-workflow";
+import { CheckSapNowButton } from "@/app/(app)/logistics/_components/check-sap-now-button";
 import { OrderDetailsDialog } from "@/app/(app)/orders/_components/order-details-dialog";
 import { SuggestedOrdersDialog } from "@/app/(app)/orders/_components/suggested-orders-dialog";
 import {
@@ -149,6 +150,8 @@ interface OrdersTableProps {
   createByType?: Partial<Record<BranchOrderType, boolean>>;
   /** The create popup also offers a service-center order. */
   canCreateServiceCenter?: boolean;
+  /** Offers "Check SAP now" for Sales Orders made in SAP. */
+  canCheckSap?: boolean;
   /** Suggested orders dialog type. Falls back to `fixedOrderType`. */
   suggestionOrderType?: BranchOrderType;
   /** Base path for pagination links (defaults to `/orders`). */
@@ -281,6 +284,7 @@ export function OrdersTable({
   result: serverResult,
   viewerRoleSlugs,
   canEdit = false,
+  canCheckSap = false,
   fixedOrderType,
   listFilter,
   createHref,
@@ -785,6 +789,7 @@ export function OrdersTable({
                 ) : null}
               </>
             ) : null}
+            {canCheckSap ? <CheckSapNowButton size="default" /> : null}
             {suggestedType ? (
               <Button type="button" variant="outline" onClick={() => setSuggestionsOpen(true)}>
                 Suggested orders

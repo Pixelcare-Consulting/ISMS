@@ -25,7 +25,6 @@ import { SC_ORDERS_CREATE } from "@/features/service-center-ops/constants/sc-per
 import { ordersModuleGuideForType } from "@/content/module-guides/orders";
 import { BRANCH_ORDERS_PAGE_TUTORIAL } from "@/content/page-tutorials/branch-orders";
 import { PageHeader } from "@/app/(app)/_components/page-header";
-import { CheckSapNowButton } from "@/app/(app)/logistics/_components/check-sap-now-button";
 import { OrderHistoryTable } from "@/app/(app)/orders/_components/order-history-table";
 import { OrdersCreateWorkspaceProvider } from "@/app/(app)/orders/_components/orders-create-workspace-context";
 import { OrdersPageTabs } from "@/app/(app)/orders/_components/orders-page-tabs";
@@ -317,15 +316,10 @@ export async function OrdersTypePage({
             : ordersTypePageDescription(orderType)
         }
         actions={
-          canCheckSap || canAccessSuggestedOrders ? (
-            <div className="flex flex-wrap items-center gap-2">
-              {canCheckSap ? <CheckSapNowButton size="default" /> : null}
-              {canAccessSuggestedOrders ? (
-                <Button variant="outline" asChild>
-                  <Link href="/settings/planning">Planning</Link>
-                </Button>
-              ) : null}
-            </div>
+          canAccessSuggestedOrders ? (
+            <Button variant="outline" asChild>
+              <Link href="/settings/planning">Planning</Link>
+            </Button>
           ) : undefined
         }
       />
@@ -373,6 +367,7 @@ export async function OrdersTypePage({
                 ) : null}
                 <OrdersTable
                   result={ordersResult}
+                  canCheckSap={canCheckSap}
                   viewerRoleSlugs={viewerRoleSlugs}
                   canEdit={canEdit}
                   fixedOrderType={combinedManualSpecial ? undefined : orderType}
@@ -409,6 +404,7 @@ export async function OrdersTypePage({
             historyResult ? (
               <OrderHistoryTable
                 result={historyResult}
+                canCheckSap={canCheckSap}
                 basePath={basePath}
                 initialSort={params.sort ?? "createdAt"}
                 initialSortDir={params.dir ?? "desc"}
