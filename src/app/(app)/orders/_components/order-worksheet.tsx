@@ -107,8 +107,7 @@ const WORKSHEET_COLUMN_HELP = {
   rate: "This model's sales this month divided by that brand's sales this month.",
   milQty: "Max Qty for this model.",
   order: "Quantity the branch asked for.",
-  spCbm:
-    "Cubic meters for the approved quantity (the request until Supply Planning changes it). This is the model's CBM times that quantity.",
+  spCbm: "Cubic meters for the quantity asked for. This is the model's CBM times that quantity.",
 } as const;
 
 export type OrderWorksheetColumnSet = "default" | "supply-planning";
@@ -1369,8 +1368,9 @@ function ReadOnlyRemarksColumnCell({ row }: WorksheetBodyCellProps) {
   return <RemarkText value={row.original.remarks} />;
 }
 
+/** Stays on the request; only Total CBM follows the approved qty. */
 function SupplyPlanningCbmColumnCell({ row }: WorksheetBodyCellProps) {
-  const quantity = row.original.approvedQty ?? row.original.requestedQty;
+  const quantity = row.original.requestedQty;
   const unit = Number.isFinite(row.original.cbm) ? row.original.cbm : 0;
   const total = Number.isFinite(quantity) && quantity > 0 ? quantity * unit : 0;
   return <>{formatWorksheetCbm(total)}</>;
