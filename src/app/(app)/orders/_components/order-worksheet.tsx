@@ -16,6 +16,7 @@ import {
 import { InventoryStatusChips } from "@/app/(app)/orders/_components/inventory-status-chips";
 import { WorksheetModelLabel } from "@/app/(app)/orders/_components/worksheet-model-label";
 import { TablePagination } from "@/components/data-table/table-pagination";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -36,11 +37,12 @@ import {
   requestedLinesFirst,
   visibleWorksheetLines,
   WORKSHEET_PAGE_SIZE,
-  worksheetLineHasQty,
+  worksheetLineTag,
   worksheetOrderTotals,
   worksheetRequestedFooter,
   worksheetTotalsLabel,
   type WorksheetLineFilter,
+  type WorksheetLineTag,
   type WorksheetRequestedSections,
 } from "@/features/orders/lib/order-worksheet-filters";
 import {
@@ -1305,8 +1307,23 @@ function ModelColumnCell({ row }: WorksheetBodyCellProps) {
   return <ModelCell row={row.original} />;
 }
 
+const LINE_TAG_CLASS: Record<WorksheetLineTag, string> = {
+  Requested: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  Added: "border-sky-200 bg-sky-50 text-sky-800",
+};
+
 function SkuCodeColumnCell({ row }: WorksheetBodyCellProps) {
-  return <p className="break-words font-medium">{row.original.skuCode}</p>;
+  const tag = worksheetLineTag(row.original);
+  return (
+    <div className="space-y-1">
+      <p className="break-words font-medium">{row.original.skuCode}</p>
+      {tag ? (
+        <Badge variant="outline" className={cn("font-normal", LINE_TAG_CLASS[tag])}>
+          {tag}
+        </Badge>
+      ) : null}
+    </div>
+  );
 }
 
 function StackedInventoryColumnCell({ row }: WorksheetBodyCellProps) {
@@ -1512,13 +1529,7 @@ function WorksheetLinesTable({
                         colSpan={columns.length}
                       />
                     ) : null}
-                    <TableRow
-                      className={cn(
-                        sections !== null &&
-                          worksheetLineHasQty(row.original) &&
-                          "bg-primary/10 hover:bg-primary/15",
-                      )}
-                    >
+                    <TableRow>
                       {row.getVisibleCells().map((cell) => (
                         <TableCell
                           key={cell.id}

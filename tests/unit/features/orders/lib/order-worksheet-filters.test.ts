@@ -2,7 +2,7 @@ import {
   paginateWorksheetLines,
   requestedLinesFirst,
   visibleWorksheetLines,
-  worksheetLineHasQty,
+  worksheetLineTag,
   WORKSHEET_PAGE_SIZE,
   worksheetOrderTotals,
   worksheetRequestedFooter,
@@ -161,10 +161,11 @@ describe("Supply Planning approvals beyond the request", () => {
     );
   });
 
-  it("treats requested rows and rows given an approved qty as having a quantity", () => {
-    expect(worksheetLineHasQty(line(3, 0))).toBe(true);
-    expect(worksheetLineHasQty(line(0, 2))).toBe(true);
-    expect(worksheetLineHasQty(line(0, 0))).toBe(false);
-    expect(worksheetLineHasQty(line(0, null))).toBe(false);
+  it("tags requested rows and rows Supply Planning added", () => {
+    expect(worksheetLineTag(line(3, 3))).toBe("Requested");
+    expect(worksheetLineTag(line(3, 0))).toBe("Requested");
+    expect(worksheetLineTag(line(0, 2))).toBe("Added");
+    expect(worksheetLineTag(line(0, 0))).toBeNull();
+    expect(worksheetLineTag(line(0, null))).toBeNull();
   });
 });

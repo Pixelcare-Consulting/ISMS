@@ -71,11 +71,17 @@ export interface WorksheetOrderTotals {
   approvedCbm: number;
 }
 
-/** Requested, or given a quantity by Supply Planning without a request. */
-export function worksheetLineHasQty(
+export type WorksheetLineTag = "Requested" | "Added";
+
+/**
+ * How a row came to be on the order. A requested row stays "Requested" even at approved 0;
+ * "Added" is a model Supply Planning gave a quantity without a request.
+ */
+export function worksheetLineTag(
   line: Pick<WorksheetFilterableLine, "requestedQty" | "approvedQty">,
-): boolean {
-  return line.requestedQty >= 1 || (line.approvedQty ?? 0) > 0;
+): WorksheetLineTag | null {
+  if (line.requestedQty >= 1) return "Requested";
+  return (line.approvedQty ?? 0) > 0 ? "Added" : null;
 }
 
 /**
@@ -89,7 +95,7 @@ export function visibleWorksheetLines<T extends WorksheetFilterableLine>(
   const search = filter.modelSearch.trim().toLowerCase();
   const brandId = filter.brandId.trim();
   return lines.filter((line) => {
-    if (filter.orderedOnly && !worksheetLineHasQty(line)) return false;
+    if (filter.orderedOnly && worksheetLineTag(line) === null) return false;
     if (brandId && line.brandId !== brandId) return false;
     if (!search) return true;
     const haystack = `${line.skuCode} ${line.name}`.toLowerCase();
