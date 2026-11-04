@@ -170,8 +170,8 @@ const DATASETS: Record<DatasetKey, DatasetDefinition> = {
       if (!from || !to) return [];
       return asRows(
         await orderSummaryReportService.listRows(ctx.tenantId, {
-          createdFrom: from.start,
-          createdTo: to.end,
+          from: from.start,
+          to: to.end,
           statuses: orderSummaryStatuses(params.orderStatuses),
           branchIds: await scopedBranchIds(ctx, params),
         }),

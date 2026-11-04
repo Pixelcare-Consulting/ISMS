@@ -120,8 +120,8 @@ describe("Order summary dataset", () => {
     });
     expect(listOrderSummary).toHaveBeenCalledWith("t1", {
       // 2026-10-30 00:00 to 2026-10-31 23:59:59.999 in Manila (UTC+8).
-      createdFrom: new Date("2026-10-29T16:00:00.000Z"),
-      createdTo: new Date("2026-10-31T15:59:59.999Z"),
+      from: new Date("2026-10-29T16:00:00.000Z"),
+      to: new Date("2026-10-31T15:59:59.999Z"),
       statuses: ["pending_ps", "pending_tl", "pending_sp", "pending_logistics", "rejected"],
       branchIds: ["b1"],
     });
@@ -134,7 +134,7 @@ describe("Order summary dataset", () => {
     expect(listOrderSummary).toHaveBeenCalledWith(
       "t1",
       expect.objectContaining({
-        createdTo: new Date("2026-10-30T15:59:59.999Z"),
+        to: new Date("2026-10-30T15:59:59.999Z"),
         statuses: expect.not.arrayContaining(["draft"]),
       }),
     );

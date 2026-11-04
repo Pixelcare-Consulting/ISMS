@@ -94,10 +94,12 @@ export const DATASET_CATALOG = {
   },
   order_summary: {
     label: "Order summary",
-    description: "Every order request by created date (Manila), with requested and approved totals.",
+    description:
+      "Every order request by status date (Manila): created, approved, rejected or cancelled, with requested and approved totals.",
     dashboardDateRange: true,
     columns: [
       date("date", "Date"),
+      str("statusDate", "Status Date"),
       str("createdAt", "Created"),
       str("orderNumber", "Order #"),
       str("source", "Source"),

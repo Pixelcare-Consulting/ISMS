@@ -27,7 +27,7 @@ function statusSummary(groups: readonly OrderSummaryStatusGroup[]): string {
 }
 
 /**
- * Every order request in a date range (created date, Manila), optionally narrowed by
+ * Every order request in a date range, by status date (Manila), optionally narrowed by
  * status. The preview prints and exports (PDF, Excel) from the Stimulsoft viewer.
  */
 export function OrderSummaryReportPanel() {
@@ -73,9 +73,8 @@ export function OrderSummaryReportPanel() {
     <div className="space-y-4">
       <div className="max-w-2xl space-y-5 rounded-xl border bg-card p-4 shadow-sm sm:p-6">
         <p className="text-sm text-muted-foreground">
-          Order requests created in the chosen dates (Philippine time), one row per order, with requested and
-          approved quantities, amounts, and CBM. Print or export from the preview. Limited to your assigned
-          branches.
+          Order requests in the chosen dates (Philippine time), one row per order, with requested and approved
+          quantities, amounts, and CBM. Print or export from the preview. Limited to your assigned branches.
         </p>
 
         <fieldset className="space-y-2">
@@ -137,7 +136,10 @@ export function OrderSummaryReportPanel() {
               </label>
             ))}
           </div>
-          <p className="text-xs text-muted-foreground">Leave all unticked for every status. Drafts are never listed.</p>
+          <p className="text-xs text-muted-foreground">
+            Pending orders are listed by created date, approved orders by approval date, and rejected or cancelled
+            orders by the date that happened. Leave all unticked for every status. Drafts are never listed.
+          </p>
         </fieldset>
 
         {error ? (

@@ -1,10 +1,10 @@
 {
   "ReportVersion": "2026.4.1",
-  "ReportGuid": "1aee4372f595b7d5b7d8349b98ae3c40",
+  "ReportGuid": "096c64f41eb1a743c269517b7fcc1e2f",
   "ReportName": "order-summary",
   "ReportAlias": "Order Summary",
-  "ReportCreated": "/Date(1793690668000+0800)/",
-  "ReportChanged": "/Date(1793690668000+0800)/",
+  "ReportCreated": "/Date(1793776051000+0800)/",
+  "ReportChanged": "/Date(1793776051000+0800)/",
   "EngineVersion": "EngineV2",
   "ReportUnit": "Centimeters",
   "ScriptLanguage": "CSharp",
@@ -31,90 +31,96 @@
             "Type": "System.DateTime"
           },
           "1": {
+            "Name": "statusDate",
+            "NameInSource": "statusDate",
+            "Alias": "Status Date",
+            "Type": "System.String"
+          },
+          "2": {
             "Name": "createdAt",
             "NameInSource": "createdAt",
             "Alias": "Created",
             "Type": "System.String"
           },
-          "2": {
+          "3": {
             "Name": "orderNumber",
             "NameInSource": "orderNumber",
             "Alias": "Order #",
             "Type": "System.String"
           },
-          "3": {
+          "4": {
             "Name": "source",
             "NameInSource": "source",
             "Alias": "Source",
             "Type": "System.String"
           },
-          "4": {
+          "5": {
             "Name": "orderType",
             "NameInSource": "orderType",
             "Alias": "Type",
             "Type": "System.String"
           },
-          "5": {
+          "6": {
             "Name": "branch",
             "NameInSource": "branch",
             "Alias": "Branch",
             "Type": "System.String"
           },
-          "6": {
+          "7": {
             "Name": "brand",
             "NameInSource": "brand",
             "Alias": "Brand",
             "Type": "System.String"
           },
-          "7": {
+          "8": {
             "Name": "status",
             "NameInSource": "status",
             "Alias": "Status",
             "Type": "System.String"
           },
-          "8": {
+          "9": {
             "Name": "lineCount",
             "NameInSource": "lineCount",
             "Alias": "Lines",
             "Type": "System.Decimal"
           },
-          "9": {
+          "10": {
             "Name": "requestedQty",
             "NameInSource": "requestedQty",
             "Alias": "Requested Qty",
             "Type": "System.Decimal"
           },
-          "10": {
+          "11": {
             "Name": "approvedQty",
             "NameInSource": "approvedQty",
             "Alias": "Approved Qty",
             "Type": "System.Decimal"
           },
-          "11": {
+          "12": {
             "Name": "requestedAmount",
             "NameInSource": "requestedAmount",
             "Alias": "Requested Amount",
             "Type": "System.Decimal"
           },
-          "12": {
+          "13": {
             "Name": "approvedAmount",
             "NameInSource": "approvedAmount",
             "Alias": "Approved Amount",
             "Type": "System.Decimal"
           },
-          "13": {
+          "14": {
             "Name": "totalCbm",
             "NameInSource": "totalCbm",
             "Alias": "Total CBM",
             "Type": "System.Decimal"
           },
-          "14": {
+          "15": {
             "Name": "createdBy",
             "NameInSource": "createdBy",
             "Alias": "Created By",
             "Type": "System.String"
           },
-          "15": {
+          "16": {
             "Name": "sapDocument",
             "NameInSource": "sapDocument",
             "Alias": "SAP Document",
@@ -129,7 +135,7 @@
     "0": {
       "Ident": "StiPage",
       "Name": "Page1",
-      "Guid": "42cf73a24225bdb8b8e878fd82dc121e",
+      "Guid": "bf37403197a7a5a377fa52eb5b9741bc",
       "Interaction": {
         "Ident": "StiInteraction"
       },
@@ -265,10 +271,37 @@
           "Components": {
             "0": {
               "Ident": "StiText",
+              "Name": "S0H_statusDate",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "0,0,2.27,0.7",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "Status Date"
+              },
+              "VertAlignment": "Center",
+              "Font": "Geist;7;Bold;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:238,240,243",
+              "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "1": {
+              "Ident": "StiText",
               "Name": "S0H_createdAt",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "0,0,2.33,0.7",
+              "ClientRectangle": "2.27,0,2.27,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -290,12 +323,12 @@
                 "Bottom": 0
               }
             },
-            "1": {
+            "2": {
               "Ident": "StiText",
               "Name": "S0H_orderNumber",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "2.33,0,2.59,0.7",
+              "ClientRectangle": "4.54,0,2.72,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -317,12 +350,12 @@
                 "Bottom": 0
               }
             },
-            "2": {
+            "3": {
               "Ident": "StiText",
               "Name": "S0H_source",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "4.92,0,1.04,0.7",
+              "ClientRectangle": "7.27,0,1.14,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -344,12 +377,12 @@
                 "Bottom": 0
               }
             },
-            "3": {
+            "4": {
               "Ident": "StiText",
               "Name": "S0H_orderType",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "5.95,0,1.55,0.7",
+              "ClientRectangle": "8.4,0,1.36,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -371,12 +404,12 @@
                 "Bottom": 0
               }
             },
-            "4": {
+            "5": {
               "Ident": "StiText",
               "Name": "S0H_branch",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "7.51,0,3.37,0.7",
+              "ClientRectangle": "9.76,0,2.72,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -398,12 +431,12 @@
                 "Bottom": 0
               }
             },
-            "5": {
+            "6": {
               "Ident": "StiText",
               "Name": "S0H_brand",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "10.87,0,1.81,0.7",
+              "ClientRectangle": "12.49,0,1.59,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -425,12 +458,12 @@
                 "Bottom": 0
               }
             },
-            "6": {
+            "7": {
               "Ident": "StiText",
               "Name": "S0H_status",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "12.69,0,2.07,0.7",
+              "ClientRectangle": "14.08,0,1.59,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -452,12 +485,12 @@
                 "Bottom": 0
               }
             },
-            "7": {
+            "8": {
               "Ident": "StiText",
               "Name": "S0H_lineCount",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "14.76,0,1.04,0.7",
+              "ClientRectangle": "15.67,0,0.91,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -480,12 +513,12 @@
                 "Bottom": 0
               }
             },
-            "8": {
+            "9": {
               "Ident": "StiText",
               "Name": "S0H_requestedQty",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "15.79,0,1.29,0.7",
+              "ClientRectangle": "16.57,0,1.82,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -508,12 +541,12 @@
                 "Bottom": 0
               }
             },
-            "9": {
+            "10": {
               "Ident": "StiText",
               "Name": "S0H_approvedQty",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "17.09,0,1.29,0.7",
+              "ClientRectangle": "18.39,0,1.59,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -536,12 +569,12 @@
                 "Bottom": 0
               }
             },
-            "10": {
+            "11": {
               "Ident": "StiText",
               "Name": "S0H_requestedAmount",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "18.38,0,2.07,0.7",
+              "ClientRectangle": "19.98,0,1.82,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -564,12 +597,12 @@
                 "Bottom": 0
               }
             },
-            "11": {
+            "12": {
               "Ident": "StiText",
               "Name": "S0H_approvedAmount",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "20.45,0,2.07,0.7",
+              "ClientRectangle": "21.8,0,1.59,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -592,12 +625,12 @@
                 "Bottom": 0
               }
             },
-            "12": {
+            "13": {
               "Ident": "StiText",
               "Name": "S0H_totalCbm",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "22.52,0,1.29,0.7",
+              "ClientRectangle": "23.39,0,1.14,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -620,12 +653,12 @@
                 "Bottom": 0
               }
             },
-            "13": {
+            "14": {
               "Ident": "StiText",
               "Name": "S0H_createdBy",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "23.82,0,2.07,0.7",
+              "ClientRectangle": "24.52,0,1.59,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -647,12 +680,12 @@
                 "Bottom": 0
               }
             },
-            "14": {
+            "15": {
               "Ident": "StiText",
               "Name": "S0H_sapDocument",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "25.89,0,1.81,0.7",
+              "ClientRectangle": "26.11,0,1.59,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -689,10 +722,37 @@
           "Components": {
             "0": {
               "Ident": "StiText",
+              "Name": "S0D_statusDate",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "0,0,2.27,0.6",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "{order_summary.statusDate}"
+              },
+              "VertAlignment": "Center",
+              "Font": "Geist;7;;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:",
+              "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "1": {
+              "Ident": "StiText",
               "Name": "S0D_createdAt",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "0,0,2.33,0.6",
+              "ClientRectangle": "2.27,0,2.27,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -714,12 +774,12 @@
                 "Bottom": 0
               }
             },
-            "1": {
+            "2": {
               "Ident": "StiText",
               "Name": "S0D_orderNumber",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "2.33,0,2.59,0.6",
+              "ClientRectangle": "4.54,0,2.72,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -741,12 +801,12 @@
                 "Bottom": 0
               }
             },
-            "2": {
+            "3": {
               "Ident": "StiText",
               "Name": "S0D_source",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "4.92,0,1.04,0.6",
+              "ClientRectangle": "7.27,0,1.14,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -768,12 +828,12 @@
                 "Bottom": 0
               }
             },
-            "3": {
+            "4": {
               "Ident": "StiText",
               "Name": "S0D_orderType",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "5.95,0,1.55,0.6",
+              "ClientRectangle": "8.4,0,1.36,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -795,12 +855,12 @@
                 "Bottom": 0
               }
             },
-            "4": {
+            "5": {
               "Ident": "StiText",
               "Name": "S0D_branch",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "7.51,0,3.37,0.6",
+              "ClientRectangle": "9.76,0,2.72,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -822,12 +882,12 @@
                 "Bottom": 0
               }
             },
-            "5": {
+            "6": {
               "Ident": "StiText",
               "Name": "S0D_brand",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "10.87,0,1.81,0.6",
+              "ClientRectangle": "12.49,0,1.59,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -849,12 +909,12 @@
                 "Bottom": 0
               }
             },
-            "6": {
+            "7": {
               "Ident": "StiText",
               "Name": "S0D_status",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "12.69,0,2.07,0.6",
+              "ClientRectangle": "14.08,0,1.59,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -876,12 +936,12 @@
                 "Bottom": 0
               }
             },
-            "7": {
+            "8": {
               "Ident": "StiText",
               "Name": "S0D_lineCount",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "14.76,0,1.04,0.6",
+              "ClientRectangle": "15.67,0,0.91,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -904,12 +964,12 @@
                 "Bottom": 0
               }
             },
-            "8": {
+            "9": {
               "Ident": "StiText",
               "Name": "S0D_requestedQty",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "15.79,0,1.29,0.6",
+              "ClientRectangle": "16.57,0,1.82,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -932,12 +992,12 @@
                 "Bottom": 0
               }
             },
-            "9": {
+            "10": {
               "Ident": "StiText",
               "Name": "S0D_approvedQty",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "17.09,0,1.29,0.6",
+              "ClientRectangle": "18.39,0,1.59,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -960,12 +1020,12 @@
                 "Bottom": 0
               }
             },
-            "10": {
+            "11": {
               "Ident": "StiText",
               "Name": "S0D_requestedAmount",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "18.38,0,2.07,0.6",
+              "ClientRectangle": "19.98,0,1.82,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -988,12 +1048,12 @@
                 "Bottom": 0
               }
             },
-            "11": {
+            "12": {
               "Ident": "StiText",
               "Name": "S0D_approvedAmount",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "20.45,0,2.07,0.6",
+              "ClientRectangle": "21.8,0,1.59,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -1016,12 +1076,12 @@
                 "Bottom": 0
               }
             },
-            "12": {
+            "13": {
               "Ident": "StiText",
               "Name": "S0D_totalCbm",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "22.52,0,1.29,0.6",
+              "ClientRectangle": "23.39,0,1.14,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -1044,12 +1104,12 @@
                 "Bottom": 0
               }
             },
-            "13": {
+            "14": {
               "Ident": "StiText",
               "Name": "S0D_createdBy",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "23.82,0,2.07,0.6",
+              "ClientRectangle": "24.52,0,1.59,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -1071,12 +1131,12 @@
                 "Bottom": 0
               }
             },
-            "14": {
+            "15": {
               "Ident": "StiText",
               "Name": "S0D_sapDocument",
               "CanGrow": true,
               "GrowToHeight": true,
-              "ClientRectangle": "25.89,0,1.81,0.6",
+              "ClientRectangle": "26.11,0,1.59,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -1137,7 +1197,7 @@
             "1": {
               "Ident": "StiText",
               "Name": "S0T_lineCount",
-              "ClientRectangle": "14.76,0,1.04,0.7",
+              "ClientRectangle": "15.67,0,0.91,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -1160,7 +1220,7 @@
             "2": {
               "Ident": "StiText",
               "Name": "S0T_requestedQty",
-              "ClientRectangle": "15.79,0,1.29,0.7",
+              "ClientRectangle": "16.57,0,1.82,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -1183,7 +1243,7 @@
             "3": {
               "Ident": "StiText",
               "Name": "S0T_approvedQty",
-              "ClientRectangle": "17.09,0,1.29,0.7",
+              "ClientRectangle": "18.39,0,1.59,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -1206,7 +1266,7 @@
             "4": {
               "Ident": "StiText",
               "Name": "S0T_requestedAmount",
-              "ClientRectangle": "18.38,0,2.07,0.7",
+              "ClientRectangle": "19.98,0,1.82,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -1229,7 +1289,7 @@
             "5": {
               "Ident": "StiText",
               "Name": "S0T_approvedAmount",
-              "ClientRectangle": "20.45,0,2.07,0.7",
+              "ClientRectangle": "21.8,0,1.59,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -1252,7 +1312,7 @@
             "6": {
               "Ident": "StiText",
               "Name": "S0T_totalCbm",
-              "ClientRectangle": "22.52,0,1.29,0.7",
+              "ClientRectangle": "23.39,0,1.14,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
