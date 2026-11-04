@@ -3,7 +3,15 @@
 import { useTable } from "@tanstack/react-table";
 import type { BranchOrderType } from "@prisma/client";
 import { CircleHelp, Trash2 } from "lucide-react";
-import { createContext, useContext, useId, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  Fragment,
+  useContext,
+  useId,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { InventoryStatusChips } from "@/app/(app)/orders/_components/inventory-status-chips";
 import { WorksheetModelLabel } from "@/app/(app)/orders/_components/worksheet-model-label";
@@ -25,12 +33,15 @@ import {
   EMPTY_WORKSHEET_LINE_FILTER,
   paginateWorksheetLines,
   planogramBrandOptions,
+  requestedLinesFirst,
   visibleWorksheetLines,
   WORKSHEET_PAGE_SIZE,
+  worksheetLineHasQty,
   worksheetOrderTotals,
   worksheetRequestedFooter,
   worksheetTotalsLabel,
   type WorksheetLineFilter,
+  type WorksheetRequestedSections,
 } from "@/features/orders/lib/order-worksheet-filters";
 import {
   projectWorksheetLines,
@@ -135,9 +146,11 @@ export interface OrderWorksheetProps {
   columnSet?: OrderWorksheetColumnSet;
   /**
    * When set, the brand filter belongs to the parent.
-   * Supply Planning keeps it on the left rail. An empty string is all brands.
+   * Supply Planning keeps it on the left rail. Create Order keeps it on the form so the
+   * summary follows it. An empty string is all brands.
    */
   brandId?: string;
+  onBrandIdChange?: (brandId: string) => void;
   /** Month-to-date sales by brand, used for the rate column. Not stored on the line. */
   brandSalesQty?: ReadonlyMap<string, number | null>;
 }
@@ -168,6 +181,7 @@ export function OrderWorksheet({
   hideSummary = false,
   columnSet = "default",
   brandId: controlledBrandId,
+  onBrandIdChange,
   brandSalesQty = EMPTY_BRAND_SALES,
 }: OrderWorksheetProps) {
   const [filter, setFilter] = useState<WorksheetLineFilter>(EMPTY_WORKSHEET_LINE_FILTER);
@@ -178,6 +192,11 @@ export function OrderWorksheet({
     () => ({ ...filter, brandId }),
     [brandId, filter],
   );
+  const applyFilter = (next: WorksheetLineFilter) => {
+    setFilter(brandControlled ? { ...next, brandId: "" } : next);
+    onBrandIdChange?.(next.brandId);
+    setPage(1);
+  };
   const projectionMode = mode === "create" ? "create" : "readonly";
   const storedRows = useMemo(
     () => projectWorksheetLines(lines, drafts, orderType, projectionMode),
@@ -187,9 +206,14 @@ export function OrderWorksheet({
     () => visibleWorksheetLines(storedRows, appliedFilter),
     [appliedFilter, storedRows],
   );
+  // Supply Planning sees every model, so the requested ones are set apart from the rest.
+  const sections = useMemo(
+    () => (columnSet === "supply-planning" ? requestedLinesFirst(visibleRows) : null),
+    [columnSet, visibleRows],
+  );
   const pageSlice = useMemo(
-    () => paginateWorksheetLines(visibleRows, page, WORKSHEET_PAGE_SIZE),
-    [page, visibleRows],
+    () => paginateWorksheetLines(sections?.rows ?? visibleRows, page, WORKSHEET_PAGE_SIZE),
+    [page, sections, visibleRows],
   );
   const totals = useMemo(
     () => worksheetOrderTotals(storedRows, { includeApproved: showApprovedQty }),
@@ -257,11 +281,8 @@ export function OrderWorksheet({
     return (
       <CreateOrderLineList
         brands={createBrands}
-        filter={filter}
-        onFilterChange={(next) => {
-          setFilter(next);
-          setPage(1);
-        }}
+        filter={appliedFilter}
+        onFilterChange={applyFilter}
         loading={loading}
         error={error ?? null}
         lineCount={lines.length}
@@ -314,10 +335,7 @@ export function OrderWorksheet({
           filter={appliedFilter}
           brands={brands}
           hideBrandFilter={columnSet === "supply-planning"}
-          onChange={(next) => {
-            setFilter(brandControlled ? { ...next, brandId: "" } : next);
-            setPage(1);
-          }}
+          onChange={applyFilter}
           action={null}
         />
         {loading && lines.length === 0 ? (
@@ -333,6 +351,7 @@ export function OrderWorksheet({
             <WorksheetLinesTable
               rows={pageSlice.rows}
               columns={columns}
+              sections={sections}
               minWidth={columnSet === "supply-planning" ? "72rem" : undefined}
             />
             <div className="shrink-0">
@@ -1422,10 +1441,12 @@ function RemoveColumnCell({ row }: WorksheetBodyCellProps) {
 function WorksheetLinesTable({
   rows,
   columns,
+  sections = null,
   minWidth,
 }: {
   rows: ProjectedWorksheetLine[];
   columns: DataTableColumn<ProjectedWorksheetLine>[];
+  sections?: WorksheetRequestedSections<ProjectedWorksheetLine> | null;
   minWidth?: string;
 }) {
   const table = useTable({
@@ -1475,28 +1496,79 @@ function WorksheetLinesTable({
               ))}
             </TableHeader>
             <TableBody>
-              {table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell
-                      key={cell.id}
-                      style={
-                        cell.column.columnDef.meta?.width
-                          ? { width: cell.column.columnDef.meta.width }
-                          : undefined
-                      }
-                      className={bodyCellClass(cell.column.columnDef.meta)}
+              {table.getRowModel().rows.map((row, position, pageRows) => {
+                const requested = row.original.requestedQty >= 1;
+                const previous = pageRows[position - 1]?.original;
+                // Each page repeats the heading of the section it opens on.
+                const opensSection =
+                  sections !== null &&
+                  (previous === undefined || previous.requestedQty >= 1 !== requested);
+                return (
+                  <Fragment key={row.id}>
+                    {opensSection ? (
+                      <WorksheetSectionRow
+                        requested={requested}
+                        count={requested ? sections.requestedCount : sections.otherCount}
+                        colSpan={columns.length}
+                      />
+                    ) : null}
+                    <TableRow
+                      className={cn(
+                        sections !== null &&
+                          worksheetLineHasQty(row.original) &&
+                          "bg-primary/10 hover:bg-primary/15",
+                      )}
                     >
-                      <table.FlexRender cell={cell} />
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))}
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell
+                          key={cell.id}
+                          style={
+                            cell.column.columnDef.meta?.width
+                              ? { width: cell.column.columnDef.meta.width }
+                              : undefined
+                          }
+                          className={bodyCellClass(cell.column.columnDef.meta)}
+                        >
+                          <table.FlexRender cell={cell} />
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  </Fragment>
+                );
+              })}
             </TableBody>
           </table>
         </div>
       </GlobalTableStickyContext.Provider>
     </TooltipProvider>
+  );
+}
+
+function WorksheetSectionRow({
+  requested,
+  count,
+  colSpan,
+}: {
+  requested: boolean;
+  count: number;
+  colSpan: number;
+}) {
+  return (
+    <TableRow className="bg-muted hover:bg-muted">
+      <th
+        scope="colgroup"
+        colSpan={colSpan}
+        className="px-2 py-1.5 text-left text-xs font-semibold text-foreground"
+      >
+        {/* The sheet scrolls sideways on small screens; the heading stays in view. */}
+        <span className="sticky left-2">
+          {requested ? "Requested" : "Other models"} ({count.toLocaleString()})
+          {requested ? null : (
+            <span className="ml-2 font-normal">Enter an approved qty to add one to this order.</span>
+          )}
+        </span>
+      </th>
+    </TableRow>
   );
 }
 
@@ -2031,14 +2103,17 @@ function WorksheetSummary({
 
 export function OrderWorksheetAsideSummary({
   summary,
+  figures,
   totals,
   loading = false,
 }: {
   summary: OrderWorksheetSummary | null;
+  /** DII and stock for the selected brand. Totals stay on the whole order. */
+  figures: WorksheetPlanningFigures | null;
   totals: ReturnType<typeof worksheetOrderTotals>;
   loading?: boolean;
 }) {
-  if (!summary) {
+  if (!summary || !figures) {
     return (
       <p className="text-right text-sm text-muted-foreground">
         {loading ? "Loading stock and totals…" : "Stock and totals appear after a branch is selected."}
@@ -2046,15 +2121,15 @@ export function OrderWorksheetAsideSummary({
     );
   }
 
-  const dii = formatDii(summary.computedDii, summary.diiUnavailableReason, summary.salesUnavailable);
+  const dii = formatDii(figures.computedDii, figures.diiUnavailableReason, figures.salesUnavailable);
   const counted = formatAsOf(summary.inventoryAsOf);
   const countedHint = counted === "N/A" ? null : `Counted ${counted}`;
   const diiHint = dii.hint ?? plainSalesPeriod(summary.salesPeriodLabel);
   const sentence = summarySentence("create", "current", null);
   const rows: { label: string; value: string; hint: string | null; strong?: boolean }[] = [
     { label: "Computed DII", value: dii.value, hint: diiHint },
-    { label: "Target DII", value: formatTargetDii(summary.targetDiiDays), hint: "Branch quota" },
-    { label: "Stock value", value: formatPeso(summary.inventoryAmount), hint: countedHint },
+    { label: "Target DII", value: formatTargetDii(figures.targetDiiDays), hint: "Branch quota" },
+    { label: "Stock value", value: formatPeso(figures.inventoryAmount), hint: countedHint },
     {
       label: "Requested value",
       value: formatPeso(totals.requestedAmount),

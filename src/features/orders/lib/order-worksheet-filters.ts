@@ -71,6 +71,13 @@ export interface WorksheetOrderTotals {
   approvedCbm: number;
 }
 
+/** Requested, or given a quantity by Supply Planning without a request. */
+export function worksheetLineHasQty(
+  line: Pick<WorksheetFilterableLine, "requestedQty" | "approvedQty">,
+): boolean {
+  return line.requestedQty >= 1 || (line.approvedQty ?? 0) > 0;
+}
+
 /**
  * Returns the same line objects that still match. It does not copy or clear
  * quantities, remarks, or any other stored field.
@@ -82,12 +89,34 @@ export function visibleWorksheetLines<T extends WorksheetFilterableLine>(
   const search = filter.modelSearch.trim().toLowerCase();
   const brandId = filter.brandId.trim();
   return lines.filter((line) => {
-    if (filter.orderedOnly && line.requestedQty < 1 && !((line.approvedQty ?? 0) > 0)) return false;
+    if (filter.orderedOnly && !worksheetLineHasQty(line)) return false;
     if (brandId && line.brandId !== brandId) return false;
     if (!search) return true;
     const haystack = `${line.skuCode} ${line.name}`.toLowerCase();
     return haystack.includes(search);
   });
+}
+
+export interface WorksheetRequestedSections<T> {
+  rows: T[];
+  requestedCount: number;
+  otherCount: number;
+}
+
+/**
+ * Requested models first, each group in sheet order. Groups by the request and not the
+ * approved qty, so a row stays put while Supply Planning types in it.
+ */
+export function requestedLinesFirst<T extends { requestedQty: number }>(
+  lines: readonly T[],
+): WorksheetRequestedSections<T> {
+  const requested = lines.filter((line) => line.requestedQty >= 1);
+  const others = lines.filter((line) => line.requestedQty < 1);
+  return {
+    rows: [...requested, ...others],
+    requestedCount: requested.length,
+    otherCount: others.length,
+  };
 }
 
 /** Totals always come from the full stored list, never from the visible subset. */

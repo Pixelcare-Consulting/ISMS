@@ -1,3 +1,4 @@
+import type { ProjectedWorksheetLine } from "@/features/orders/lib/order-worksheet-rows";
 import {
   assembleOrderWorksheet,
   classifyWorksheetInventory,
@@ -5,6 +6,7 @@ import {
   isAwaitingPulloutWorkflow,
   outstandingQtyForLines,
   quotaTargetDii,
+  worksheetFiguresForBrand,
   resolveDitDirection,
   worksheetBrandSalesQty,
   worksheetDii,
@@ -536,5 +538,43 @@ describe("supply planning figures and rate", () => {
         { brandId: "devant", salesQty: null, salesUnavailable: true },
       ]).get("devant"),
     ).toBeNull();
+  });
+});
+
+describe("worksheetFiguresForBrand", () => {
+  const line = (overrides: Partial<ProjectedWorksheetLine>) =>
+    ({
+      brandId: "devant",
+      srp: 10_450,
+      cbm: 0,
+      salesAmount: 0,
+      salesUnavailable: false,
+      milDays: 0,
+      onPlanogram: true,
+      inventory: { onHandQty: 0 },
+      requestedQty: 0,
+      approvedQty: null,
+      ...overrides,
+    }) as ProjectedWorksheetLine;
+  const lines = [
+    line({ inventory: { onHandQty: 4 } as ProjectedWorksheetLine["inventory"], salesAmount: 10_000 }),
+    line({ brandId: "hisense", inventory: { onHandQty: 1 } as ProjectedWorksheetLine["inventory"] }),
+  ];
+  const brandQuotas = [
+    { brandId: "devant", quantity: 100, targetDii: 10 },
+    { brandId: "hisense", quantity: 100, targetDii: 11 },
+  ];
+
+  it("gives the picked brand its own Target DII, stock and Computed DII", () => {
+    const figures = worksheetFiguresForBrand({ lines, brandId: "devant", brandQuotas, daysElapsed: 4 });
+    expect(figures.targetDiiDays).toBe(10);
+    expect(figures.inventoryAmount).toBe(41_800);
+    expect(figures.computedDii).toBeCloseTo(16.72);
+  });
+
+  it("treats an empty brand as all brands, where different targets have no single value", () => {
+    const figures = worksheetFiguresForBrand({ lines, brandId: "", brandQuotas, daysElapsed: 4 });
+    expect(figures.targetDiiDays).toBeNull();
+    expect(figures.inventoryAmount).toBe(52_250);
   });
 });
