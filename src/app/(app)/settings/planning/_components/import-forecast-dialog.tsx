@@ -11,6 +11,10 @@ import {
   previewForecastImportAction,
 } from "@/features/forecast/actions/forecast-import.actions";
 import type { ForecastImportPreview } from "@/features/forecast/schemas/forecast-import.schema";
+import {
+  TARGET_FORECAST_FORMULA,
+  type PlanogramRefreshSummary,
+} from "@/features/planogram/lib/target-forecast-qty";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -41,6 +45,83 @@ function downloadWorkbook(base64: string, filename: string) {
   anchor.download = filename;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+function unitLabel(count: number): string {
+  return `${count.toLocaleString()} planogram row${count === 1 ? "" : "s"}`;
+}
+
+/** Stays open after the upload: a toast would disappear before these can be read. */
+function ShelfMaxResult({
+  period,
+  summary,
+}: {
+  period: string;
+  summary: PlanogramRefreshSummary;
+}) {
+  const hiddenOverrides = summary.overriddenCount - summary.overriddenRows.length;
+
+  return (
+    <div className="space-y-3 text-sm">
+      <p>
+        Period {period} imported. Shelf max was recalculated for{" "}
+        {unitLabel(summary.rowCount)}, and {summary.changedCount.toLocaleString()} changed.
+      </p>
+      <p className="text-muted-foreground">Shelf max = {TARGET_FORECAST_FORMULA}, rounded up.</p>
+      <ul className="list-disc space-y-1 pl-5">
+        {summary.zeroForecastCount > 0 ? (
+          <li>
+            Forecast is 0 for {unitLabel(summary.zeroForecastCount)}, so 0 was used in the
+            calculation.
+          </li>
+        ) : null}
+        {summary.zeroDuCount > 0 ? (
+          <li>DU is currently 0 for {unitLabel(summary.zeroDuCount)}.</li>
+        ) : null}
+        {summary.missingFrequencyCount > 0 ? (
+          <li>
+            {unitLabel(summary.missingFrequencyCount)} had no delivery schedule, so frequency was
+            treated as 1 per month.
+          </li>
+        ) : null}
+        {summary.overriddenCount > 0 ? (
+          <li>
+            Manual edits replaced by this upload: {summary.overriddenCount.toLocaleString()}.
+          </li>
+        ) : null}
+      </ul>
+      {summary.overriddenRows.length > 0 ? (
+        <div className="max-h-48 overflow-auto rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Branch</TableHead>
+                <TableHead>SKU</TableHead>
+                <TableHead className="text-right">Manual value</TableHead>
+                <TableHead className="text-right">New value</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {summary.overriddenRows.map((row) => (
+                <TableRow key={`${row.branchName}:${row.sku}`}>
+                  <TableCell>{row.branchName}</TableCell>
+                  <TableCell className="font-mono">{row.sku}</TableCell>
+                  <TableCell className="text-right tabular-nums">{row.fromQty}</TableCell>
+                  <TableCell className="text-right tabular-nums">{row.toQty}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      ) : null}
+      {hiddenOverrides > 0 ? (
+        <p className="text-muted-foreground">
+          {hiddenOverrides.toLocaleString()} more are not listed here. Each one is marked on its
+          branch planogram.
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 function actionLabel(action: "create" | "update" | "skip"): string {
@@ -75,6 +156,10 @@ export function ImportForecastDialog({
     total: number;
     elapsedMs: number;
   } | null>(null);
+  const [shelfMaxResult, setShelfMaxResult] = useState<{
+    period: string;
+    summary: PlanogramRefreshSummary;
+  } | null>(null);
 
   const applying = applyProgress !== null;
   const busy = pending || applying;
@@ -83,6 +168,7 @@ export function ImportForecastDialog({
     setFile(null);
     setPreview(null);
     setApplyProgress(null);
+    setShelfMaxResult(null);
     if (fileRef.current) fileRef.current.value = "";
   }
 
@@ -193,8 +279,13 @@ export function ImportForecastDialog({
             ];
             toast.success(parts.join(" · "));
             setApplyProgress(null);
-            handleClose(false);
             router.refresh();
+            const summary = progress.result?.planogram;
+            if (summary && summary.rowCount > 0) {
+              setShelfMaxResult({ period, summary });
+            } else {
+              handleClose(false);
+            }
             return;
           }
 
@@ -232,7 +323,11 @@ export function ImportForecastDialog({
           <DialogTitle>Import forecast</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
+        {shelfMaxResult ? (
+          <ShelfMaxResult period={shelfMaxResult.period} summary={shelfMaxResult.summary} />
+        ) : null}
+
+        <div className="space-y-4" hidden={shelfMaxResult !== null}>
           <div
             role="status"
             className="flex gap-3 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-100"
@@ -256,6 +351,11 @@ export function ImportForecastDialog({
                 Keep the period as text (for example <strong>Dec-25</strong>), not as an
                 Excel date. Other formats like YYYYMMDD still import and are stored as
                 MMM-YY.
+              </p>
+              <p>
+                Each upload also recalculates <strong>Shelf max</strong> for every planogram
+                row of the branches in the file: {TARGET_FORECAST_FORMULA}, rounded up. It
+                replaces manual edits, and you will see which ones after the upload.
               </p>
             </div>
           </div>
@@ -476,12 +576,18 @@ export function ImportForecastDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => handleClose(false)} disabled={busy}>
-            Cancel
-          </Button>
-          <Button onClick={handleApply} disabled={busy || !preview?.canApply}>
-            {applying ? "Importing…" : pending ? "Working…" : "Apply import"}
-          </Button>
+          {shelfMaxResult ? (
+            <Button onClick={() => handleClose(false)}>Done</Button>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => handleClose(false)} disabled={busy}>
+                Cancel
+              </Button>
+              <Button onClick={handleApply} disabled={busy || !preview?.canApply}>
+                {applying ? "Importing…" : pending ? "Working…" : "Apply import"}
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

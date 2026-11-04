@@ -61,6 +61,9 @@ async function requireForecastManage() {
 function revalidateForecastPaths() {
   revalidatePath("/settings/planning");
   revalidatePath("/settings/planning/runs");
+  // Uploads recalculate Shelf max on the planogram pages.
+  revalidatePath("/settings/planogram", "layout");
+  revalidatePath("/settings/branches", "layout");
   revalidatePath("/orders");
   revalidatePath("/dashboard");
 }

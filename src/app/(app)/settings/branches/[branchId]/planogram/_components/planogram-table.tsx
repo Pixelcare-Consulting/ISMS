@@ -45,11 +45,18 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  describeMaxQtyCalc,
+  TARGET_FORECAST_FORMULA,
+  type MaxQtyCalc,
+} from "@/features/planogram/lib/target-forecast-qty";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
 interface PlanogramRow {
   id: string;
   maxQty: number;
+  maxQtyCalc: MaxQtyCalc | null;
+  maxQtyEditedByHand: boolean;
   effectiveFrom?: string | null;
   stockCount: number;
   ditCount: number;
@@ -171,6 +178,7 @@ export function PlanogramTable({
             planogramId={row.original.id}
             maxQty={row.original.maxQty}
             canManage={canManage}
+            detail={describeMaxQtyCalc(row.original.maxQtyCalc, row.original.maxQtyEditedByHand)}
           />
         ),
       }),
@@ -238,6 +246,11 @@ export function PlanogramTable({
           </Link>
         </div>
       ) : null}
+
+      <p className="text-muted-foreground text-sm">
+        Shelf max = {TARGET_FORECAST_FORMULA}, rounded up. It is recalculated on every forecast
+        upload, and any manual edit is replaced by that upload.
+      </p>
 
       <DataTable
         data={sort.sorted}
@@ -308,11 +321,13 @@ function ShelfMaxCell({
   planogramId,
   maxQty,
   canManage,
+  detail,
 }: {
   branchId: string;
   planogramId: string;
   maxQty: number;
   canManage: boolean;
+  detail: ReturnType<typeof describeMaxQtyCalc>;
 }) {
   const router = useRouter();
   const [value, setValue] = useState(String(maxQty));
@@ -320,12 +335,13 @@ function ShelfMaxCell({
 
   function save() {
     const parsed = Number.parseInt(value, 10);
+    // First, because a calculated 0 must not raise an error when the field only loses focus.
+    if (parsed === maxQty) return;
     if (!Number.isInteger(parsed) || parsed < 1) {
       setValue(String(maxQty));
       toast.error("Shelf max must be at least 1");
       return;
     }
-    if (parsed === maxQty) return;
 
     startTransition(async () => {
       const result = await updatePlanogramMaxQtyAction({
@@ -343,27 +359,40 @@ function ShelfMaxCell({
     });
   }
 
-  if (!canManage) {
-    return <span className="tabular-nums">{maxQty}</span>;
-  }
-
   return (
-    <Input
-      type="number"
-      min={1}
-      step={1}
-      className="h-8 w-16 tabular-nums"
-      value={value}
-      disabled={pending}
-      onChange={(e) => setValue(e.target.value)}
-      onBlur={save}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") {
-          event.currentTarget.blur();
-        }
-      }}
-      aria-label="Shelf max"
-    />
+    <div className="max-w-56 space-y-1">
+      {canManage ? (
+        <Input
+          type="number"
+          min={1}
+          step={1}
+          className="h-8 w-16 tabular-nums"
+          value={value}
+          disabled={pending}
+          onChange={(e) => setValue(e.target.value)}
+          onBlur={save}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.currentTarget.blur();
+            }
+          }}
+          aria-label="Shelf max"
+        />
+      ) : (
+        <span className="tabular-nums">{maxQty}</span>
+      )}
+      {detail.calculation ? (
+        <p className="text-muted-foreground text-xs tabular-nums">{detail.calculation}</p>
+      ) : null}
+      {detail.notices.map((notice) => (
+        <p
+          key={notice}
+          className="whitespace-normal text-xs text-amber-800 dark:text-amber-300"
+        >
+          {notice}
+        </p>
+      ))}
+    </div>
   );
 }
 
@@ -628,8 +657,9 @@ function AddPlanogramDialog({
                       ))}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      How many units this branch should hold for each model. Suggested
-                      order qty = Shelf max − on-hand (STK).
+                      Starting value only. The next forecast upload replaces it with{" "}
+                      {TARGET_FORECAST_FORMULA}. Suggested order qty = Shelf max − on-hand
+                      (STK).
                     </p>
                   </div>
                 ) : null}

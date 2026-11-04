@@ -359,8 +359,11 @@ async function applyWriteSlice(
         branchId: row.branchId,
         modelId: row.modelId,
         maxQty: row.maxQty,
+        maxQtyEditedAt: new Date(),
       },
-      update: { maxQty: row.maxQty },
+      update: row.changes.some((change) => change.field === "maxQty")
+        ? { maxQty: row.maxQty, maxQtyEditedAt: new Date() }
+        : {},
     });
 
     if (row.action === "create") {

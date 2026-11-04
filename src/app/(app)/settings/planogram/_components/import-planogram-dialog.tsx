@@ -235,8 +235,8 @@ export function ImportPlanogramDialog({
             </p>
             <p>
               SKUs and branches must already exist — this import does not create models.
-              Shelf max is a whole number of at least 1 and is saved on new and existing
-              rows. If more than one branch uses the same name, that row is rejected. Rows
+              Shelf max is a whole number from 0 and is saved on new and existing rows. The
+              next forecast upload replaces it. If more than one branch uses the same name, that row is rejected. Rows
               left out of the file are not removed.
             </p>
           </div>

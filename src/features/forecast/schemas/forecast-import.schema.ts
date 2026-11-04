@@ -12,6 +12,8 @@
  * are not deleted.
  */
 
+import type { PlanogramRefreshSummary } from "@/features/planogram/lib/target-forecast-qty";
+
 export const FORECAST_SHEET_NAME = "Forecast";
 export const SFE_SHEET_NAME = "SFE";
 export const FOCUS_SHEET_NAME = "Focus";
@@ -159,6 +161,8 @@ export interface ForecastImportResult {
   sfeCreated: number;
   sfeUpdated: number;
   sfeUnchanged: number;
+  /** Shelf max recalculation for the branches in the file. */
+  planogram?: PlanogramRefreshSummary;
 }
 
 /** Progress payload for client-driven chunked forecast import apply. */

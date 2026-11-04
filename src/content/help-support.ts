@@ -573,7 +573,7 @@ export const HELP_FAQ_CATEGORIES: HelpFaqCategory[] = [
         id: "orders-8",
         question: "What is Shelf max on planogram?",
         answer:
-          "Shelf max is how many units a branch should hold for a model. Suggested order qty (SUG) is Shelf max minus on-hand stock. Set it when you add or edit a model on Settings → Planogram for that branch.",
+          "Shelf max = (Target forecast qty + current DU) ÷ frequency, rounded up. Frequency is the branch's deliveries per month. Every forecast upload recalculates it for the branches in the file and replaces manual edits, and the upload lists what it replaced. Suggested order qty (SUG) is Shelf max minus on-hand stock.",
       },
       {
         id: "orders-super-admin-bulk-cancel",
