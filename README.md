@@ -261,6 +261,22 @@ built from the commit, inside the `sandbox` Compose stack.
 
 Details: [`docs/release-notes.md`](docs/release-notes.md).
 
+## Planogram Max Qty (read before touching this field)
+
+Max Qty is the per-branch, per-SKU limit that was called Shelf max. The client replaced the stored number with a calculated one, so it now has its own column and the old column is kept but unused.
+
+| Prisma field (`BranchPlanogram`) | DB column | Meaning |
+| --- | --- | --- |
+| `maxQty` | `calculated_max_qty` | The live value. Every feature reads this. Defaults to 0. |
+| `legacyMaxQty` | `max_qty` | The old Shelf max, left as it was for traceability. Do not read or write it from the app. Null on rows created after the change. |
+
+- **Trap:** in raw SQL, `max_qty` is the old value, not the live one. Use `calculated_max_qty`.
+- **Why a new column:** the migration only adds to the table, so no existing value is overwritten, and the old numbers stop appearing without a data reset.
+- **Calculation:** `(Target forecast qty + current DU) ÷ frequency`, rounded up, recalculated for the branches in each forecast upload. Manual edits are allowed and the next upload replaces them. See `src/features/planogram/lib/target-forecast-qty.ts`.
+- **Before the first upload:** the value is 0 and the planogram row says "Not calculated yet". 0 is a real limit, so Manual and Auto replenish orders cannot include that SKU, and existing drafts fail on edit or submit. On a new environment, deploy and upload the forecast together.
+- **Old names kept on purpose:** the `shelf_max` column in the planogram template, and the `shelfMax` keys in saved AI proposals and report datasets. Only the on-screen label changed.
+- **To go back to the old value:** map `maxQty` back to `max_qty` in `prisma/schema.prisma` and restore `NOT NULL` with a migration. Rows created since the change have no old value and need one first.
+
 ## SAP integration (current)
 
 - **Queue:** `/settings/sap-integration` — outbound jobs, mock processor (order → `sapDocRef` → delivery)

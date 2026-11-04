@@ -573,7 +573,7 @@ export const HELP_FAQ_CATEGORIES: HelpFaqCategory[] = [
         id: "orders-8",
         question: "What is Max Qty on planogram?",
         answer:
-          "Max Qty = (Target forecast qty + current DU) ÷ frequency, rounded up. Frequency is the branch's deliveries per month. Every forecast upload recalculates it for the branches in the file and replaces manual edits, and the upload lists what it replaced. Suggested order qty (SUG) is Max Qty minus on-hand stock.",
+          "Max Qty = (Target forecast qty + current DU) ÷ frequency, rounded up. Frequency is the branch's deliveries per month. Every forecast upload recalculates it for the branches in the file and replaces manual edits, and the upload lists what it replaced. It is 0 until the first upload that includes the branch, so Manual orders cannot include that SKU before then. Suggested order qty (SUG) is Max Qty minus on-hand stock.",
       },
       {
         id: "orders-super-admin-bulk-cancel",

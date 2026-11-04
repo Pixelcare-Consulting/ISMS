@@ -1859,14 +1859,16 @@ model BranchPlanogram {
   tenantId      String    @map("tenant_id")
   branchId      String    @map("branch_id")
   modelId       String    @map("model_id")
-  /// Shelf max. Recalculated on every forecast upload, see planogram/lib/target-forecast-qty.ts.
-  maxQty        Int       @default(1) @map("max_qty")
+  /// Max Qty. Stored in `calculated_max_qty`, NOT in the old `max_qty` column (see `legacyMaxQty`).
+  /// 0 until the first forecast upload, which recalculates it: planogram/lib/target-forecast-qty.ts.
+  maxQty        Int       @default(0) @map("calculated_max_qty")
   /// Inputs of the last calculation (`MaxQtyCalc`). Null until the first forecast upload.
   maxQtyCalc     Json?     @map("max_qty_calc")
   /// Set by a manual edit or planogram upload. The next forecast upload clears it.
   maxQtyEditedAt DateTime? @map("max_qty_edited_at")
-  /// Shelf max before it became calculated. Kept for traceability; the app does not read it.
-  legacyMaxQty   Int?      @map("legacy_max_qty")
+  /// The old Shelf max, left untouched for traceability. The app must not read or write it.
+  /// Null on rows created after the change. See "Planogram Max Qty" in README.md.
+  legacyMaxQty   Int?      @map("max_qty")
   effectiveFrom DateTime? @map("effective_from")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
