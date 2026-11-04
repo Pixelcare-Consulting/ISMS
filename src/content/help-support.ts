@@ -567,13 +567,13 @@ export const HELP_FAQ_CATEGORIES: HelpFaqCategory[] = [
         id: "orders-7",
         question: "Is SUG on Create order the same as the Planning forecast?",
         answer:
-          "No. SUG is the shelf gap for that branch — Shelf max minus on-hand (STK) — not Drop 1 / Target Quota from Planning. When BRANCH ORD shows Shelf full, stock already meets Shelf max so Manual cannot order more. Confirm stock on Stock units → By model or Reports → Inventory Report. For order volume (Total CBM), fill the optional CBM column on Models import.",
+          "No. SUG is the shelf gap for that branch — Max Qty minus on-hand (STK) — not Drop 1 / Target Quota from Planning. When BRANCH ORD shows At Max Qty, stock already meets Max Qty so Manual cannot order more. Confirm stock on Stock units → By model or Reports → Inventory Report. For order volume (Total CBM), fill the optional CBM column on Models import.",
       },
       {
         id: "orders-8",
-        question: "What is Shelf max on planogram?",
+        question: "What is Max Qty on planogram?",
         answer:
-          "Shelf max = (Target forecast qty + current DU) ÷ frequency, rounded up. Frequency is the branch's deliveries per month. Every forecast upload recalculates it for the branches in the file and replaces manual edits, and the upload lists what it replaced. Suggested order qty (SUG) is Shelf max minus on-hand stock.",
+          "Max Qty = (Target forecast qty + current DU) ÷ frequency, rounded up. Frequency is the branch's deliveries per month. Every forecast upload recalculates it for the branches in the file and replaces manual edits, and the upload lists what it replaced. Suggested order qty (SUG) is Max Qty minus on-hand stock.",
       },
       {
         id: "orders-super-admin-bulk-cancel",

@@ -54,7 +54,7 @@ export const DAILY_STOCK_REPORT_HEADERS = [
   "BRANCH",
   "SKU",
   "MODEL NAME",
-  "SHELF MAX",
+  "MAX QTY",
   "INV",
   "SOLD",
 ] as const;

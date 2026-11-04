@@ -852,7 +852,7 @@ function LocationCard({ serial }: { serial: SerialTraceability }) {
               value={
                 serial.planogram.onPlanogram
                   ? serial.planogram.maxQty != null
-                    ? `Yes · Shelf max ${serial.planogram.maxQty}`
+                    ? `Yes · Max Qty ${serial.planogram.maxQty}`
                     : "Yes"
                   : "No"
               }

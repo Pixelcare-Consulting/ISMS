@@ -95,7 +95,7 @@ function lineLocked(
   return line.onPlanogram && line.remainingCapacity <= 0;
 }
 
-const SUG_HINT = "Shelf gap (Shelf max − STK). Not Planning forecast.";
+const SUG_HINT = "Shelf gap (Max Qty − STK). Not Planning forecast.";
 
 function AutoReplenishCreateOrderDialog({
   onClose,
@@ -416,7 +416,7 @@ function AutoReplenishCreateOrderDialog({
           <DialogTitle>Create branch order</DialogTitle>
           <DialogDescription>
             Review branch stock and suggested quantities, then enter quantities for this
-            request. SUG is shelf gap from planogram Shelf max, not forecast.
+            request. SUG is shelf gap from planogram Max Qty, not forecast.
           </DialogDescription>
         </DialogHeader>
 
@@ -598,7 +598,7 @@ function AutoReplenishCreateOrderDialog({
                               />
                               {locked ? (
                                 <p className="mt-1 text-[10px] text-muted-foreground">
-                                  Shelf full
+                                  At Max Qty
                                 </p>
                               ) : null}
                             </td>

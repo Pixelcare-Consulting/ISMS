@@ -12,7 +12,7 @@ export const PLANNING_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "What this page is for",
       description:
-        "Planning holds the official forecast for a period — Target Quota per branch comes from your SFE import — then compares shelf capacity to stock. After you run allocation, a popup asks whether to generate suggested auto-replenish drafts.",
+        "Planning holds the official forecast for a period — Target Quota per branch comes from your SFE import — then compares Max Qty to stock. After you run allocation, a popup asks whether to generate suggested auto-replenish drafts.",
     },
     {
       title: "How to use it",
@@ -20,7 +20,7 @@ export const PLANNING_PAGE_TUTORIAL: PageTutorialContent = {
         "Choose the period from Active period at the top. Switching it makes that period the one used on the dashboard.",
         "Click Total branches to jump to the Target Quota list, and Supply Planning to open runs.",
         "Target Quota is read-only on this page. Use Import forecast with the SFE sheet (period, branch SAP code, SKU, forecast qty) — quotas are calculated from forecast qty × price list. 0 SRP means FREE; Target Quota may be ₱0 and import still continues with a warning.",
-        "Shelf max and MIL stay on Settings → Planogram. Have planogram, SFE for the period, and sales history ready before Supply Planning.",
+        "Max Qty and MIL stay on Settings → Planogram. Have planogram, SFE for the period, and sales history ready before Supply Planning.",
         "Run allocation. In the popup, generate suggested orders or skip. After Supply Planning Release, confirm the branch warnings, then Auto Replenish orders go straight to Team Leader — open Auto Replenish to approve. Branch orders still go through TL / SP approval.",
       ],
     },

@@ -75,9 +75,9 @@ const WORKSHEET_COLUMN_HELP = {
   onHand:
     "Branch stock in STK status. This includes STK units still pending defect inspection. Units on the way are not included.",
   suggestShelf:
-    "Shelf gap. Shelf maximum minus units on hand. The shelf maximum is shown under the suggestion. This is not the planning forecast.",
+    "Shelf gap. Max Qty minus units on hand. Max Qty is shown under the suggestion. This is not the planning forecast.",
   suggestPlan:
-    "Comes from the released plan. This is the remaining Drop 1 for this branch and model after quantities already on a draft or order. When the model has a shelf maximum, it is shown under the suggestion.",
+    "Comes from the released plan. This is the remaining Drop 1 for this branch and model after quantities already on a draft or order. When the model has a Max Qty, it is shown under the suggestion.",
   cbm: "Cubic meters for this line. When a quantity is entered, this is that quantity times the model's CBM. Otherwise it is the model's own CBM. 0.0000 means the model has no CBM.",
   requested: "Quantity the branch asked for. Zero means the row is not part of the order.",
   approved:
@@ -92,7 +92,7 @@ const WORKSHEET_COLUMN_HELP = {
     "Units at the branch by status. On-hand stock is always shown. Other statuses appear when the branch has them.",
   sales: "Units sold this month, up to today.",
   rate: "This model's sales this month divided by that brand's sales this month.",
-  milQty: "Shelf maximum for this model.",
+  milQty: "Max Qty for this model.",
   order: "Quantity the branch asked for.",
   spCbm:
     "Cubic meters for the approved quantity (the request until Supply Planning changes it). This is the model's CBM times that quantity.",
@@ -566,7 +566,7 @@ function CreateOrderLineList({
 /**
  * One dense row that stays inside the page width.
  * The model name takes leftover space and wraps. Other columns can shrink.
- * Order: No., checkbox, Model, Stock, Sales, Rate, Shelf max, Suggest, Qty, Note, CBM, Details, Remove.
+ * Order: No., checkbox, Model, Stock, Sales, Rate, Max Qty, Suggest, Qty, Note, CBM, Details, Remove.
  */
 const CREATE_LINE_GRID =
   "grid w-full min-w-0 items-center gap-x-1 sm:gap-x-2 [grid-template-columns:1.5rem_1.25rem_minmax(4.5rem,1.8fr)_minmax(2.25rem,0.5fr)_minmax(0,0.55fr)_minmax(3.25rem,0.8fr)_minmax(0,0.65fr)_minmax(3rem,0.75fr)_minmax(2.25rem,0.72fr)_minmax(0,0.5fr)_minmax(2.75rem,0.7fr)_minmax(0,0.6fr)_1.5rem] [&>*]:min-w-0";
@@ -605,7 +605,7 @@ function CreateLineHeader({
       <span className="text-right">Stock</span>
       <span className="text-right">Sales</span>
       <span className="text-right">Rate</span>
-      <span className="text-right">Shelf max</span>
+      <span className="text-right">Max Qty</span>
       <span className="text-right">Suggest</span>
       <span className="text-center">Qty</span>
       <span className="sr-only">Note</span>
@@ -1516,7 +1516,7 @@ function ShelfMaxLine({ shelfMax }: { shelfMax: number | null }) {
   if (shelfMax == null) return null;
   return (
     <span className="block max-w-full text-right text-[11px] font-normal leading-tight whitespace-normal text-muted-foreground">
-      Shelf max {formatQty(shelfMax)}
+      Max Qty {formatQty(shelfMax)}
     </span>
   );
 }
@@ -1715,7 +1715,7 @@ function RequestedCell({
   const blockedReason =
     !row.requestable
       ? row.onPlanogram && row.sugQty === 0
-        ? "Shelf full"
+        ? "At Max Qty"
         : "Not available to order"
       : undefined;
   return (
@@ -2250,7 +2250,7 @@ function RemarkText({ value }: { value: string }) {
 }
 
 function shelfSuggestionCaption(row: ProjectedWorksheetLine): string {
-  const shelf = row.shelfMax == null ? "no shelf max" : `shelf max ${formatQty(row.shelfMax)}`;
+  const shelf = row.shelfMax == null ? "no Max Qty" : `Max Qty ${formatQty(row.shelfMax)}`;
   const formula = `Suggestion uses ${shelf} minus units on hand. Incoming and open orders are not subtracted.`;
   if (row.sugQty != null) return formula;
   const why =

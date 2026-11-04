@@ -161,7 +161,7 @@ export interface ForecastImportResult {
   sfeCreated: number;
   sfeUpdated: number;
   sfeUnchanged: number;
-  /** Shelf max recalculation for the branches in the file. */
+  /** Max Qty recalculation for the branches in the file. */
   planogram?: PlanogramRefreshSummary;
 }
 

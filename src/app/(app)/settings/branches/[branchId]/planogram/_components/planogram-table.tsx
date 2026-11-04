@@ -169,7 +169,7 @@ export function PlanogramTable({
       }),
       planogramColumn.display({
         id: "maxQty",
-        header: "Shelf max",
+        header: "Max Qty",
         enableSorting: true,
         cell: ({ row }) => (
           <ShelfMaxCell
@@ -248,7 +248,7 @@ export function PlanogramTable({
       ) : null}
 
       <p className="text-muted-foreground text-sm">
-        Shelf max = {TARGET_FORECAST_FORMULA}, rounded up. It is recalculated on every forecast
+        Max Qty = {TARGET_FORECAST_FORMULA}, rounded up. It is recalculated on every forecast
         upload, and any manual edit is replaced by that upload.
       </p>
 
@@ -339,7 +339,7 @@ function ShelfMaxCell({
     if (parsed === maxQty) return;
     if (!Number.isInteger(parsed) || parsed < 1) {
       setValue(String(maxQty));
-      toast.error("Shelf max must be at least 1");
+      toast.error("Max Qty must be at least 1");
       return;
     }
 
@@ -354,7 +354,7 @@ function ShelfMaxCell({
         setValue(String(maxQty));
         return;
       }
-      toast.success("Shelf max updated");
+      toast.success("Max Qty updated");
       router.refresh();
     });
   }
@@ -376,7 +376,7 @@ function ShelfMaxCell({
               event.currentTarget.blur();
             }
           }}
-          aria-label="Shelf max"
+          aria-label="Max Qty"
         />
       ) : (
         <span className="tabular-nums">{maxQty}</span>
@@ -505,7 +505,7 @@ function AddPlanogramDialog({
 
   function submit() {
     if (!shelfMaxValid) {
-      toast.error("Shelf max must be at least 1 for each selected model");
+      toast.error("Max Qty must be at least 1 for each selected model");
       return;
     }
 
@@ -634,7 +634,7 @@ function AddPlanogramDialog({
                               htmlFor={`shelf-max-${m.id}`}
                               className="shrink-0 text-xs text-muted-foreground"
                             >
-                              Shelf max
+                              Max Qty
                             </Label>
                             <Input
                               id={`shelf-max-${m.id}`}
@@ -650,7 +650,7 @@ function AddPlanogramDialog({
                                 }))
                               }
                               disabled={pending}
-                              aria-label={`Shelf max for ${m.skuCode}`}
+                              aria-label={`Max Qty for ${m.skuCode}`}
                             />
                           </div>
                         </div>
@@ -658,7 +658,7 @@ function AddPlanogramDialog({
                     </div>
                     <p className="text-xs text-muted-foreground">
                       Starting value only. The next forecast upload replaces it with{" "}
-                      {TARGET_FORECAST_FORMULA}. Suggested order qty = Shelf max − on-hand
+                      {TARGET_FORECAST_FORMULA}. Suggested order qty = Max Qty − on-hand
                       (STK).
                     </p>
                   </div>

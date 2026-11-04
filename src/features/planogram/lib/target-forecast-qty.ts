@@ -1,5 +1,5 @@
 /**
- * Shelf max from Planning. Pure rules only, safe to import from client components.
+ * Max Qty from Planning. Pure rules only, safe to import from client components.
  *
  * The client's formula is kept exactly, including DU being divided by frequency.
  * Inputs are stored on the row so the value can be explained later.

@@ -64,10 +64,10 @@ function ShelfMaxResult({
   return (
     <div className="space-y-3 text-sm">
       <p>
-        Period {period} imported. Shelf max was recalculated for{" "}
+        Period {period} imported. Max Qty was recalculated for{" "}
         {unitLabel(summary.rowCount)}, and {summary.changedCount.toLocaleString()} changed.
       </p>
-      <p className="text-muted-foreground">Shelf max = {TARGET_FORECAST_FORMULA}, rounded up.</p>
+      <p className="text-muted-foreground">Max Qty = {TARGET_FORECAST_FORMULA}, rounded up.</p>
       <ul className="list-disc space-y-1 pl-5">
         {summary.zeroForecastCount > 0 ? (
           <li>
@@ -353,7 +353,7 @@ export function ImportForecastDialog({
                 MMM-YY.
               </p>
               <p>
-                Each upload also recalculates <strong>Shelf max</strong> for every planogram
+                Each upload also recalculates <strong>Max Qty</strong> for every planogram
                 row of the branches in the file: {TARGET_FORECAST_FORMULA}, rounded up. It
                 replaces manual edits, and you will see which ones after the upload.
               </p>

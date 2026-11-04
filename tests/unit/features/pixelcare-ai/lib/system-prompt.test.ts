@@ -30,10 +30,10 @@ describe("buildPixelcareAiSystemPrompt", () => {
     expect(prompt).toContain("GitHub-flavored Markdown tables");
     expect(prompt).toContain("Never use space-padded or tab-aligned plain-text columns");
     expect(prompt).toContain("Never append markdown markers");
-    expect(prompt).toContain('Say "Shelf max"');
+    expect(prompt).toContain('Say "Max Qty"');
     expect(prompt).toContain("never say maxQty");
-    expect(prompt).toContain("Suggested order qty / SUG = Shelf max − on-hand (STK)");
-    expect(prompt).toContain("Shelf max | STK | SUG");
+    expect(prompt).toContain("Suggested order qty / SUG = Max Qty − on-hand (STK)");
+    expect(prompt).toContain("Max Qty | STK | SUG");
     expect(prompt).toContain("planning/forecast");
     expect(prompt).toContain("listDemandPlanningRuns");
     expect(prompt).toContain("getCoverageMonitor");

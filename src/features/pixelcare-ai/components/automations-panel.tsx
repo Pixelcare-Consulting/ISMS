@@ -414,7 +414,7 @@ function ProposalList(props: {
                   <thead>
                     <tr className="border-b text-xs text-muted-foreground">
                       <th className="py-1 pr-3 font-medium">SKU</th>
-                      <th className="py-1 pr-3 font-medium">Shelf max</th>
+                      <th className="py-1 pr-3 font-medium">Max Qty</th>
                       <th className="py-1 pr-3 font-medium">STK</th>
                       <th className="py-1 pr-3 font-medium">SUG</th>
                       <th className="py-1 font-medium">Notes</th>
@@ -428,7 +428,7 @@ function ProposalList(props: {
                         <td className="py-1 pr-3 tabular-nums">{line.stk}</td>
                         <td className="py-1 pr-3 tabular-nums">{line.sug}</td>
                         <td className="py-1 text-muted-foreground">
-                          {line.exceptions.length > 0 ? line.exceptions.join("; ") : "Shelf max − STK"}
+                          {line.exceptions.length > 0 ? line.exceptions.join("; ") : "Max Qty − STK"}
                         </td>
                       </tr>
                     ))}

@@ -51,7 +51,7 @@ async function loadFrequencies(tenantId: string, branchIds: string[]) {
 
 export const planogramForecastRefreshService = {
   /**
-   * Recalculates Shelf max for every planogram row of these branches. Reads saved
+   * Recalculates Max Qty for every planogram row of these branches. Reads saved
    * forecast targets, not the upload, so unchanged rows and partial files are covered.
    */
   async refreshForBranches(input: {

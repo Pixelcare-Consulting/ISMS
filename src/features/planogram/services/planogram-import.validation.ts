@@ -10,7 +10,7 @@ function isBlankOrDash(value: string | undefined | null): boolean {
 }
 
 /**
- * Shelf max is a whole number from 0: the template pre-fills current values, and a
+ * Max Qty is a whole number from 0: the template pre-fills current values, and a
  * forecast upload can calculate 0. "1.0" from a text cell is accepted.
  */
 export function parsePlanogramShelfMax(

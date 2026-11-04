@@ -9,7 +9,7 @@ export const PLANOGRAM_MODULE_GUIDE: ModuleGuideContent = {
     { label: "Each row shows allowed SKUs as tags — Open a branch to add or remove one SKU; the wait message names that branch" },
     {
       label:
-        "Shelf max = (Target forecast qty + current DU) ÷ frequency, rounded up. Every forecast upload recalculates it and replaces manual edits. Manual orders cannot order more than Shelf max minus on-hand (STK)",
+        "Max Qty = (Target forecast qty + current DU) ÷ frequency, rounded up. Every forecast upload recalculates it and replaces manual edits. Manual orders cannot order more than Max Qty minus on-hand (STK)",
     },
     { label: "Use Import for many branches at once: download the template, then upload the same file to preview and apply" },
     { label: "Each import row is a branch SAP code plus a SKU" },
@@ -30,7 +30,7 @@ export const BRANCH_PLANOGRAM_MODULE_GUIDE: ModuleGuideContent = {
     { label: "Add or remove models the branch is allowed to carry — Add model requires Allowed models first" },
     {
       label:
-        "Shelf max = (Target forecast qty + current DU) ÷ frequency, rounded up. Every forecast upload recalculates it and replaces manual edits. Manual orders cannot exceed Shelf max − STK",
+        "Max Qty = (Target forecast qty + current DU) ÷ frequency, rounded up. Every forecast upload recalculates it and replaces manual edits. Manual orders cannot exceed Max Qty − STK",
     },
     { label: "Price and date come from Models; series is the series assigned to that SKU in Master data" },
     { label: "Bulk assignment uses Import on Settings → Planogram (official template: branch SAP code and SKU)" },

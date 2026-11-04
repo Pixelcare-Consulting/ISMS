@@ -1,6 +1,6 @@
 /**
  * Pure order-worksheet rules. No database access.
- * SUG is shelf max minus STK. DII is stock value divided by Manila daily sales.
+ * SUG is Max Qty minus STK. DII is stock value divided by Manila daily sales.
  */
 
 import type { BranchOrderType, SkuStatus } from "@prisma/client";

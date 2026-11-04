@@ -47,6 +47,18 @@ describe("validateOrderLines", () => {
     );
   });
 
+  it("names Max Qty when a line is over the remaining quantity", async () => {
+    findModel.mockResolvedValue({ skuCode: "SKU-1", status: "active" });
+    findPlanogramEntry.mockResolvedValue({ maxQty: 5 });
+    (planogramRepository.countStockForModel as jest.Mock).mockResolvedValue(3);
+
+    await expect(
+      validateOrderLines("tenant-1", "branch-1", "manual", [
+        { modelId: "m-1", quantity: 3 },
+      ]),
+    ).rejects.toThrow("Quantity for SKU-1 exceeds Max Qty (2 remaining of 5)");
+  });
+
   it("accepts an active off-planogram model on a special order", async () => {
     findModel.mockResolvedValue({ skuCode: "SKU-OFF", status: "active" });
 
