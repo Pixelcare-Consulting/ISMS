@@ -102,7 +102,12 @@ async function loadTemplateRows(actor: PlanogramImportActor): Promise<PlanogramT
     scopedBranchIds && scopedBranchIds.length > 0 ? { branchId: { in: scopedBranchIds } } : {};
 
   const entries = await prisma.branchPlanogram.findMany({
-    where: { tenantId: actor.tenantId, ...branchFilter },
+    where: {
+      tenantId: actor.tenantId,
+      ...branchFilter,
+      branch: { status: "active" },
+      model: { status: "active" },
+    },
     select: {
       maxQty: true,
       branch: { select: { name: true } },

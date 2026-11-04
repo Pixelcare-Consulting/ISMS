@@ -172,6 +172,7 @@ async function loadTemplateRows(actor: ForecastImportActor): Promise<SfeTemplate
     where: {
       tenantId: actor.tenantId,
       branch: { status: "active", ...branchScope },
+      model: { status: "active" },
     },
     select: {
       branchId: true,
