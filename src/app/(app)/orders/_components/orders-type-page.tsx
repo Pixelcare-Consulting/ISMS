@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { SAP_CHECK_PERMISSIONS } from "@/features/logistics/constants/logistics-permissions";
 import { BRANCH_ORDER_TYPE_LABELS } from "@/features/orders/constants/order-status";
 import {
   getOrdersKpisAction,
@@ -24,6 +25,7 @@ import { SC_ORDERS_CREATE } from "@/features/service-center-ops/constants/sc-per
 import { ordersModuleGuideForType } from "@/content/module-guides/orders";
 import { BRANCH_ORDERS_PAGE_TUTORIAL } from "@/content/page-tutorials/branch-orders";
 import { PageHeader } from "@/app/(app)/_components/page-header";
+import { CheckSapNowButton } from "@/app/(app)/logistics/_components/check-sap-now-button";
 import { OrderHistoryTable } from "@/app/(app)/orders/_components/order-history-table";
 import { OrdersCreateWorkspaceProvider } from "@/app/(app)/orders/_components/orders-create-workspace-context";
 import { OrdersPageTabs } from "@/app/(app)/orders/_components/orders-page-tabs";
@@ -218,6 +220,10 @@ export async function OrdersTypePage({
   const canAccessSuggestedOrders =
     hasPermission(session.user.permissions, "forecast.manage") ||
     hasPermission(session.user.permissions, "planogram.manage");
+  // Sales Orders made in SAP import as manual orders, so only this page offers the check.
+  const canCheckSap =
+    combinedManualSpecial &&
+    SAP_CHECK_PERMISSIONS.some((permission) => hasPermission(session.user.permissions, permission));
   const typeLabel = BRANCH_ORDER_TYPE_LABELS[orderType];
   const basePath = combinedManualSpecial ? "/orders/manual" : ORDER_TYPE_ROUTE[orderType];
   const preserved = {
@@ -311,10 +317,15 @@ export async function OrdersTypePage({
             : ordersTypePageDescription(orderType)
         }
         actions={
-          canAccessSuggestedOrders ? (
-            <Button variant="outline" asChild>
-              <Link href="/settings/planning">Planning</Link>
-            </Button>
+          canCheckSap || canAccessSuggestedOrders ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {canCheckSap ? <CheckSapNowButton size="default" /> : null}
+              {canAccessSuggestedOrders ? (
+                <Button variant="outline" asChild>
+                  <Link href="/settings/planning">Planning</Link>
+                </Button>
+              ) : null}
+            </div>
           ) : undefined
         }
       />

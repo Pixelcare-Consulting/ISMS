@@ -2,6 +2,7 @@ import {
   resolveCapabilities,
   type ResolvedCapabilities,
 } from "@/lib/auth/action-capabilities";
+import { anyOrderTypePermissions } from "@/features/orders/constants/order-permissions";
 import { hasPermission } from "@/lib/auth/permissions";
 
 /**
@@ -21,6 +22,13 @@ export const LOGISTICS_DELIVERY_RETURN_APPROVE = "logistics.delivery_return.appr
 export const LOGISTICS_DELIVERY_TRANSFER_CREATE = "logistics.delivery_transfer.create";
 export const LOGISTICS_DELIVERY_TRANSFER_APPROVE = "logistics.delivery_transfer.approve";
 export const LOGISTICS_DELIVERY_TRANSFER_RECEIVE = "logistics.delivery_transfer.receive";
+
+/** "Check SAP now": Logistics on Deliveries, and order approvers on Orders. */
+export const SAP_CHECK_PERMISSIONS = [
+  LOGISTICS_DELIVERY_DISPATCH,
+  LOGISTICS_MANAGE,
+  ...anyOrderTypePermissions("approve"),
+];
 
 /** Any of these grants Logistics nav + list access. */
 export const LOGISTICS_ACCESS_PERMISSIONS = [

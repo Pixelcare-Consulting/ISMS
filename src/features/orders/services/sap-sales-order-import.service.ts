@@ -34,10 +34,15 @@ const CURSOR = "sap-so-import";
 const PAGE_SIZE = 50;
 /** Who imported orders are created by. Soft-deleted with no login account: it cannot sign in. */
 const SAP_IMPORT_USER_NAME = "SAP";
+const MAX_SKIP_REASONS = 3;
 
 export interface SapSalesOrderImportResult {
+  /** False while no start date is set in Ordering settings: nothing is read from SAP. */
+  enabled: boolean;
   imported: number;
   skipped: number;
+  /** Why SOs were skipped, up to `MAX_SKIP_REASONS`, so "Check SAP now" can say why. */
+  skipReasons: string[];
 }
 
 async function sapGet<T>(creds: SapServiceLayerCredentials, path: string, entity: string) {
@@ -263,12 +268,17 @@ export async function importSapSalesOrders(
   tenantId: string,
   deadline: number,
 ): Promise<SapSalesOrderImportResult> {
-  const result: SapSalesOrderImportResult = { imported: 0, skipped: 0 };
+  const result: SapSalesOrderImportResult = { enabled: false, imported: 0, skipped: 0, skipReasons: [] };
+  const skip = (reason: string) => {
+    result.skipped += 1;
+    if (result.skipReasons.length < MAX_SKIP_REASONS) result.skipReasons.push(reason);
+  };
   const policy = await prisma.orderingPolicy.findUnique({
     where: { tenantId },
     select: { sapSoImportSince: true },
   });
   if (!policy?.sapSoImportSince) return result;
+  result.enabled = true;
   const since = policy.sapSoImportSince.toISOString().slice(0, 10);
 
   const cursor = await sapSyncCursorRepository.get(tenantId, CURSOR);
@@ -298,12 +308,12 @@ export async function importSapSalesOrders(
 
     for (const { so, decision } of decisions) {
       if (!decision.import) {
-        result.skipped += 1;
+        skip(decision.reason);
         logger.info({ tenantId, sapDocNum: so.docNum, reason: decision.reason }, "sap SO import: skipped");
         continue;
       }
       if (!so.open && !drsBySo.has(so.docEntry)) {
-        result.skipped += 1;
+        skip(`SO ${so.docNum} is closed in SAP without a DR`);
         logger.info({ tenantId, sapDocNum: so.docNum }, "sap SO import: closed without a DR, skipped");
         continue;
       }
@@ -324,7 +334,7 @@ export async function importSapSalesOrders(
   }
 
   if (result.imported + result.skipped > 0) {
-    logger.info({ tenantId, ...result }, "sap SO import finished");
+    logger.info({ tenantId, imported: result.imported, skipped: result.skipped }, "sap SO import finished");
   }
   return result;
 }
