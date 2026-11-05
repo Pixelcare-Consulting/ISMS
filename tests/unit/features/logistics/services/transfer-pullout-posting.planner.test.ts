@@ -18,9 +18,13 @@ import {
   planPulloutComplete,
   planPulloutCreate,
   planPulloutFinalize,
+  planPulloutLineApprove,
+  planPulloutLineDelete,
   planPulloutReject,
   planPulloutUpdateList,
+  pulloutCondition,
   pulloutSapMessage,
+  type PulloutDecisionLineView,
   type PulloutLineView,
 } from "@/features/logistics/services/pullout-posting.planner";
 import type { AllocatableSerial } from "@/features/logistics/services/posting-planner-types";
@@ -65,6 +69,10 @@ function pulloutLine(overrides: Partial<PulloutLineView> = {}): PulloutLineView 
     inventoryCode: "RSV",
     ...overrides,
   };
+}
+
+function decidedLine(overrides: Partial<PulloutDecisionLineView> = {}): PulloutDecisionLineView {
+  return { ...pulloutLine(), decision: "pending", ...overrides };
 }
 
 describe("transfer posting planner", () => {
@@ -264,6 +272,7 @@ describe("pull-out posting planner", () => {
     const created = planPulloutCreate({
       branchId: "branch-a",
       warehouseId: "wh-1",
+      condition: "STK",
       serials: [serial()],
     });
     expect(created.ok).toBe(true);
@@ -316,6 +325,7 @@ describe("pull-out posting planner", () => {
     const created = planPulloutCreate({
       branchId: "branch-a",
       warehouseId: "wh-1",
+      condition: "DEF",
       serials: [serial({ inventoryCode: "DEF" })],
     });
     expect(created.ok).toBe(true);
@@ -339,6 +349,121 @@ describe("pull-out posting planner", () => {
     expect(finalized.nextStatus).toBe("in_transit");
     expect(finalized.createsWarehouseInventory).toBe(false);
     expect(finalized.setsCompleted).toBe(false);
+  });
+
+  it("refuses a serial that does not match the pull-out's STK or DEF type", () => {
+    const stockPullout = planPulloutCreate({
+      branchId: "branch-a",
+      warehouseId: "wh-1",
+      condition: "STK",
+      serials: [serial({ serialNo: "SN-DEF", inventoryCode: "DEF" })],
+    });
+    expect(stockPullout).toEqual({ ok: false, error: "SN-DEF is DEF. This is a STK pull-out." });
+
+    const defectivePullout = planPulloutCreate({
+      branchId: "branch-a",
+      warehouseId: "wh-1",
+      condition: "DEF",
+      serials: [serial({ serialNo: "SN-STK", inventoryCode: "STK" })],
+    });
+    expect(defectivePullout).toEqual({ ok: false, error: "SN-STK is STK. This is a DEF pull-out." });
+  });
+
+  it("keeps serials added at the logistics step to the same type", () => {
+    const listed = planPulloutUpdateList({
+      status: "for_pullout",
+      kept: [pulloutLine({ priorCode: "DEF", inventoryCode: "DEF" })],
+      removed: [],
+      added: [serial({ serialNumberId: "s2", serialNo: "SN-STK", inventoryCode: "STK" })],
+    });
+    expect(listed).toEqual({ ok: false, error: "SN-STK is STK. This is a DEF pull-out." });
+  });
+
+  it("names the type from the lines and reports older mixed pull-outs", () => {
+    expect(pulloutCondition([{ priorCode: "STK" }, { priorCode: "STK" }])).toBe("STK");
+    expect(pulloutCondition([{ priorCode: "DEF" }])).toBe("DEF");
+    expect(pulloutCondition([{ priorCode: "STK" }, { priorCode: "DEF" }])).toBe("Mixed");
+    expect(pulloutCondition([{ priorCode: null }])).toBeNull();
+  });
+
+  it("finishes approval only when every unit is approved line by line", () => {
+    const first = planPulloutLineApprove({
+      status: "pending_tl",
+      lines: [
+        decidedLine({ serialNumberId: "s1" }),
+        decidedLine({ serialNumberId: "s2" }),
+      ],
+      serialNumberId: "s1",
+    });
+    expect(first).toEqual({ ok: true, idempotent: false, completesApproval: false });
+
+    const last = planPulloutLineApprove({
+      status: "pending_tl",
+      lines: [
+        decidedLine({ serialNumberId: "s1", decision: "accepted" }),
+        decidedLine({ serialNumberId: "s2" }),
+      ],
+      serialNumberId: "s2",
+    });
+    expect(last).toEqual({ ok: true, idempotent: false, completesApproval: true });
+
+    const again = planPulloutLineApprove({
+      status: "pending_tl",
+      lines: [
+        decidedLine({ serialNumberId: "s1", decision: "accepted" }),
+        decidedLine({ serialNumberId: "s2" }),
+      ],
+      serialNumberId: "s1",
+    });
+    expect(again).toEqual({ ok: true, idempotent: true, completesApproval: false });
+  });
+
+  it("refuses line approval after the Team Lead step or for a unit not on the pull-out", () => {
+    expect(
+      planPulloutLineApprove({ status: "for_pullout", lines: [decidedLine()], serialNumberId: "s1" }).ok,
+    ).toBe(false);
+    expect(
+      planPulloutLineApprove({ status: "pending_tl", lines: [decidedLine()], serialNumberId: "nope" }).ok,
+    ).toBe(false);
+  });
+
+  it("releases a deleted reserved unit back to stock", () => {
+    const plan = planPulloutLineDelete({
+      status: "pending_tl",
+      lines: [
+        decidedLine({ serialNumberId: "s1", decision: "accepted" }),
+        decidedLine({ serialNumberId: "s2" }),
+      ],
+      serialNumberId: "s2",
+    });
+    expect(plan).toEqual({
+      ok: true,
+      restore: { serialNumberId: "s2", restoreCode: "STK" },
+      completesApproval: true,
+    });
+  });
+
+  it("leaves a deleted defective unit defective with nothing to restore", () => {
+    const plan = planPulloutLineDelete({
+      status: "pending_tl",
+      lines: [
+        decidedLine({ serialNumberId: "s1", priorCode: "DEF", inventoryCode: "DEF" }),
+        decidedLine({ serialNumberId: "s2", priorCode: "DEF", inventoryCode: "DEF" }),
+      ],
+      serialNumberId: "s1",
+    });
+    expect(plan).toEqual({ ok: true, restore: null, completesApproval: false });
+  });
+
+  it("refuses deleting the last unit, because Reject cancels the pull-out", () => {
+    const plan = planPulloutLineDelete({
+      status: "pending_tl",
+      lines: [decidedLine()],
+      serialNumberId: "s1",
+    });
+    expect(plan.ok).toBe(false);
+    if (plan.ok) return;
+    expect(plan.error).toMatch(/reject/i);
   });
 
   it("refuses warehouse receipt", () => {

@@ -6,6 +6,7 @@
 import type { PulloutWorkflowCodeKey } from "@/features/logistics/constants/workflow-codes";
 import {
   classifyAllocation,
+  serialLabel,
   uniqueSerialIds,
   type AllocatableSerial,
   type HoldCode,
@@ -15,10 +16,23 @@ import {
 
 export type PulloutStatus = PulloutWorkflowCodeKey;
 
+/** The type the requestor picks first. A pull-out holds one type; only older ones can be Mixed. */
+export type PulloutCondition = HoldCode;
+export type PulloutConditionView = PulloutCondition | "Mixed";
+
+export const PULLOUT_LINE_DECISION = { pending: "pending", accepted: "accepted" } as const;
+
+/** Matches SAP's row Remarks column, as on delivery returns. */
+export const PULLOUT_LINE_REMARKS_MAX = 30;
+
 export interface PulloutLineView {
   serialNumberId: string;
   priorCode: HoldCode | null;
   inventoryCode: InventoryCode | null;
+}
+
+export interface PulloutDecisionLineView extends PulloutLineView {
+  decision: string;
 }
 
 export interface PulloutCreatePlan {
@@ -48,6 +62,20 @@ export interface PulloutListPlan {
   holds: { serialNumberId: string; priorCode: HoldCode; nextCode: "FPO" | "DEF" }[];
 }
 
+export interface PulloutLineApprovePlan {
+  ok: true;
+  idempotent: boolean;
+  /** Every unit is now approved, so the pull-out moves to For pull-out. */
+  completesApproval: boolean;
+}
+
+export interface PulloutLineDeletePlan {
+  ok: true;
+  /** Null when the unit is defective: it never left DEF, so there is no hold to release. */
+  restore: { serialNumberId: string; restoreCode: HoldCode } | null;
+  completesApproval: boolean;
+}
+
 export interface PulloutFinalizePlan {
   ok: true;
   nextStatus: "in_transit";
@@ -67,9 +95,33 @@ function missingPrior(serialNumberId: string): PlanFailure {
   };
 }
 
+/** STK or DEF from what the lines started as. Null when no line recorded it. */
+export function pulloutCondition(
+  lines: readonly { priorCode: string | null }[],
+): PulloutConditionView | null {
+  const stock = lines.some((line) => line.priorCode === "STK");
+  const defective = lines.some((line) => line.priorCode === "DEF");
+  if (stock && defective) return "Mixed";
+  if (stock) return "STK";
+  if (defective) return "DEF";
+  return null;
+}
+
+function conditionMismatch(
+  serial: AllocatableSerial,
+  priorCode: HoldCode,
+  condition: PulloutCondition,
+): PlanFailure {
+  return {
+    ok: false,
+    error: `${serialLabel(serial)} is ${priorCode}. This is a ${condition} pull-out.`,
+  };
+}
+
 export function planPulloutCreate(input: {
   branchId: string;
   warehouseId: string;
+  condition: PulloutCondition;
   serials: readonly AllocatableSerial[];
 }): PulloutCreatePlan | PlanFailure {
   if (!input.branchId) return { ok: false, error: "Choose a branch" };
@@ -83,6 +135,9 @@ export function planPulloutCreate(input: {
   for (const serial of input.serials) {
     const allocation = classifyAllocation(serial);
     if (!allocation.ok) return allocation;
+    if (allocation.priorCode !== input.condition) {
+      return conditionMismatch(serial, allocation.priorCode, input.condition);
+    }
     lines.push({
       serialNumberId: serial.serialNumberId,
       priorCode: allocation.priorCode,
@@ -129,6 +184,68 @@ export function planPulloutApprove(input: {
   }
 
   return { ok: true, nextStatus: "for_pullout", moves, idempotent: false };
+}
+
+function reserveLine<T extends PulloutDecisionLineView>(input: {
+  status: PulloutStatus;
+  lines: readonly T[];
+  serialNumberId: string;
+}): { ok: true; line: T } | PlanFailure {
+  if (input.status !== "pending_tl") {
+    return { ok: false, error: "Units can only be approved or deleted while the pull-out is on reserve" };
+  }
+  const line = input.lines.find((row) => row.serialNumberId === input.serialNumberId);
+  if (!line) return { ok: false, error: "This serial is not on this pull-out" };
+  return { ok: true, line };
+}
+
+function othersApproved(
+  lines: readonly PulloutDecisionLineView[],
+  serialNumberId: string,
+): boolean {
+  return lines
+    .filter((line) => line.serialNumberId !== serialNumberId)
+    .every((line) => line.decision === PULLOUT_LINE_DECISION.accepted);
+}
+
+export function planPulloutLineApprove(input: {
+  status: PulloutStatus;
+  lines: readonly PulloutDecisionLineView[];
+  serialNumberId: string;
+}): PulloutLineApprovePlan | PlanFailure {
+  const found = reserveLine(input);
+  if (!found.ok) return found;
+  if (found.line.decision === PULLOUT_LINE_DECISION.accepted) {
+    return { ok: true, idempotent: true, completesApproval: false };
+  }
+  return {
+    ok: true,
+    idempotent: false,
+    completesApproval: othersApproved(input.lines, input.serialNumberId),
+  };
+}
+
+export function planPulloutLineDelete(input: {
+  status: PulloutStatus;
+  lines: readonly PulloutDecisionLineView[];
+  serialNumberId: string;
+}): PulloutLineDeletePlan | PlanFailure {
+  const found = reserveLine(input);
+  if (!found.ok) return found;
+  if (input.lines.length === 1) {
+    return { ok: false, error: "This is the last unit. Reject the pull-out instead." };
+  }
+  const { line } = found;
+  if (line.priorCode !== "STK" && line.priorCode !== "DEF") return missingPrior(line.serialNumberId);
+  const held = line.inventoryCode === "RSV";
+  if (!held && !(line.inventoryCode === "DEF" && line.priorCode === "DEF")) {
+    return { ok: false, error: "A deleted serial is not held by this pull-out" };
+  }
+  return {
+    ok: true,
+    restore: held ? { serialNumberId: line.serialNumberId, restoreCode: line.priorCode } : null,
+    completesApproval: othersApproved(input.lines, input.serialNumberId),
+  };
 }
 
 export function planPulloutReject(input: {
@@ -186,10 +303,14 @@ export function planPulloutUpdateList(input: {
     if (stable) return stable;
   }
 
+  const condition = pulloutCondition([...input.kept, ...input.removed]);
   const holds: PulloutListPlan["holds"] = [];
   for (const serial of input.added) {
     const allocation = classifyAllocation(serial);
     if (!allocation.ok) return allocation;
+    if ((condition === "STK" || condition === "DEF") && allocation.priorCode !== condition) {
+      return conditionMismatch(serial, allocation.priorCode, condition);
+    }
     holds.push({
       serialNumberId: serial.serialNumberId,
       priorCode: allocation.priorCode,

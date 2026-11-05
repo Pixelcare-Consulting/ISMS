@@ -276,7 +276,7 @@ export const HELP_WORKFLOW_GUIDES: HelpWorkflowGuide[] = [
     audience: "PS · TL · Logistics · Branch",
     href: "/logistics/pickups",
     steps: [
-      { label: "Product Specialist creates the pull-out request with reason and items." },
+      { label: "Product Specialist chooses a Stock or Defective pull-out, then adds the units and their details." },
       { label: "Team Leader reviews and approves." },
       { label: "Logistics schedules pickup and coordinates with branch." },
       { label: "Branch releases goods; warehouse validates receipt to close the loop." },

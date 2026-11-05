@@ -10,6 +10,7 @@ import {
   type ReceiveTarget,
 } from "@/app/(app)/logistics/_components/delivery-receive-dialog";
 import { PulloutRequestDialog } from "@/app/(app)/logistics/_components/pullout-request-dialog";
+import type { PulloutCreateInput } from "@/features/logistics/services/pullout-posting.service";
 import { TransferRequestDialog } from "@/app/(app)/logistics/_components/transfer-request-dialog";
 import {
   DeliveryReturnCell,
@@ -141,17 +142,7 @@ export function OpsPanel({
     return createTransferAction(input);
   }
 
-  function submitPullout(input: {
-    branchId: string;
-    warehouseId: string;
-    reasonStatusCodeId: string;
-    lines: {
-      serialNumberId: string;
-      pulloutClassificationIds: string[];
-      unitPackingConditionIds: string[];
-      accessoryCompletenessIds: string[];
-    }[];
-  }) {
+  function submitPullout(input: PulloutCreateInput) {
     return createPulloutAction(input);
   }
 

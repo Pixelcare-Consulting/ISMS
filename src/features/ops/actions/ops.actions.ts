@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import {
+  PULLOUT_CREATE_INPUT_ERROR,
+  pulloutSchema,
+} from "@/features/logistics/schemas/pullout.schema";
 import { opsService } from "@/features/ops/services/ops.service";
 import { aorService } from "@/features/aors/services/aor.service";
 import { branchService } from "@/features/branches/services/branch.service";
@@ -40,21 +44,6 @@ const transferSchema = z.object({
     .max(64)
     .optional()
     .transform((value) => value || undefined),
-});
-
-const checklistIdList = z.array(z.string().min(1)).min(1);
-const pulloutLineSchema = z.object({
-  serialNumberId: z.string().min(1),
-  pulloutClassificationIds: checklistIdList,
-  unitPackingConditionIds: checklistIdList,
-  accessoryCompletenessIds: checklistIdList,
-});
-const pulloutSchema = z.object({
-  branchId: z.string().min(1),
-  warehouseId: z.string().min(1),
-  reasonStatusCodeId: z.string().min(1),
-  lines: z.array(pulloutLineSchema).min(1),
-  notes: z.string().optional(),
 });
 
 const serialIdsSchema = z.object({
@@ -255,12 +244,7 @@ export async function createTransferAction(input: unknown) {
 export async function createPulloutAction(input: unknown) {
   const session = await requireAnyPermission([...OPS_CREATE_PERMISSIONS]);
   const parsed = pulloutSchema.safeParse(input);
-  if (!parsed.success) {
-    return {
-      error:
-        "Choose a branch, warehouse, reason, and classification, packing, and accessories for each serial",
-    };
-  }
+  if (!parsed.success) return { error: PULLOUT_CREATE_INPUT_ERROR };
   try {
     const row = await opsService.createPullout(
       {

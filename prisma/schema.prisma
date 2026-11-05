@@ -382,6 +382,8 @@ model User {
   branchDefectReportsReported        BranchDefectReport[]          @relation("BranchDefectReportReporter")
   branchDefectReportsDecided         BranchDefectReport[]          @relation("BranchDefectReportDecider")
   branchDefectReportPhotosUploaded   BranchDefectReportPhoto[]     @relation("BranchDefectReportPhotoUploadedBy")
+  branchPulloutLinesDecided          BranchPulloutLine[]           @relation("BranchPulloutLineDecidedBy")
+  branchPulloutAttachmentsUploaded   BranchPulloutAttachment[]     @relation("BranchPulloutAttachmentUploadedBy")
   branchPulloutsCreated              BranchPullout[]               @relation("BranchPulloutCreatedBy")
   serialNumbersCreated               SerialNumber[]                @relation("SerialNumberCreatedBy")
   branchTransfersCreated             BranchTransfer[]              @relation("BranchTransferCreatedBy")
@@ -2435,6 +2437,7 @@ model BranchPullout {
   createdBy         User?                        @relation("BranchPulloutCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   lines             BranchPulloutLine[]
   approvalLevels    BranchPulloutApprovalLevel[]
+  attachments       BranchPulloutAttachment[]
 
   @@unique([tenantId, pulloutNo])
   @@index([tenantId, branchId, statusCodeId])
@@ -2447,17 +2450,42 @@ model BranchPulloutLine {
   serialNumberId          String  @map("serial_number_id")
   /// Inventory code before this pull-out held the unit. Null on rows created before the hold.
   priorStatusCodeId       String? @map("prior_status_code_id")
+  /// Team Lead's call on this unit: pending, then accepted. A declined unit's line is deleted.
+  decision                String    @default("pending")
+  decidedAt               DateTime? @map("decided_at")
+  decidedById             String?   @map("decided_by_id")
+  remarks                 String?
 
   pullout                 BranchPullout                           @relation(fields: [pulloutId], references: [id], onDelete: Cascade)
   serialNumber            SerialNumber                            @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
   priorStatusCode         ReasonStatusCode?                       @relation("PulloutLinePriorStatus", fields: [priorStatusCodeId], references: [id], onDelete: SetNull)
+  decidedBy               User?                                   @relation("BranchPulloutLineDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
   classifications         BranchPulloutLineClassification[]
   packingConditions       BranchPulloutLinePackingCondition[]
   accessoryCompletenesses BranchPulloutLineAccessoryCompleteness[]
 
   @@unique([pulloutId, serialNumberId])
   @@index([priorStatusCodeId])
+  @@index([decidedById])
   @@map("branch_pullout_lines")
+}
+
+/// File the requestor attached to a pull-out. The file itself is in object storage.
+model BranchPulloutAttachment {
+  id           String   @id @default(cuid())
+  pulloutId    String   @map("pullout_id")
+  fileName     String   @map("file_name")
+  storagePath  String   @map("storage_path")
+  mimeType     String   @map("mime_type")
+  sizeBytes    Int      @map("size_bytes")
+  uploadedById String   @map("uploaded_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  pullout    BranchPullout @relation(fields: [pulloutId], references: [id], onDelete: Cascade)
+  uploadedBy User          @relation("BranchPulloutAttachmentUploadedBy", fields: [uploadedById], references: [id])
+
+  @@index([pulloutId])
+  @@map("branch_pullout_attachments")
 }
 
 /// One classification on a pull-out line. Removing the line or the lookup deletes this row, not the pull-out.

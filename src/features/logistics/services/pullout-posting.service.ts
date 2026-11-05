@@ -1,4 +1,7 @@
 import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
+import {
+  pulloutAttachmentError,
+} from "@/features/logistics/constants/pullout-attachments";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import {
   asWorkflowCode,
@@ -12,10 +15,16 @@ import {
   planPulloutComplete,
   planPulloutCreate,
   planPulloutFinalize,
+  planPulloutLineApprove,
+  planPulloutLineDelete,
   planPulloutReject,
   planPulloutUpdateList,
+  PULLOUT_LINE_DECISION,
+  pulloutCondition,
   pulloutSapMessage,
-  type PulloutLineView,
+  type PulloutCondition,
+  type PulloutConditionView,
+  type PulloutDecisionLineView,
   type PulloutStatus,
 } from "@/features/logistics/services/pullout-posting.planner";
 import {
@@ -31,8 +40,10 @@ import {
   type PostingActor,
   type PostingDb,
 } from "@/features/logistics/services/posting-support";
+import { OPEN_PULLOUT_STATUS_CODES } from "@/features/logistics/services/posting-planner-types";
 import { STOCK_COUNT_FREEZE_SESSION_STATUSES } from "@/features/stock-audit/constants/stock-count-workflow";
 import { prisma } from "@/lib/database/client";
+import { buildPulloutAttachmentPath, getObjectStorage } from "@/lib/storage";
 
 const CLAIM_LOST = "One or more serials changed before this pull-out could be saved";
 
@@ -45,18 +56,19 @@ export interface PulloutSerialOption {
   inventoryCode: "STK" | "DEF";
 }
 
-/** Checklist choices for one selected serial. Each list needs at least one active lookup. */
+/** Details for one selected serial. Classification is for stock pull-outs only. */
 export interface PulloutCreateLine {
   serialNumberId: string;
   pulloutClassificationIds: string[];
   unitPackingConditionIds: string[];
   accessoryCompletenessIds: string[];
+  remarks?: string;
 }
 
 export interface PulloutCreateInput {
   branchId: string;
   warehouseId: string;
-  reasonStatusCodeId: string;
+  condition: PulloutCondition;
   lines: PulloutCreateLine[];
   notes?: string;
 }
@@ -69,9 +81,15 @@ export interface PulloutSapJob {
   message: string;
 }
 
+export interface PulloutAttachment {
+  id: string;
+  fileName: string;
+}
+
 export interface PulloutDetail {
   id: string;
   pulloutNo: string;
+  condition: PulloutConditionView | null;
   notes: string | null;
   waybillNo: string | null;
   createdAt: string;
@@ -83,9 +101,13 @@ export interface PulloutDetail {
   branch: { id: string; name: string };
   warehouse: { id: string; name: string; code: string };
   warehouseLocation: { name: string; code: string } | null;
+  /** Set on pull-outs made before the form dropped the reason. */
   reason: { id: string; code: string; name: string; color: string | null } | null;
+  attachments: PulloutAttachment[];
   lines: {
     serialNumberId: string;
+    decision: string;
+    remarks: string | null;
     serialNo: string;
     skuCode: string;
     modelName: string;
@@ -169,12 +191,15 @@ async function loadPullout(db: PostingDb | typeof prisma, tenantId: string, pull
       branchId: true,
       warehouseId: true,
       waybillNo: true,
+      scheduledAt: true,
       notes: true,
       statusCodeId: true,
       statusCode: { select: { code: true } },
       lines: {
         select: {
           serialNumberId: true,
+          decision: true,
+          serialNumber: { select: { serialNo: true } },
           priorStatusCodeId: true,
           priorStatusCode: { select: { code: true } },
         },
@@ -192,8 +217,13 @@ async function loadPullout(db: PostingDb | typeof prisma, tenantId: string, pull
       })
     : [];
   const inventoryBySerial = new Map(inventory.map((row) => [row.serialNumberId, row]));
-  const lines: (PulloutLineView & { priorStatusCodeId: string | null })[] = pullout.lines.map((line) => ({
+  const lines: (PulloutDecisionLineView & {
+    priorStatusCodeId: string | null;
+    serialNo: string;
+  })[] = pullout.lines.map((line) => ({
     serialNumberId: line.serialNumberId,
+    serialNo: line.serialNumber.serialNo,
+    decision: line.decision,
     priorCode: asHoldCode(line.priorStatusCode?.code),
     priorStatusCodeId: line.priorStatusCodeId,
     inventoryCode: asInventoryCode(inventoryBySerial.get(line.serialNumberId)?.statusCode.code),
@@ -254,11 +284,12 @@ function displayName(name: string | null | undefined): string | null {
 }
 
 const CHECKLIST_REQUIRED =
-  "Choose classification, unit packing condition, and accessory completeness for every selected serial";
+  "Choose the classification, unit packing condition, and accessory completeness this pull-out needs for every selected serial";
 const CHECKLIST_DUPLICATE =
   "Each classification, packing condition, and accessory completeness can only be chosen once";
 const CHECKLIST_INACTIVE =
   "Choose an active classification, unit packing condition, and accessory completeness for every selected serial";
+const CLASSIFICATION_NOT_USED = "Defective pull-outs have no classification";
 
 function requireChecklistIds(ids: readonly string[] | undefined): void {
   if (!ids || ids.length === 0 || ids.some((id) => id.length === 0)) {
@@ -269,12 +300,19 @@ function requireChecklistIds(ids: readonly string[] | undefined): void {
   }
 }
 
-function checklistBySerial(lines: readonly PulloutCreateLine[]): Map<string, PulloutCreateLine> {
+function checklistBySerial(
+  condition: PulloutCondition,
+  lines: readonly PulloutCreateLine[],
+): Map<string, PulloutCreateLine> {
   if (lines.length === 0) throw new Error("Select the serials to pull out");
   const bySerial = new Map<string, PulloutCreateLine>();
   for (const line of lines) {
     if (!line.serialNumberId) throw new Error(CHECKLIST_REQUIRED);
-    requireChecklistIds(line.pulloutClassificationIds);
+    if (condition === "STK") {
+      requireChecklistIds(line.pulloutClassificationIds);
+    } else if (line.pulloutClassificationIds.length > 0) {
+      throw new Error(CLASSIFICATION_NOT_USED);
+    }
     requireChecklistIds(line.unitPackingConditionIds);
     requireChecklistIds(line.accessoryCompletenessIds);
     if (bySerial.has(line.serialNumberId)) {
@@ -349,15 +387,95 @@ async function loadSapJob(tenantId: string, pulloutId: string): Promise<PulloutS
   return { ...view, message: pulloutSapMessage(view) };
 }
 
+interface ApprovalIds {
+  codes: Awaited<ReturnType<typeof inventoryIds>>;
+  nextStatusId: string;
+  pendingId: string;
+}
+
+async function approvalIds(tenantId: string): Promise<ApprovalIds> {
+  const [codes, nextStatusId, pendingId] = await Promise.all([
+    inventoryIds(tenantId),
+    workflowId(tenantId, "for_pullout"),
+    workflowId(tenantId, "pending_tl"),
+  ]);
+  return { codes, nextStatusId, pendingId };
+}
+
+/** Moves the whole pull-out to For pull-out. Header Approve and the last line decision both land here. */
+async function approveInTx(
+  tx: PostingDb,
+  actor: PostingActor,
+  pulloutId: string,
+  { codes, nextStatusId, pendingId }: ApprovalIds,
+): Promise<void> {
+  const fresh = await loadPullout(tx, actor.tenantId, pulloutId);
+  if (!fresh) throw new Error("Pull-out not found");
+  const plan = planPulloutApprove(fresh);
+  if (!plan.ok) throw new Error(plan.error);
+  if (plan.idempotent) return;
+  await lockSerialNumbers(
+    tx,
+    plan.moves.map((move) => move.serialNumberId),
+  );
+  await claimInventory(tx, {
+    tenantId: actor.tenantId,
+    branchId: fresh.branchId,
+    serialNumberIds: plan.moves.map((move) => move.serialNumberId),
+    fromStatusCodeId: codes.RSV,
+    toStatusCodeId: codes.FPO,
+    userId: actor.userId,
+    message: "A serial on this pull-out is not reserved",
+  });
+  await claimHeader(tx, "branchPullout", {
+    id: pulloutId,
+    tenantId: actor.tenantId,
+    fromStatusCodeIds: [pendingId],
+    toStatusCodeId: nextStatusId,
+    message: "This pull-out was updated by someone else",
+  });
+  await tx.branchPulloutLine.updateMany({
+    where: { pulloutId, decision: PULLOUT_LINE_DECISION.pending },
+    data: {
+      decision: PULLOUT_LINE_DECISION.accepted,
+      decidedAt: new Date(),
+      decidedById: actor.userId,
+    },
+  });
+  await stampApproval(tx, pulloutId, actor.userId, "approved");
+  await writeHistory(tx, {
+    tenantId: actor.tenantId,
+    userId: actor.userId,
+    pulloutNo: fresh.pulloutNo,
+    serialNumberIds: plan.moves.map((move) => move.serialNumberId),
+    status: "FPO",
+    details: `Approved on ${fresh.pulloutNo}`,
+  });
+  await tx.auditLog.create({
+    data: {
+      tenantId: actor.tenantId,
+      userId: actor.userId,
+      action: "pullout.approved",
+      entityType: "BranchPullout",
+      entityId: pulloutId,
+      metadata: { pulloutNo: fresh.pulloutNo },
+    },
+  });
+}
+
 export const pulloutPostingService = {
-  async listSerials(actor: PostingActor, branchId: string): Promise<PulloutSerialOption[]> {
+  async listSerials(
+    actor: PostingActor,
+    branchId: string,
+    condition?: PulloutCondition,
+  ): Promise<PulloutSerialOption[]> {
     await authorizePosting(actor, "pullout.create", branchId);
     const codes = await inventoryIds(actor.tenantId);
     const rows = await prisma.branchInventory.findMany({
       where: {
         tenantId: actor.tenantId,
         branchId,
-        statusCodeId: { in: [codes.STK, codes.DEF] },
+        statusCodeId: { in: condition ? [codes[condition]] : [codes.STK, codes.DEF] },
         defectReports: { none: { status: "pending_inspection" } },
         stockCountLines: {
           none: {
@@ -418,9 +536,15 @@ export const pulloutPostingService = {
         warehouseLocation: { select: { name: true, code: true } },
         statusCode: { select: { code: true, name: true, color: true } },
         reasonStatusCode: { select: { id: true, code: true, name: true, color: true } },
+        attachments: {
+          select: { id: true, fileName: true },
+          orderBy: { createdAt: "asc" },
+        },
         lines: {
           select: {
             serialNumberId: true,
+            decision: true,
+            remarks: true,
             priorStatusCode: { select: { code: true } },
             classifications: {
               select: { pulloutClassification: { select: { name: true } } },
@@ -466,6 +590,10 @@ export const pulloutPostingService = {
     return {
       id: pullout.id,
       pulloutNo: pullout.pulloutNo,
+      condition: pulloutCondition(
+        pullout.lines.map((line) => ({ priorCode: line.priorStatusCode?.code ?? null })),
+      ),
+      attachments: pullout.attachments,
       notes: pullout.notes,
       waybillNo: pullout.waybillNo,
       createdAt: pullout.createdAt.toISOString(),
@@ -480,6 +608,8 @@ export const pulloutPostingService = {
       reason: pullout.reasonStatusCode,
       lines: pullout.lines.map((line) => ({
         serialNumberId: line.serialNumberId,
+        decision: line.decision,
+        remarks: line.remarks,
         serialNo: line.serialNumber.serialNo,
         skuCode: line.serialNumber.model.skuCode,
         modelName: line.serialNumber.model.name,
@@ -507,22 +637,14 @@ export const pulloutPostingService = {
 
   async create(actor: PostingActor, input: PulloutCreateInput) {
     await authorizePosting(actor, "pullout.create", input.branchId);
-    const checklist = checklistBySerial(input.lines);
+    const checklist = checklistBySerial(input.condition, input.lines);
     await assertActiveChecklist(actor.tenantId, input.lines);
-    const reason = await prisma.reasonStatusCode.findFirst({
-      where: {
-        id: input.reasonStatusCodeId,
-        tenantId: actor.tenantId,
-        reasonStatus: { category: "pullout_reason" },
-      },
-      select: { id: true, reasonStatusId: true, name: true },
-    });
-    if (!reason) throw new Error("Choose a pull-out reason");
 
     const serials = await loadAllocatable(actor.tenantId, input.branchId, [...checklist.keys()]);
     const plan = planPulloutCreate({
       branchId: input.branchId,
       warehouseId: input.warehouseId,
+      condition: input.condition,
       serials,
     });
     if (!plan.ok) throw new Error(plan.error);
@@ -564,8 +686,6 @@ export const pulloutPostingService = {
             warehouseId: input.warehouseId,
             pulloutNo,
             statusCodeId,
-            reasonStatusId: reason.reasonStatusId,
-            reasonStatusCodeId: reason.id,
             notes: input.notes?.trim() || null,
             createdById: actor.userId,
             lines: {
@@ -575,6 +695,7 @@ export const pulloutPostingService = {
                 return {
                   serialNumberId: line.serialNumberId,
                   priorStatusCodeId: codes[line.priorCode],
+                  remarks: choice.remarks?.trim() || null,
                   classifications: {
                     create: choice.pulloutClassificationIds.map((pulloutClassificationId) => ({
                       pulloutClassificationId,
@@ -614,7 +735,7 @@ export const pulloutPostingService = {
             entityId: row.id,
             metadata: {
               pulloutNo: row.pulloutNo,
-              reasonName: reason.name,
+              condition: input.condition,
               serialCount: plan.lines.length,
             },
           },
@@ -634,62 +755,200 @@ export const pulloutPostingService = {
     if (!preview.ok) throw new Error(preview.error);
     if (preview.idempotent) return { id: current.id, pulloutNo: current.pulloutNo, idempotent: true };
 
-    const codes = await inventoryIds(actor.tenantId);
-    const nextStatusId = await workflowId(actor.tenantId, "for_pullout");
-    const pendingId = await workflowId(actor.tenantId, "pending_tl");
+    const ids = await approvalIds(actor.tenantId);
 
     try {
-      await prisma.$transaction(async (tx) => {
-        const fresh = await loadPullout(tx, actor.tenantId, pulloutId);
-        if (!fresh) throw new Error("Pull-out not found");
-        const plan = planPulloutApprove(fresh);
-        if (!plan.ok) throw new Error(plan.error);
-        if (plan.idempotent) return;
-        await lockSerialNumbers(
-          tx,
-          plan.moves.map((move) => move.serialNumberId),
-        );
-        await claimInventory(tx, {
-          tenantId: actor.tenantId,
-          branchId: fresh.branchId,
-          serialNumberIds: plan.moves.map((move) => move.serialNumberId),
-          fromStatusCodeId: codes.RSV,
-          toStatusCodeId: codes.FPO,
-          userId: actor.userId,
-          message: "A serial on this pull-out is not reserved",
-        });
-        await claimHeader(tx, "branchPullout", {
-          id: pulloutId,
-          tenantId: actor.tenantId,
-          fromStatusCodeIds: [pendingId],
-          toStatusCodeId: nextStatusId,
-          message: "This pull-out was updated by someone else",
-        });
-        await stampApproval(tx, pulloutId, actor.userId, "approved");
-        await writeHistory(tx, {
-          tenantId: actor.tenantId,
-          userId: actor.userId,
-          pulloutNo: fresh.pulloutNo,
-          serialNumberIds: plan.moves.map((move) => move.serialNumberId),
-          status: "FPO",
-          details: `Approved on ${fresh.pulloutNo}`,
-        });
-        await tx.auditLog.create({
-          data: {
-            tenantId: actor.tenantId,
-            userId: actor.userId,
-            action: "pullout.approved",
-            entityType: "BranchPullout",
-            entityId: pulloutId,
-            metadata: { pulloutNo: fresh.pulloutNo },
-          },
-        });
-      });
+      await prisma.$transaction((tx) => approveInTx(tx, actor, pulloutId, ids));
     } catch (error) {
       throw postingError(error, "Failed to approve pull-out");
     }
 
     return { id: current.id, pulloutNo: current.pulloutNo, idempotent: false };
+  },
+
+  async approveLine(actor: PostingActor, pulloutId: string, serialNumberId: string) {
+    await authorizePosting(actor, "pullout.approve", null);
+    const current = await loadPullout(prisma, actor.tenantId, pulloutId);
+    if (!current) throw new Error("Pull-out not found");
+    const preview = planPulloutLineApprove({ ...current, serialNumberId });
+    if (!preview.ok) throw new Error(preview.error);
+    if (preview.idempotent) return { id: current.id };
+
+    const ids = await approvalIds(actor.tenantId);
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        // Line actions lock every serial, so two decisions on one pull-out run in turn
+        // and the last one always sees that nothing else is pending.
+        await lockSerialNumbers(
+          tx,
+          current.lines.map((line) => line.serialNumberId),
+        );
+        const fresh = await loadPullout(tx, actor.tenantId, pulloutId);
+        if (!fresh) throw new Error("Pull-out not found");
+        const plan = planPulloutLineApprove({ ...fresh, serialNumberId });
+        if (!plan.ok) throw new Error(plan.error);
+        if (plan.idempotent) return;
+        await tx.branchPulloutLine.updateMany({
+          where: { pulloutId, serialNumberId },
+          data: {
+            decision: PULLOUT_LINE_DECISION.accepted,
+            decidedAt: new Date(),
+            decidedById: actor.userId,
+          },
+        });
+        await tx.auditLog.create({
+          data: {
+            tenantId: actor.tenantId,
+            userId: actor.userId,
+            action: "pullout.line_approved",
+            entityType: "BranchPullout",
+            entityId: pulloutId,
+            metadata: {
+              pulloutNo: fresh.pulloutNo,
+              serialNo: fresh.lines.find((line) => line.serialNumberId === serialNumberId)?.serialNo,
+            },
+          },
+        });
+        if (plan.completesApproval) await approveInTx(tx, actor, pulloutId, ids);
+      });
+    } catch (error) {
+      throw postingError(error, "Failed to approve this unit");
+    }
+
+    return { id: current.id };
+  },
+
+  async deleteLine(actor: PostingActor, pulloutId: string, serialNumberId: string) {
+    await authorizePosting(actor, "pullout.reject", null);
+    const current = await loadPullout(prisma, actor.tenantId, pulloutId);
+    if (!current) throw new Error("Pull-out not found");
+    const preview = planPulloutLineDelete({ ...current, serialNumberId });
+    if (!preview.ok) throw new Error(preview.error);
+
+    const ids = await approvalIds(actor.tenantId);
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        await lockSerialNumbers(
+          tx,
+          current.lines.map((line) => line.serialNumberId),
+        );
+        const fresh = await loadPullout(tx, actor.tenantId, pulloutId);
+        if (!fresh) throw new Error("Pull-out not found");
+        const plan = planPulloutLineDelete({ ...fresh, serialNumberId });
+        if (!plan.ok) throw new Error(plan.error);
+        if (plan.restore) {
+          await claimInventory(tx, {
+            tenantId: actor.tenantId,
+            branchId: fresh.branchId,
+            serialNumberIds: [plan.restore.serialNumberId],
+            fromStatusCodeId: ids.codes.RSV,
+            toStatusCodeId: ids.codes[plan.restore.restoreCode],
+            userId: actor.userId,
+            message: "A reserved serial on this pull-out could not be restored",
+          });
+          await writeHistory(tx, {
+            tenantId: actor.tenantId,
+            userId: actor.userId,
+            pulloutNo: fresh.pulloutNo,
+            serialNumberIds: [plan.restore.serialNumberId],
+            status: plan.restore.restoreCode,
+            details: `Removed from ${fresh.pulloutNo}`,
+          });
+        }
+        await tx.branchPulloutLine.deleteMany({ where: { pulloutId, serialNumberId } });
+        await tx.auditLog.create({
+          data: {
+            tenantId: actor.tenantId,
+            userId: actor.userId,
+            action: "pullout.line_deleted",
+            entityType: "BranchPullout",
+            entityId: pulloutId,
+            metadata: {
+              pulloutNo: fresh.pulloutNo,
+              serialNo: fresh.lines.find((line) => line.serialNumberId === serialNumberId)?.serialNo,
+            },
+          },
+        });
+        if (plan.completesApproval) await approveInTx(tx, actor, pulloutId, ids);
+      });
+    } catch (error) {
+      throw postingError(error, "Failed to delete this unit");
+    }
+
+    return { id: current.id };
+  },
+
+  async addAttachment(actor: PostingActor, pulloutId: string, file: File) {
+    const pullout = await prisma.branchPullout.findFirst({
+      where: { id: pulloutId, tenantId: actor.tenantId },
+      select: {
+        pulloutNo: true,
+        branchId: true,
+        statusCode: { select: { code: true } },
+        _count: { select: { attachments: true } },
+      },
+    });
+    if (!pullout) throw new Error("Pull-out not found");
+    await authorizePosting(actor, "pullout.create", pullout.branchId);
+    if (!(OPEN_PULLOUT_STATUS_CODES as readonly string[]).includes(pullout.statusCode.code)) {
+      throw new Error("Files can only be attached to an open pull-out");
+    }
+    const refused = pulloutAttachmentError({
+      mimeType: file.type,
+      sizeBytes: file.size,
+      attachedCount: pullout._count.attachments,
+    });
+    if (refused) throw new Error(refused);
+
+    const storagePath = buildPulloutAttachmentPath({
+      tenantId: actor.tenantId,
+      pulloutId,
+      fileId: crypto.randomUUID(),
+      fileName: file.name,
+    });
+    const storage = getObjectStorage();
+    await storage.upload({
+      path: storagePath,
+      body: Buffer.from(await file.arrayBuffer()),
+      contentType: file.type,
+    });
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.branchPulloutAttachment.create({
+          data: {
+            pulloutId,
+            fileName: file.name,
+            storagePath,
+            mimeType: file.type,
+            sizeBytes: file.size,
+            uploadedById: actor.userId,
+          },
+        });
+        await tx.auditLog.create({
+          data: {
+            tenantId: actor.tenantId,
+            userId: actor.userId,
+            action: "pullout.attachment_added",
+            entityType: "BranchPullout",
+            entityId: pulloutId,
+            metadata: { pulloutNo: pullout.pulloutNo, fileName: file.name },
+          },
+        });
+      });
+    } catch (error) {
+      // A file with no row can never be found again, so do not leave it behind.
+      await storage.remove(storagePath).catch(() => undefined);
+      throw postingError(error, "Failed to attach the file");
+    }
+  },
+
+  async getAttachment(tenantId: string, attachmentId: string) {
+    return prisma.branchPulloutAttachment.findFirst({
+      where: { id: attachmentId, pullout: { tenantId } },
+      select: { fileName: true, storagePath: true, mimeType: true },
+    });
   },
 
   async reject(actor: PostingActor, pulloutId: string) {
@@ -776,6 +1035,8 @@ export const pulloutPostingService = {
       pulloutId: string;
       warehouseId?: string;
       waybillNo?: string | null;
+      scheduledAt?: Date | null;
+      actualScheduledDate?: Date | null;
       notes?: string | null;
       serialNumberIds?: string[];
     },
@@ -895,6 +1156,17 @@ export const pulloutPostingService = {
             warehouseId,
             waybillNo: input.waybillNo === undefined ? fresh.waybillNo : input.waybillNo?.trim() || null,
             notes: input.notes === undefined ? fresh.notes : input.notes?.trim() || null,
+            ...(input.actualScheduledDate === undefined
+              ? {}
+              : { actualScheduledDate: input.actualScheduledDate }),
+            // Scheduled by follows the schedule, not whoever saved an unrelated edit.
+            ...(input.scheduledAt === undefined ||
+            input.scheduledAt?.getTime() === fresh.scheduledAt?.getTime()
+              ? {}
+              : {
+                  scheduledAt: input.scheduledAt,
+                  scheduledById: input.scheduledAt ? actor.userId : null,
+                }),
           },
         });
         await writeHistory(tx, {

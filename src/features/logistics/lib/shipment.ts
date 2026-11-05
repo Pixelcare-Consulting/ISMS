@@ -40,6 +40,28 @@ export function parseScheduleDate(value: string): Date | null {
   return date;
 }
 
+const DATE_TIME_LOCAL = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+const MANILA_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+/** `YYYY-MM-DDTHH:mm` in Manila time for a datetime-local input. Empty when nothing is saved. */
+export function manilaDateTimeInputValue(iso: string | null): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Date(date.getTime() + MANILA_OFFSET_MS).toISOString().slice(0, 16);
+}
+
+/** Reads a datetime-local value as Manila time, whatever timezone the server runs in. */
+export function parseManilaDateTime(value: string): Date | null {
+  const trimmed = value.trim();
+  if (!DATE_TIME_LOCAL.test(trimmed)) return null;
+  const date = new Date(`${trimmed}:00+08:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  // Date rolls 31 February forward instead of rejecting it.
+  if (manilaDateTimeInputValue(date.toISOString()) !== trimmed) return null;
+  return date;
+}
+
 export function formatScheduleDate(iso: string | null): string {
   if (!iso) return "—";
   const date = new Date(iso);

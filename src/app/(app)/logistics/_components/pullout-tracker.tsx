@@ -23,6 +23,9 @@ import { buildCatalogProgress } from "@/features/logistics/constants/workflow-pr
 type PulloutAuditAction =
   | "pullout.created"
   | "pullout.approved"
+  | "pullout.line_approved"
+  | "pullout.line_deleted"
+  | "pullout.attachment_added"
   | "pullout.rejected"
   | "pullout.list_saved"
   | "pullout.finalized";
@@ -42,6 +45,9 @@ function asPulloutAuditAction(action: string): PulloutAuditAction | null {
   switch (action) {
     case "pullout.created":
     case "pullout.approved":
+    case "pullout.line_approved":
+    case "pullout.line_deleted":
+    case "pullout.attachment_added":
     case "pullout.rejected":
     case "pullout.list_saved":
     case "pullout.finalized":
@@ -59,6 +65,12 @@ export function pulloutAuditLabel(action: string): string {
       return "Request submitted";
     case "pullout.approved":
       return "Approved by Team Lead";
+    case "pullout.line_approved":
+      return "Unit approved";
+    case "pullout.line_deleted":
+      return "Unit deleted";
+    case "pullout.attachment_added":
+      return "File attached";
     case "pullout.rejected":
       return "Rejected";
     case "pullout.list_saved":

@@ -17,8 +17,9 @@ export const PULLOUTS_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "How to use it",
       bullets: [
-        "Create the request with reason and items.",
-        "After TL approval, schedule pickup and coordinate with the branch.",
+        "Choose Stock (STK) or Defective (DEF), then add the units and their details.",
+        "Team Lead approves or deletes each unit, or approves them all.",
+        "After approval, Logistics enters the waybill and schedule and coordinates with the branch.",
         "Branch completes release in Operations; warehouse closes receipt.",
       ],
     },

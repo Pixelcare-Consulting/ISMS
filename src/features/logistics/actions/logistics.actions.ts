@@ -47,7 +47,12 @@ import {
   resolveLogisticsBranchScope,
   transferListWhere,
 } from "@/features/logistics/lib/transfer-visibility";
-import { parseScheduleDate } from "@/features/logistics/lib/shipment";
+import { parseManilaDateTime, parseScheduleDate } from "@/features/logistics/lib/shipment";
+import {
+  PULLOUT_CREATE_INPUT_ERROR,
+  pulloutSchema,
+} from "@/features/logistics/schemas/pullout.schema";
+import type { PulloutCondition } from "@/features/logistics/services/pullout-posting.planner";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
@@ -128,23 +133,11 @@ const transferSchema = z.object({
     .optional()
     .transform((value) => value || undefined),
 });
-const checklistIdList = z.array(z.string().min(1)).min(1);
-const pulloutLineSchema = z.object({
-  serialNumberId: z.string().min(1),
-  pulloutClassificationIds: checklistIdList,
-  unitPackingConditionIds: checklistIdList,
-  accessoryCompletenessIds: checklistIdList,
-});
-const pulloutSchema = z.object({
-  branchId: z.string().min(1),
-  warehouseId: z.string().min(1),
-  reasonStatusCodeId: z.string().min(1),
-  lines: z.array(pulloutLineSchema).min(1),
-  notes: z.string().optional(),
-});
 const pulloutListSchema = z.object({
   warehouseId: z.string().min(1),
   waybillNo: z.string().optional(),
+  scheduledAt: z.string().optional(),
+  actualPulloutDate: z.string().optional(),
   notes: z.string().optional(),
   serialNumberIds: z.array(z.string().min(1)).min(1),
 });
@@ -641,10 +634,14 @@ export async function getPulloutDetailAction(id: string) {
   }
 }
 
-export async function listPulloutSerialsAction(branchId: string) {
+export async function listPulloutSerialsAction(branchId: string, condition?: PulloutCondition) {
   const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
   try {
-    const serials = await pulloutPostingService.listSerials(postingActor(session), branchId);
+    const serials = await pulloutPostingService.listSerials(
+      postingActor(session),
+      branchId,
+      condition,
+    );
     return { success: true as const, serials };
   } catch (error) {
     return actionError(error, "Failed to load serials");
@@ -686,18 +683,50 @@ export async function listPulloutChecklistOptionsAction(): Promise<
 export async function createPulloutAction(input: unknown) {
   const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
   const parsed = pulloutSchema.safeParse(input);
-  if (!parsed.success) {
-    return {
-      error:
-        "Choose a branch, warehouse, reason, and classification, packing, and accessories for each serial",
-    };
-  }
+  if (!parsed.success) return { error: PULLOUT_CREATE_INPUT_ERROR };
   try {
     const row = await pulloutPostingService.create(postingActor(session), parsed.data);
     revalidatePullout(row.id);
     return { success: true as const, id: row.id, pulloutNo: row.pulloutNo };
   } catch (error) {
     return actionError(error, "Failed to create pull-out");
+  }
+}
+
+export async function uploadPulloutAttachmentAction(formData: FormData) {
+  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
+  const pulloutId = formData.get("pulloutId");
+  const file = formData.get("file");
+  if (typeof pulloutId !== "string" || !pulloutId) return { error: "Missing pull-out reference" };
+  if (!(file instanceof File)) return { error: "No file selected" };
+  try {
+    await pulloutPostingService.addAttachment(postingActor(session), pulloutId, file);
+    revalidatePullout(pulloutId);
+    return { success: true as const };
+  } catch (error) {
+    return actionError(error, "Failed to attach the file");
+  }
+}
+
+export async function approvePulloutLineAction(id: string, serialNumberId: string) {
+  const session = await requireAnyPermission([...TL_PERMISSIONS]);
+  try {
+    await pulloutPostingService.approveLine(postingActor(session), id, serialNumberId);
+    revalidatePullout(id);
+    return { success: true as const };
+  } catch (error) {
+    return actionError(error, "Failed to approve this unit");
+  }
+}
+
+export async function deletePulloutLineAction(id: string, serialNumberId: string) {
+  const session = await requireAnyPermission([...TL_PERMISSIONS]);
+  try {
+    await pulloutPostingService.deleteLine(postingActor(session), id, serialNumberId);
+    revalidatePullout(id);
+    return { success: true as const };
+  } catch (error) {
+    return actionError(error, "Failed to delete this unit");
   }
 }
 
@@ -734,15 +763,32 @@ export async function schedulePulloutAction(id: string) {
   }
 }
 
+/** Not sent: leave as is. Blank: clear it. */
+function optionalDate(
+  value: string | undefined,
+  parse: (raw: string) => Date | null,
+): Date | null | undefined | "invalid" {
+  if (value === undefined) return undefined;
+  if (!value.trim()) return null;
+  return parse(value) ?? "invalid";
+}
+
 export async function updatePulloutListAction(id: string, input: unknown) {
   const session = await requirePermission(LOGISTICS_MANAGE);
   const parsed = pulloutListSchema.safeParse(input);
   if (!parsed.success) return { error: "Choose the warehouse and the serials on this list" };
+  const scheduledAt = optionalDate(parsed.data.scheduledAt, parseManilaDateTime);
+  const actualScheduledDate = optionalDate(parsed.data.actualPulloutDate, parseScheduleDate);
+  if (scheduledAt === "invalid" || actualScheduledDate === "invalid") {
+    return { error: "Enter a valid schedule and actual pull-out date" };
+  }
   try {
     await pulloutPostingService.updateList(postingActor(session), {
       pulloutId: id,
       warehouseId: parsed.data.warehouseId,
       waybillNo: parsed.data.waybillNo,
+      scheduledAt,
+      actualScheduledDate,
       notes: parsed.data.notes,
       serialNumberIds: parsed.data.serialNumberIds,
     });
