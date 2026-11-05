@@ -1,6 +1,7 @@
 import type { CurrentPlacement } from "@/features/inventory/services/serial-placement";
 import {
   checkFollowedDocument,
+  dcsRemarksDrNo,
   deliveryStatusAfterFollow,
   parseFollowedDocument,
   placementsToReplace,
@@ -59,6 +60,7 @@ describe("parseFollowedDocument", () => {
       docNum: 494398,
       docDate: "2026-10-27",
       displayNo: "494398",
+      drNo: null,
       ismsRef: "ITR#2026-10-89938",
       cancelled: false,
       toWarehouse: "ABL003",
@@ -86,14 +88,34 @@ describe("parseFollowedDocument", () => {
       "DR",
     );
     expect(doc.displayNo).toBe("DR-0091");
+    expect(doc.drNo).toBe("DR-0091");
     expect(doc.cancelled).toBe(true);
     expect(doc.lines[0]?.basedOnOrderDoc).toBe(true);
+  });
+
+  it("takes an IT's DR# from DCS Remarks, keeping the IT number as its display number", () => {
+    const doc = parsed({ ...COPIED_IT, U_DcsRemarks: "  DR# 555 " });
+    expect(doc.displayNo).toBe("494398");
+    expect(doc.drNo).toBe("DR# 555");
   });
 
   it("refuses a row with no DocEntry", () => {
     expect(parseFollowedDocument("IT", { DocNum: 5 })).toEqual({
       error: "SAP document has no DocEntry/DocNum",
     });
+  });
+});
+
+describe("dcsRemarksDrNo", () => {
+  it("keeps several receipt codes on their own lines, as SAP's bare CRs separate them", () => {
+    expect(dcsRemarksDrNo("RSP2026050UXE-015692\rRSP202605SKFI-015691\r\r")).toBe(
+      "RSP2026050UXE-015692\nRSP202605SKFI-015691",
+    );
+  });
+
+  it("treats blank or missing remarks as no DR#", () => {
+    expect(dcsRemarksDrNo("  \r ")).toBeNull();
+    expect(dcsRemarksDrNo(null)).toBeNull();
   });
 });
 

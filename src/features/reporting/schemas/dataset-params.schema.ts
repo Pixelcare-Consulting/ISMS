@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { ORDER_SUMMARY_STATUS_GROUPS } from "@/features/reports/constants/order-summary";
+
 const isoDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD");
@@ -19,6 +21,8 @@ export const datasetParamsSchema = z.object({
   statusCodes: z.array(z.string().min(1).max(32)).max(50).optional(),
   /** Optional single branch; must sit inside the caller's AOR. */
   branchId: z.string().min(1).max(64).optional(),
+  /** Order summary status groups. Omitted or empty → every non-draft status. */
+  orderStatuses: z.array(z.enum(ORDER_SUMMARY_STATUS_GROUPS)).max(ORDER_SUMMARY_STATUS_GROUPS.length).optional(),
 });
 
 export type DatasetParams = z.infer<typeof datasetParamsSchema>;

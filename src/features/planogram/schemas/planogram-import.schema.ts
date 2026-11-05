@@ -1,7 +1,7 @@
 /**
  * Workbook contract for bulk planogram import (Settings → Planogram).
  *
- * Sheet "Planogram" — one row per branch name + SKU + shelf max. Template-only:
+ * Sheet "Planogram" — one row per branch name + SKU + Max Qty. Template-only:
  * the old BRS wide Y/N layout is rejected here. A file that still uses the
  * branch SAP code does not match these columns.
  *
@@ -45,7 +45,7 @@ export const PLANOGRAM_DEFAULT_MIL_DAYS = 30;
 
 export const PLANOGRAM_IMPORT_FIELD_LABELS: Record<string, string> = {
   allowedModel: "Allowed model",
-  maxQty: "Shelf max",
+  maxQty: "Max Qty",
 };
 
 export interface PlanogramImportRowError {

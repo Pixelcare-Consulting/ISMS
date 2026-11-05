@@ -230,13 +230,13 @@ export function ImportPlanogramDialog({
           <div className="text-muted-foreground space-y-2 text-sm">
             <p>
               Download the <strong>Planogram</strong> template, fill in branch name, SKU, and
-              shelf max, then upload that same file. The old BRS wide spreadsheet is not
+              Max Qty (the shelf_max column), then upload that same file. The old BRS wide spreadsheet is not
               accepted here. A file that still uses the branch SAP code will not import.
             </p>
             <p>
               SKUs and branches must already exist — this import does not create models.
-              Shelf max is a whole number of at least 1 and is saved on new and existing
-              rows. If more than one branch uses the same name, that row is rejected. Rows
+              Max Qty is a whole number from 0 and is saved on new and existing rows. The
+              next forecast upload replaces it. If more than one branch uses the same name, that row is rejected. Rows
               left out of the file are not removed.
             </p>
           </div>
@@ -336,7 +336,7 @@ export function ImportPlanogramDialog({
                       <TableRow>
                         <TableHead>Branch</TableHead>
                         <TableHead>SKU</TableHead>
-                        <TableHead className="text-right">Shelf max</TableHead>
+                        <TableHead className="text-right">Max Qty</TableHead>
                         <TableHead>Action</TableHead>
                         {showChangesColumn ? <TableHead>Changes</TableHead> : null}
                       </TableRow>

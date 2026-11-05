@@ -237,12 +237,12 @@ export const WORKFLOW_MODULE_MAP: Record<WorkflowModule, WorkflowModuleConfig> =
     sourceHref: "/settings/planogram",
     tutorial: PLANOGRAM_PAGE_TUTORIAL,
     moduleGuide: PLANOGRAM_MODULE_GUIDE,
-    defaultQuery: "planogram Shelf max MIL",
+    defaultQuery: "planogram Max Qty MIL",
     helpFilter: (hit) =>
       hit.href?.includes("planogram") ||
-      /planogram|shelf max|mil/i.test(`${hit.title} ${hit.excerpt}`),
+      /planogram|Max Qty|mil/i.test(`${hit.title} ${hit.excerpt}`),
     limitation:
-      "For Shelf max vs STK gaps call explainShelfGaps; for alert counts call getPlanogramAlerts.",
+      "For Max Qty vs STK gaps call explainShelfGaps; for alert counts call getPlanogramAlerts.",
   },
   quotas: {
     sourceHref: "/settings/branch-quotas",

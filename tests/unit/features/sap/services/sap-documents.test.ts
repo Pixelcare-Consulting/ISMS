@@ -136,7 +136,7 @@ describe("buildItrBody", () => {
 });
 
 describe("buildSoBody", () => {
-  it("carries the ITR's text fields plus the Branch and Outright business type dimensions", () => {
+  it("carries the ITR's header text and order number, the Branch and Outright dimensions, and no branch name UDFs", () => {
     const body = buildSoBody({
       ismsRef: "SO#2026-10-00034",
       cardCode: "C001",
@@ -161,7 +161,6 @@ describe("buildSoBody", () => {
       CostingCode2: "ABP001",
       CostingCode3: "OUTRIGHT",
       U_ISMS_PONum: "SO#2026-10-00034",
-      U_Branch_Namelong: "ABENSON ABREEZA DAVAO",
     });
   });
 

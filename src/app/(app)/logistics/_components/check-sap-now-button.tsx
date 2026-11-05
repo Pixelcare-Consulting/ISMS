@@ -7,14 +7,12 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { checkSapCopyToNowAction } from "@/features/logistics/actions/logistics.actions";
-
-function plural(count: number, one: string, many = `${one}s`): string {
-  return `${count.toLocaleString()} ${count === 1 ? one : many}`;
-}
+import { summarizeSapCheck } from "@/features/logistics/lib/sap-check-summary";
 
 /**
- * Check SAP for Copy To documents (ITR → IT, SO → DR) now, instead of waiting for the
- * scheduled check. Applies whatever it finds, the same as the scheduled check does.
+ * Check SAP for Copy To documents (ITR → IT, SO → DR) and Sales Orders made in SAP now,
+ * instead of waiting for the scheduled check. Applies whatever it finds, the same as the
+ * scheduled check does. Sits on Deliveries and on Orders, where those imported orders land.
  */
 export function CheckSapNowButton({ size = "sm" }: { size?: "sm" | "default" }) {
   const router = useRouter();
@@ -27,22 +25,8 @@ export function CheckSapNowButton({ size = "sm" }: { size?: "sm" | "default" }) 
         toast.error("Could not check SAP", { description: result.error });
         return;
       }
-      const notApplied = result.failed + result.flagged;
-      if (result.applied === 0 && notApplied === 0) {
-        toast.info("No new SAP documents for deliveries");
-      } else if (notApplied === 0) {
-        toast.success(`Added ${plural(result.applied, "SAP document")} to deliveries`);
-      } else {
-        toast.warning(
-          `${plural(notApplied, "SAP document")} could not be added`,
-          {
-            description:
-              result.applied > 0
-                ? `${plural(result.applied, "other")} were added. Open the delivery to see why.`
-                : "Open the delivery to see why.",
-          },
-        );
-      }
+      const summary = summarizeSapCheck(result);
+      toast[summary.tone](summary.title, { description: summary.description });
       router.refresh();
     });
   }

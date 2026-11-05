@@ -66,6 +66,126 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.85.0",
+    date: "2026-11-03",
+    releasedAt: "2026-11-03T15:44:00+08:00",
+    title: "Order summary, faster rejects, Target DII and SAP-made orders",
+    highlights: [
+      "Reports → Order summary lists every order request for a day, week, month or date range by status, and prints or exports to PDF or Excel.",
+      "Rejecting units at receipt no longer waits for the TL: Logistics confirms the list and ISMS creates the IT or Return in SAP right away.",
+      "Supply Planning can approve 0, less, or more than requested, or any item that was not requested, and sees a Target DII per brand from Branch quotas.",
+      "Sales Orders made directly in SAP come into ISMS as approved orders marked SAP, and consignment deliveries show the DR number typed in SAP.",
+      "Service center orders use the same order form and post to SAP as Sales Orders when approved.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Order summary shows one row per order: when it was made, number, source (ISMS or SAP), type, branch, brand, status, requested and approved quantities and amounts, CBM, who made it and its SAP document, with totals. Pick Today, Yesterday, This week, This month or a date range, and which statuses to show.",
+      },
+      {
+        type: "feature",
+        description:
+          "The reject step lists every unit being rejected. Confirming posts the IT (consignment) or Return (outright) to SAP and shows its SAP number when done. Each unit can be marked DEF so it goes back to the warehouse as defective.",
+      },
+      {
+        type: "feature",
+        description:
+          "Branch quotas can carry an optional Target DII (days) for each brand and month, set on the form or in the quota import (target_dii column). Orders show it as Target DII next to the Computed DII, and it follows the brand you pick.",
+      },
+      {
+        type: "feature",
+        description:
+          "In the review window Supply Planning sees every orderable item, not just the requested ones, and can change any approved quantity.",
+      },
+      {
+        type: "feature",
+        description: "The Orders list has a brand filter that keeps orders with at least one item of that brand.",
+      },
+      {
+        type: "feature",
+        description:
+          "After approval, the message shows the SAP number of the ITR or SO that was created, for example SO 97581. Service center orders show their SO number too.",
+      },
+      {
+        type: "feature",
+        description:
+          "Settings → Ordering has a start date for importing Sales Orders made in SAP; leave it empty to keep the import off. Open SOs come in, and closed ones only when they have a DR. Orders and Order History show where each order came from: ISMS or SAP.",
+      },
+      {
+        type: "feature",
+        description:
+          "When an SAP-made SO is closed or cancelled in SAP without a DR, logistics gets a notice and can close the order from its delivery page.",
+      },
+      {
+        type: "feature",
+        description:
+          "Settings → Ordering holds the service center Sales Order defaults: the customers it can bill, the warehouse, and the SAP codes on each line. The service center order form lists the SAP stock in the warehouse you order from.",
+      },
+      {
+        type: "feature",
+        description:
+          "Serial number logs show approval steps, unit transfers and delivery returns, including who rejected an approval.",
+      },
+      {
+        type: "feature",
+        description: "Provinces can be imported from an Excel or CSV file under Settings → Master data.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Deliveries show SAP doc#, DR# and DR date side by side. A DR number typed in SAP after the transfer was made is picked up on the next SAP check, and Check SAP now also brings in new Sales Orders made in SAP.",
+      },
+      {
+        type: "improvement",
+        description:
+          "If SAP does not take a rejected unit's IT or Return, the person who rejected it can retry or cancel it from the delivery. Logistics can now reject units at receipt.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Total CBM in the review window follows the approved quantities: each item's CBM times its approved quantity, added up.",
+      },
+      {
+        type: "improvement",
+        description: "SP remarks are typed and read right in the table. Long remarks scroll inside the cell.",
+      },
+      {
+        type: "improvement",
+        description: "The DII figure on orders is now called Computed DII, and sold units (SLD) no longer show in the Orders module.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Creating an order starts with the mode of payment. Manual or Special is set for you from whether you add additional items.",
+      },
+      {
+        type: "improvement",
+        description: "Service center locations are added and edited in a pop-up window.",
+      },
+      {
+        type: "improvement",
+        description: "Branch inventory filters as you type, with no Search button. Warehouse stock moved under Reports → Inventory.",
+      },
+      {
+        type: "fix",
+        description: "Sales Orders sent to SAP fill only the Branch column; both branch name columns stay empty.",
+      },
+      {
+        type: "fix",
+        description: "Outright Sales Orders bill the branch warehouse's customer code in SAP.",
+      },
+      {
+        type: "fix",
+        description: "The Inventory report preview uses the same SAP DOC# and SAP DOC DATE headings as its export again.",
+      },
+      {
+        type: "fix",
+        description: "Sales from an alternate branch show only the branch you selected.",
+      },
+    ],
+  },
+  {
     version: "0.84.0",
     date: "2026-10-28",
     releasedAt: "2026-10-28T18:48:00+08:00",

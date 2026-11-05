@@ -9,6 +9,7 @@ type TemplateModule = Promise<{ default: unknown }>;
 
 export const REPORT_TEMPLATES: Record<ReportKey, () => TemplateModule> = {
   "processed-orders": () => import("./reports/processed-orders.mrt.json"),
+  "order-summary": () => import("./reports/order-summary.mrt.json"),
   "daily-stock": () => import("./reports/daily-stock.mrt.json"),
   transfers: () => import("./reports/transfers.mrt.json"),
   sales: () => import("./reports/sales.mrt.json"),

@@ -142,9 +142,13 @@ function orderDocumentText(i: OrderDocumentText): {
 export function orderLineText(ismsRef: string, branchName: string): Record<string, unknown> {
   const name = branchName.trim();
   return {
-    U_ISMS_PONum: fitSapText(ismsRef, ORDER_DOC_TEXT_LIMITS.lineIsmsRef),
+    ...ismsRefLineText(ismsRef),
     ...(name ? { U_Branch_Namelong: fitSapText(name, ORDER_DOC_TEXT_LIMITS.lineBranchNameLong) } : {}),
   };
+}
+
+function ismsRefLineText(ismsRef: string): Record<string, unknown> {
+  return { U_ISMS_PONum: fitSapText(ismsRef, ORDER_DOC_TEXT_LIMITS.lineIsmsRef) };
 }
 
 /**
@@ -196,7 +200,8 @@ const SAP_BUSINESS_TYPE_OUTRIGHT = "OUTRIGHT";
 /**
  * An approved outright order as a Sales Order. SAP requires its Delivery Date, so the
  * caller always sends one (the order's delivery due date, else today). Every line is
- * tagged with the Branch dimension (when given) and the Outright business type.
+ * tagged with the Branch dimension (when given) and the Outright business type. SO lines
+ * carry no branch name UDFs: the client wants only the Branch dimension filled on SOs.
  */
 export function buildSoBody(
   i: OrderDocumentText & {
@@ -222,7 +227,7 @@ export function buildSoBody(
       WarehouseCode: i.whs,
       ...(i.branchCode ? { [SAP_LINE_DIMENSION.branch]: i.branchCode } : {}),
       [SAP_LINE_DIMENSION.businessType]: SAP_BUSINESS_TYPE_OUTRIGHT,
-      ...text.line,
+      ...ismsRefLineText(i.ismsRef),
       ...i.extra?.line,
     })),
   };

@@ -23,6 +23,12 @@ enum BranchOrderStatus {
   cancelled
 }
 
+/// Where an order was made: in ISMS, or as a Sales Order directly in SAP and imported.
+enum BranchOrderSource {
+  ISMS
+  SAP
+}
+
 enum BranchOrderType {
   auto_replenish
   manual
@@ -1430,6 +1436,9 @@ model OrderingPolicy {
   dailyLockEndMinutes     Int?              @map("daily_lock_end_minutes")
   /// Order modules company weekday + daily time locks apply to.
   lockAppliesToOrderTypes BranchOrderType[] @default([manual]) @map("lock_applies_to_order_types")
+  /// Sales Orders made directly in SAP on or after this date are imported as orders.
+  /// Null turns the import off.
+  sapSoImportSince        DateTime?         @db.Date @map("sap_so_import_since")
   createdAt               DateTime          @default(now()) @map("created_at")
   updatedAt               DateTime          @updatedAt @map("updated_at")
 
@@ -1850,7 +1859,16 @@ model BranchPlanogram {
   tenantId      String    @map("tenant_id")
   branchId      String    @map("branch_id")
   modelId       String    @map("model_id")
-  maxQty        Int       @default(1) @map("max_qty")
+  /// Max Qty. Stored in `calculated_max_qty`, NOT in the old `max_qty` column (see `legacyMaxQty`).
+  /// 0 until the first forecast upload, which recalculates it: planogram/lib/target-forecast-qty.ts.
+  maxQty        Int       @default(0) @map("calculated_max_qty")
+  /// Inputs of the last calculation (`MaxQtyCalc`). Null until the first forecast upload.
+  maxQtyCalc     Json?     @map("max_qty_calc")
+  /// Set by a manual edit or planogram upload. The next forecast upload clears it.
+  maxQtyEditedAt DateTime? @map("max_qty_edited_at")
+  /// The old Shelf max, left untouched for traceability. The app must not read or write it.
+  /// Null on rows created after the change. See "Planogram Max Qty" in README.md.
+  legacyMaxQty   Int?      @map("max_qty")
   effectiveFrom DateTime? @map("effective_from")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
@@ -2159,6 +2177,8 @@ model BranchOrder {
   brandId         String?           @map("brand_id")
   packageTypeId   String?           @map("package_type_id")
   orderType       BranchOrderType   @map("order_type")
+  /// SAP: imported from a Sales Order made in SAP (no ISMS approval; it never posts to SAP).
+  source          BranchOrderSource @default(ISMS)
   status          BranchOrderStatus @default(pending_tl)
   orderNumber     String            @map("order_number")
   notes            String?
@@ -2285,7 +2305,11 @@ model BranchDelivery {
   sapDocRef    String?   @map("sap_doc_ref")
   sourceWarehouseId String? @map("source_warehouse_id")
   sapDocEntry  Int?      @map("sap_doc_entry")
+  /// SAP number of the first Copy To document (IT DocNum, or the DR's number).
+  sapDocNo     String?   @map("sap_doc_no")
+  /// Delivery receipt number: the IT's DCS Remarks (`U_DcsRemarks`), or the DR's number.
   drNo         String?   @map("dr_no")
+  /// Posting date of that IT / DR.
   drDate       DateTime? @db.Date @map("dr_date")
   /// Logistics waybill. Print stays off until this, the courier, and the schedule date are saved.
   waybillNo    String?   @map("waybill_no")
@@ -3216,6 +3240,9 @@ model BranchQuota {
   brandId     String   @map("brand_id")
   quotaDate   DateTime @map("quota_date") @db.Date
   quotaAmount Decimal  @map("quota_amount") @db.Decimal(14, 2)
+  /// Days of inventory the brand should carry at the branch that month. Shown on orders as
+  /// "Target DII" beside the Computed DII. Null when not set.
+  targetDii   Decimal? @map("target_dii") @db.Decimal(8, 1)
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 

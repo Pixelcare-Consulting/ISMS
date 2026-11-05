@@ -5,9 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   useCallback,
-  useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -34,11 +32,9 @@ import {
 } from "@/features/inventory/constants/stock-units-group";
 import type { StockUnitsView } from "@/features/inventory/constants/stock-units-view";
 import { SerialSapSyncDialog } from "@/features/serial-numbers/components/serial-sap-sync-dialog";
-import {
-  parseTablePageSize,
-  type TablePageSize,
-} from "@/components/data-table/table-page-size";
 import { TablePagination } from "@/components/data-table/table-pagination";
+import { useClientTablePagination } from "@/components/data-table/use-client-table-pagination";
+import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -47,6 +43,7 @@ import {
   type DataTableFeatures,
 } from "@/lib/data-table";
 import type { PaginatedResult } from "@/lib/shared/pagination";
+import { matchesTableSearch } from "@/utils/match-table-search";
 import { cn } from "@/utils/cn";
 
 type GroupTopItem = InventoryGroupBranchItemDto | InventoryGroupModelItemDto;
@@ -179,31 +176,54 @@ export function InventoryGroupedTable({
   result,
   initialOffPlanogram = false,
   initialSearch = "",
-  hideBranch = false,
   canSync = false,
 }: InventoryGroupedTableProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [offPlanogramOnly, setOffPlanogramOnly] = useState(initialOffPlanogram);
-  const [searchDraft, setSearchDraft] = useState(initialSearch);
-  const pageSize = parseTablePageSize(result.limit);
+  const [query, setQuery] = useState(initialSearch);
 
   const branchFilter = searchParams.get("branch") ?? "";
   const skuFilter = searchParams.get("sku") ?? "";
-  const appliedSearch = searchParams.get("q") ?? "";
   const urlFilters = {
     branch: branchFilter || undefined,
     sku: skuFilter || undefined,
   };
+
+  const filtered = useMemo(
+    () =>
+      result.items.filter((row) =>
+        matchesTableSearch(query, groupSearchValues(groupBy, row)),
+      ),
+    [groupBy, query, result.items],
+  );
+
+  const suggestions = useMemo(
+    () =>
+      uniqueSearchSuggestions(
+        result.items.flatMap((row) => groupSearchValues(groupBy, row)),
+      ),
+    [groupBy, result.items],
+  );
+
+  const {
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
+    total,
+    totalPages,
+    pageItems,
+    indexOffset,
+  } = useClientTablePagination(filtered, { resetKey: query.trim() });
 
   const listFilters = useMemo(
     () => ({
       branchIdFilter: branchFilter || undefined,
       sku: skuFilter || undefined,
       offPlanogram: offPlanogramOnly,
-      q: appliedSearch || undefined,
     }),
-    [branchFilter, skuFilter, offPlanogramOnly, appliedSearch],
+    [branchFilter, skuFilter, offPlanogramOnly],
   );
 
   const [expandedTopId, setExpandedTopId] = useState<string | null>(null);
@@ -217,73 +237,25 @@ export function InventoryGroupedTable({
   const currentView: StockUnitsView = groupBy;
 
   function pushHref(overrides: {
-    page?: number;
-    limit?: number;
     offPlanogram?: boolean;
     q?: string;
   } = {}) {
     router.push(
       buildStockUnitsHref({
         view: currentView,
-        page: overrides.page ?? 1,
-        limit: overrides.limit ?? pageSize,
+        page: 1,
+        limit: pageSize,
         offPlanogram: overrides.offPlanogram ?? offPlanogramOnly,
-        q: overrides.q !== undefined ? overrides.q : appliedSearch,
+        q: overrides.q,
         filters: urlFilters,
       }),
     );
   }
 
-  function handlePageSizeChange(limit: TablePageSize) {
-    pushHref({ page: 1, limit });
-  }
-
   function toggleOffPlanogram(checked: boolean) {
     setOffPlanogramOnly(checked);
-    pushHref({ offPlanogram: checked, page: 1 });
+    pushHref({ offPlanogram: checked, q: query.trim() });
   }
-
-  const pendingSearch = useRef<string | null>(null);
-
-  useEffect(() => {
-    const next = searchDraft.trim();
-    if (next === appliedSearch) return;
-    const timer = window.setTimeout(() => {
-      pendingSearch.current = next;
-      router.replace(
-        buildStockUnitsHref({
-          view: currentView,
-          page: 1,
-          limit: pageSize,
-          offPlanogram: offPlanogramOnly,
-          q: next,
-          filters: {
-            branch: branchFilter || undefined,
-            sku: skuFilter || undefined,
-          },
-        }),
-        { scroll: false },
-      );
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, [
-    appliedSearch,
-    branchFilter,
-    currentView,
-    offPlanogramOnly,
-    pageSize,
-    router,
-    searchDraft,
-    skuFilter,
-  ]);
-
-  useEffect(() => {
-    if (pendingSearch.current !== null) {
-      if (pendingSearch.current === appliedSearch) pendingSearch.current = null;
-      return;
-    }
-    setSearchDraft(appliedSearch);
-  }, [appliedSearch]);
 
   const filterSuffix = listFiltersCacheSuffix(listFilters);
   const midLabel = midLevelLabel(groupBy);
@@ -366,7 +338,6 @@ export function InventoryGroupedTable({
     [filterSuffix, groupBy, pageSize],
   );
 
-  const indexOffset = (result.page - 1) * result.limit;
   const topLabel = groupBy === "by-model" ? "Model" : "Branch";
 
   const columns = useMemo(
@@ -400,7 +371,6 @@ export function InventoryGroupedTable({
             href={buildStockUnitsHref({
               view: currentView,
               offPlanogram: offPlanogramOnly,
-              q: appliedSearch,
             })}
           >
             Clear
@@ -411,7 +381,7 @@ export function InventoryGroupedTable({
 
   return (
     <DataTable
-      data={result.items}
+      data={pageItems}
       columns={columns}
       getRowId={(row) => topIdOf(groupBy, row)}
       manualSorting
@@ -481,12 +451,13 @@ export function InventoryGroupedTable({
       }}
       stickyHeader
       search={{
-        value: searchDraft,
-        onChange: setSearchDraft,
+        value: query,
+        onChange: setQuery,
         placeholder:
-          groupBy !== "by-model" && hideBranch
-            ? "Search serial, SKU, model…"
-            : "Search serial, SKU, model, branch…",
+          groupBy === "by-model"
+            ? "Search by model name or SKU…"
+            : "Search by branch name or SAP code…",
+        suggestions,
       }}
       toolbarLeading={
         <StockUnitsViewSwitch
@@ -495,7 +466,7 @@ export function InventoryGroupedTable({
             stockUnitsHrefForView(view, {
               pageSize,
               offPlanogram: offPlanogramOnly,
-              q: appliedSearch,
+              q: query.trim() || undefined,
               filters: urlFilters,
             })
           }
@@ -518,28 +489,19 @@ export function InventoryGroupedTable({
         </>
       }
       banner={filterBanner}
-      pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
+      pageSize={{ value: pageSize, onChange: setPageSize }}
       pagination={{
-        total: result.total,
-        page: result.page,
-        totalPages: result.totalPages,
+        total,
+        page,
+        totalPages,
         itemLabel: groupBy === "by-model" ? "model" : "branch",
-        buildHref: (page) =>
-          buildStockUnitsHref({
-            view: currentView,
-            page,
-            limit: pageSize,
-            offPlanogram: offPlanogramOnly,
-            q: appliedSearch,
-            filters: urlFilters,
-          }),
+        onPageChange: setPage,
       }}
-      footer={
-        result.items.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">
-            No {groupBy === "by-model" ? "models" : "branches"} match your filters
-          </p>
-        ) : null
+      empty={pageItems.length === 0}
+      emptyMessage={
+        query.trim()
+          ? "No results match your search."
+          : `No ${groupBy === "by-model" ? "models" : "branches"} match your filters`
       }
     />
   );
@@ -579,6 +541,24 @@ function createGroupColumns(
       },
     }),
   ];
+}
+
+function groupSearchValues(groupBy: StockUnitsGroupBy, row: GroupTopItem): string[] {
+  switch (groupBy) {
+    case "by-branch":
+    case "by-warehouse": {
+      const branch = (row as InventoryGroupBranchItemDto).branch;
+      return [branch.name, branch.sapCode];
+    }
+    case "by-model": {
+      const model = (row as InventoryGroupModelItemDto).model;
+      return [model.sku, model.name, model.brand?.name ?? ""];
+    }
+    default: {
+      const exhaustive: never = groupBy;
+      return exhaustive;
+    }
+  }
 }
 
 function groupTitleText(groupBy: StockUnitsGroupBy, row: GroupTopItem): string {

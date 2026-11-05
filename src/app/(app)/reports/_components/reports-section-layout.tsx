@@ -23,6 +23,9 @@ function resolveReportsDescription(pathname: string): string {
   if (pathname.startsWith("/reports/sales")) {
     return "Branch sales with serial numbers and ATR/return status.";
   }
+  if (pathname.startsWith("/reports/order-summary")) {
+    return "Every order request for a day or range, by status, with requested and approved totals.";
+  }
   if (pathname.startsWith("/reports/processed-orders")) {
     return "CSV export of approved order lines (order #, approved qty, SPA remarks, CBM).";
   }

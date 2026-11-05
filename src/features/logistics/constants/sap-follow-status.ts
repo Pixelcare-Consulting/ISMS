@@ -6,12 +6,14 @@ export const SAP_FOLLOW_STATUS_LABELS: Record<string, string> = {
   APPLIED: "Applied",
   FAILED: "Not applied yet",
   FLAGGED: "Needs review",
+  RESOLVED: "Resolved",
 };
 
 export const SAP_FOLLOW_STATUS_TONES: Record<string, string> = {
   APPLIED: "border-emerald-200 bg-emerald-50 text-emerald-800",
   FAILED: "border-amber-200 bg-amber-50 text-amber-900",
   FLAGGED: "border-red-200 bg-red-50 text-red-800",
+  RESOLVED: "border-border bg-muted text-muted-foreground",
 };
 
 /** What each status means for the person reading the delivery. */

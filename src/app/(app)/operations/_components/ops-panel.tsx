@@ -1,5 +1,6 @@
 "use client";
 
+import { DrNoText } from "@/app/(app)/logistics/_components/dr-no-text";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
@@ -32,7 +33,8 @@ import {
 import { formatInventoryDrDate } from "@/app/(app)/inventory/_components/inventory-list-format";
 import {
   formatSapDocNo,
-  SAP_DOC_DATE_LABEL,
+  DR_DATE_LABEL,
+  DR_NO_LABEL,
   SAP_DOC_NO_LABEL,
 } from "@/features/logistics/lib/sap-doc-number";
 import type { OrderSapDocType } from "@/features/orders/constants/order-sap-doc-type";
@@ -57,6 +59,7 @@ interface OpsPanelProps {
   deliveries: {
     id: string;
     deliveryNo: string;
+    sapDocNo: string | null;
     drNo: string | null;
     drDate: Date | string | null;
     statusCode: StatusCodeRef;
@@ -174,15 +177,21 @@ export function OpsPanel({
         cell: ({ row }) => row.original.deliveryNo,
       }),
       deliveryColumn.display({
-        id: "drNo",
+        id: "sapDocNo",
         header: SAP_DOC_NO_LABEL,
         enableSorting: false,
         cell: ({ row }) =>
-          formatSapDocNo(row.original.drNo, row.original.order?.sapDocType) ?? "—",
+          formatSapDocNo(row.original.sapDocNo, row.original.order?.sapDocType) ?? "—",
+      }),
+      deliveryColumn.display({
+        id: "drNo",
+        header: DR_NO_LABEL,
+        enableSorting: false,
+        cell: ({ row }) => <DrNoText value={row.original.drNo} />,
       }),
       deliveryColumn.display({
         id: "drDate",
-        header: SAP_DOC_DATE_LABEL,
+        header: DR_DATE_LABEL,
         enableSorting: false,
         cell: ({ row }) => formatInventoryDrDate(row.original.drDate),
       }),

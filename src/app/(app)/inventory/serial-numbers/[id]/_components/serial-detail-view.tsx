@@ -71,7 +71,7 @@ import {
 } from "@/components/ui/table";
 import { usePersistedBoolean } from "@/hooks/use-persisted-boolean";
 import { cn } from "@/utils/cn";
-import { SAP_DOC_DATE_LABEL, SAP_DOC_NO_LABEL } from "@/features/logistics/lib/sap-doc-number";
+import { DR_DATE_LABEL, SAP_DOC_NO_LABEL } from "@/features/logistics/lib/sap-doc-number";
 
 type RelatedUnit = SerialTraceability["relatedUnits"]["sameSku"]["units"][number];
 
@@ -852,13 +852,13 @@ function LocationCard({ serial }: { serial: SerialTraceability }) {
               value={
                 serial.planogram.onPlanogram
                   ? serial.planogram.maxQty != null
-                    ? `Yes · Shelf max ${serial.planogram.maxQty}`
+                    ? `Yes · Max Qty ${serial.planogram.maxQty}`
                     : "Yes"
                   : "No"
               }
             />
             <DetailRow
-              label={SAP_DOC_DATE_LABEL}
+              label={DR_DATE_LABEL}
               value={
                 serial.deliveryReceipt.deliveryDate
                   ? dateFormatter.format(serial.deliveryReceipt.deliveryDate)

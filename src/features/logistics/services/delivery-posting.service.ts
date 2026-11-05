@@ -199,6 +199,9 @@ export async function finalizeDeliveryIfSettled(
 export interface DeliveryDetail {
   id: string;
   deliveryNo: string;
+  /** SAP number of the IT / DR the delivery came on. */
+  sapDocNo: string | null;
+  /** DR#: the IT's DCS Remarks, or the DR's number. */
   drNo: string | null;
   drDate: string | null;
   shipment: LogisticsShipment;
@@ -244,6 +247,7 @@ export const deliveryPostingService = {
       select: {
         id: true,
         deliveryNo: true,
+        sapDocNo: true,
         drNo: true,
         drDate: true,
         waybillNo: true,
@@ -336,6 +340,7 @@ export const deliveryPostingService = {
     return {
       id: delivery.id,
       deliveryNo: delivery.deliveryNo,
+      sapDocNo: delivery.sapDocNo,
       drNo: delivery.drNo,
       drDate: delivery.drDate ? delivery.drDate.toISOString() : null,
       shipment: {

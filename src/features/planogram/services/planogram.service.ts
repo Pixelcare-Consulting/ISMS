@@ -1,6 +1,10 @@
 import { auditService } from "@/features/audit/services/audit.service";
 import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
 import { formatPeriodDate } from "@/features/master-data/types/client-price-list";
+import {
+  parseMaxQtyCalc,
+  type MaxQtyCalc,
+} from "@/features/planogram/lib/target-forecast-qty";
 import { pickDisplayPriceListRow } from "@/features/master-data/utils/resolve-price-list";
 import type {
   PlanogramIndexBranch,
@@ -14,6 +18,8 @@ export interface PlanogramRow {
   branchId: string;
   modelId: string;
   maxQty: number;
+  maxQtyCalc: MaxQtyCalc | null;
+  maxQtyEditedByHand: boolean;
   effectiveFrom: string | null;
   stockCount: number;
   ditCount: number;
@@ -133,6 +139,8 @@ export const planogramService = {
         branchId: string;
         modelId: string;
         maxQty: number;
+        maxQtyCalc: unknown;
+        maxQtyEditedAt: Date | null;
         model: {
           id: string;
           skuCode: string;
@@ -149,6 +157,8 @@ export const planogramService = {
           branchId: entry.branchId,
           modelId: entry.modelId,
           maxQty: entry.maxQty,
+          maxQtyCalc: parseMaxQtyCalc(entry.maxQtyCalc),
+          maxQtyEditedByHand: entry.maxQtyEditedAt != null,
           effectiveFrom: price.effectiveFrom,
           stockCount: stockByModel.get(entry.modelId) ?? 0,
           ditCount: ditByModel.get(entry.modelId) ?? 0,
@@ -176,7 +186,7 @@ export const planogramService = {
     daysThreshold?: number;
   }) {
     if (input.maxQty < 1) {
-      throw new Error("Shelf max must be at least 1");
+      throw new Error("Max Qty must be at least 1");
     }
 
     const model = await masterDataRepository.findModel(input.tenantId, input.modelId);
@@ -283,7 +293,7 @@ export const planogramService = {
     planogramId: string;
     maxQty: number;
   }) {
-    if (input.maxQty < 1) throw new Error("Shelf max must be at least 1");
+    if (input.maxQty < 1) throw new Error("Max Qty must be at least 1");
 
     const entry = await planogramRepository.findPlanogramEntryById(
       input.tenantId,
@@ -755,7 +765,7 @@ export const planogramService = {
       const remainingCapacity = Math.max(0, entry.maxQty - stockCount);
       if (line.quantity > remainingCapacity) {
         throw new Error(
-          `Quantity for ${model.skuCode} exceeds shelf capacity (${remainingCapacity} remaining of Shelf max ${entry.maxQty})`,
+          `Quantity for ${model.skuCode} exceeds Max Qty (${remainingCapacity} remaining of ${entry.maxQty})`,
         );
       }
     }

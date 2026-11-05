@@ -1,9 +1,12 @@
+import type { ProjectedWorksheetLine } from "@/features/orders/lib/order-worksheet-rows";
 import {
   assembleOrderWorksheet,
   classifyWorksheetInventory,
   formatWorksheetSalesPeriodLabel,
   isAwaitingPulloutWorkflow,
   outstandingQtyForLines,
+  quotaTargetDii,
+  worksheetFiguresForBrand,
   resolveDitDirection,
   worksheetBrandSalesQty,
   worksheetDii,
@@ -414,8 +417,8 @@ describe("supply planning worksheet payload", () => {
       inventoryAsOf: "2026-10-19T02:00:00.000Z",
       deliveryFrequencyCode: " F4 ",
       brandQuotas: [
-        { brandId: " brand-1 ", quantity: 40 },
-        { brandId: " ", quantity: 9 },
+        { brandId: " brand-1 ", quantity: 40, targetDii: 21 },
+        { brandId: " ", quantity: 9, targetDii: null },
       ],
       milDaysByModel: new Map([["m1", 14]]),
       statusColors: new Map([
@@ -425,7 +428,7 @@ describe("supply planning worksheet payload", () => {
     });
 
     expect(payload.deliveryFrequencyCode).toBe("F4");
-    expect(payload.brandQuotas).toEqual([{ brandId: "brand-1", quantity: 40 }]);
+    expect(payload.brandQuotas).toEqual([{ brandId: "brand-1", quantity: 40, targetDii: 21 }]);
     expect(payload.lines[0]?.milDays).toBe(14);
     expect(payload.lines[0]?.inventory.byStatus).toEqual([
       { code: "STK", count: 0, color: "green" },
@@ -462,8 +465,8 @@ describe("supply planning figures and rate", () => {
 
   it("scopes figures to the brand and keeps all brands on every line", () => {
     const quotas = [
-      { brandId: "devant", quantity: 12 },
-      { brandId: "sonique", quantity: 8 },
+      { brandId: "devant", quantity: 12, targetDii: 14 },
+      { brandId: "sonique", quantity: 8, targetDii: 14 },
     ];
     const devantFigures = worksheetPlanningFigures({
       lines: [devant, sonique],
@@ -475,7 +478,8 @@ describe("supply planning figures and rate", () => {
     expect(devantFigures.inventoryAmount).toBe(200);
     expect(devantFigures.approvedOrderAmount).toBe(200);
     expect(devantFigures.totalInventoryAmount).toBe(400);
-    expect(devantFigures.totalCbm).toBeCloseTo(0.6);
+    // CBM follows the approved 2, not the requested 3.
+    expect(devantFigures.totalCbm).toBeCloseTo(0.4);
     expect(devantFigures.targetDiiDays).toBe(14);
     expect(devantFigures.computedDii).toBe(40);
 
@@ -489,18 +493,31 @@ describe("supply planning figures and rate", () => {
     expect(all.inventoryAmount).toBe(280);
     expect(all.approvedOrderAmount).toBe(200);
     expect(all.totalInventoryAmount).toBe(480);
-    expect(all.totalCbm).toBeCloseTo(0.6);
+    expect(all.totalCbm).toBeCloseTo(0.4);
     expect(all.targetDiiDays).toBe(14);
+  });
+
+  it("takes Target DII from the brand's quota, and shows none across brands with different targets", () => {
+    const quotas = [
+      { brandId: "devant", quantity: 12, targetDii: 21 },
+      { brandId: "sonique", quantity: 8, targetDii: 30 },
+      { brandId: "other", quantity: 4, targetDii: null },
+    ];
+    expect(quotaTargetDii(quotas, "sonique")).toBe(30);
+    expect(quotaTargetDii(quotas, "other")).toBeNull();
+    expect(quotaTargetDii(quotas, null)).toBeNull();
+    expect(quotaTargetDii(quotas.slice(0, 1), null)).toBe(21);
   });
 
   it("leaves quota blank when the brand has none and skips zero requested CBM", () => {
     const figures = worksheetPlanningFigures({
       lines: [sonique],
       brandId: "sonique",
-      brandQuotas: [{ brandId: "devant", quantity: 12 }],
+      brandQuotas: [{ brandId: "devant", quantity: 12, targetDii: 30 }],
       daysElapsed: 10,
     });
     expect(figures.quotaQty).toBeNull();
+    expect(figures.targetDiiDays).toBeNull();
     expect(figures.totalCbm).toBe(0);
     expect(figures.computedDii).toBeNull();
     expect(figures.diiUnavailableReason).toBe(NO_SALES_DII_REASON);
@@ -521,5 +538,43 @@ describe("supply planning figures and rate", () => {
         { brandId: "devant", salesQty: null, salesUnavailable: true },
       ]).get("devant"),
     ).toBeNull();
+  });
+});
+
+describe("worksheetFiguresForBrand", () => {
+  const line = (overrides: Partial<ProjectedWorksheetLine>) =>
+    ({
+      brandId: "devant",
+      srp: 10_450,
+      cbm: 0,
+      salesAmount: 0,
+      salesUnavailable: false,
+      milDays: 0,
+      onPlanogram: true,
+      inventory: { onHandQty: 0 },
+      requestedQty: 0,
+      approvedQty: null,
+      ...overrides,
+    }) as ProjectedWorksheetLine;
+  const lines = [
+    line({ inventory: { onHandQty: 4 } as ProjectedWorksheetLine["inventory"], salesAmount: 10_000 }),
+    line({ brandId: "hisense", inventory: { onHandQty: 1 } as ProjectedWorksheetLine["inventory"] }),
+  ];
+  const brandQuotas = [
+    { brandId: "devant", quantity: 100, targetDii: 10 },
+    { brandId: "hisense", quantity: 100, targetDii: 11 },
+  ];
+
+  it("gives the picked brand its own Target DII, stock and Computed DII", () => {
+    const figures = worksheetFiguresForBrand({ lines, brandId: "devant", brandQuotas, daysElapsed: 4 });
+    expect(figures.targetDiiDays).toBe(10);
+    expect(figures.inventoryAmount).toBe(41_800);
+    expect(figures.computedDii).toBeCloseTo(16.72);
+  });
+
+  it("treats an empty brand as all brands, where different targets have no single value", () => {
+    const figures = worksheetFiguresForBrand({ lines, brandId: "", brandQuotas, daysElapsed: 4 });
+    expect(figures.targetDiiDays).toBeNull();
+    expect(figures.inventoryAmount).toBe(52_250);
   });
 });

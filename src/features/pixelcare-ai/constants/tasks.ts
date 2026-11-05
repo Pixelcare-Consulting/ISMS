@@ -25,7 +25,7 @@ export const PIXELCARE_AI_TASKS: PixelcareAiTask[] = [
   {
     id: "review-shelf-gaps",
     title: "Review shelf gaps",
-    description: "Review planogram shelf max vs STK and the suggested gap (SUG).",
+    description: "Review planogram Max Qty vs STK and the suggested gap (SUG).",
     starterPrompt:
       "Help me review shelf gaps. Ask which branch if needed, then explain max, STK, and SUG from the app.",
   },

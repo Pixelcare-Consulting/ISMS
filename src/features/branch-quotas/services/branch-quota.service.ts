@@ -46,6 +46,7 @@ export const branchQuotaService = {
     brandId: string;
     quotaDate: string;
     quotaAmount: number;
+    targetDii: number | null;
   }) {
     const parsed = branchQuotaFormSchema.safeParse(input);
     if (!parsed.success) {
@@ -58,6 +59,7 @@ export const branchQuotaService = {
         brandId: parsed.data.brandId,
         quotaDate: parseQuotaMonth(parsed.data.quotaDate),
         quotaAmount: parsed.data.quotaAmount,
+        targetDii: parsed.data.targetDii,
       });
       await auditService.log({
         tenantId: input.tenantId,
@@ -69,6 +71,7 @@ export const branchQuotaService = {
           branchId: row.branchId,
           brandId: row.brandId,
           quotaAmount: Number(row.quotaAmount),
+          targetDii: row.targetDii == null ? null : Number(row.targetDii),
         },
       });
       return row;
@@ -88,6 +91,7 @@ export const branchQuotaService = {
     brandId: string;
     quotaDate: string;
     quotaAmount: number;
+    targetDii: number | null;
   }) {
     const parsed = branchQuotaFormSchema.safeParse(input);
     if (!parsed.success) {
@@ -103,6 +107,7 @@ export const branchQuotaService = {
         brandId: parsed.data.brandId,
         quotaDate: parseQuotaMonth(parsed.data.quotaDate),
         quotaAmount: parsed.data.quotaAmount,
+        targetDii: parsed.data.targetDii,
       });
       await auditService.log({
         tenantId: input.tenantId,
@@ -114,6 +119,7 @@ export const branchQuotaService = {
           branchId: row.branchId,
           brandId: row.brandId,
           quotaAmount: Number(row.quotaAmount),
+          targetDii: row.targetDii == null ? null : Number(row.targetDii),
         },
       });
       return row;

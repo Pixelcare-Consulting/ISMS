@@ -335,7 +335,7 @@ export const appModules: AppModule[] = [
     route: "/settings/planogram",
     slugPrefix: "planogram",
     navPermission: "planogram.view",
-    description: "Branch authorized SKUs, shelf capacity, and MIL thresholds",
+    description: "Branch authorized SKUs, Max Qty, and MIL thresholds",
     actions: permissionActions("view", "manage"),
   },
   {

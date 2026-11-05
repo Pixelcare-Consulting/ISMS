@@ -297,6 +297,7 @@ export const planogramRepository = {
         branchId: data.branchId,
         modelId: data.modelId,
         maxQty: data.maxQty,
+        maxQtyEditedAt: new Date(),
       },
       include: {
         model: { select: { id: true, skuCode: true, name: true, status: true } },
@@ -307,7 +308,7 @@ export const planogramRepository = {
   updateMaxQty(tenantId: string, id: string, maxQty: number) {
     return prisma.branchPlanogram.update({
       where: { id, tenantId },
-      data: { maxQty },
+      data: { maxQty, maxQtyEditedAt: new Date() },
     });
   },
 

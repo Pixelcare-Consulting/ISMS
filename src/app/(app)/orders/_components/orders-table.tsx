@@ -16,16 +16,20 @@ import {
   rejectOrderAction,
   submitDraftOrderAction,
 } from "@/features/orders/actions/order.actions";
-import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
+import type { BranchOrderSource, BranchOrderStatus, BranchOrderType } from "@prisma/client";
 import {
   canApproveOrder,
   isOrderPendingApproval,
   isSuperAdminOrderOverride,
   PRODUCT_SPECIALIST_ROLE_SLUG,
 } from "@/features/orders/constants/order-workflow";
+import { CheckSapNowButton } from "@/app/(app)/logistics/_components/check-sap-now-button";
 import { OrderDetailsDialog } from "@/app/(app)/orders/_components/order-details-dialog";
 import { SuggestedOrdersDialog } from "@/app/(app)/orders/_components/suggested-orders-dialog";
-import { OrderWorkflowDialog } from "@/app/(app)/orders/_components/order-workflow-dialog";
+import {
+  OrderWorkflowDialog,
+  type OrderWorkflowLineAdjustment,
+} from "@/app/(app)/orders/_components/order-workflow-dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,6 +41,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { BRANCH_ORDER_STATUS_LABELS } from "@/features/orders/constants/order-status";
+import { OrderSourceBadge } from "@/features/orders/components/order-source-badge";
 import { OrderTypeBadge } from "@/features/orders/components/order-type-badge";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import {
@@ -70,6 +75,7 @@ interface OrderRow {
   id: string;
   orderNumber: string;
   orderType: string;
+  source?: BranchOrderSource;
   status: string;
   branchId: string;
   brandId?: string | null;
@@ -144,6 +150,8 @@ interface OrdersTableProps {
   createByType?: Partial<Record<BranchOrderType, boolean>>;
   /** The create popup also offers a service-center order. */
   canCreateServiceCenter?: boolean;
+  /** Offers "Check SAP now" for Sales Orders made in SAP. */
+  canCheckSap?: boolean;
   /** Suggested orders dialog type. Falls back to `fixedOrderType`. */
   suggestionOrderType?: BranchOrderType;
   /** Base path for pagination links (defaults to `/orders`). */
@@ -151,6 +159,8 @@ interface OrdersTableProps {
   initialSort?: string;
   /** Team Leaders offered in the TL filter; hidden when empty. */
   teamLeaders?: { id: string; name: string }[];
+  /** Brands for the filter that keeps orders with at least one line of that brand. */
+  brands?: { id: string; name: string }[];
   initialSortDir?: string;
 }
 
@@ -210,22 +220,31 @@ function OrderCreatedAtCell({ value }: { value: string | Date | null | undefined
   );
 }
 
+/** List filters the URL keeps: Team Leader (`tl`), Manual/Special (`type`), brand (`brand`). */
+interface OrdersListFilters {
+  teamLeaderId?: string | null;
+  typeFilter?: string | null;
+  brandId?: string | null;
+}
+
 function buildOrdersHref(
   basePath: string,
   page: number,
   limit: number,
   sort?: string,
   sortDir?: string,
-  teamLeaderId?: string | null,
-  typeFilter?: string | null,
+  filters: OrdersListFilters = {},
 ): string {
   const params = new URLSearchParams();
   if (page > 1) params.set("page", String(page));
   if (limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(limit));
   if (sort) params.set("sort", sort);
   if (sort && sortDir) params.set("dir", sortDir);
-  if (teamLeaderId) params.set("tl", teamLeaderId);
-  if (typeFilter === "manual" || typeFilter === "special") params.set("type", typeFilter);
+  if (filters.teamLeaderId) params.set("tl", filters.teamLeaderId);
+  if (filters.typeFilter === "manual" || filters.typeFilter === "special") {
+    params.set("type", filters.typeFilter);
+  }
+  if (filters.brandId) params.set("brand", filters.brandId);
   const query = params.toString();
   return query ? `${basePath}?${query}` : basePath;
 }
@@ -237,10 +256,9 @@ function buildOrdersHrefWithTab(
   sort?: string,
   sortDir?: string,
   tab?: string | null,
-  teamLeaderId?: string | null,
-  typeFilter?: string | null,
+  filters: OrdersListFilters = {},
 ): string {
-  const href = buildOrdersHref(basePath, page, limit, sort, sortDir, teamLeaderId, typeFilter);
+  const href = buildOrdersHref(basePath, page, limit, sort, sortDir, filters);
   if (!tab || tab === "orders") return href;
   const join = href.includes("?") ? "&" : "?";
   return `${href}${join}tab=${tab}`;
@@ -266,6 +284,7 @@ export function OrdersTable({
   result: serverResult,
   viewerRoleSlugs,
   canEdit = false,
+  canCheckSap = false,
   fixedOrderType,
   listFilter,
   createHref,
@@ -276,6 +295,7 @@ export function OrdersTable({
   initialSort = "",
   initialSortDir = "desc",
   teamLeaders = [],
+  brands = [],
 }: OrdersTableProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -292,8 +312,8 @@ export function OrdersTable({
     filteredList && filteredList.source === serverResult ? filteredList.result : serverResult;
   const [filtering, startFiltering] = useTransition();
   const filterRequest = useRef(0);
-  /** The TL just picked, shown while its orders load; the URL takes over once they do. */
-  const [pickedTeamLeaderId, setPickedTeamLeaderId] = useState<string | null>(null);
+  /** The TL / brand just picked, shown while its orders load; the URL takes over once they do. */
+  const [pickedFilters, setPickedFilters] = useState<OrdersListFilters | null>(null);
   const [query, setQuery] = useState("");
   const [workflowOrder, setWorkflowOrder] = useState<OrderRow | null>(null);
   const [sapRejection, setSapRejection] = useState<{ sapMessage: string | null } | null>(null);
@@ -315,13 +335,19 @@ export function OrdersTable({
   const pageSize = parseTablePageSize(result.limit);
   const pageTab = searchParams.get("tab");
   const teamLeaderId = searchParams.get("tl") ?? "";
+  const brandId = searchParams.get("brand") ?? "";
   const urlType = searchParams.get("type");
   const preservedType = urlType === "manual" || urlType === "special" ? urlType : null;
   const activeListFilter: ManualSpecialTypeFilter | undefined =
     listFilter === undefined ? undefined : preservedType ?? "all";
+  const listFilters: OrdersListFilters = { teamLeaderId, typeFilter: preservedType, brandId };
   const teamLeaderOptions = useMemo(
     () => teamLeaders.map((leader) => ({ id: leader.id, label: leader.name })),
     [teamLeaders],
+  );
+  const brandOptions = useMemo(
+    () => brands.map((brand) => ({ id: brand.id, label: brand.name })),
+    [brands],
   );
   const sort = (searchParams.get("sort") ?? initialSort) || "";
   const sortDir = (
@@ -337,19 +363,20 @@ export function OrdersTable({
         sort,
         sort ? sortDir : undefined,
         pageTab,
-        teamLeaderId,
-        preservedType,
+        listFilters,
       ),
     );
   }
 
   /**
-   * Server-side, since a TL covers more branches than one page holds, but without a route
-   * navigation: that re-rendered the whole page. The URL still records the filter.
+   * Server-side, since a TL covers more branches (and a brand more orders) than one page
+   * holds, but without a route navigation: that re-rendered the whole page. The URL still
+   * records the filter.
    */
-  function handleTeamLeaderChange(nextTeamLeaderId: string) {
+  function handleListFilterChange(change: { teamLeaderId?: string; brandId?: string }) {
     const request = ++filterRequest.current;
-    setPickedTeamLeaderId(nextTeamLeaderId);
+    const next: OrdersListFilters = { ...listFilters, ...change };
+    setPickedFilters(next);
     const href = buildOrdersHrefWithTab(
       basePath,
       1,
@@ -357,29 +384,29 @@ export function OrdersTable({
       sort,
       sort ? sortDir : undefined,
       pageTab,
-      nextTeamLeaderId,
-      preservedType,
+      next,
     );
     startFiltering(async () => {
       try {
-        const next = await listOrdersAction({
+        const nextResult = await listOrdersAction({
           page: 1,
           limit: pageSize,
           orderType: activeListFilter ? undefined : fixedOrderType,
           listFilter: activeListFilter,
           sort: sort || undefined,
           sortDir: sort ? sortDir : undefined,
-          teamLeaderId: nextTeamLeaderId || undefined,
+          teamLeaderId: next.teamLeaderId || undefined,
+          brandId: next.brandId || undefined,
         });
         // A later pick already replaced this one.
         if (request !== filterRequest.current) return;
-        setFilteredList({ source: serverResult, result: next });
+        setFilteredList({ source: serverResult, result: nextResult });
         setRowSelection({});
         window.history.pushState(null, "", href);
       } catch {
         if (request === filterRequest.current) toast.error("Could not load orders. Try again.");
       } finally {
-        if (request === filterRequest.current) setPickedTeamLeaderId(null);
+        if (request === filterRequest.current) setPickedFilters(null);
       }
     });
   }
@@ -394,8 +421,7 @@ export function OrdersTable({
         next.sort,
         next.dir,
         pageTab,
-        teamLeaderId,
-        preservedType,
+        listFilters,
       ),
     );
   }
@@ -442,11 +468,7 @@ export function OrdersTable({
 
   function handleApprove(input?: {
     comment?: string;
-    lineAdjustments?: {
-      detailId: string;
-      approvedQty: number;
-      spRemarks?: string | null;
-    }[];
+    lineAdjustments?: OrderWorkflowLineAdjustment[];
     deliveryDueDate?: string;
     expectedUpdatedAt?: string;
     reviewSnapshot?: {
@@ -477,7 +499,12 @@ export function OrdersTable({
         toast.error(result.error);
         return;
       }
-      toast.success("Approval recorded");
+      const sapDocument = "sapDocument" in result ? result.sapDocument : null;
+      if (sapDocument) {
+        toast.success(`Approved. ${sapDocument.type} ${sapDocument.docNum} created in SAP`);
+      } else {
+        toast.success("Approval recorded");
+      }
       setWorkflowOrder(null);
       router.refresh();
     });
@@ -529,6 +556,12 @@ export function OrdersTable({
         header: "Type",
         enableSorting: true,
         cell: ({ row }) => <OrderTypeBadge orderType={row.original.orderType} />,
+      }),
+      orderColumn.display({
+        id: "source",
+        header: "Source",
+        enableSorting: false,
+        cell: ({ row }) => <OrderSourceBadge source={row.original.source} />,
       }),
       orderColumn.display({
         id: "modeOfPayment",
@@ -688,22 +721,39 @@ export function OrdersTable({
         }}
         pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
         searchTrailing={
-          teamLeaderOptions.length > 0 || teamLeaderId ? (
-            <div className="flex items-center gap-2">
+          teamLeaderOptions.length > 0 || teamLeaderId || brandOptions.length > 0 || brandId ? (
+            <div className="flex flex-wrap items-center gap-2">
               {/* After search, so the list opens over the toolbar instead of the Type column. */}
-              <SearchableSelect
-                id="orders-team-leader-filter"
-                options={teamLeaderOptions}
-                value={pickedTeamLeaderId ?? teamLeaderId}
-                onChange={handleTeamLeaderChange}
-                placeholder="All team leaders"
-                searchPlaceholder="Search team leaders…"
-                emptyMessage="No team leader matches."
-                allowClear
-                side="top"
-                align="end"
-                className="w-52"
-              />
+              {brandOptions.length > 0 || brandId ? (
+                <SearchableSelect
+                  id="orders-brand-filter"
+                  options={brandOptions}
+                  value={pickedFilters?.brandId ?? brandId}
+                  onChange={(next) => handleListFilterChange({ brandId: next })}
+                  placeholder="All brands"
+                  searchPlaceholder="Search brands…"
+                  emptyMessage="No brand matches."
+                  allowClear
+                  side="top"
+                  align="end"
+                  className="w-44"
+                />
+              ) : null}
+              {teamLeaderOptions.length > 0 || teamLeaderId ? (
+                <SearchableSelect
+                  id="orders-team-leader-filter"
+                  options={teamLeaderOptions}
+                  value={pickedFilters?.teamLeaderId ?? teamLeaderId}
+                  onChange={(next) => handleListFilterChange({ teamLeaderId: next })}
+                  placeholder="All team leaders"
+                  searchPlaceholder="Search team leaders…"
+                  emptyMessage="No team leader matches."
+                  allowClear
+                  side="top"
+                  align="end"
+                  className="w-52"
+                />
+              ) : null}
               {/* Always mounted so screen readers announce the change. */}
               <span
                 role="status"
@@ -739,6 +789,7 @@ export function OrdersTable({
                 ) : null}
               </>
             ) : null}
+            {canCheckSap ? <CheckSapNowButton size="default" /> : null}
             {suggestedType ? (
               <Button type="button" variant="outline" onClick={() => setSuggestionsOpen(true)}>
                 Suggested orders
@@ -764,17 +815,18 @@ export function OrdersTable({
               sort,
               sort ? sortDir : undefined,
               pageTab,
-              teamLeaderId,
-              preservedType,
+              listFilters,
             ),
         }}
         empty={filtered.length === 0}
         emptyMessage={
           query.trim()
             ? "No orders match your search."
-            : teamLeaderId
-              ? "No orders from this team leader's branches."
-              : "No orders."
+            : brandId
+              ? "No orders with a line of this brand."
+              : teamLeaderId
+                ? "No orders from this team leader's branches."
+                : "No orders."
         }
       />
       {detailsOrder ? (

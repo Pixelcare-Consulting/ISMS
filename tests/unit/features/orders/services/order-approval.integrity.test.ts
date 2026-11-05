@@ -16,6 +16,7 @@ jest.mock("@/features/orders/repositories/order.repository", () => ({
     finalizeApproved: jest.fn(),
     revertSupplyPlanningApproval: jest.fn(),
     findSapRoutingContext: jest.fn(),
+    findOrderableModels: jest.fn(),
   },
 }));
 
@@ -86,6 +87,7 @@ const updateStatus = orderRepository.updateStatus as jest.Mock;
 const finalizeApproved = orderRepository.finalizeApproved as jest.Mock;
 const revertSupplyPlanningApproval = orderRepository.revertSupplyPlanningApproval as jest.Mock;
 const findSapRoutingContext = orderRepository.findSapRoutingContext as jest.Mock;
+const findOrderableModels = orderRepository.findOrderableModels as jest.Mock;
 
 const ROUTING_CONTEXT = {
   branch: {
@@ -123,6 +125,7 @@ function reviewOrder(opts?: { status?: BranchOrderStatus; orderType?: BranchOrde
     details: [
       {
         id: "detail-1",
+        modelId: "model-1",
         quantity: 4,
         remarks: "Requester note",
         model: { skuCode: "SKU-1", brandId: "brand-1" },
@@ -165,19 +168,66 @@ describe("order approval integrity", () => {
     expect(emitApprovedOrder).not.toHaveBeenCalled();
   });
 
-  it.each([2.5, 0, 5])("rejects approved quantity %s", async (approvedQty) => {
+  it.each([2.5, -1, 100_001])("rejects approved quantity %s", async (approvedQty) => {
     findById.mockResolvedValue(reviewOrder());
 
     await expect(
       orderService.approve("tenant-1", "user-1", "order-1", ["sp"], {
         lineAdjustments: [{ detailId: "detail-1", approvedQty }],
       }),
-    ).rejects.toThrow(
-      "Approved quantity must be a whole number from 1 through the requested quantity (4).",
-    );
+    ).rejects.toThrow("Approved quantity must be a whole number from 0 through 100,000.");
 
     expect(finalizeApproved).not.toHaveBeenCalled();
     expect(emitApprovedOrder).not.toHaveBeenCalled();
+  });
+
+  it("refuses a final approval that approves nothing", async () => {
+    findById.mockResolvedValue(reviewOrder());
+
+    await expect(
+      orderService.approve("tenant-1", "user-1", "order-1", ["sp"], {
+        lineAdjustments: [{ detailId: "detail-1", approvedQty: 0 }],
+      }),
+    ).rejects.toThrow("Approve at least one unit, or cancel the request instead.");
+
+    expect(finalizeApproved).not.toHaveBeenCalled();
+  });
+
+  it("approves more than requested and adds a model that was not requested", async () => {
+    findById.mockResolvedValue(reviewOrder());
+    findOrderableModels.mockResolvedValue([{ id: "model-2", brandId: "brand-2" }]);
+    completeSapPost();
+
+    await orderService.approve("tenant-1", "user-1", "order-1", ["sp"], {
+      lineAdjustments: [
+        { detailId: "detail-1", approvedQty: 6 },
+        { modelId: "model-2", approvedQty: 3, spRemarks: "Added by SP" },
+        { modelId: "model-3", approvedQty: 0 },
+      ],
+    });
+
+    expect(findOrderableModels).toHaveBeenCalledWith("tenant-1", ["model-2"]);
+    expect(finalizeApproved).toHaveBeenCalledWith(
+      "tenant-1",
+      "order-1",
+      expect.objectContaining({
+        brandId: null,
+        lines: [{ detailId: "detail-1", approvedQty: 6 }],
+        addedLines: [{ modelId: "model-2", approvedQty: 3, spRemarks: "Added by SP" }],
+      }),
+    );
+  });
+
+  it("refuses to add a model that is already on the order", async () => {
+    findById.mockResolvedValue(reviewOrder());
+
+    await expect(
+      orderService.approve("tenant-1", "user-1", "order-1", ["sp"], {
+        lineAdjustments: [{ modelId: "model-1", approvedQty: 2 }],
+      }),
+    ).rejects.toThrow("A model was approved twice. Refresh the order and try again.");
+
+    expect(finalizeApproved).not.toHaveBeenCalled();
   });
 
   it("rejects a stale updatedAt before approving", async () => {
