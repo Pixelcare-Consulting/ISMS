@@ -277,8 +277,6 @@ export function PulloutRequestDialog({
           accessoryCompleteness: checklist.accessoryCompleteness,
         });
       }
-      setBranchId((current) => current || branchRows[0]?.id || "");
-      setWarehouseId((current) => current || warehouseRows[0]?.id || "");
       setListsLoaded(true);
     });
     return () => {
@@ -295,27 +293,18 @@ export function PulloutRequestDialog({
     void listPulloutSerialsAction(branchId, condition).then((result) => {
       if (cancelled) return;
       setLoadedKey(requestedKey);
-      setSelected([]);
-      setChoices({});
-      setQuery("");
-      setPage(1);
       if ("error" in result && result.error) {
-        setSerials([]);
         toast.error(result.error);
         return;
       }
-      if (!("serials" in result)) {
-        setSerials([]);
-        return;
-      }
-      setSerials(result.serials);
+      if ("serials" in result) setSerials(result.serials);
     });
     return () => {
       cancelled = true;
     };
   }, [open, branchId, condition]);
 
-  const waitingForSerials = !listsLoaded || (serialsKey !== null && loadedKey !== serialsKey);
+  const waitingForSerials = serialsKey !== null && loadedKey !== serialsKey;
   const selectedSet = new Set(selected);
   const filteredSerials = serials.filter((serial) => serialMatches(serial, query));
   const pageCount = Math.max(1, Math.ceil(filteredSerials.length / SERIAL_PAGE_SIZE));
@@ -383,6 +372,7 @@ export function PulloutRequestDialog({
   }
 
   function resetUnits() {
+    setSerials([]);
     setSelected([]);
     setChoices({});
     setQuery("");
@@ -392,6 +382,8 @@ export function PulloutRequestDialog({
   function resetForm() {
     setCondition(null);
     setLoadedKey(null);
+    setBranchId("");
+    setWarehouseId("");
     setFiles([]);
     resetUnits();
   }
@@ -405,6 +397,12 @@ export function PulloutRequestDialog({
   function changeCondition() {
     setCondition(null);
     setLoadedKey(null);
+    resetUnits();
+  }
+
+  function chooseBranch(nextBranchId: string) {
+    if (nextBranchId === branchId) return;
+    setBranchId(nextBranchId);
     resetUnits();
   }
 
@@ -504,10 +502,10 @@ export function PulloutRequestDialog({
                       id="pullout-branch"
                       options={branches.map((branch) => ({ id: branch.id, label: branch.name }))}
                       value={branchId}
-                      onChange={setBranchId}
-                      placeholder="Select branch…"
+                      onChange={chooseBranch}
+                      placeholder={listsLoaded ? "Select branch…" : "Loading branches…"}
                       searchPlaceholder="Search branches…"
-                      disabled={pending}
+                      disabled={pending || !listsLoaded}
                       popoverClassName={POPOVER_CLASS}
                     />
                   </Field>
@@ -537,9 +535,9 @@ export function PulloutRequestDialog({
                       }))}
                       value={warehouseId}
                       onChange={setWarehouseId}
-                      placeholder="Select warehouse…"
+                      placeholder={listsLoaded ? "Select warehouse…" : "Loading warehouses…"}
                       searchPlaceholder="Search warehouses…"
-                      disabled={pending}
+                      disabled={pending || !listsLoaded}
                       popoverClassName={POPOVER_CLASS}
                     />
                   </Field>
@@ -590,7 +588,7 @@ export function PulloutRequestDialog({
                 <Input
                   id="pullout-serial-search"
                   value={query}
-                  disabled={pending || waitingForSerials}
+                  disabled={pending || !branchId || waitingForSerials}
                   placeholder="Search model code, model name, or serial number"
                   aria-label="Search model code, model name, or serial number"
                   onChange={(event) => {
@@ -637,7 +635,13 @@ export function PulloutRequestDialog({
                       </tr>
                     </thead>
                     <tbody>
-                      {waitingForSerials ? (
+                      {!branchId ? (
+                        <tr className="border-t">
+                          <td className="px-2 py-3 text-muted-foreground" colSpan={5}>
+                            Select a branch to see its units.
+                          </td>
+                        </tr>
+                      ) : waitingForSerials ? (
                         <tr className="border-t">
                           <td className="px-2 py-3 text-muted-foreground" colSpan={5}>
                             Loading serials…
