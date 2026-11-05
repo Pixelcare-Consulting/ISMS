@@ -22,6 +22,7 @@ import {
   planPulloutLineDelete,
   planPulloutReject,
   planPulloutUpdateList,
+  pulloutClassificationError,
   pulloutCondition,
   pulloutDestination,
   pulloutSapMessage,
@@ -273,7 +274,6 @@ describe("pull-out posting planner", () => {
     const created = planPulloutCreate({
       branchId: "branch-a",
       warehouseId: "wh-1",
-      condition: "STK",
       serials: [serial()],
     });
     expect(created.ok).toBe(true);
@@ -326,7 +326,6 @@ describe("pull-out posting planner", () => {
     const created = planPulloutCreate({
       branchId: "branch-a",
       warehouseId: "wh-1",
-      condition: "DEF",
       serials: [serial({ inventoryCode: "DEF" })],
     });
     expect(created.ok).toBe(true);
@@ -352,35 +351,45 @@ describe("pull-out posting planner", () => {
     expect(finalized.setsCompleted).toBe(false);
   });
 
-  it("refuses a serial that does not match the pull-out's STK or DEF type", () => {
-    const stockPullout = planPulloutCreate({
+  it("takes stock and defective units on the same pull-out", () => {
+    const created = planPulloutCreate({
       branchId: "branch-a",
       warehouseId: "wh-1",
-      condition: "STK",
-      serials: [serial({ serialNo: "SN-DEF", inventoryCode: "DEF" })],
+      serials: [
+        serial(),
+        serial({ serialNumberId: "s2", serialNo: "SN-DEF", inventoryCode: "DEF" }),
+      ],
     });
-    expect(stockPullout).toEqual({ ok: false, error: "SN-DEF is DEF. This is a STK pull-out." });
 
-    const defectivePullout = planPulloutCreate({
-      branchId: "branch-a",
-      warehouseId: "wh-1",
-      condition: "DEF",
-      serials: [serial({ serialNo: "SN-STK", inventoryCode: "STK" })],
-    });
-    expect(defectivePullout).toEqual({ ok: false, error: "SN-STK is STK. This is a DEF pull-out." });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    expect(created.lines).toEqual([
+      { serialNumberId: "s1", priorCode: "STK", nextCode: "RSV" },
+      { serialNumberId: "s2", priorCode: "DEF", nextCode: "DEF" },
+    ]);
   });
 
-  it("keeps serials added at the logistics step to the same type", () => {
+  it("lets the logistics step add a unit of the other type", () => {
     const listed = planPulloutUpdateList({
       status: "for_pullout",
       kept: [pulloutLine({ priorCode: "DEF", inventoryCode: "DEF" })],
       removed: [],
       added: [serial({ serialNumberId: "s2", serialNo: "SN-STK", inventoryCode: "STK" })],
     });
-    expect(listed).toEqual({ ok: false, error: "SN-STK is STK. This is a DEF pull-out." });
+
+    expect(listed.ok).toBe(true);
+    if (!listed.ok) return;
+    expect(listed.holds).toEqual([{ serialNumberId: "s2", priorCode: "STK", nextCode: "FPO" }]);
   });
 
-  it("names the type from the lines and reports older mixed pull-outs", () => {
+  it("requires classification on stock units and refuses it on defective ones", () => {
+    expect(pulloutClassificationError("STK", 1)).toBeNull();
+    expect(pulloutClassificationError("DEF", 0)).toBeNull();
+    expect(pulloutClassificationError("STK", 0)).toBe("Choose a classification for every STK unit");
+    expect(pulloutClassificationError("DEF", 1)).toBe("Defective units have no classification");
+  });
+
+  it("names the type from the lines and reports a mixed pull-out", () => {
     expect(pulloutCondition([{ priorCode: "STK" }, { priorCode: "STK" }])).toBe("STK");
     expect(pulloutCondition([{ priorCode: "DEF" }])).toBe("DEF");
     expect(pulloutCondition([{ priorCode: "STK" }, { priorCode: "DEF" }])).toBe("Mixed");

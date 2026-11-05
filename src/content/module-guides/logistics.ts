@@ -28,7 +28,7 @@ export const PULLOUTS_MODULE_GUIDE: ModuleGuideContent = {
   description:
     "Return stock from branch to warehouse. PS creates → TL approves → logistics schedules → branch releases → warehouse validates.",
   tips: [
-    { label: "Choose Stock or Defective first, because each pull-out holds one type" },
+    { label: "One pull-out can hold stock and defective units. Only stock units need a classification" },
     { label: "Branch completes release in Operations after pickup is scheduled" },
   ],
   storageKey: "module-guide.logistics.pullouts",

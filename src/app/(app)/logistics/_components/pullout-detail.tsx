@@ -69,9 +69,9 @@ import {
 } from "@/features/logistics/lib/shipment";
 import {
   PULLOUT_LINE_DECISION,
-  type PulloutConditionView,
 } from "@/features/logistics/services/pullout-posting.planner";
 import type { PulloutDetail } from "@/features/logistics/services/pullout-posting.service";
+import { PulloutConditionBadge } from "@/features/logistics/components/pullout-condition-badge";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 
 const PULLOUT_LIST_FORM_ID = "pullout-list-form";
@@ -157,25 +157,6 @@ function Field({
   );
 }
 
-function RequestConditionBadge({ condition }: { condition: PulloutConditionView }) {
-  switch (condition) {
-    case "STK":
-      return <StatusCodeBadge code="STK" name="STK" />;
-    case "DEF":
-      return <StatusCodeBadge code="DEF" name="DEF" />;
-    case "Mixed":
-      return (
-        <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-normal text-slate-700">
-          Mixed
-        </span>
-      );
-    default: {
-      const unreachable: never = condition;
-      return unreachable;
-    }
-  }
-}
-
 function NotRecorded() {
   return <span className="text-muted-foreground">Not recorded</span>;
 }
@@ -192,7 +173,6 @@ function recordedNames(names: readonly string[]) {
 }
 
 function pulloutItemColumns(
-  showClassification: boolean,
   renderAction: ((row: ItemRow) => ReactNode) | null,
 ): CompactLineColumn<ItemRow>[] {
   const columns: CompactLineColumn<ItemRow>[] = [
@@ -216,15 +196,12 @@ function pulloutItemColumns(
         return prior ? <StatusCodeBadge code={prior} name={prior} /> : <Dash />;
       },
     },
-  ];
-  if (showClassification) {
-    columns.push({
+    {
       id: "classification",
       header: "Classification",
-      cell: (row) => recordedNames(row.classificationNames),
-    });
-  }
-  columns.push(
+      cell: (row) =>
+        row.classificationNames.length > 0 ? recordedNames(row.classificationNames) : <Dash />,
+    },
     {
       id: "packing",
       header: "Unit packing condition",
@@ -240,7 +217,7 @@ function pulloutItemColumns(
       header: "Remarks",
       cell: (row) => textOrDash(row.remarks),
     },
-  );
+  ];
   if (renderAction) {
     columns.push({
       id: "actions",
@@ -331,7 +308,7 @@ function RequestorSection({
         <RecordReadout label="Created Date" value={textOrDash(formatWhen(detail.createdAt, false))} />
         <RecordReadout
           label="Status"
-          value={detail.condition ? <RequestConditionBadge condition={detail.condition} /> : <Dash />}
+          value={detail.condition ? <PulloutConditionBadge condition={detail.condition} /> : <Dash />}
         />
         <RecordReadout
           label="Pull-out Status"
@@ -612,8 +589,6 @@ export function PulloutDetailView({
   const [extrasState, setExtrasState] = useState<ExtraSerialLoad>("idle");
   const [extrasAttempt, setExtrasAttempt] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState<ItemRow | null>(null);
-  const addCondition =
-    detail.condition === "STK" || detail.condition === "DEF" ? detail.condition : undefined;
 
   useEffect(() => {
     if (!canEditList) return;
@@ -630,7 +605,7 @@ export function PulloutDetailView({
   useEffect(() => {
     if (!addOpen || !canEditList) return;
     let cancelled = false;
-    void listPulloutSerialsAction(detail.branch.id, addCondition).then((result) => {
+    void listPulloutSerialsAction(detail.branch.id).then((result) => {
       if (cancelled) return;
       if ("serials" in result) {
         setExtraSerials(
@@ -652,7 +627,7 @@ export function PulloutDetailView({
     return () => {
       cancelled = true;
     };
-  }, [addOpen, addCondition, canEditList, detail.branch.id, extrasAttempt]);
+  }, [addOpen, canEditList, detail.branch.id, extrasAttempt]);
 
   // "loading" is set by the handlers that start a fetch, not inside the effect.
   function toggleAddPanel() {
@@ -932,7 +907,7 @@ export function PulloutDetailView({
         <CompactLineTable
           rows={detail.lines}
           getRowId={(row) => row.serialNumberId}
-          columns={pulloutItemColumns(detail.condition !== "DEF", lineActionRenderer())}
+          columns={pulloutItemColumns(lineActionRenderer())}
           searchText={(row) => [
             row.skuCode,
             row.modelName,
@@ -1002,7 +977,7 @@ export function PulloutDetailView({
               name={detail.status.name}
               color={detail.status.color}
             />
-            {detail.condition ? <RequestConditionBadge condition={detail.condition} /> : null}
+            {detail.condition ? <PulloutConditionBadge condition={detail.condition} /> : null}
           </span>
         }
         actions={headerActions()}

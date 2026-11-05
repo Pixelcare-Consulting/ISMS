@@ -52,7 +52,6 @@ import {
   PULLOUT_CREATE_INPUT_ERROR,
   pulloutSchema,
 } from "@/features/logistics/schemas/pullout.schema";
-import type { PulloutCondition } from "@/features/logistics/services/pullout-posting.planner";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
@@ -634,14 +633,10 @@ export async function getPulloutDetailAction(id: string) {
   }
 }
 
-export async function listPulloutSerialsAction(branchId: string, condition?: PulloutCondition) {
+export async function listPulloutSerialsAction(branchId: string) {
   const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
   try {
-    const serials = await pulloutPostingService.listSerials(
-      postingActor(session),
-      branchId,
-      condition,
-    );
+    const serials = await pulloutPostingService.listSerials(postingActor(session), branchId);
     return { success: true as const, serials };
   } catch (error) {
     return actionError(error, "Failed to load serials");

@@ -52,7 +52,7 @@ export function uniqueSerialIds(ids: readonly string[]): string[] | null {
   return [...ids];
 }
 
-export function serialLabel(serial: { serialNo?: string; serialNumberId: string }): string {
+function serialLabel(serial: { serialNo?: string; serialNumberId: string }): string {
   return serial.serialNo ?? "This serial";
 }
 

@@ -21,9 +21,9 @@ import {
   planPulloutReject,
   planPulloutUpdateList,
   PULLOUT_LINE_DECISION,
+  pulloutClassificationError,
   pulloutCondition,
   pulloutSapMessage,
-  type PulloutCondition,
   type PulloutConditionView,
   type PulloutDecisionLineView,
   type PulloutStatus,
@@ -68,7 +68,6 @@ export interface PulloutCreateLine {
 
 export interface PulloutCreateInput {
   branchId: string;
-  condition: PulloutCondition;
   lines: PulloutCreateLine[];
   notes?: string;
 }
@@ -295,30 +294,26 @@ const CHECKLIST_DUPLICATE =
   "Each classification, packing condition, and accessory completeness can only be chosen once";
 const CHECKLIST_INACTIVE =
   "Choose an active classification, unit packing condition, and accessory completeness for every selected serial";
-const CLASSIFICATION_NOT_USED = "Defective pull-outs have no classification";
 
-function requireChecklistIds(ids: readonly string[] | undefined): void {
-  if (!ids || ids.length === 0 || ids.some((id) => id.length === 0)) {
-    throw new Error(CHECKLIST_REQUIRED);
-  }
+function assertNoDuplicateIds(ids: readonly string[]): void {
   if (new Set(ids).size !== ids.length) {
     throw new Error(CHECKLIST_DUPLICATE);
   }
 }
 
-function checklistBySerial(
-  condition: PulloutCondition,
-  lines: readonly PulloutCreateLine[],
-): Map<string, PulloutCreateLine> {
+function requireChecklistIds(ids: readonly string[] | undefined): void {
+  if (!ids || ids.length === 0 || ids.some((id) => id.length === 0)) {
+    throw new Error(CHECKLIST_REQUIRED);
+  }
+  assertNoDuplicateIds(ids);
+}
+
+function checklistBySerial(lines: readonly PulloutCreateLine[]): Map<string, PulloutCreateLine> {
   if (lines.length === 0) throw new Error("Select the serials to pull out");
   const bySerial = new Map<string, PulloutCreateLine>();
   for (const line of lines) {
     if (!line.serialNumberId) throw new Error(CHECKLIST_REQUIRED);
-    if (condition === "STK") {
-      requireChecklistIds(line.pulloutClassificationIds);
-    } else if (line.pulloutClassificationIds.length > 0) {
-      throw new Error(CLASSIFICATION_NOT_USED);
-    }
+    assertNoDuplicateIds(line.pulloutClassificationIds);
     requireChecklistIds(line.unitPackingConditionIds);
     requireChecklistIds(line.accessoryCompletenessIds);
     if (bySerial.has(line.serialNumberId)) {
@@ -498,7 +493,6 @@ export const pulloutPostingService = {
   async listSerials(
     actor: PostingActor,
     branchId: string,
-    condition?: PulloutCondition,
   ): Promise<PulloutSerialOption[]> {
     await authorizePosting(actor, "pullout.create", branchId);
     const codes = await inventoryIds(actor.tenantId);
@@ -506,7 +500,7 @@ export const pulloutPostingService = {
       where: {
         tenantId: actor.tenantId,
         branchId,
-        statusCodeId: { in: condition ? [codes[condition]] : [codes.STK, codes.DEF] },
+        statusCodeId: { in: [codes.STK, codes.DEF] },
         defectReports: { none: { status: "pending_inspection" } },
         stockCountLines: {
           none: {
@@ -668,7 +662,7 @@ export const pulloutPostingService = {
 
   async create(actor: PostingActor, input: PulloutCreateInput) {
     await authorizePosting(actor, "pullout.create", input.branchId);
-    const checklist = checklistBySerial(input.condition, input.lines);
+    const checklist = checklistBySerial(input.lines);
     const destination = await resolveDestination(actor.tenantId, input.branchId);
     await assertActiveChecklist(actor.tenantId, input.lines);
 
@@ -676,7 +670,6 @@ export const pulloutPostingService = {
     const plan = planPulloutCreate({
       branchId: input.branchId,
       warehouseId: destination.id,
-      condition: input.condition,
       serials,
     });
     if (!plan.ok) throw new Error(plan.error);
@@ -685,6 +678,12 @@ export const pulloutPostingService = {
       plan.lines.some((line) => !checklist.has(line.serialNumberId))
     ) {
       throw new Error(CHECKLIST_REQUIRED);
+    }
+    for (const line of plan.lines) {
+      const classificationCount =
+        checklist.get(line.serialNumberId)?.pulloutClassificationIds.length ?? 0;
+      const classificationError = pulloutClassificationError(line.priorCode, classificationCount);
+      if (classificationError) throw new Error(classificationError);
     }
 
     const codes = await inventoryIds(actor.tenantId);
@@ -767,7 +766,7 @@ export const pulloutPostingService = {
             entityId: row.id,
             metadata: {
               pulloutNo: row.pulloutNo,
-              condition: input.condition,
+              condition: pulloutCondition(plan.lines),
               serialCount: plan.lines.length,
             },
           },

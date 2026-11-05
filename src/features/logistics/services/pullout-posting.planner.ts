@@ -6,7 +6,6 @@
 import type { PulloutWorkflowCodeKey } from "@/features/logistics/constants/workflow-codes";
 import {
   classifyAllocation,
-  serialLabel,
   uniqueSerialIds,
   type AllocatableSerial,
   type HoldCode,
@@ -16,9 +15,8 @@ import {
 
 export type PulloutStatus = PulloutWorkflowCodeKey;
 
-/** The type the requestor picks first. A pull-out holds one type; only older ones can be Mixed. */
-export type PulloutCondition = HoldCode;
-export type PulloutConditionView = PulloutCondition | "Mixed";
+/** Read from the lines. Each unit keeps its own STK or DEF, so one pull-out can hold both. */
+export type PulloutConditionView = HoldCode | "Mixed";
 
 export const PULLOUT_LINE_DECISION = { pending: "pending", accepted: "accepted" } as const;
 
@@ -107,15 +105,15 @@ export function pulloutCondition(
   return null;
 }
 
-function conditionMismatch(
-  serial: AllocatableSerial,
+/** Classification describes stock units only, so a unit's own status decides if it needs one. */
+export function pulloutClassificationError(
   priorCode: HoldCode,
-  condition: PulloutCondition,
-): PlanFailure {
-  return {
-    ok: false,
-    error: `${serialLabel(serial)} is ${priorCode}. This is a ${condition} pull-out.`,
-  };
+  classificationCount: number,
+): string | null {
+  if (priorCode === "STK") {
+    return classificationCount > 0 ? null : "Choose a classification for every STK unit";
+  }
+  return classificationCount > 0 ? "Defective units have no classification" : null;
 }
 
 /**
@@ -132,7 +130,6 @@ export function pulloutDestination<T extends { deletedAt: Date | null }>(
 export function planPulloutCreate(input: {
   branchId: string;
   warehouseId: string;
-  condition: PulloutCondition;
   serials: readonly AllocatableSerial[];
 }): PulloutCreatePlan | PlanFailure {
   if (!input.branchId) return { ok: false, error: "Choose a branch" };
@@ -146,9 +143,6 @@ export function planPulloutCreate(input: {
   for (const serial of input.serials) {
     const allocation = classifyAllocation(serial);
     if (!allocation.ok) return allocation;
-    if (allocation.priorCode !== input.condition) {
-      return conditionMismatch(serial, allocation.priorCode, input.condition);
-    }
     lines.push({
       serialNumberId: serial.serialNumberId,
       priorCode: allocation.priorCode,
@@ -314,14 +308,10 @@ export function planPulloutUpdateList(input: {
     if (stable) return stable;
   }
 
-  const condition = pulloutCondition([...input.kept, ...input.removed]);
   const holds: PulloutListPlan["holds"] = [];
   for (const serial of input.added) {
     const allocation = classifyAllocation(serial);
     if (!allocation.ok) return allocation;
-    if ((condition === "STK" || condition === "DEF") && allocation.priorCode !== condition) {
-      return conditionMismatch(serial, allocation.priorCode, condition);
-    }
     holds.push({
       serialNumberId: serial.serialNumberId,
       priorCode: allocation.priorCode,
