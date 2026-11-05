@@ -68,6 +68,22 @@ describe("transferPrintDocument", () => {
     expect(document?.lines.map((row) => row.detail)).toEqual(["SN1"]);
   });
 
+  it.each(["draft", "requested", "pending_tl"])(
+    "stays off before Team Lead approval, even with the waybill saved (%s)",
+    (code) => {
+      const status = { code, name: code, color: null };
+      expect(transferPrintDocument(detail({ status }))).toBeNull();
+    },
+  );
+
+  it.each(["approved", "for_transfer", "in_transit", "accepted", "completed"])(
+    "prints from approval onward (%s)",
+    (code) => {
+      const status = { code, name: code, color: null };
+      expect(transferPrintDocument(detail({ status }))).not.toBeNull();
+    },
+  );
+
   it.each(["rejected", "cancelled"])("has nothing to print on a %s transfer", (code) => {
     const status = { code, name: code, color: null };
     expect(transferPrintDocument(detail({ status }))).toBeNull();

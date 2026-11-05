@@ -752,10 +752,7 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
       capabilities?.canExecuteTransfer &&
       inScope(branchScope, detail.fromBranch.id),
   );
-  const receivable =
-    detail?.status.code === TRANSFER_WORKFLOW_CODE.for_transfer ||
-    detail?.status.code === TRANSFER_WORKFLOW_CODE.approved ||
-    detail?.status.code === TRANSFER_WORKFLOW_CODE.in_transit;
+  const receivable = detail?.status.code === TRANSFER_WORKFLOW_CODE.in_transit;
   const canReceive = Boolean(
     hasLines &&
       detail &&

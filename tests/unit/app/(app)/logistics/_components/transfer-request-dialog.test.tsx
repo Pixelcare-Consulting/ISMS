@@ -10,6 +10,7 @@ import {
   listTransferModelsAction,
   listTransferSerialsAction,
 } from "@/features/logistics/actions/logistics.actions";
+import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import type { TransferDetail } from "@/features/logistics/services/transfer-posting.service";
 
 jest.mock("sonner", () => ({
@@ -198,6 +199,31 @@ describe("branch transfer dialog", () => {
     );
     await screen.findByText("SN-1");
     expect(screen.getAllByText("Remarks")).toHaveLength(1);
+  });
+
+  it.each([
+    ["for_transfer", false],
+    ["in_transit", true],
+  ])("offers the receiving branch Accept and Reject on %s: %s", async (code, offered) => {
+    const lines = detail().lines.map((line) => ({ ...line, inventoryCode: "DIT" }));
+    getDetail.mockResolvedValue({
+      success: true,
+      detail: detail({ status: { code, name: code, color: null }, lines }),
+    } as Awaited<ReturnType<typeof getTransferDetailAction>>);
+    render(
+      <TransferRequestDialog
+        open
+        onOpenChange={jest.fn()}
+        onSubmit={jest.fn()}
+        onCreated={jest.fn()}
+        transferId="transfer-1"
+        branchScope={["branch-b"]}
+        capabilities={{ canReceiveTransfer: true } as LogisticsActionCapabilities}
+      />,
+    );
+    await screen.findByText("SN-1");
+    expect(screen.queryAllByRole("button", { name: "Accept" })).toHaveLength(offered ? 1 : 0);
+    expect(screen.queryAllByRole("button", { name: "Reject" })).toHaveLength(offered ? 1 : 0);
   });
 
   it("still shows the remark on transfers created before per-serial remarks", async () => {

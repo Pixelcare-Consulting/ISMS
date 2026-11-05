@@ -2,13 +2,18 @@ import { shipmentPrintDocument } from "@/app/(app)/logistics/_components/shipmen
 import { TRANSFER_WORKFLOW_CODE } from "@/features/logistics/constants/workflow-codes";
 import type { TransferDetail } from "@/features/logistics/services/transfer-posting.service";
 
-function isClosed(code: string): boolean {
-  return code === TRANSFER_WORKFLOW_CODE.rejected || code === TRANSFER_WORKFLOW_CODE.cancelled;
-}
+/** Team Lead has approved and the transfer was not stopped. */
+const PRINTABLE_CODES: readonly string[] = [
+  TRANSFER_WORKFLOW_CODE.approved,
+  TRANSFER_WORKFLOW_CODE.for_transfer,
+  TRANSFER_WORKFLOW_CODE.in_transit,
+  TRANSFER_WORKFLOW_CODE.accepted,
+  TRANSFER_WORKFLOW_CODE.completed,
+];
 
-/** Null until the waybill, courier and schedule are saved, so the sheet uses saved values only. */
+/** Null until approval and until the waybill, courier and schedule are saved. */
 export function transferPrintDocument(detail: TransferDetail) {
-  if (isClosed(detail.status.code)) return null;
+  if (!PRINTABLE_CODES.includes(detail.status.code)) return null;
   return shipmentPrintDocument({
     title: "Transfer",
     documentNo: detail.transferNo,

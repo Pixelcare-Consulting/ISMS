@@ -15,11 +15,7 @@ const RELEASE_CODES = [
   TRANSFER_WORKFLOW_CODE.for_transfer,
 ] as const;
 
-const RECEIVE_CODES = [
-  TRANSFER_WORKFLOW_CODE.approved,
-  TRANSFER_WORKFLOW_CODE.for_transfer,
-  TRANSFER_WORKFLOW_CODE.in_transit,
-] as const;
+const RECEIVE_CODES = [TRANSFER_WORKFLOW_CODE.in_transit] as const;
 
 export interface TransferVisibility {
   fromBranchId: string;

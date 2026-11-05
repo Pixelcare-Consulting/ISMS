@@ -200,7 +200,8 @@ export function planTransferReject(input: {
   return { ok: true, nextStatus: "rejected", restores, idempotent: false };
 }
 
-const RECEIVABLE: readonly TransferStatus[] = ["for_transfer", "approved", "in_transit"];
+/** The receiving branch decides only after Logistics releases the transfer. */
+const RECEIVABLE: readonly TransferStatus[] = ["in_transit"];
 
 function openLines<T extends { decision?: TransferLineDecision }>(lines: readonly T[]): T[] {
   return lines.filter((line) => line.decision !== "accepted" && line.decision !== "rejected");
@@ -324,7 +325,7 @@ export function planTransferReceive(input: {
   }
 
   if (!RECEIVABLE.includes(input.status)) {
-    return { ok: false, error: "Accept serials only after the releasing team leader approves" };
+    return { ok: false, error: "Accept serials only after Logistics releases this transfer" };
   }
 
   const moves: TransferReceivePlan["moves"] = [];
@@ -376,7 +377,7 @@ export function planTransferSerialReject(input: {
     return { ok: false, error: "This transfer has no serials to reject" };
   }
   if (!RECEIVABLE.includes(input.status)) {
-    return { ok: false, error: "Reject serials only after the releasing team leader approves" };
+    return { ok: false, error: "Reject serials only after Logistics releases this transfer" };
   }
   const line = input.lines.find((row) => row.serialNumberId === input.serialNumberId);
   if (!line) return { ok: false, error: "That serial is not on this transfer" };
