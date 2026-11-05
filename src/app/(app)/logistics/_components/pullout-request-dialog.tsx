@@ -38,12 +38,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { SearchableMultiSelect } from "@/components/ui/searchable-multi-select";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 
 const PULLOUT_CREATE_FORM_ID = "pullout-create-form";
 const POPOVER_CLASS = "z-[100]";
 const SERIAL_PAGE_SIZE = 10;
-const EMPTY_LOOKUP_MESSAGE = "No active names. Add them in Settings → Master data.";
+const EMPTY_LOOKUP_MESSAGE = "None in Master data";
+const UNIT_COLUMN_COUNT = 9;
+const MISSING_SERIALS_SHOWN = 3;
 
 const EMPTY_CHECKLIST_OPTIONS: PulloutChecklistOptions = {
   classifications: [],
@@ -110,19 +113,31 @@ function needsClassification(serial: PulloutSerialOption): boolean {
   return serial.inventoryCode === "STK";
 }
 
-function checklistReady(
-  selectedSerials: readonly PulloutSerialOption[],
-  choices: Readonly<Record<string, PulloutLineChoice>>,
-): boolean {
-  return selectedSerials.every((serial) => {
-    const choice = choices[serial.serialNumberId];
-    return Boolean(
-      choice &&
-        (!needsClassification(serial) || choice.pulloutClassificationIds.length > 0) &&
-        choice.unitPackingConditionIds.length > 0 &&
-        choice.accessoryCompletenessIds.length > 0,
-    );
-  });
+function unitComplete(serial: PulloutSerialOption, choice: PulloutLineChoice): boolean {
+  return (
+    (!needsClassification(serial) || choice.pulloutClassificationIds.length > 0) &&
+    choice.unitPackingConditionIds.length > 0 &&
+    choice.accessoryCompletenessIds.length > 0
+  );
+}
+
+function missingDetailsText(missing: readonly PulloutSerialOption[]): string {
+  const named = missing.slice(0, MISSING_SERIALS_SHOWN).map((serial) => serial.serialNo);
+  const others = missing.length - named.length;
+  return `Still missing: ${named.join(", ")}${others > 0 ? ` and ${others} more` : ""}.`;
+}
+
+function unitTableMessage(input: {
+  branchChosen: boolean;
+  loading: boolean;
+  serialCount: number;
+  matchCount: number;
+}): string | null {
+  if (!input.branchChosen) return "Select a branch to see its units.";
+  if (input.loading) return "Loading serials…";
+  if (input.serialCount === 0) return "No serials are free at this branch.";
+  if (input.matchCount === 0) return "No serials match this search.";
+  return null;
 }
 
 async function uploadAttachments(pulloutId: string, files: readonly File[]): Promise<string | null> {
@@ -182,44 +197,32 @@ function ModelCell({ skuCode, name }: { skuCode: string; name: string }) {
   );
 }
 
-function ChecklistGroup({
+function ChecklistCell({
   label,
   options,
   selectedIds,
-  onToggle,
+  onChange,
   disabled,
 }: {
   label: string;
   options: { id: string; name: string }[];
-  selectedIds: readonly string[];
-  onToggle: (id: string, checked: boolean) => void;
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
   disabled: boolean;
 }) {
-  const selected = new Set(selectedIds);
   return (
-    <fieldset className="min-w-0 space-y-2" disabled={disabled}>
-      <legend className="sr-only">{label}</legend>
-      {options.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{EMPTY_LOOKUP_MESSAGE}</p>
-      ) : (
-        <ul className="space-y-1.5">
-          {options.map((option) => (
-            <li key={option.id}>
-              <label className="flex items-start gap-2 text-sm leading-snug">
-                <Checkbox
-                  className="mt-0.5"
-                  checked={selected.has(option.id)}
-                  onCheckedChange={(value) => onToggle(option.id, value === true)}
-                  disabled={disabled}
-                  aria-label={`${label}: ${option.name}`}
-                />
-                <span>{option.name}</span>
-              </label>
-            </li>
-          ))}
-        </ul>
-      )}
-    </fieldset>
+    <td className="px-2 py-2 align-top">
+      <SearchableMultiSelect
+        ariaLabel={label}
+        options={options.map((option) => ({ id: option.id, label: option.name }))}
+        selectedIds={selectedIds}
+        onChange={onChange}
+        disabled={disabled}
+        emptyMessage={EMPTY_LOOKUP_MESSAGE}
+        truncateLabels={false}
+        popoverClassName={POPOVER_CLASS}
+      />
+    </td>
   );
 }
 
@@ -311,7 +314,16 @@ export function PulloutRequestDialog({
   ).length;
   const allMatchingSelected = filteredSerials.length > 0 && selectedMatching === filteredSerials.length;
   const selectedSerials = serials.filter((serial) => selectedSet.has(serial.serialNumberId));
-  const ready = selectedSerials.length > 0 && checklistReady(selectedSerials, choices);
+  const missingDetails = selectedSerials.filter(
+    (serial) => !unitComplete(serial, choiceFor(choices, serial.serialNumberId)),
+  );
+  const ready = selectedSerials.length > 0 && missingDetails.length === 0;
+  const tableMessage = unitTableMessage({
+    branchChosen: Boolean(branchId),
+    loading: waitingForSerials,
+    serialCount: serials.length,
+    matchCount: filteredSerials.length,
+  });
   const destinationReady = destination !== null && "warehouse" in destination;
   const selectedCondition = pulloutCondition(
     selectedSerials.map((serial) => ({ priorCode: serial.inventoryCode })),
@@ -329,25 +341,11 @@ export function PulloutRequestDialog({
     );
   }
 
-  function toggleChecklistId(
-    serialNumberId: string,
-    field: ChecklistField,
-    id: string,
-    checked: boolean,
-  ) {
-    setChoices((current) => {
-      const choice = choiceFor(current, serialNumberId);
-      const currentIds = choice[field];
-      const nextIds = checked
-        ? currentIds.includes(id)
-          ? currentIds
-          : [...currentIds, id]
-        : currentIds.filter((value) => value !== id);
-      return {
-        ...current,
-        [serialNumberId]: { ...choice, [field]: nextIds },
-      };
-    });
+  function setChecklistIds(serialNumberId: string, field: ChecklistField, ids: string[]) {
+    setChoices((current) => ({
+      ...current,
+      [serialNumberId]: { ...choiceFor(current, serialNumberId), [field]: ids },
+    }));
   }
 
   function toggleAll(checked: boolean) {
@@ -552,7 +550,7 @@ export function PulloutRequestDialog({
             </section>
 
             <section className="space-y-2">
-              <h3 className="font-medium">Select units</h3>
+              <h3 className="font-medium">Transfer details</h3>
               <Input
                 id="pullout-serial-search"
                 value={query}
@@ -567,14 +565,11 @@ export function PulloutRequestDialog({
                   if (event.key === "Enter") event.preventDefault();
                 }}
               />
-              <div className="min-w-0 overflow-hidden rounded-md border">
-                <table className="w-full table-fixed text-sm">
-                  <thead className="bg-muted/40 text-left">
+              <div className="min-w-0 overflow-x-auto rounded-md border">
+                <table className="w-full min-w-[66rem] table-fixed text-sm">
+                  <thead className="bg-muted/40 text-left text-muted-foreground">
                     <tr>
-                      <th
-                        className="w-10 px-2 py-2 align-middle font-medium text-muted-foreground"
-                        scope="col"
-                      >
+                      <th className="w-10 px-2 py-2 align-middle font-medium" scope="col">
                         #
                       </th>
                       <th className="w-10 px-2 py-2 align-middle" scope="col">
@@ -591,75 +586,134 @@ export function PulloutRequestDialog({
                           }
                         />
                       </th>
-                      <th className="px-2 py-2 align-middle font-medium text-muted-foreground" scope="col">
+                      <th className="w-44 px-2 py-2 align-middle font-medium" scope="col">
                         Model
                       </th>
-                      <th className="px-2 py-2 align-middle font-medium text-muted-foreground" scope="col">
+                      <th className="w-44 px-2 py-2 align-middle font-medium" scope="col">
                         Serial number
                       </th>
-                      <th className="w-20 px-2 py-2 align-middle font-medium text-muted-foreground" scope="col">
+                      <th className="w-16 px-2 py-2 align-middle font-medium" scope="col">
                         Status
+                      </th>
+                      <th className="px-2 py-2 align-middle font-medium" scope="col">
+                        Classification
+                      </th>
+                      <th className="px-2 py-2 align-middle font-medium" scope="col">
+                        Unit packing condition
+                      </th>
+                      <th className="px-2 py-2 align-middle font-medium" scope="col">
+                        Acc completeness
+                      </th>
+                      <th className="w-32 px-2 py-2 align-middle font-medium" scope="col">
+                        Remarks
                       </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {!branchId ? (
+                    {tableMessage ? (
                       <tr className="border-t">
-                        <td className="px-2 py-3 text-muted-foreground" colSpan={5}>
-                          Select a branch to see its units.
-                        </td>
-                      </tr>
-                    ) : waitingForSerials ? (
-                      <tr className="border-t">
-                        <td className="px-2 py-3 text-muted-foreground" colSpan={5}>
-                          Loading serials…
-                        </td>
-                      </tr>
-                    ) : serials.length === 0 ? (
-                      <tr className="border-t">
-                        <td className="px-2 py-3 text-muted-foreground" colSpan={5}>
-                          No serials are free at this branch.
-                        </td>
-                      </tr>
-                    ) : filteredSerials.length === 0 ? (
-                      <tr className="border-t">
-                        <td className="px-2 py-3 text-muted-foreground" colSpan={5}>
-                          No serials match this search.
+                        <td
+                          className="px-2 py-3 text-muted-foreground"
+                          colSpan={UNIT_COLUMN_COUNT}
+                        >
+                          {tableMessage}
                         </td>
                       </tr>
                     ) : (
-                      visibleSerials.map((serial, index) => (
-                        <tr key={serial.serialNumberId} className="border-t">
-                          <td className="px-2 py-2 align-middle tabular-nums text-muted-foreground">
-                            {pageStart + index + 1}
-                          </td>
-                          <td className="px-2 py-2 align-middle">
-                            <Checkbox
-                              checked={selectedSet.has(serial.serialNumberId)}
-                              onCheckedChange={(value) =>
-                                toggleSerial(serial.serialNumberId, value === true)
-                              }
-                              disabled={pending}
-                              aria-label={`Select ${serial.serialNo}`}
-                            />
-                          </td>
-                          <td className="min-w-0 overflow-hidden px-2 py-2 align-middle">
-                            <ModelCell skuCode={serial.skuCode} name={serial.modelName} />
-                          </td>
-                          <td
-                            className="min-w-0 overflow-hidden px-2 py-2 align-middle font-mono"
-                            title={serial.serialNo}
+                      visibleSerials.map((serial, index) => {
+                        const isSelected = selectedSet.has(serial.serialNumberId);
+                        const fieldsDisabled = pending || !isSelected;
+                        const choice = choiceFor(choices, serial.serialNumberId);
+                        return (
+                          <tr
+                            key={serial.serialNumberId}
+                            className={isSelected ? "border-t bg-muted/30" : "border-t"}
                           >
-                            <span className="block truncate">{serial.serialNo}</span>
-                          </td>
-                          <td className="px-2 py-2 align-middle">
-                            <StatusCodeBadge
-                              code={serial.inventoryCode}
-                              name={serial.inventoryCode}
+                            <td className="px-2 py-2 align-top tabular-nums text-muted-foreground">
+                              {pageStart + index + 1}
+                            </td>
+                            <td className="px-2 py-2 align-top">
+                              <Checkbox
+                                checked={isSelected}
+                                onCheckedChange={(value) =>
+                                  toggleSerial(serial.serialNumberId, value === true)
+                                }
+                                disabled={pending}
+                                aria-label={`Select ${serial.serialNo}`}
+                              />
+                            </td>
+                            <td className="min-w-0 overflow-hidden px-2 py-2 align-top">
+                              <ModelCell skuCode={serial.skuCode} name={serial.modelName} />
+                            </td>
+                            <td
+                              className="min-w-0 overflow-hidden px-2 py-2 align-top font-mono"
+                              title={serial.serialNo}
+                            >
+                              <span className="block truncate">{serial.serialNo}</span>
+                            </td>
+                            <td className="px-2 py-2 align-top">
+                              <StatusCodeBadge
+                                code={serial.inventoryCode}
+                                name={serial.inventoryCode}
+                              />
+                            </td>
+                            {needsClassification(serial) ? (
+                              <ChecklistCell
+                                label={`Classification for ${serial.serialNo}`}
+                                options={checklistOptions.classifications}
+                                selectedIds={choice.pulloutClassificationIds}
+                                disabled={fieldsDisabled}
+                                onChange={(ids) =>
+                                  setChecklistIds(
+                                    serial.serialNumberId,
+                                    "pulloutClassificationIds",
+                                    ids,
+                                  )
+                                }
+                              />
+                            ) : (
+                              <td className="px-2 py-2 align-top text-muted-foreground">—</td>
+                            )}
+                            <ChecklistCell
+                              label={`Unit packing condition for ${serial.serialNo}`}
+                              options={checklistOptions.unitPackingConditions}
+                              selectedIds={choice.unitPackingConditionIds}
+                              disabled={fieldsDisabled}
+                              onChange={(ids) =>
+                                setChecklistIds(
+                                  serial.serialNumberId,
+                                  "unitPackingConditionIds",
+                                  ids,
+                                )
+                              }
                             />
-                          </td>
-                        </tr>
-                      ))
+                            <ChecklistCell
+                              label={`Acc completeness for ${serial.serialNo}`}
+                              options={checklistOptions.accessoryCompleteness}
+                              selectedIds={choice.accessoryCompletenessIds}
+                              disabled={fieldsDisabled}
+                              onChange={(ids) =>
+                                setChecklistIds(
+                                  serial.serialNumberId,
+                                  "accessoryCompletenessIds",
+                                  ids,
+                                )
+                              }
+                            />
+                            <td className="px-2 py-2 align-top">
+                              <Input
+                                value={choice.remarks}
+                                maxLength={PULLOUT_LINE_REMARKS_MAX}
+                                disabled={fieldsDisabled}
+                                aria-label={`Remarks for ${serial.serialNo}`}
+                                onChange={(event) =>
+                                  setRemarks(serial.serialNumberId, event.target.value)
+                                }
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -668,6 +722,7 @@ export function PulloutRequestDialog({
                 <div className="flex items-center justify-between gap-2 text-sm">
                   <p className="text-muted-foreground">
                     {pageStart + 1}–{pageStart + visibleSerials.length} of {filteredSerials.length}
+                    {selectedSerials.length > 0 ? `, ${selectedSerials.length} selected` : ""}
                   </p>
                   <div className="flex gap-2">
                     <Button
@@ -691,129 +746,13 @@ export function PulloutRequestDialog({
                   </div>
                 </div>
               ) : null}
+              {missingDetails.length > 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Choose unit packing condition and acc completeness for every selected unit, plus
+                  classification for STK units. {missingDetailsText(missingDetails)}
+                </p>
+              ) : null}
             </section>
-
-            {selectedSerials.length > 0 ? (
-              <section className="space-y-2">
-                <h3 className="font-medium">Transfer details</h3>
-                <div className="min-w-0 overflow-x-auto rounded-md border">
-                  <table className="w-full min-w-[60rem] text-sm">
-                    <thead className="bg-muted/40 text-left">
-                      <tr className="text-muted-foreground">
-                        <th className="px-2 py-2 font-medium" scope="col">
-                          Model
-                        </th>
-                        <th className="px-2 py-2 font-medium" scope="col">
-                          Serial number
-                        </th>
-                        <th className="px-2 py-2 font-medium" scope="col">
-                          Status
-                        </th>
-                        <th className="px-2 py-2 font-medium" scope="col">
-                          Classification
-                        </th>
-                        <th className="px-2 py-2 font-medium" scope="col">
-                          Unit packing condition
-                        </th>
-                        <th className="px-2 py-2 font-medium" scope="col">
-                          Acc completeness
-                        </th>
-                        <th className="px-2 py-2 font-medium" scope="col">
-                          Remarks
-                        </th>
-                        <th className="px-2 py-2 font-medium" scope="col">
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedSerials.map((serial) => {
-                        const choice = choiceFor(choices, serial.serialNumberId);
-                        const checklistCell = (
-                          label: string,
-                          field: ChecklistField,
-                          options: { id: string; name: string }[],
-                        ) => (
-                          <td className="px-2 py-2 align-top">
-                            <ChecklistGroup
-                              label={`${label} for ${serial.serialNo}`}
-                              options={options}
-                              selectedIds={choice[field]}
-                              disabled={pending}
-                              onToggle={(id, checked) =>
-                                toggleChecklistId(serial.serialNumberId, field, id, checked)
-                              }
-                            />
-                          </td>
-                        );
-                        return (
-                          <tr key={serial.serialNumberId} className="border-t">
-                            <td className="max-w-44 px-2 py-2 align-top">
-                              <ModelCell skuCode={serial.skuCode} name={serial.modelName} />
-                            </td>
-                            <td className="px-2 py-2 align-top font-mono">{serial.serialNo}</td>
-                            <td className="px-2 py-2 align-top">
-                              <StatusCodeBadge
-                                code={serial.inventoryCode}
-                                name={serial.inventoryCode}
-                              />
-                            </td>
-                            {needsClassification(serial) ? (
-                              checklistCell(
-                                "Classification",
-                                "pulloutClassificationIds",
-                                checklistOptions.classifications,
-                              )
-                            ) : (
-                              <td className="px-2 py-2 align-top text-muted-foreground">—</td>
-                            )}
-                            {checklistCell(
-                              "Unit packing condition",
-                              "unitPackingConditionIds",
-                              checklistOptions.unitPackingConditions,
-                            )}
-                            {checklistCell(
-                              "Acc completeness",
-                              "accessoryCompletenessIds",
-                              checklistOptions.accessoryCompleteness,
-                            )}
-                            <td className="w-48 px-2 py-2 align-top">
-                              <Input
-                                value={choice.remarks}
-                                maxLength={PULLOUT_LINE_REMARKS_MAX}
-                                disabled={pending}
-                                aria-label={`Remarks for ${serial.serialNo}`}
-                                onChange={(event) =>
-                                  setRemarks(serial.serialNumberId, event.target.value)
-                                }
-                              />
-                            </td>
-                            <td className="px-2 py-2 align-top">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                disabled={pending}
-                                aria-label={`Delete ${serial.serialNo}`}
-                                onClick={() => toggleSerial(serial.serialNumberId, false)}
-                              >
-                                Delete
-                              </Button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                {!ready ? (
-                  <p className="text-sm text-muted-foreground">
-                    Choose unit packing condition and acc completeness for every unit, plus
-                    classification for STK units.
-                  </p>
-                ) : null}
-              </section>
-            ) : null}
           </form>
         </div>
         <DialogFooter className="shrink-0 gap-2 border-t px-4 py-4 sm:justify-end sm:px-6">

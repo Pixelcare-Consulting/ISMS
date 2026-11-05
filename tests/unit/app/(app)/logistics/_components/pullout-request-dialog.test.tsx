@@ -97,30 +97,34 @@ async function pickUnit(serialNo: string) {
   fireEvent.click(await screen.findByRole("checkbox", { name: `Select ${serialNo}` }));
 }
 
-function fillDetails(serialNo: string) {
-  for (const label of [
-    `Unit packing condition for ${serialNo}: Sealed`,
-    `Acc completeness for ${serialNo}: Complete`,
-  ]) {
-    fireEvent.click(screen.getByRole("checkbox", { name: label }));
-  }
+async function chooseOption(field: string, option: string) {
+  fireEvent.click(screen.getByRole("combobox", { name: field }));
+  const row = await screen.findByRole("option", { name: option });
+  fireEvent.click(row);
+  fireEvent.keyDown(row, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("option", { name: option })).not.toBeInTheDocument());
 }
 
-function fillClassification(serialNo: string) {
-  fireEvent.click(screen.getByRole("checkbox", { name: `Classification for ${serialNo}: Good` }));
+async function fillDetails(serialNo: string) {
+  await chooseOption(`Unit packing condition for ${serialNo}`, "Sealed");
+  await chooseOption(`Acc completeness for ${serialNo}`, "Complete");
+}
+
+async function fillClassification(serialNo: string) {
+  await chooseOption(`Classification for ${serialNo}`, "Good");
 }
 
 async function pickUnitDetails(serialNo: string) {
   await pickUnit(serialNo);
-  fillClassification(serialNo);
-  fillDetails(serialNo);
+  await fillClassification(serialNo);
+  await fillDetails(serialNo);
 }
 
 function unitRow(serialNo: string) {
   const row = screen
     .getAllByRole("row")
-    .find((candidate) => within(candidate).queryByLabelText(`Delete ${serialNo}`));
-  if (!row) throw new Error(`No transfer details row for ${serialNo}`);
+    .find((candidate) => within(candidate).queryByLabelText(`Select ${serialNo}`));
+  if (!row) throw new Error(`No row for ${serialNo}`);
   return row;
 }
 
@@ -161,25 +165,76 @@ describe("PulloutRequestDialog units", () => {
 
     expect(screen.getByRole("columnheader", { name: "Classification" })).toBeInTheDocument();
     expect(
-      within(unitRow("BRANCH-A-STK")).getByRole("checkbox", {
-        name: "Classification for BRANCH-A-STK: Good",
+      within(unitRow("BRANCH-A-STK")).getByRole("combobox", {
+        name: "Classification for BRANCH-A-STK",
       }),
-    ).toBeInTheDocument();
+    ).toBeEnabled();
     expect(
-      within(unitRow("BRANCH-A-DEF")).queryByRole("checkbox", {
-        name: "Classification for BRANCH-A-DEF: Good",
+      within(unitRow("BRANCH-A-DEF")).queryByRole("combobox", {
+        name: "Classification for BRANCH-A-DEF",
       }),
     ).not.toBeInTheDocument();
   });
 
-  it("shows the classification column for defective units alone", async () => {
+  it("uses one table, with every field disabled until its row is selected", async () => {
+    useBothUnitTypes();
+    renderDialog();
+    await formShown();
+    await chooseBranch("Branch A");
+    await screen.findByText("BRANCH-A-STK");
+
+    expect(screen.getAllByRole("table")).toHaveLength(1);
+    expect(screen.getByRole("heading", { name: "Transfer details" })).toBeInTheDocument();
+    const fields = [
+      "Classification for BRANCH-A-STK",
+      "Unit packing condition for BRANCH-A-STK",
+      "Acc completeness for BRANCH-A-STK",
+    ];
+    for (const name of fields) {
+      expect(screen.getByRole("combobox", { name })).toBeDisabled();
+    }
+    expect(screen.getByRole("textbox", { name: "Remarks for BRANCH-A-STK" })).toBeDisabled();
+
+    await pickUnit("BRANCH-A-STK");
+    for (const name of fields) {
+      expect(screen.getByRole("combobox", { name })).toBeEnabled();
+    }
+    expect(screen.getByRole("textbox", { name: "Remarks for BRANCH-A-STK" })).toBeEnabled();
+    expect(screen.getByRole("textbox", { name: "Remarks for BRANCH-A-DEF" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select BRANCH-A-STK" }));
+    expect(screen.getByRole("combobox", { name: fields[0] })).toBeDisabled();
+  });
+
+  it("keeps a unit's details if it is unticked and ticked again", async () => {
+    useBothUnitTypes();
+    renderDialog();
+    await formShown();
+    await chooseBranch("Branch A");
+    await screen.findByText("Warehouse of branch-a (WH1)");
+    await pickUnitDetails("BRANCH-A-STK");
+    expect(submitButton()).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select BRANCH-A-STK" }));
+    expect(submitButton()).toBeDisabled();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select BRANCH-A-STK" }));
+    expect(submitButton()).toBeEnabled();
+  });
+
+  it("counts the selected units and names the ones still missing details", async () => {
     useBothUnitTypes();
     renderDialog();
     await formShown();
     await chooseBranch("Branch A");
     await pickUnit("BRANCH-A-DEF");
+    await pickUnit("BRANCH-A-STK");
 
-    expect(screen.getByRole("columnheader", { name: "Classification" })).toBeInTheDocument();
+    expect(screen.getByText(/2 selected/)).toBeInTheDocument();
+    expect(screen.getByText(/Still missing: BRANCH-A-STK, BRANCH-A-DEF/)).toBeInTheDocument();
+
+    await fillDetails("BRANCH-A-DEF");
+    expect(screen.getByText(/Still missing: BRANCH-A-STK/)).toBeInTheDocument();
+    expect(screen.queryByText(/Still missing: BRANCH-A-DEF/)).not.toBeInTheDocument();
   });
 
   it("submits a defective unit without classification", async () => {
@@ -189,7 +244,7 @@ describe("PulloutRequestDialog units", () => {
     await chooseBranch("Branch A");
     await screen.findByText("Warehouse of branch-a (WH1)");
     await pickUnit("BRANCH-A-DEF");
-    fillDetails("BRANCH-A-DEF");
+    await fillDetails("BRANCH-A-DEF");
 
     await act(async () => {
       fireEvent.click(submitButton());
@@ -209,10 +264,10 @@ describe("PulloutRequestDialog units", () => {
     await chooseBranch("Branch A");
     await screen.findByText("Warehouse of branch-a (WH1)");
     await pickUnit("BRANCH-A-STK");
-    fillDetails("BRANCH-A-STK");
+    await fillDetails("BRANCH-A-STK");
     expect(submitButton()).toBeDisabled();
 
-    fillClassification("BRANCH-A-STK");
+    await fillClassification("BRANCH-A-STK");
     expect(submitButton()).toBeEnabled();
   });
 
@@ -308,15 +363,16 @@ describe("PulloutRequestDialog branch and warehouse", () => {
     renderDialog();
     await formShown();
     await chooseBranch("Branch A");
-    fireEvent.click(await screen.findByRole("checkbox", { name: "Select BRANCH-A-UNIT" }));
-    expect(screen.getByRole("heading", { name: "Transfer details" })).toBeInTheDocument();
+    await pickUnit("BRANCH-A-UNIT");
+    expect(screen.getByText(/1 selected/)).toBeInTheDocument();
 
     listSerials.mockImplementation(() => new Promise(() => {}));
     await chooseBranch("Branch B");
 
     await waitFor(() =>
-      expect(screen.queryByRole("heading", { name: "Transfer details" })).not.toBeInTheDocument(),
+      expect(screen.queryByRole("checkbox", { name: "Select BRANCH-A-UNIT" })).not.toBeInTheDocument(),
     );
+    expect(screen.queryByText(/1 selected/)).not.toBeInTheDocument();
     expect(within(screen.getByRole("table")).getByText("Loading serials…")).toBeInTheDocument();
   });
 
