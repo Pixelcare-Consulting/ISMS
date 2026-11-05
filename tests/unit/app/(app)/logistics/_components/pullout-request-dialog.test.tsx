@@ -229,7 +229,9 @@ describe("PulloutRequestDialog units", () => {
     expect(within(status).getByText("DEF")).toBeInTheDocument();
 
     await pickUnit("BRANCH-A-STK");
-    expect(within(status).getByText("Mixed")).toBeInTheDocument();
+    expect(within(status).getByText("STK")).toBeInTheDocument();
+    expect(within(status).getByText("DEF")).toBeInTheDocument();
+    expect(within(status).queryByText("Mixed")).not.toBeInTheDocument();
   });
 });
 

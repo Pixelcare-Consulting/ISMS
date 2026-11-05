@@ -9,8 +9,9 @@ export function PulloutConditionBadge({ condition }: { condition: PulloutConditi
       return <StatusCodeBadge code="DEF" name="DEF" />;
     case "Mixed":
       return (
-        <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-normal text-slate-700">
-          Mixed
+        <span className="inline-flex flex-wrap items-center gap-1">
+          <StatusCodeBadge code="STK" name="STK" />
+          <StatusCodeBadge code="DEF" name="DEF" />
         </span>
       );
     default: {
