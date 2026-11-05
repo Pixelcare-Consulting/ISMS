@@ -215,7 +215,7 @@ function formatFrequency(dropsPerMonth: number): string {
   return String(Number(dropsPerMonth.toFixed(2)));
 }
 
-/** Plain text for the planogram table, so a value can be read without opening anything. */
+/** Not shown anywhere now that the planogram table has no Max Qty. Kept for reference. */
 export function describeMaxQtyCalc(
   calc: MaxQtyCalc | null,
   editedByHand: boolean,

@@ -235,9 +235,9 @@ export function ImportPlanogramDialog({
             </p>
             <p>
               SKUs and branches must already exist — this import does not create models.
-              Max Qty is not set here: new rows stay at 0, and cannot be ordered, until a
-              forecast upload includes the branch. If more than one branch uses the same name,
-              that row is rejected. Rows left out of the file are not removed.
+              A new SKU cannot be ordered until a forecast upload includes its branch. If more
+              than one branch uses the same name, that row is rejected. Rows left out of the
+              file are not removed.
             </p>
           </div>
 

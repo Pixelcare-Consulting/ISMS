@@ -12,7 +12,7 @@ export const NO_PLANNING_SUGGESTION_MESSAGE = "No planning suggestion available.
 export const SPECIAL_NO_SUGGESTION_MESSAGE = "Special orders have no suggested quantity.";
 
 export const NO_PLANOGRAM_MAX_MESSAGE =
-  "A suggestion cannot be calculated without a planogram Max Qty.";
+  "A suggestion cannot be calculated without a Max Qty.";
 
 export const HAND_EDITED_REVIEW_MESSAGE =
   "This line was edited on the draft. Review the draft before adding more of this model.";

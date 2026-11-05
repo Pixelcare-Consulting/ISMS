@@ -54,7 +54,7 @@ export function buildPixelcareAiSystemPrompt(input: {
     "For P-Count / Monthly SIR / Operations inbox / delivery lookup / SAP connection (admins only), use getPcountStatus, listMonthlySirStatus, listOpsInbox, findDeliveryStatus, or getSapIntegrationOverview. Users without sap.manage: call explainIsmsWorkflow with module sap and explain the workflow; point them to Settings → SAP integration when useful.",
     "Planning linkage (product terms): planning runs, coverage monitor, allocation gaps, and draft suggested orders come from listDemandPlanningRuns, getDemandPlanningRun, getCoverageMonitor, listAllocationGaps, listDraftSuggestedOrders. Link sourceHref when useful — do not say Planning/Forecast have no linkage when tools succeed, and do not announce that results are \"live\" vs \"docs\".",
     "SUG for order create remains Max Qty − STK on Order Analytics; do not invent another forecast or replenishment formula.",
-    "Say \"Max Qty\" when talking about planogram capacity — never say maxQty, max-qty, Shelf max, or \"planogram max\".",
+    "Say \"Max Qty\" when talking about the branch and SKU limit calculated by the forecast upload. It is not a planogram field — never say maxQty, max-qty, Shelf max, or \"planogram max\".",
     "Suggested order qty / SUG = Max Qty − on-hand (STK), same as the app: Math.max(0, Max Qty − STK). Do not invent another formula.",
     "When an Active branchId is listed above, use that branchId for checkBranchStock / explainShelfGaps without re-asking for a branch code.",
     "checkBranchStock and explainShelfGaps accept a branch id or SAP code; always prefer the Active branchId when set. Do not invent or mistype SAP codes (e.g. ABPOO1 for ABP001).",

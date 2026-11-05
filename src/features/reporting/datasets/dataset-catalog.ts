@@ -119,7 +119,7 @@ export const DATASET_CATALOG = {
   },
   daily_stock: {
     label: "Daily stock",
-    description: "Planogram Max Qty vs on-hand and sold quantity for one day.",
+    description: "Max Qty vs on-hand and sold quantity for one day.",
     dashboardDateRange: false,
     columns: [
       date("date", "Date"),
@@ -185,7 +185,7 @@ export const DATASET_CATALOG = {
       num("deliveryInTransit", "Delivery In Transit"),
       num("stockCount", "Stock On Hand"),
       num("openAtr", "Open ATR"),
-      num("belowPlanogramCapacity", "Below Planogram"),
+      num("belowPlanogramCapacity", "Below Max Qty"),
       num("milBreaches", "MIL Breaches"),
       num("allocationGapCount", "Allocation Gaps"),
       num("draftSuggestedOrders", "Draft Suggested Orders"),

@@ -289,15 +289,13 @@ export const planogramRepository = {
 
   createEntry(
     tenantId: string,
-    data: { branchId: string; modelId: string; maxQty: number },
+    data: { branchId: string; modelId: string },
   ) {
     return prisma.branchPlanogram.create({
       data: {
         tenantId,
         branchId: data.branchId,
         modelId: data.modelId,
-        maxQty: data.maxQty,
-        maxQtyEditedAt: new Date(),
       },
       include: {
         model: { select: { id: true, skuCode: true, name: true, status: true } },

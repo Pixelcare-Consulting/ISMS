@@ -273,8 +273,10 @@ Max Qty is the per-branch, per-SKU limit that was called Shelf max. The client r
 - **Trap:** in raw SQL, `max_qty` is the old value, not the live one. Use `calculated_max_qty`.
 - **Why a new column:** the migration only adds to the table, so no existing value is overwritten, and the old numbers stop appearing without a data reset.
 - **Calculation:** `(Target forecast qty + current DU) ÷ frequency`, rounded up, recalculated for the branches in each forecast upload. See `src/features/planogram/lib/target-forecast-qty.ts`.
-- **Not on the planogram template or table:** the planogram import only sets branch and SKU, and ignores a `shelf_max` column left in an older file. The branch planogram table does not show the value. Add model still takes a starting value, which the next upload replaces.
-- **Before the first upload:** the value is 0, including on rows added by planogram import. 0 is a real limit, so Manual and Auto replenish orders cannot include that SKU, and existing drafts fail on edit or submit. On a new environment, deploy and upload the forecast together.
+- **Not part of Planogram:** Max Qty belongs to Forecast and Planning. The planogram template, import, Add model, table and help no longer use it, and a `shelf_max` column in an older file is ignored. The value is still stored on the planogram row because orders read it there.
+- **Kept for reference, not called by any screen:** `updatePlanogramMaxQtyAction`, `planogramService.updateMaxQty`, and `describeMaxQtyCalc`.
+- **MIL days:** Add model and planogram import still save the default 30 in `branch_mil_settings`. No screen shows or edits it, but the dashboard MIL breaches and order DII read it.
+- **Before the first upload:** the value is 0, including on rows added by Add model or planogram import. 0 is a real limit, so Manual and Auto replenish orders cannot include that SKU, and existing drafts fail on edit or submit. On a new environment, deploy and upload the forecast together.
 - **Old names kept on purpose:** the `shelfMax` keys in saved AI proposals and report datasets. Only the on-screen label changed.
 - **To go back to the old value:** map `maxQty` back to `max_qty` in `prisma/schema.prisma` and restore `NOT NULL` with a migration. Rows created since the change have no old value and need one first.
 

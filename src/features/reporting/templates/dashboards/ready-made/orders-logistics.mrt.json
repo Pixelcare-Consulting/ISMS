@@ -44,7 +44,7 @@
           "4": {
             "Name": "belowPlanogramCapacity",
             "NameInSource": "belowPlanogramCapacity",
-            "Alias": "Below Planogram",
+            "Alias": "Below Max Qty",
             "Type": "System.Decimal"
           },
           "5": {

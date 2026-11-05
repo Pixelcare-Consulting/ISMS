@@ -475,7 +475,7 @@ export function buildPlanningOpsTools(session: AppSession) {
           periodLabel: period.label,
           total: gaps.length,
           gaps,
-          note: "Max Qty is planogram capacity already stored on the allocation row. SUG for order create remains Max Qty − STK on Order Analytics.",
+          note: "Max Qty is the forecast-calculated limit already stored on the allocation row. SUG for order create remains Max Qty − STK on Order Analytics.",
           nextSteps: [
             { label: "Open Planning", href: "/settings/planning" },
             {
@@ -668,7 +668,7 @@ export function buildPlanningOpsTools(session: AppSession) {
           milBreaches: details.milBreaches,
           belowCapacityBranches,
           milBreachBranches,
-          note: "belowCapacity counts SKU-branch rows where on-hand is under Max Qty (planogram capacity).",
+          note: "belowCapacity counts SKU-branch rows where on-hand is under Max Qty.",
           nextSteps: [
             { label: "Open Planogram", href: "/settings/planogram" },
             { label: "Open Dashboard", href: "/dashboard" },

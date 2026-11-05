@@ -88,7 +88,6 @@ export async function listActiveModelsForPlanogramAction(branchId: string) {
 const addSchema = z.object({
   branchId: z.string().min(1),
   modelId: z.string().min(1),
-  maxQty: z.number().int().min(1),
   daysThreshold: z.number().int().min(1).optional(),
 });
 
@@ -115,14 +114,7 @@ export async function addPlanogramModelAction(input: unknown) {
 
 const addBulkSchema = z.object({
   branchId: z.string().min(1),
-  items: z
-    .array(
-      z.object({
-        modelId: z.string().min(1),
-        maxQty: z.number().int().min(1),
-      }),
-    )
-    .min(1),
+  modelIds: z.array(z.string().min(1)).min(1),
   daysThreshold: z.number().int().min(1).optional(),
 });
 
@@ -136,7 +128,7 @@ export async function addPlanogramModelsAction(input: unknown) {
       tenantId: session.user.tenantId,
       actorUserId: session.user.id,
       branchId: parsed.data.branchId,
-      items: parsed.data.items,
+      modelIds: parsed.data.modelIds,
       daysThreshold: parsed.data.daysThreshold,
     });
 

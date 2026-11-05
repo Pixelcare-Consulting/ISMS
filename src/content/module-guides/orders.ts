@@ -10,7 +10,7 @@ export const MANUAL_ORDERS_MODULE_GUIDE: ModuleGuideContent = {
     { label: "Enter a quantity of 1 or more per model. Suggest is the shelf gap" },
     {
       label:
-        "SUG is the shelf gap from planogram Max Qty (Max Qty − STK) — not the Planning forecast. Confirm stock on Stock units → By model or Reports → Inventory Report; set CBM on Models import so Total CBM is correct",
+        "SUG is the shelf gap (Max Qty − STK), not the forecast itself. Each forecast upload recalculates Max Qty. Confirm stock on Stock units → By model or Reports → Inventory Report; set CBM on Models import so Total CBM is correct",
     },
     { label: "Product Specialists and Team Leaders can Edit while Pending SP; only Supply Planning Reviews" },
     { label: "After SP approval, logistics schedules delivery; accept stock in Operations" },
@@ -31,7 +31,7 @@ export const SPECIAL_ORDERS_MODULE_GUIDE: ModuleGuideContent = {
     { label: "Filter by brand on the sheet. Adding an extra item does not change the branch shelf plan" },
     {
       label:
-        "Additional lines show real branch STK. SUG is shelf gap from planogram Max Qty, not forecast — validate with By model or Inventory Report; fill CBM on Models import for volume",
+        "Additional lines show real branch STK. SUG is the shelf gap (Max Qty − STK), not the forecast itself — validate with By model or Inventory Report; fill CBM on Models import for volume",
     },
     { label: "Review when it is your role’s turn — Supply Planning can adjust quantities or a delivery date" },
     { label: "After SP approval, logistics schedules delivery; accept stock in Operations" },
