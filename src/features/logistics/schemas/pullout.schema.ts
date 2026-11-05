@@ -15,11 +15,9 @@ const pulloutLineSchema = z.object({
 
 export const pulloutSchema = z.object({
   branchId: z.string().min(1),
-  warehouseId: z.string().min(1),
   condition: z.enum(["STK", "DEF"]),
   lines: z.array(pulloutLineSchema).min(1),
   notes: z.string().optional(),
 });
 
-export const PULLOUT_CREATE_INPUT_ERROR =
-  "Choose a branch, warehouse, and the details for each serial";
+export const PULLOUT_CREATE_INPUT_ERROR = "Choose a branch and the details for each serial";

@@ -23,6 +23,7 @@ import {
   planPulloutReject,
   planPulloutUpdateList,
   pulloutCondition,
+  pulloutDestination,
   pulloutSapMessage,
   type PulloutDecisionLineView,
   type PulloutLineView,
@@ -487,5 +488,27 @@ describe("logistics posting permissions", () => {
     expect(postingPermissionError(["orders.create"], "transfer.receive")).toBeNull();
     expect(postingPermissionError(["logistics.manage"], "transfer.release")).toBeNull();
     expect(postingPermissionError(["orders.approve"], "transfer.approve")).toBeNull();
+  });
+});
+
+describe("pulloutDestination", () => {
+  type Warehouse = { id: string; deletedAt: Date | null };
+  const primary: Warehouse = { id: "primary", deletedAt: null };
+  const main: Warehouse = { id: "main", deletedAt: null };
+
+  it("uses the branch's primary warehouse", () => {
+    expect(pulloutDestination(primary, main)).toBe(primary);
+  });
+
+  it("falls back to the main warehouse when the branch has none", () => {
+    expect(pulloutDestination(null, main)).toBe(main);
+  });
+
+  it("skips a primary warehouse that has been deleted", () => {
+    expect(pulloutDestination({ id: "primary", deletedAt: new Date() }, main)).toBe(main);
+  });
+
+  it("returns null when neither warehouse is available", () => {
+    expect(pulloutDestination(null, null)).toBeNull();
   });
 });

@@ -118,6 +118,17 @@ function conditionMismatch(
   };
 }
 
+/**
+ * The warehouse that supplies a branch takes its units back. Same rule as order routing
+ * (`resolveOrderSapRouting`), and a deleted primary warehouse counts as none.
+ */
+export function pulloutDestination<T extends { deletedAt: Date | null }>(
+  primary: T | null,
+  main: T | null,
+): T | null {
+  return primary && primary.deletedAt === null ? primary : main;
+}
+
 export function planPulloutCreate(input: {
   branchId: string;
   warehouseId: string;

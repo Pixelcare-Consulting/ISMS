@@ -14,6 +14,7 @@ import {
   planPulloutApprove,
   planPulloutComplete,
   planPulloutCreate,
+  pulloutDestination,
   planPulloutFinalize,
   planPulloutLineApprove,
   planPulloutLineDelete,
@@ -67,10 +68,15 @@ export interface PulloutCreateLine {
 
 export interface PulloutCreateInput {
   branchId: string;
-  warehouseId: string;
   condition: PulloutCondition;
   lines: PulloutCreateLine[];
   notes?: string;
+}
+
+export interface PulloutDestination {
+  id: string;
+  name: string;
+  code: string;
 }
 
 export interface PulloutSapJob {
@@ -463,7 +469,32 @@ async function approveInTx(
   });
 }
 
+async function resolveDestination(tenantId: string, branchId: string): Promise<PulloutDestination> {
+  const select = { id: true, name: true, code: true, deletedAt: true } as const;
+  const branch = await prisma.branch.findFirst({
+    where: { id: branchId, tenantId, deletedAt: null },
+    select: { name: true, primaryWarehouse: { select } },
+  });
+  if (!branch) throw new Error("Branch not found");
+
+  const main = await prisma.warehouse.findFirst({
+    where: { tenantId, isMain: true, deletedAt: null },
+    select,
+    orderBy: { createdAt: "asc" },
+  });
+  const destination = pulloutDestination(branch.primaryWarehouse, main);
+  if (!destination) {
+    throw new Error(`${branch.name} has no primary warehouse and no main warehouse is set.`);
+  }
+  return { id: destination.id, name: destination.name, code: destination.code };
+}
+
 export const pulloutPostingService = {
+  async destination(actor: PostingActor, branchId: string): Promise<PulloutDestination> {
+    await authorizePosting(actor, "pullout.create", branchId);
+    return resolveDestination(actor.tenantId, branchId);
+  },
+
   async listSerials(
     actor: PostingActor,
     branchId: string,
@@ -638,12 +669,13 @@ export const pulloutPostingService = {
   async create(actor: PostingActor, input: PulloutCreateInput) {
     await authorizePosting(actor, "pullout.create", input.branchId);
     const checklist = checklistBySerial(input.condition, input.lines);
+    const destination = await resolveDestination(actor.tenantId, input.branchId);
     await assertActiveChecklist(actor.tenantId, input.lines);
 
     const serials = await loadAllocatable(actor.tenantId, input.branchId, [...checklist.keys()]);
     const plan = planPulloutCreate({
       branchId: input.branchId,
-      warehouseId: input.warehouseId,
+      warehouseId: destination.id,
       condition: input.condition,
       serials,
     });
@@ -683,7 +715,7 @@ export const pulloutPostingService = {
           data: {
             tenantId: actor.tenantId,
             branchId: input.branchId,
-            warehouseId: input.warehouseId,
+            warehouseId: destination.id,
             pulloutNo,
             statusCodeId,
             notes: input.notes?.trim() || null,

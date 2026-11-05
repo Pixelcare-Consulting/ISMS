@@ -648,6 +648,16 @@ export async function listPulloutSerialsAction(branchId: string, condition?: Pul
   }
 }
 
+export async function getPulloutDestinationAction(branchId: string) {
+  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
+  try {
+    const warehouse = await pulloutPostingService.destination(postingActor(session), branchId);
+    return { success: true as const, warehouse };
+  } catch (error) {
+    return actionError(error, "Failed to load the destination warehouse");
+  }
+}
+
 export interface PulloutChecklistOptions {
   classifications: { id: string; name: string }[];
   unitPackingConditions: { id: string; name: string }[];

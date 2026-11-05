@@ -4,10 +4,10 @@ import { useEffect, useState, useTransition, type ChangeEvent, type ReactNode } 
 import { toast } from "sonner";
 
 import {
+  getPulloutDestinationAction,
   listBranchesForLogisticsAction,
   listPulloutChecklistOptionsAction,
   listPulloutSerialsAction,
-  listWarehousesForLogisticsAction,
   type PulloutChecklistOptions,
   uploadPulloutAttachmentAction,
 } from "@/features/logistics/actions/logistics.actions";
@@ -22,6 +22,7 @@ import {
 } from "@/features/logistics/services/pullout-posting.planner";
 import type {
   PulloutCreateInput,
+  PulloutDestination,
   PulloutSerialOption,
 } from "@/features/logistics/services/pullout-posting.service";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
@@ -80,6 +81,8 @@ interface PulloutLineChoice {
   accessoryCompletenessIds: string[];
   remarks: string;
 }
+
+type DestinationState = { warehouse: PulloutDestination } | { error: string };
 
 const EMPTY_CHOICE: PulloutLineChoice = {
   pulloutClassificationIds: [],
@@ -163,6 +166,21 @@ function Field({
   );
 }
 
+function DestinationReadout({
+  branchChosen,
+  destination,
+}: {
+  branchChosen: boolean;
+  destination: DestinationState | null;
+}) {
+  if (!branchChosen) {
+    return <span className="text-muted-foreground">Follows the selected branch</span>;
+  }
+  if (!destination) return <span className="text-muted-foreground">Loading…</span>;
+  if ("error" in destination) return <span className="text-destructive">{destination.error}</span>;
+  return `${destination.warehouse.name} (${destination.warehouse.code})`;
+}
+
 function ConditionPrompt({ onChoose }: { onChoose: (condition: PulloutCondition) => void }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
@@ -242,13 +260,12 @@ export function PulloutRequestDialog({
 }: PulloutRequestDialogProps) {
   const [pending, startTransition] = useTransition();
   const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
-  const [warehouses, setWarehouses] = useState<{ id: string; name: string; code: string }[]>([]);
   const [condition, setCondition] = useState<PulloutCondition | null>(null);
   const [serials, setSerials] = useState<PulloutSerialOption[]>([]);
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [listsLoaded, setListsLoaded] = useState(false);
   const [branchId, setBranchId] = useState("");
-  const [warehouseId, setWarehouseId] = useState("");
+  const [destination, setDestination] = useState<DestinationState | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [choices, setChoices] = useState<Record<string, PulloutLineChoice>>({});
   const [files, setFiles] = useState<File[]>([]);
@@ -261,12 +278,10 @@ export function PulloutRequestDialog({
     let cancelled = false;
     void Promise.all([
       listBranchesForLogisticsAction(),
-      listWarehousesForLogisticsAction(),
       listPulloutChecklistOptionsAction(),
-    ]).then(([branchRows, warehouseRows, checklist]) => {
+    ]).then(([branchRows, checklist]) => {
       if (cancelled) return;
       setBranches(branchRows);
-      setWarehouses(warehouseRows);
       if (checklist.error) {
         setChecklistOptions(EMPTY_CHECKLIST_OPTIONS);
         toast.error(checklist.error);
@@ -283,6 +298,18 @@ export function PulloutRequestDialog({
       cancelled = true;
     };
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !branchId) return;
+    let cancelled = false;
+    void getPulloutDestinationAction(branchId).then((result) => {
+      if (cancelled) return;
+      setDestination("warehouse" in result ? { warehouse: result.warehouse } : { error: result.error });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, branchId]);
 
   const serialsKey = condition && branchId ? `${branchId}:${condition}` : null;
 
@@ -317,6 +344,7 @@ export function PulloutRequestDialog({
   const allMatchingSelected = filteredSerials.length > 0 && selectedMatching === filteredSerials.length;
   const ready =
     condition !== null && selected.length > 0 && checklistReady(condition, selected, choices);
+  const destinationReady = destination !== null && "warehouse" in destination;
   const selectedSerials = serials.filter((serial) => selectedSet.has(serial.serialNumberId));
   const createdBy = currentUserName.trim() || "—";
   const createdOn = MANILA_DATE.format(new Date());
@@ -383,7 +411,7 @@ export function PulloutRequestDialog({
     setCondition(null);
     setLoadedKey(null);
     setBranchId("");
-    setWarehouseId("");
+    setDestination(null);
     setFiles([]);
     resetUnits();
   }
@@ -403,6 +431,7 @@ export function PulloutRequestDialog({
   function chooseBranch(nextBranchId: string) {
     if (nextBranchId === branchId) return;
     setBranchId(nextBranchId);
+    setDestination(null);
     resetUnits();
   }
 
@@ -430,7 +459,6 @@ export function PulloutRequestDialog({
     startTransition(async () => {
       const result = await onSubmit({
         branchId,
-        warehouseId,
         condition,
         lines: selected.map((serialNumberId) => {
           const choice = choiceFor(choices, serialNumberId);
@@ -526,20 +554,8 @@ export function PulloutRequestDialog({
                   </Field>
                   <Field label="Created Date">{createdOn}</Field>
                   <Field label="Pull-out Status">New</Field>
-                  <Field label="Destination warehouse" htmlFor="pullout-warehouse">
-                    <SearchableSelect
-                      id="pullout-warehouse"
-                      options={warehouses.map((warehouse) => ({
-                        id: warehouse.id,
-                        label: `${warehouse.name} (${warehouse.code})`,
-                      }))}
-                      value={warehouseId}
-                      onChange={setWarehouseId}
-                      placeholder={listsLoaded ? "Select warehouse…" : "Loading warehouses…"}
-                      searchPlaceholder="Search warehouses…"
-                      disabled={pending || !listsLoaded}
-                      popoverClassName={POPOVER_CLASS}
-                    />
+                  <Field label="Destination warehouse">
+                    <DestinationReadout branchChosen={Boolean(branchId)} destination={destination} />
                   </Field>
                   <Field label="Attachments" htmlFor="pullout-attachments" wide>
                     <div className="space-y-2 pt-1">
@@ -858,7 +874,7 @@ export function PulloutRequestDialog({
             <Button
               type="submit"
               form={PULLOUT_CREATE_FORM_ID}
-              disabled={pending || !ready || !branchId || !warehouseId}
+              disabled={pending || !ready || !destinationReady}
             >
               Submit
             </Button>
