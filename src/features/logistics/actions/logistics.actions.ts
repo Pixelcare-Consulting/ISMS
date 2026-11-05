@@ -54,6 +54,7 @@ import {
   PULLOUT_RECEIVE_INPUT_ERROR,
   PULLOUT_LINE_REJECT_INPUT_ERROR,
   pulloutLineRejectSchema,
+  pulloutLineSchema,
   pulloutReceiveSchema,
   pulloutSchema,
 } from "@/features/logistics/schemas/pullout.schema";
@@ -145,6 +146,7 @@ const pulloutListSchema = z.object({
   actualPulloutDate: z.string().optional(),
   notes: z.string().optional(),
   serialNumberIds: z.array(z.string().min(1)).min(1),
+  addedLines: z.array(pulloutLineSchema).optional(),
 });
 const shipmentSchema = z.object({
   waybillNo: z.string().trim().min(1).max(80),
@@ -819,6 +821,7 @@ export async function updatePulloutListAction(id: string, input: unknown) {
       actualScheduledDate,
       notes: parsed.data.notes,
       serialNumberIds: parsed.data.serialNumberIds,
+      addedLines: parsed.data.addedLines,
     });
     revalidatePullout(id);
     return { success: true as const };

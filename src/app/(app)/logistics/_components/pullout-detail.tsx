@@ -17,6 +17,16 @@ import {
   LogisticsHistoryBody,
 } from "@/app/(app)/logistics/_components/logistics-detail-ui";
 import { ShipmentPrintButton } from "@/app/(app)/logistics/_components/logistics-shipment-section";
+import {
+  EMPTY_CHECKLIST_OPTIONS,
+  PULLOUT_LINE_FIELDS,
+  PulloutLineField,
+  pulloutLineChoice,
+  pulloutLineComplete,
+  pulloutLineInput,
+  pulloutMissingDetailsText,
+  type PulloutLineChoice,
+} from "@/app/(app)/logistics/_components/pullout-line-fields";
 import { pulloutPrintDocument } from "@/app/(app)/logistics/_components/pullout-print";
 import { pulloutAuditLabel, PulloutTracker } from "@/app/(app)/logistics/_components/pullout-tracker";
 import {
@@ -62,6 +72,7 @@ import {
   approvePulloutTlAction,
   completePulloutAction,
   deletePulloutLineAction,
+  listPulloutChecklistOptionsAction,
   listPulloutSerialsAction,
   listWarehousesForLogisticsAction,
   rejectPulloutAction,
@@ -69,6 +80,7 @@ import {
   releasePulloutAction,
   updatePulloutListAction,
   uploadPulloutAttachmentAction,
+  type PulloutChecklistOptions,
 } from "@/features/logistics/actions/logistics.actions";
 import {
   manilaDateTimeInputValue,
@@ -96,6 +108,13 @@ interface ExtraSerial {
 }
 
 type ExtraSerialLoad = "idle" | "loading" | "ready" | "error";
+
+/** What a serial being added needs: the same details as on the request. */
+interface ExtraSerialDetails {
+  options: PulloutChecklistOptions;
+  choices: Readonly<Record<string, PulloutLineChoice>>;
+  onChange: (serialNumberId: string, patch: Partial<PulloutLineChoice>) => void;
+}
 
 const PULLOUT_ATTACHMENT_OPEN_CODES: readonly string[] = [
   PULLOUT_WORKFLOW_CODE.pending_tl,
@@ -529,6 +548,7 @@ function extraSerialColumns(
   pending: boolean,
   selected: readonly string[],
   onToggle: (serialNumberId: string, on: boolean) => void,
+  details: ExtraSerialDetails,
 ): CompactLineColumn<ExtraSerial>[] {
   return [
     {
@@ -564,6 +584,25 @@ function extraSerialColumns(
         return prior ? <StatusCodeBadge code={prior} name={prior} /> : <Dash />;
       },
     },
+    ...PULLOUT_LINE_FIELDS.map(
+      ({ field, header }): CompactLineColumn<ExtraSerial> => ({
+        id: field,
+        header,
+        className: "min-w-44",
+        cell: (row) => (
+          <PulloutLineField
+            field={field}
+            serialNumberId={row.serialNumberId}
+            serialNo={row.serialNo}
+            unitCode={row.inventoryCode}
+            options={details.options}
+            choice={pulloutLineChoice(details.choices, row.serialNumberId)}
+            disabled={pending || !selected.includes(row.serialNumberId)}
+            onChange={(patch) => details.onChange(row.serialNumberId, patch)}
+          />
+        ),
+      }),
+    ),
   ];
 }
 
@@ -572,11 +611,13 @@ function ExtraSerialsTable({
   pending,
   selected,
   onToggle,
+  details,
 }: {
   rows: ExtraSerial[];
   pending: boolean;
   selected: string[];
   onToggle: (serialNumberId: string, on: boolean) => void;
+  details: ExtraSerialDetails;
 }) {
   return (
     <div className="space-y-2">
@@ -584,13 +625,13 @@ function ExtraSerialsTable({
       <CompactLineTable
         rows={rows}
         getRowId={(row) => row.serialNumberId}
-        columns={extraSerialColumns(pending, selected, onToggle)}
+        columns={extraSerialColumns(pending, selected, onToggle, details)}
         searchText={(row) => [row.skuCode, row.modelName, row.serialNo, row.inventoryCode]}
         searchPlaceholder="Search serials…"
         itemLabel="serial"
         emptyMessage="No other free serials at this branch."
         noMatchMessage="No matching serials."
-        minWidth="40rem"
+        minWidth="86rem"
       />
     </div>
   );
@@ -603,6 +644,7 @@ function AddSerialsPanel({
   selected,
   onToggle,
   onRetry,
+  details,
 }: {
   state: ExtraSerialLoad;
   rows: ExtraSerial[];
@@ -610,6 +652,7 @@ function AddSerialsPanel({
   selected: string[];
   onToggle: (serialNumberId: string, on: boolean) => void;
   onRetry: () => void;
+  details: ExtraSerialDetails;
 }) {
   switch (state) {
     case "idle":
@@ -626,7 +669,13 @@ function AddSerialsPanel({
       );
     case "ready":
       return (
-        <ExtraSerialsTable rows={rows} pending={pending} selected={selected} onToggle={onToggle} />
+        <ExtraSerialsTable
+          rows={rows}
+          pending={pending}
+          selected={selected}
+          onToggle={onToggle}
+          details={details}
+        />
       );
     default: {
       const unreachable: never = state;
@@ -664,6 +713,9 @@ export function PulloutDetailView({
   const [addOpen, setAddOpen] = useState(false);
   const [extrasState, setExtrasState] = useState<ExtraSerialLoad>("idle");
   const [extrasAttempt, setExtrasAttempt] = useState(0);
+  const [extraChoices, setExtraChoices] = useState<Record<string, PulloutLineChoice>>({});
+  const [checklistOptions, setChecklistOptions] =
+    useState<PulloutChecklistOptions>(EMPTY_CHECKLIST_OPTIONS);
   const [deleteTarget, setDeleteTarget] = useState<ItemRow | null>(null);
   const [rejectTarget, setRejectTarget] = useState<ItemRow | null>(null);
   const [rejectRemarks, setRejectRemarks] = useState("");
@@ -717,6 +769,19 @@ export function PulloutDetailView({
       cancelled = true;
     };
   }, [addOpen, canEditList, detail.branch.id, extrasAttempt]);
+
+  useEffect(() => {
+    if (!addOpen || !canEditList) return;
+    let cancelled = false;
+    void listPulloutChecklistOptionsAction().then((result) => {
+      if (cancelled) return;
+      if (result.error) toast.error(result.error);
+      else setChecklistOptions(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [addOpen, canEditList]);
 
   // "loading" is set by the handlers that start a fetch, not inside the effect.
   function toggleAddPanel() {
@@ -774,6 +839,15 @@ export function PulloutDetailView({
 
   const onPulloutIds = new Set(detail.lines.map((line) => line.serialNumberId));
   const availableSerials = extraSerials.filter((serial) => !onPulloutIds.has(serial.serialNumberId));
+  const addedSerials = availableSerials.filter((serial) => selected.includes(serial.serialNumberId));
+  const addedMissing = addedSerials.filter(
+    (serial) =>
+      !pulloutLineComplete(
+        serial.inventoryCode,
+        pulloutLineChoice(extraChoices, serial.serialNumberId),
+      ),
+  );
+  const canSaveList = selected.length > 0 && addedMissing.length === 0;
   const isReserve = detail.status.code === PULLOUT_WORKFLOW_CODE.pending_tl;
   const showApprove = isReserve && capabilities.canApproveTl;
   const showReject = showApprove && capabilities.canRejectTransfer;
@@ -828,6 +902,13 @@ export function PulloutDetailView({
           scheduledAt,
           actualPulloutDate: actualDate,
           serialNumberIds: selected,
+          addedLines: addedSerials.map((serial) =>
+            pulloutLineInput(
+              serial.serialNumberId,
+              serial.inventoryCode,
+              pulloutLineChoice(extraChoices, serial.serialNumberId),
+            ),
+          ),
         }),
       "Pull-out list saved",
     );
@@ -835,9 +916,16 @@ export function PulloutDetailView({
 
   function submitList(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!canEditList || pending || selected.length === 0) return;
+    if (!canEditList || pending || !canSaveList) return;
     if (detail.status.code === PULLOUT_WORKFLOW_CODE.pending_logistics && !listDirty) return;
     saveList();
+  }
+
+  function updateExtraChoice(serialNumberId: string, patch: Partial<PulloutLineChoice>) {
+    setExtraChoices((current) => ({
+      ...current,
+      [serialNumberId]: { ...pulloutLineChoice(current, serialNumberId), ...patch },
+    }));
   }
 
   function attachFile(file: File) {
@@ -1084,11 +1172,7 @@ export function PulloutDetailView({
     if (!canEditList) return null;
     if (detail.status.code === PULLOUT_WORKFLOW_CODE.for_pullout) {
       return (
-        <Button
-          type="submit"
-          form={PULLOUT_LIST_FORM_ID}
-          disabled={pending || selected.length === 0}
-        >
+        <Button type="submit" form={PULLOUT_LIST_FORM_ID} disabled={pending || !canSaveList}>
           Save list
         </Button>
       );
@@ -1100,7 +1184,7 @@ export function PulloutDetailView({
             type="submit"
             form={PULLOUT_LIST_FORM_ID}
             variant="outline"
-            disabled={pending || selected.length === 0}
+            disabled={pending || !canSaveList}
           >
             Save list
           </Button>
@@ -1201,7 +1285,15 @@ export function PulloutDetailView({
             selected={selected}
             onToggle={toggleSerial}
             onRetry={retryExtras}
+            details={{
+              options: checklistOptions,
+              choices: extraChoices,
+              onChange: updateExtraChoice,
+            }}
           />
+        ) : null}
+        {canEditList && addedMissing.length > 0 ? (
+          <p className="text-sm text-muted-foreground">{pulloutMissingDetailsText(addedMissing)}</p>
         ) : null}
       </RecordSection>
       <RecordSection title="History" divided>

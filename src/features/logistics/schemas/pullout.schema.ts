@@ -7,7 +7,7 @@ import {
 
 const checklistIdList = z.array(z.string().min(1));
 
-const pulloutLineSchema = z.object({
+export const pulloutLineSchema = z.object({
   serialNumberId: z.string().min(1),
   /** Stock units only. The service requires it for STK and refuses it for DEF. */
   pulloutReasonCodeId: z.string().min(1).optional(),

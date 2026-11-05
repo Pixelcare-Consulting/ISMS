@@ -16,15 +16,22 @@ import {
   PULLOUT_ATTACHMENT_MAX_FILES,
   pulloutAttachmentError,
 } from "@/features/logistics/constants/pullout-attachments";
-import {
-  PULLOUT_LINE_REMARKS_MAX,
-  pulloutCondition,
-} from "@/features/logistics/services/pullout-posting.planner";
+import { pulloutCondition } from "@/features/logistics/services/pullout-posting.planner";
 import type {
   PulloutCreateInput,
   PulloutDestination,
   PulloutSerialOption,
 } from "@/features/logistics/services/pullout-posting.service";
+import {
+  EMPTY_CHECKLIST_OPTIONS,
+  PULLOUT_LINE_FIELDS,
+  PulloutLineField,
+  pulloutLineChoice,
+  pulloutLineComplete,
+  pulloutLineInput,
+  pulloutMissingDetailsText,
+  type PulloutLineChoice,
+} from "@/app/(app)/logistics/_components/pullout-line-fields";
 import { PulloutConditionBadge } from "@/features/logistics/components/pullout-condition-badge";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { Button } from "@/components/ui/button";
@@ -38,23 +45,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { SearchableMultiSelect } from "@/components/ui/searchable-multi-select";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 
 const PULLOUT_CREATE_FORM_ID = "pullout-create-form";
 const POPOVER_CLASS = "z-[100]";
 const SERIAL_PAGE_SIZE = 10;
-const EMPTY_LOOKUP_MESSAGE = "None in Master data";
 const UNIT_COLUMN_COUNT = 10;
-const MISSING_SERIALS_SHOWN = 3;
-
-const EMPTY_CHECKLIST_OPTIONS: PulloutChecklistOptions = {
-  reasons: [],
-  problemDescriptions: [],
-  classifications: [],
-  unitPackingConditions: [],
-  accessoryCompleteness: [],
-};
 
 const MANILA_DATE = new Intl.DateTimeFormat("en-PH", {
   year: "numeric",
@@ -63,31 +59,7 @@ const MANILA_DATE = new Intl.DateTimeFormat("en-PH", {
   timeZone: "Asia/Manila",
 });
 
-type ChecklistField =
-  | "problemDescriptionIds"
-  | "pulloutClassificationIds"
-  | "unitPackingConditionIds"
-  | "accessoryCompletenessIds";
-
-interface PulloutLineChoice {
-  pulloutReasonCodeId: string;
-  problemDescriptionIds: string[];
-  pulloutClassificationIds: string[];
-  unitPackingConditionIds: string[];
-  accessoryCompletenessIds: string[];
-  remarks: string;
-}
-
 type DestinationState = { warehouse: PulloutDestination } | { error: string };
-
-const EMPTY_CHOICE: PulloutLineChoice = {
-  pulloutReasonCodeId: "",
-  problemDescriptionIds: [],
-  pulloutClassificationIds: [],
-  unitPackingConditionIds: [],
-  accessoryCompletenessIds: [],
-  remarks: "",
-};
 
 interface PulloutRequestDialogProps {
   open: boolean;
@@ -107,39 +79,6 @@ function serialMatches(serial: PulloutSerialOption, query: string): boolean {
     serial.modelName.toLowerCase().includes(needle) ||
     serial.serialNo.toLowerCase().includes(needle)
   );
-}
-
-function choiceFor(
-  choices: Readonly<Record<string, PulloutLineChoice>>,
-  serialNumberId: string,
-): PulloutLineChoice {
-  return choices[serialNumberId] ?? EMPTY_CHOICE;
-}
-
-function needsClassification(serial: PulloutSerialOption): boolean {
-  return serial.inventoryCode === "STK";
-}
-
-/** A stock unit picks a reason. A defective unit's reason is fixed, so it names the problem. */
-function reasonComplete(serial: PulloutSerialOption, choice: PulloutLineChoice): boolean {
-  return serial.inventoryCode === "STK"
-    ? choice.pulloutReasonCodeId !== ""
-    : choice.problemDescriptionIds.length > 0;
-}
-
-function unitComplete(serial: PulloutSerialOption, choice: PulloutLineChoice): boolean {
-  return (
-    reasonComplete(serial, choice) &&
-    (!needsClassification(serial) || choice.pulloutClassificationIds.length > 0) &&
-    choice.unitPackingConditionIds.length > 0 &&
-    choice.accessoryCompletenessIds.length > 0
-  );
-}
-
-function missingDetailsText(missing: readonly PulloutSerialOption[]): string {
-  const named = missing.slice(0, MISSING_SERIALS_SHOWN).map((serial) => serial.serialNo);
-  const others = missing.length - named.length;
-  return `Still missing: ${named.join(", ")}${others > 0 ? ` and ${others} more` : ""}.`;
 }
 
 function unitTableMessage(input: {
@@ -209,35 +148,6 @@ function ModelCell({ skuCode, name }: { skuCode: string; name: string }) {
       <p className="truncate">{skuCode}</p>
       {name ? <p className="truncate text-xs text-muted-foreground">{name}</p> : null}
     </div>
-  );
-}
-
-function ChecklistCell({
-  label,
-  options,
-  selectedIds,
-  onChange,
-  disabled,
-}: {
-  label: string;
-  options: { id: string; name: string }[];
-  selectedIds: string[];
-  onChange: (ids: string[]) => void;
-  disabled: boolean;
-}) {
-  return (
-    <td className="px-2 py-2 align-top">
-      <SearchableMultiSelect
-        ariaLabel={label}
-        options={options.map((option) => ({ id: option.id, label: option.name }))}
-        selectedIds={selectedIds}
-        onChange={onChange}
-        disabled={disabled}
-        emptyMessage={EMPTY_LOOKUP_MESSAGE}
-        truncateLabels={false}
-        popoverClassName={POPOVER_CLASS}
-      />
-    </td>
   );
 }
 
@@ -332,7 +242,8 @@ export function PulloutRequestDialog({
   const allMatchingSelected = filteredSerials.length > 0 && selectedMatching === filteredSerials.length;
   const selectedSerials = serials.filter((serial) => selectedSet.has(serial.serialNumberId));
   const missingDetails = selectedSerials.filter(
-    (serial) => !unitComplete(serial, choiceFor(choices, serial.serialNumberId)),
+    (serial) =>
+      !pulloutLineComplete(serial.inventoryCode, pulloutLineChoice(choices, serial.serialNumberId)),
   );
   const ready = selectedSerials.length > 0 && missingDetails.length === 0;
   const tableMessage = unitTableMessage({
@@ -358,10 +269,10 @@ export function PulloutRequestDialog({
     );
   }
 
-  function setChecklistIds(serialNumberId: string, field: ChecklistField, ids: string[]) {
+  function updateChoice(serialNumberId: string, patch: Partial<PulloutLineChoice>) {
     setChoices((current) => ({
       ...current,
-      [serialNumberId]: { ...choiceFor(current, serialNumberId), [field]: ids },
+      [serialNumberId]: { ...pulloutLineChoice(current, serialNumberId), ...patch },
     }));
   }
 
@@ -375,20 +286,6 @@ export function PulloutRequestDialog({
       for (const id of matchingIds) next.add(id);
       return [...next];
     });
-  }
-
-  function setReason(serialNumberId: string, pulloutReasonCodeId: string) {
-    setChoices((current) => ({
-      ...current,
-      [serialNumberId]: { ...choiceFor(current, serialNumberId), pulloutReasonCodeId },
-    }));
-  }
-
-  function setRemarks(serialNumberId: string, remarks: string) {
-    setChoices((current) => ({
-      ...current,
-      [serialNumberId]: { ...choiceFor(current, serialNumberId), remarks },
-    }));
   }
 
   function resetUnits() {
@@ -445,22 +342,13 @@ export function PulloutRequestDialog({
     startTransition(async () => {
       const result = await onSubmit({
         branchId,
-        lines: selectedSerials.map((serial) => {
-          const choice = choiceFor(choices, serial.serialNumberId);
-          return {
-            serialNumberId: serial.serialNumberId,
-            pulloutReasonCodeId:
-              serial.inventoryCode === "STK" ? choice.pulloutReasonCodeId : undefined,
-            problemDescriptionIds:
-              serial.inventoryCode === "DEF" ? choice.problemDescriptionIds : [],
-            pulloutClassificationIds: needsClassification(serial)
-              ? choice.pulloutClassificationIds
-              : [],
-            unitPackingConditionIds: choice.unitPackingConditionIds,
-            accessoryCompletenessIds: choice.accessoryCompletenessIds,
-            remarks: choice.remarks,
-          };
-        }),
+        lines: selectedSerials.map((serial) =>
+          pulloutLineInput(
+            serial.serialNumberId,
+            serial.inventoryCode,
+            pulloutLineChoice(choices, serial.serialNumberId),
+          ),
+        ),
       });
       if (result.error) {
         toast.error(result.error);
@@ -623,21 +511,15 @@ export function PulloutRequestDialog({
                       <th className="w-16 px-2 py-2 align-middle font-medium" scope="col">
                         Status
                       </th>
-                      <th className="px-2 py-2 align-middle font-medium" scope="col">
-                        Reason
-                      </th>
-                      <th className="px-2 py-2 align-middle font-medium" scope="col">
-                        Classification
-                      </th>
-                      <th className="px-2 py-2 align-middle font-medium" scope="col">
-                        Unit packing condition
-                      </th>
-                      <th className="px-2 py-2 align-middle font-medium" scope="col">
-                        Acc completeness
-                      </th>
-                      <th className="w-32 px-2 py-2 align-middle font-medium" scope="col">
-                        Remarks
-                      </th>
+                      {PULLOUT_LINE_FIELDS.map(({ field, header }) => (
+                        <th
+                          key={field}
+                          className={`${field === "remarks" ? "w-32 " : ""}px-2 py-2 align-middle font-medium`}
+                          scope="col"
+                        >
+                          {header}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
@@ -654,7 +536,7 @@ export function PulloutRequestDialog({
                       visibleSerials.map((serial, index) => {
                         const isSelected = selectedSet.has(serial.serialNumberId);
                         const fieldsDisabled = pending || !isSelected;
-                        const choice = choiceFor(choices, serial.serialNumberId);
+                        const choice = pulloutLineChoice(choices, serial.serialNumberId);
                         return (
                           <tr
                             key={serial.serialNumberId}
@@ -688,92 +570,20 @@ export function PulloutRequestDialog({
                                 name={serial.inventoryCode}
                               />
                             </td>
-                            {serial.inventoryCode === "STK" ? (
-                              <td className="px-2 py-2 align-top">
-                                <SearchableSelect
-                                  id={`pullout-reason-${serial.serialNumberId}`}
-                                  ariaLabel={`Reason for ${serial.serialNo}`}
-                                  options={checklistOptions.reasons.map((reason) => ({
-                                    id: reason.id,
-                                    label: reason.name,
-                                  }))}
-                                  value={choice.pulloutReasonCodeId}
-                                  onChange={(id) => setReason(serial.serialNumberId, id)}
-                                  placeholder="Select…"
-                                  searchPlaceholder="Search reasons…"
+                            {PULLOUT_LINE_FIELDS.map(({ field }) => (
+                              <td key={field} className="px-2 py-2 align-top">
+                                <PulloutLineField
+                                  field={field}
+                                  serialNumberId={serial.serialNumberId}
+                                  serialNo={serial.serialNo}
+                                  unitCode={serial.inventoryCode}
+                                  options={checklistOptions}
+                                  choice={choice}
                                   disabled={fieldsDisabled}
-                                  popoverClassName={POPOVER_CLASS}
+                                  onChange={(patch) => updateChoice(serial.serialNumberId, patch)}
                                 />
                               </td>
-                            ) : (
-                              <ChecklistCell
-                                label={`Problem description for ${serial.serialNo}`}
-                                options={checklistOptions.problemDescriptions}
-                                selectedIds={choice.problemDescriptionIds}
-                                disabled={fieldsDisabled}
-                                onChange={(ids) =>
-                                  setChecklistIds(
-                                    serial.serialNumberId,
-                                    "problemDescriptionIds",
-                                    ids,
-                                  )
-                                }
-                              />
-                            )}
-                            {needsClassification(serial) ? (
-                              <ChecklistCell
-                                label={`Classification for ${serial.serialNo}`}
-                                options={checklistOptions.classifications}
-                                selectedIds={choice.pulloutClassificationIds}
-                                disabled={fieldsDisabled}
-                                onChange={(ids) =>
-                                  setChecklistIds(
-                                    serial.serialNumberId,
-                                    "pulloutClassificationIds",
-                                    ids,
-                                  )
-                                }
-                              />
-                            ) : (
-                              <td className="px-2 py-2 align-top text-muted-foreground">—</td>
-                            )}
-                            <ChecklistCell
-                              label={`Unit packing condition for ${serial.serialNo}`}
-                              options={checklistOptions.unitPackingConditions}
-                              selectedIds={choice.unitPackingConditionIds}
-                              disabled={fieldsDisabled}
-                              onChange={(ids) =>
-                                setChecklistIds(
-                                  serial.serialNumberId,
-                                  "unitPackingConditionIds",
-                                  ids,
-                                )
-                              }
-                            />
-                            <ChecklistCell
-                              label={`Acc completeness for ${serial.serialNo}`}
-                              options={checklistOptions.accessoryCompleteness}
-                              selectedIds={choice.accessoryCompletenessIds}
-                              disabled={fieldsDisabled}
-                              onChange={(ids) =>
-                                setChecklistIds(
-                                  serial.serialNumberId,
-                                  "accessoryCompletenessIds",
-                                  ids,
-                                )
-                              }
-                            />
-                            <td className="px-2 py-2 align-top">
-                              <Input
-                                value={choice.remarks}
-                                maxLength={PULLOUT_LINE_REMARKS_MAX}
-                                disabled={fieldsDisabled}
-                                aria-label={`Remarks for ${serial.serialNo}`}
-                                onChange={(event) =>
-                                  setRemarks(serial.serialNumberId, event.target.value)
-                                }
-                              />
-                            </td>
+                            ))}
                           </tr>
                         );
                       })
@@ -811,9 +621,7 @@ export function PulloutRequestDialog({
               ) : null}
               {missingDetails.length > 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  Choose unit packing condition and acc completeness for every selected unit, plus
-                  reason and classification for STK units and a problem description for DEF units.{" "}
-                  {missingDetailsText(missingDetails)}
+                  {pulloutMissingDetailsText(missingDetails)}
                 </p>
               ) : null}
             </section>

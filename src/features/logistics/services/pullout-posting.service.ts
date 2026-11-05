@@ -13,7 +13,7 @@ import {
   PULLOUT_WORKFLOW_CODE,
   type PulloutWorkflowCodeKey,
 } from "@/features/logistics/constants/workflow-codes";
-import type { AllocatableSerial } from "@/features/logistics/services/posting-planner-types";
+import type { AllocatableSerial, HoldCode } from "@/features/logistics/services/posting-planner-types";
 import {
   planPulloutApprove,
   planPulloutReceive,
@@ -55,6 +55,9 @@ import { prisma } from "@/lib/database/client";
 import { buildPulloutAttachmentPath, getObjectStorage } from "@/lib/storage";
 
 const CLAIM_LOST = "One or more serials changed before this pull-out could be saved";
+
+/** A unit being put on a pull-out, with the STK or DEF it starts as. */
+type PlannedLine = { serialNumberId: string; priorCode: HoldCode };
 
 export interface PulloutSerialOption {
   serialNumberId: string;
@@ -414,6 +417,70 @@ async function assertActiveChecklist(
   }
 }
 
+/** Every planned unit has details, and they fit its own STK or DEF. */
+function assertLineDetails(
+  lines: readonly PlannedLine[],
+  details: ReadonlyMap<string, PulloutCreateLine>,
+): void {
+  if (lines.length !== details.size || lines.some((line) => !details.has(line.serialNumberId))) {
+    throw new Error(CHECKLIST_REQUIRED);
+  }
+  for (const line of lines) {
+    const choice = details.get(line.serialNumberId);
+    const classificationError = pulloutClassificationError(
+      line.priorCode,
+      choice?.pulloutClassificationIds.length ?? 0,
+    );
+    if (classificationError) throw new Error(classificationError);
+    const reasonError = pulloutReasonError(
+      line.priorCode,
+      Boolean(choice?.pulloutReasonCodeId),
+      choice?.problemDescriptionIds.length ?? 0,
+    );
+    if (reasonError) throw new Error(reasonError);
+  }
+}
+
+async function defectiveReasonIdFor(
+  tenantId: string,
+  lines: readonly PlannedLine[],
+): Promise<string | null> {
+  if (!lines.some((line) => line.priorCode === "DEF")) return null;
+  return reasonStatusService.requireCodeId(tenantId, "pullout_reason", PULLOUT_DEFECTIVE_REASON_CODE);
+}
+
+/** The details a line saves, whether it was on the request or added by Logistics. */
+function lineDetailData(
+  line: PlannedLine,
+  details: ReadonlyMap<string, PulloutCreateLine>,
+  defectiveReasonId: string | null,
+) {
+  const choice = details.get(line.serialNumberId);
+  if (!choice) throw new Error(CHECKLIST_REQUIRED);
+  return {
+    remarks: choice.remarks?.trim() || null,
+    reasonCodeId: line.priorCode === "DEF" ? defectiveReasonId : choice.pulloutReasonCodeId,
+    problemDescriptions: {
+      create: choice.problemDescriptionIds.map((problemDescriptionId) => ({ problemDescriptionId })),
+    },
+    classifications: {
+      create: choice.pulloutClassificationIds.map((pulloutClassificationId) => ({
+        pulloutClassificationId,
+      })),
+    },
+    packingConditions: {
+      create: choice.unitPackingConditionIds.map((unitPackingConditionId) => ({
+        unitPackingConditionId,
+      })),
+    },
+    accessoryCompletenesses: {
+      create: choice.accessoryCompletenessIds.map((accessoryCompletenessId) => ({
+        accessoryCompletenessId,
+      })),
+    },
+  };
+}
+
 function savedNames(names: readonly (string | null | undefined)[]): string[] {
   return names.flatMap((name) => {
     const trimmed = displayName(name);
@@ -767,36 +834,10 @@ export const pulloutPostingService = {
       serials,
     });
     if (!plan.ok) throw new Error(plan.error);
-    if (
-      plan.lines.length !== checklist.size ||
-      plan.lines.some((line) => !checklist.has(line.serialNumberId))
-    ) {
-      throw new Error(CHECKLIST_REQUIRED);
-    }
-    for (const line of plan.lines) {
-      const choice = checklist.get(line.serialNumberId);
-      const classificationError = pulloutClassificationError(
-        line.priorCode,
-        choice?.pulloutClassificationIds.length ?? 0,
-      );
-      if (classificationError) throw new Error(classificationError);
-      const reasonError = pulloutReasonError(
-        line.priorCode,
-        Boolean(choice?.pulloutReasonCodeId),
-        choice?.problemDescriptionIds.length ?? 0,
-      );
-      if (reasonError) throw new Error(reasonError);
-    }
-
+    assertLineDetails(plan.lines, checklist);
     const codes = await inventoryIds(actor.tenantId);
     const statusCodeId = await workflowId(actor.tenantId, "pending_tl");
-    const defectiveReasonId = plan.lines.some((line) => line.priorCode === "DEF")
-      ? await reasonStatusService.requireCodeId(
-          actor.tenantId,
-          "pullout_reason",
-          PULLOUT_DEFECTIVE_REASON_CODE,
-        )
-      : null;
+    const defectiveReasonId = await defectiveReasonIdFor(actor.tenantId, plan.lines);
 
     try {
       return await prisma.$transaction(async (tx) => {
@@ -829,37 +870,11 @@ export const pulloutPostingService = {
             notes: input.notes?.trim() || null,
             createdById: actor.userId,
             lines: {
-              create: plan.lines.map((line) => {
-                const choice = checklist.get(line.serialNumberId);
-                if (!choice) throw new Error(CHECKLIST_REQUIRED);
-                return {
-                  serialNumberId: line.serialNumberId,
-                  priorStatusCodeId: codes[line.priorCode],
-                  remarks: choice.remarks?.trim() || null,
-                  reasonCodeId:
-                    line.priorCode === "DEF" ? defectiveReasonId : choice.pulloutReasonCodeId,
-                  problemDescriptions: {
-                    create: choice.problemDescriptionIds.map((problemDescriptionId) => ({
-                      problemDescriptionId,
-                    })),
-                  },
-                  classifications: {
-                    create: choice.pulloutClassificationIds.map((pulloutClassificationId) => ({
-                      pulloutClassificationId,
-                    })),
-                  },
-                  packingConditions: {
-                    create: choice.unitPackingConditionIds.map((unitPackingConditionId) => ({
-                      unitPackingConditionId,
-                    })),
-                  },
-                  accessoryCompletenesses: {
-                    create: choice.accessoryCompletenessIds.map((accessoryCompletenessId) => ({
-                      accessoryCompletenessId,
-                    })),
-                  },
-                };
-              }),
+              create: plan.lines.map((line) => ({
+                serialNumberId: line.serialNumberId,
+                priorStatusCodeId: codes[line.priorCode],
+                ...lineDetailData(line, checklist, defectiveReasonId),
+              })),
             },
             approvalLevels: { create: [{ level: 1, roleSlug: "tl" }] },
           },
@@ -1187,6 +1202,8 @@ export const pulloutPostingService = {
       actualScheduledDate?: Date | null;
       notes?: string | null;
       serialNumberIds?: string[];
+      /** Details for serials not yet on the pull-out, with the same rules as the request. */
+      addedLines?: PulloutCreateLine[];
     },
   ) {
     const current = await loadPullout(prisma, actor.tenantId, input.pulloutId);
@@ -1202,6 +1219,11 @@ export const pulloutPostingService = {
     const added = await loadAllocatable(actor.tenantId, current.branchId, addedIds, current.id);
     const plan = planPulloutUpdateList({ status: current.status, kept, removed, added });
     if (!plan.ok) throw new Error(plan.error);
+    const addedLines = plan.holds.length > 0 ? (input.addedLines ?? []) : [];
+    const addedDetails = plan.holds.length > 0 ? checklistBySerial(addedLines) : new Map();
+    assertLineDetails(plan.holds, addedDetails);
+    await assertActiveChecklist(actor.tenantId, addedLines);
+    const defectiveReasonId = await defectiveReasonIdFor(actor.tenantId, plan.holds);
 
     const codes = await inventoryIds(actor.tenantId);
     const nextStatusId = await workflowId(actor.tenantId, "pending_logistics");
@@ -1280,14 +1302,15 @@ export const pulloutPostingService = {
             },
           });
         }
-        if (freshPlan.holds.length > 0) {
-          // New lines from this screen have no checklist. Kept lines are not rewritten.
-          await tx.branchPulloutLine.createMany({
-            data: freshPlan.holds.map((hold) => ({
+        // Nested details need one create each. Kept lines are not rewritten.
+        for (const hold of freshPlan.holds) {
+          await tx.branchPulloutLine.create({
+            data: {
               pulloutId: fresh.id,
               serialNumberId: hold.serialNumberId,
               priorStatusCodeId: codes[hold.priorCode],
-            })),
+              ...lineDetailData(hold, addedDetails, defectiveReasonId),
+            },
           });
         }
 

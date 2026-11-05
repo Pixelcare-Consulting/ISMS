@@ -3,6 +3,8 @@ import { formatScheduleDate, shipmentIsReady, type LogisticsShipment } from "@/f
 export interface ShipmentPrintLine {
   model: string;
   detail: string;
+  /** Cells for `extraHeaders`, in the same order. */
+  extras?: string[];
 }
 
 export interface ShipmentPrintDocument {
@@ -14,6 +16,7 @@ export interface ShipmentPrintDocument {
   fields: { label: string; value: string }[];
   lines: ShipmentPrintLine[];
   lineHeaders: { model: string; detail: string };
+  extraHeaders?: string[];
 }
 
 function escapeHtml(value: string): string {
@@ -31,6 +34,7 @@ export function shipmentPrintDocument(input: {
   fields: { label: string; value: string }[];
   lines: ShipmentPrintLine[];
   lineHeaders: { model: string; detail: string };
+  extraHeaders?: string[];
 }): ShipmentPrintDocument | null {
   if (!shipmentIsReady(input.shipment)) return null;
   const waybillNo = input.shipment.waybillNo?.trim() ?? "";
@@ -46,10 +50,11 @@ export function shipmentPrintDocument(input: {
     fields: input.fields,
     lines: input.lines,
     lineHeaders: input.lineHeaders,
+    extraHeaders: input.extraHeaders,
   };
 }
 
-function shipmentPrintHtml(document: ShipmentPrintDocument): string {
+export function shipmentPrintHtml(document: ShipmentPrintDocument): string {
   const fields = [
     { label: "Waybill", value: document.waybillNo },
     { label: "Courier / forwarder", value: document.courierName },
@@ -61,15 +66,20 @@ function shipmentPrintHtml(document: ShipmentPrintDocument): string {
         `<div class="field"><div class="label">${escapeHtml(field.label)}</div><div>${escapeHtml(field.value)}</div></div>`,
     )
     .join("");
+  const headers = [
+    document.lineHeaders.model,
+    document.lineHeaders.detail,
+    ...(document.extraHeaders ?? []),
+  ];
   const rows =
     document.lines.length > 0
       ? document.lines
-          .map(
-            (line) =>
-              `<tr><td>${escapeHtml(line.model)}</td><td>${escapeHtml(line.detail)}</td></tr>`,
-          )
+          .map((line) => {
+            const cells = [line.model, line.detail, ...(line.extras ?? [])];
+            return `<tr>${cells.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`;
+          })
           .join("")
-      : `<tr><td colspan="2">No units on this ${escapeHtml(document.title.toLowerCase())}.</td></tr>`;
+      : `<tr><td colspan="${headers.length}">No units on this ${escapeHtml(document.title.toLowerCase())}.</td></tr>`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -93,7 +103,7 @@ function shipmentPrintHtml(document: ShipmentPrintDocument): string {
   <p class="sub">${escapeHtml(document.documentNo)}</p>
   <div class="grid">${fields}</div>
   <table>
-    <thead><tr><th>${escapeHtml(document.lineHeaders.model)}</th><th>${escapeHtml(document.lineHeaders.detail)}</th></tr></thead>
+    <thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead>
     <tbody>${rows}</tbody>
   </table>
 </body>

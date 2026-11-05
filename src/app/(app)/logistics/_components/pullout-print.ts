@@ -3,6 +3,15 @@ import { PULLOUT_WORKFLOW_CODE } from "@/features/logistics/constants/workflow-c
 import { manilaDateTimeInputValue } from "@/features/logistics/lib/shipment";
 import type { PulloutDetail } from "@/features/logistics/services/pullout-posting.service";
 
+type PrintedLine = PulloutDetail["lines"][number];
+
+/** Older pull-outs hold one reason on the header instead of one per unit. */
+function reasonText(line: PrintedLine, headerReason: string | undefined): string {
+  const reason = line.reasonName ?? headerReason;
+  const problems = line.problemDescriptionNames.join(", ");
+  return [reason, problems].filter(Boolean).join(": ") || "—";
+}
+
 /** Null until the waybill, courier and schedule are saved, so the slip uses saved values only. */
 export function pulloutPrintDocument(detail: PulloutDetail) {
   if (detail.status.code === PULLOUT_WORKFLOW_CODE.cancelled) return null;
@@ -25,7 +34,9 @@ export function pulloutPrintDocument(detail: PulloutDetail) {
       .map((line) => ({
         model: `${line.skuCode} ${line.modelName}`,
         detail: [line.serialNo, line.priorCode].filter(Boolean).join(" · "),
+        extras: [reasonText(line, detail.reason?.name), line.remarks?.trim() || "—"],
       })),
     lineHeaders: { model: "Model", detail: "Serial number" },
+    extraHeaders: ["Reason", "Remarks"],
   });
 }
