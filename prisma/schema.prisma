@@ -1864,7 +1864,7 @@ model BranchPlanogram {
   maxQty        Int       @default(0) @map("calculated_max_qty")
   /// Inputs of the last calculation (`MaxQtyCalc`). Null until the first forecast upload.
   maxQtyCalc     Json?     @map("max_qty_calc")
-  /// Set by a manual edit or planogram upload. The next forecast upload clears it.
+  /// Set when a person enters the value. The next forecast upload clears it.
   maxQtyEditedAt DateTime? @map("max_qty_edited_at")
   /// The old Shelf max, left untouched for traceability. The app must not read or write it.
   /// Null on rows created after the change. See "Planogram Max Qty" in README.md.

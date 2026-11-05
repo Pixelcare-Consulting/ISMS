@@ -272,9 +272,10 @@ Max Qty is the per-branch, per-SKU limit that was called Shelf max. The client r
 
 - **Trap:** in raw SQL, `max_qty` is the old value, not the live one. Use `calculated_max_qty`.
 - **Why a new column:** the migration only adds to the table, so no existing value is overwritten, and the old numbers stop appearing without a data reset.
-- **Calculation:** `(Target forecast qty + current DU) ÷ frequency`, rounded up, recalculated for the branches in each forecast upload. Manual edits are allowed and the next upload replaces them. See `src/features/planogram/lib/target-forecast-qty.ts`.
-- **Before the first upload:** the value is 0 and the planogram row says "Not calculated yet". 0 is a real limit, so Manual and Auto replenish orders cannot include that SKU, and existing drafts fail on edit or submit. On a new environment, deploy and upload the forecast together.
-- **Old names kept on purpose:** the `shelf_max` column in the planogram template, and the `shelfMax` keys in saved AI proposals and report datasets. Only the on-screen label changed.
+- **Calculation:** `(Target forecast qty + current DU) ÷ frequency`, rounded up, recalculated for the branches in each forecast upload. See `src/features/planogram/lib/target-forecast-qty.ts`.
+- **Not on the planogram template or table:** the planogram import only sets branch and SKU, and ignores a `shelf_max` column left in an older file. The branch planogram table does not show the value. Add model still takes a starting value, which the next upload replaces.
+- **Before the first upload:** the value is 0, including on rows added by planogram import. 0 is a real limit, so Manual and Auto replenish orders cannot include that SKU, and existing drafts fail on edit or submit. On a new environment, deploy and upload the forecast together.
+- **Old names kept on purpose:** the `shelfMax` keys in saved AI proposals and report datasets. Only the on-screen label changed.
 - **To go back to the old value:** map `maxQty` back to `max_qty` in `prisma/schema.prisma` and restore `NOT NULL` with a migration. Rows created since the change have no old value and need one first.
 
 ## SAP integration (current)

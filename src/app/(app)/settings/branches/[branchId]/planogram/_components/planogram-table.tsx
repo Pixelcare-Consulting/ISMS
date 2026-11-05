@@ -10,7 +10,6 @@ import {
   addPlanogramModelsAction,
   listActiveModelsForPlanogramAction,
   removePlanogramModelAction,
-  updatePlanogramMaxQtyAction,
 } from "@/features/planogram/actions/planogram.actions";
 import type { PlanogramAddEmptyReason } from "@/features/planogram/services/planogram.service";
 import {
@@ -45,18 +44,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  describeMaxQtyCalc,
-  TARGET_FORECAST_FORMULA,
-  type MaxQtyCalc,
-} from "@/features/planogram/lib/target-forecast-qty";
+import { TARGET_FORECAST_FORMULA } from "@/features/planogram/lib/target-forecast-qty";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
 interface PlanogramRow {
   id: string;
-  maxQty: number;
-  maxQtyCalc: MaxQtyCalc | null;
-  maxQtyEditedByHand: boolean;
   effectiveFrom?: string | null;
   stockCount: number;
   ditCount: number;
@@ -125,7 +117,6 @@ export function PlanogramTable({
     sku: (row) => row.model.skuCode,
     model: (row) => row.model.name,
     series: (row) => row.model.series,
-    maxQty: (row) => row.maxQty,
   });
 
   const suggestions = useMemo(
@@ -166,21 +157,6 @@ export function PlanogramTable({
         header: "Series",
         enableSorting: true,
         cell: ({ row }) => row.original.model.series ?? "—",
-      }),
-      planogramColumn.display({
-        id: "maxQty",
-        header: "Max Qty",
-        enableSorting: true,
-        cell: ({ row }) => (
-          <ShelfMaxCell
-            key={`${row.original.id}:${row.original.maxQty}`}
-            branchId={branchId}
-            planogramId={row.original.id}
-            maxQty={row.original.maxQty}
-            canManage={canManage}
-            detail={describeMaxQtyCalc(row.original.maxQtyCalc, row.original.maxQtyEditedByHand)}
-          />
-        ),
       }),
       planogramColumn.display({
         id: "units",
@@ -247,11 +223,6 @@ export function PlanogramTable({
         </div>
       ) : null}
 
-      <p className="text-muted-foreground text-sm">
-        Max Qty = {TARGET_FORECAST_FORMULA}, rounded up. It is recalculated on every forecast
-        upload, and any manual edit is replaced by that upload.
-      </p>
-
       <DataTable
         data={sort.sorted}
         columns={columns}
@@ -312,86 +283,6 @@ export function PlanogramTable({
         onConfirm={handleRemove}
         pending={pending}
       />
-    </div>
-  );
-}
-
-function ShelfMaxCell({
-  branchId,
-  planogramId,
-  maxQty,
-  canManage,
-  detail,
-}: {
-  branchId: string;
-  planogramId: string;
-  maxQty: number;
-  canManage: boolean;
-  detail: ReturnType<typeof describeMaxQtyCalc>;
-}) {
-  const router = useRouter();
-  const [value, setValue] = useState(String(maxQty));
-  const [pending, startTransition] = useTransition();
-
-  function save() {
-    const parsed = Number.parseInt(value, 10);
-    // First, because a calculated 0 must not raise an error when the field only loses focus.
-    if (parsed === maxQty) return;
-    if (!Number.isInteger(parsed) || parsed < 1) {
-      setValue(String(maxQty));
-      toast.error("Max Qty must be at least 1");
-      return;
-    }
-
-    startTransition(async () => {
-      const result = await updatePlanogramMaxQtyAction({
-        planogramId,
-        branchId,
-        maxQty: parsed,
-      });
-      if (result.error) {
-        toast.error(result.error);
-        setValue(String(maxQty));
-        return;
-      }
-      toast.success("Max Qty updated");
-      router.refresh();
-    });
-  }
-
-  return (
-    <div className="max-w-56 space-y-1">
-      {canManage ? (
-        <Input
-          type="number"
-          min={1}
-          step={1}
-          className="h-8 w-16 tabular-nums"
-          value={value}
-          disabled={pending}
-          onChange={(e) => setValue(e.target.value)}
-          onBlur={save}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.currentTarget.blur();
-            }
-          }}
-          aria-label="Max Qty"
-        />
-      ) : (
-        <span className="tabular-nums">{maxQty}</span>
-      )}
-      {detail.calculation ? (
-        <p className="text-muted-foreground text-xs tabular-nums">{detail.calculation}</p>
-      ) : null}
-      {detail.notices.map((notice) => (
-        <p
-          key={notice}
-          className="whitespace-normal text-xs text-amber-800 dark:text-amber-300"
-        >
-          {notice}
-        </p>
-      ))}
     </div>
   );
 }

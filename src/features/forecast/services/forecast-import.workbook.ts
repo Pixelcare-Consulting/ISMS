@@ -39,10 +39,10 @@ export interface ForecastImportSheets {
 const EMPTY_SHEET: SheetRows = { present: false, columns: new Set(), rows: [] };
 
 const BRS_LAYOUT_ERROR =
-  "This file is the old BRS forecast/planogram layout, not the Forecast template. Download the template (SFE: period, branch_name, sku, forecast_qty). Use Planogram for Max Qty.";
+  "This file is the old BRS forecast/planogram layout, not the Forecast template. Download the template (SFE: period, branch_name, sku, forecast_qty).";
 
 const PLANOGRAM_FILE_ERROR =
-  "This file looks like the Planogram template, not Forecast. Download the Forecast template. Max Qty belongs under Planogram.";
+  "This file looks like the Planogram template, not Forecast. Download the Forecast template.";
 
 const FOCUS_SHEET_ERROR =
   `A "${FOCUS_SHEET_NAME}" sheet is not supported. Remove it and use the SFE sheet only (period, branch_name, sku, forecast_qty).`;

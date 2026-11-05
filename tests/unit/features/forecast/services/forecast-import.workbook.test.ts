@@ -45,6 +45,10 @@ describe("forecast import workbook", () => {
 
   it("rejects a planogram file, including one that re-adds a max column", async () => {
     await expect(
+      readForecastImportWorkbook(Buffer.from("branch_name,sku\nWestern Makati,100L10E\n")),
+    ).rejects.toThrow(/forecast_qty/);
+
+    await expect(
       readForecastImportWorkbook(
         Buffer.from("branch_name,sku,shelf_max\nWestern Makati,100L10E,2\n"),
       ),
