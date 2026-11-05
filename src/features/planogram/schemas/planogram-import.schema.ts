@@ -1,25 +1,25 @@
 /**
  * Workbook contract for bulk planogram import (Settings → Planogram).
  *
- * Sheet "Planogram" — one row per branch name + SKU + Max Qty. Template-only:
+ * Sheet "Planogram" — one row per branch name + SKU. Template-only:
  * the old BRS wide Y/N layout is rejected here. A file that still uses the
  * branch SAP code does not match these columns.
  *
  * SKUs and branch names must already exist. Names match after trim, ignoring
  * case. More than one branch with that name is an error. Rows not in the file
- * are not deleted. Extra columns (including leftover mil_days) are ignored.
+ * are not deleted. Extra columns (including leftover mil_days and shelf_max) are
+ * ignored. Max Qty comes only from the forecast upload, so this file never sets it.
  * Branch Target Quota uses the SFE Forecast template on Planning.
  */
 
 export const PLANOGRAM_SHEET_NAME = "Planogram";
 
-export const PLANOGRAM_SHEET_HEADERS = ["branch_name", "sku", "shelf_max"] as const;
+export const PLANOGRAM_SHEET_HEADERS = ["branch_name", "sku"] as const;
 
 /** Download header shown when a required canonical column is missing. */
 export const PLANOGRAM_IMPORT_COLUMN_LABELS: Record<string, string> = {
   branch_name: "branch_name",
   sku: "sku",
-  shelf_max: "shelf_max",
 };
 
 /**
@@ -33,19 +33,14 @@ export const PLANOGRAM_IMPORT_ALIAS_MAP: Record<string, string> = {
   skucode: "sku",
   itemcode: "sku",
   itemno: "sku",
-  shelfmax: "shelf_max",
-  maxqty: "shelf_max",
 };
 
-export const PLANOGRAM_IMPORT_REQUIRED_COLUMNS = ["branch_name", "sku", "shelf_max"] as const;
-
-export const PLANOGRAM_DEFAULT_MAX_QTY = 1;
+export const PLANOGRAM_IMPORT_REQUIRED_COLUMNS = ["branch_name", "sku"] as const;
 
 export const PLANOGRAM_DEFAULT_MIL_DAYS = 30;
 
 export const PLANOGRAM_IMPORT_FIELD_LABELS: Record<string, string> = {
   allowedModel: "Allowed model",
-  maxQty: "Max Qty",
 };
 
 export interface PlanogramImportRowError {
@@ -70,7 +65,6 @@ export interface PlanogramImportRowPlan {
   sapCode: string;
   sku: string;
   branchName: string;
-  maxQty: number;
   milDays: number;
   action: PlanogramImportRowAction;
   changes: PlanogramImportFieldChange[];

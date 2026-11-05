@@ -20,14 +20,14 @@ export const PLANNING_PAGE_TUTORIAL: PageTutorialContent = {
         "Choose the period from Active period at the top. Switching it makes that period the one used on the dashboard.",
         "Click Total branches to jump to the Target Quota list, and Supply Planning to open runs.",
         "Target Quota is read-only on this page. Use Import forecast with the SFE sheet (period, branch SAP code, SKU, forecast qty) — quotas are calculated from forecast qty × price list. 0 SRP means FREE; Target Quota may be ₱0 and import still continues with a warning.",
-        "Max Qty and MIL stay on Settings → Planogram. Have planogram, SFE for the period, and sales history ready before Supply Planning.",
+        "Assign SKUs on Settings → Planogram first. Have SFE for the period and sales history ready before Supply Planning.",
         "Run allocation. In the popup, generate suggested orders or skip. After Supply Planning Release, confirm the branch warnings, then Auto Replenish orders go straight to Team Leader — open Auto Replenish to approve. Branch orders still go through TL / SP approval.",
       ],
     },
     {
       title: "Related pages",
       bullets: [
-        "Planogram — authorized SKUs and MIL thresholds per branch.",
+        "Planogram — authorized SKUs per branch.",
         "Supply Planning — generate and release runs from Settings → Planning.",
         "Auto Replenish — orders from Release wait for Team Leader, then Supply Planning.",
         "Branch orders — approval and logistics handoff.",

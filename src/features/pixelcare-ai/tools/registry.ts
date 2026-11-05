@@ -201,7 +201,7 @@ export function buildPixelcareAiTools(
 
     explainShelfGaps: tool({
       description:
-        "Explain shelf gaps / SUG for a branch using planogram Max Qty and STK. Suggested order qty / SUG = Max Qty − on-hand (STK) (= Math.max(0, Max Qty − STK)). Say Max Qty never maxQty. Omit branchId when Context Active branch is set.",
+        "Explain shelf gaps / SUG for a branch using Max Qty and STK. Suggested order qty / SUG = Max Qty − on-hand (STK) (= Math.max(0, Max Qty − STK)). Say Max Qty never maxQty. Omit branchId when Context Active branch is set.",
       inputSchema: z.object({
         branchId: z
           .string()

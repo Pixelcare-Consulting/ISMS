@@ -353,9 +353,8 @@ export function ImportForecastDialog({
                 MMM-YY.
               </p>
               <p>
-                Each upload also recalculates <strong>Max Qty</strong> for every planogram
-                row of the branches in the file: {TARGET_FORECAST_FORMULA}, rounded up. It
-                replaces manual edits, and you will see which ones after the upload.
+                Each upload also recalculates <strong>Max Qty</strong> for every SKU assigned
+                to the branches in the file: {TARGET_FORECAST_FORMULA}, rounded up.
               </p>
             </div>
           </div>

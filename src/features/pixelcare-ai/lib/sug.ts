@@ -1,5 +1,5 @@
 /**
- * Shelf gap / SUG — same as Planogram UI and order analytics:
+ * Shelf gap / SUG — same as order analytics:
  * Suggested order qty / SUG = Max Qty − on-hand (STK)
  * (= Math.max(0, shelfMax − STK); internal field is still maxQty).
  */

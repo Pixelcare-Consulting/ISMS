@@ -10,7 +10,6 @@ import {
   addPlanogramModelsAction,
   listActiveModelsForPlanogramAction,
   removePlanogramModelAction,
-  updatePlanogramMaxQtyAction,
 } from "@/features/planogram/actions/planogram.actions";
 import type { PlanogramAddEmptyReason } from "@/features/planogram/services/planogram.service";
 import {
@@ -45,18 +44,10 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  describeMaxQtyCalc,
-  TARGET_FORECAST_FORMULA,
-  type MaxQtyCalc,
-} from "@/features/planogram/lib/target-forecast-qty";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
 interface PlanogramRow {
   id: string;
-  maxQty: number;
-  maxQtyCalc: MaxQtyCalc | null;
-  maxQtyEditedByHand: boolean;
   effectiveFrom?: string | null;
   stockCount: number;
   ditCount: number;
@@ -125,7 +116,6 @@ export function PlanogramTable({
     sku: (row) => row.model.skuCode,
     model: (row) => row.model.name,
     series: (row) => row.model.series,
-    maxQty: (row) => row.maxQty,
   });
 
   const suggestions = useMemo(
@@ -166,21 +156,6 @@ export function PlanogramTable({
         header: "Series",
         enableSorting: true,
         cell: ({ row }) => row.original.model.series ?? "—",
-      }),
-      planogramColumn.display({
-        id: "maxQty",
-        header: "Max Qty",
-        enableSorting: true,
-        cell: ({ row }) => (
-          <ShelfMaxCell
-            key={`${row.original.id}:${row.original.maxQty}`}
-            branchId={branchId}
-            planogramId={row.original.id}
-            maxQty={row.original.maxQty}
-            canManage={canManage}
-            detail={describeMaxQtyCalc(row.original.maxQtyCalc, row.original.maxQtyEditedByHand)}
-          />
-        ),
       }),
       planogramColumn.display({
         id: "units",
@@ -247,11 +222,6 @@ export function PlanogramTable({
         </div>
       ) : null}
 
-      <p className="text-muted-foreground text-sm">
-        Max Qty = {TARGET_FORECAST_FORMULA}, rounded up. It is recalculated on every forecast
-        upload, and any manual edit is replaced by that upload.
-      </p>
-
       <DataTable
         data={sort.sorted}
         columns={columns}
@@ -316,86 +286,6 @@ export function PlanogramTable({
   );
 }
 
-function ShelfMaxCell({
-  branchId,
-  planogramId,
-  maxQty,
-  canManage,
-  detail,
-}: {
-  branchId: string;
-  planogramId: string;
-  maxQty: number;
-  canManage: boolean;
-  detail: ReturnType<typeof describeMaxQtyCalc>;
-}) {
-  const router = useRouter();
-  const [value, setValue] = useState(String(maxQty));
-  const [pending, startTransition] = useTransition();
-
-  function save() {
-    const parsed = Number.parseInt(value, 10);
-    // First, because a calculated 0 must not raise an error when the field only loses focus.
-    if (parsed === maxQty) return;
-    if (!Number.isInteger(parsed) || parsed < 1) {
-      setValue(String(maxQty));
-      toast.error("Max Qty must be at least 1");
-      return;
-    }
-
-    startTransition(async () => {
-      const result = await updatePlanogramMaxQtyAction({
-        planogramId,
-        branchId,
-        maxQty: parsed,
-      });
-      if (result.error) {
-        toast.error(result.error);
-        setValue(String(maxQty));
-        return;
-      }
-      toast.success("Max Qty updated");
-      router.refresh();
-    });
-  }
-
-  return (
-    <div className="max-w-56 space-y-1">
-      {canManage ? (
-        <Input
-          type="number"
-          min={1}
-          step={1}
-          className="h-8 w-16 tabular-nums"
-          value={value}
-          disabled={pending}
-          onChange={(e) => setValue(e.target.value)}
-          onBlur={save}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.currentTarget.blur();
-            }
-          }}
-          aria-label="Max Qty"
-        />
-      ) : (
-        <span className="tabular-nums">{maxQty}</span>
-      )}
-      {detail.calculation ? (
-        <p className="text-muted-foreground text-xs tabular-nums">{detail.calculation}</p>
-      ) : null}
-      {detail.notices.map((notice) => (
-        <p
-          key={notice}
-          className="whitespace-normal text-xs text-amber-800 dark:text-amber-300"
-        >
-          {notice}
-        </p>
-      ))}
-    </div>
-  );
-}
-
 function AddPlanogramDialog({
   branchId,
   onClose,
@@ -413,7 +303,6 @@ function AddPlanogramDialog({
     { id: string; skuCode: string; name: string }[]
   >([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [maxQtyByModel, setMaxQtyByModel] = useState<Record<string, string>>({});
   const [candidateQuery, setCandidateQuery] = useState("");
   const [emptyReason, setEmptyReason] = useState<PlanogramAddEmptyReason | null>(
     null,
@@ -429,7 +318,6 @@ function AddPlanogramDialog({
         if (cancelled) return;
         setModels(result.models.map((m) => ({ id: m.id, skuCode: m.skuCode, name: m.name })));
         setSelectedIds(new Set());
-        setMaxQtyByModel({});
         setEmptyReason(result.emptyReason);
       } catch (error) {
         if (cancelled) return;
@@ -459,13 +347,6 @@ function AddPlanogramDialog({
   const allFilteredSelected =
     filteredModels.length > 0 && filteredModels.every((m) => selectedIds.has(m.id));
 
-  const shelfMaxValid =
-    selectedModels.length > 0 &&
-    selectedModels.every((m) => {
-      const parsed = Number.parseInt(maxQtyByModel[m.id] ?? "1", 10);
-      return Number.isInteger(parsed) && parsed >= 1;
-    });
-
   function toggleModel(id: string, checked: boolean) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -473,9 +354,6 @@ function AddPlanogramDialog({
       else next.delete(id);
       return next;
     });
-    if (checked) {
-      setMaxQtyByModel((prev) => (prev[id] != null ? prev : { ...prev, [id]: "1" }));
-    }
   }
 
   function toggleSelectAllFiltered(checked: boolean) {
@@ -487,15 +365,6 @@ function AddPlanogramDialog({
       }
       return next;
     });
-    if (checked) {
-      setMaxQtyByModel((prev) => {
-        const next = { ...prev };
-        for (const m of filteredModels) {
-          if (next[m.id] == null) next[m.id] = "1";
-        }
-        return next;
-      });
-    }
   }
 
   function handleOpenChange(next: boolean) {
@@ -504,20 +373,14 @@ function AddPlanogramDialog({
   }
 
   function submit() {
-    if (!shelfMaxValid) {
-      toast.error("Max Qty must be at least 1 for each selected model");
-      return;
-    }
+    if (selectedModels.length === 0) return;
 
-    const items = selectedModels.map((m) => ({
-      modelId: m.id,
-      maxQty: Number.parseInt(maxQtyByModel[m.id] ?? "1", 10),
-    }));
+    const modelIds = selectedModels.map((m) => m.id);
 
     startTransition(async () => {
       const result = await addPlanogramModelsAction({
         branchId,
-        items,
+        modelIds,
         daysThreshold: 30,
       });
 
@@ -540,7 +403,7 @@ function AddPlanogramDialog({
 
       if (result.errors && result.errors.length > 0) {
         toast.error(
-          `${result.errors.length} of ${items.length} model${items.length === 1 ? "" : "s"} failed to add`,
+          `${result.errors.length} of ${modelIds.length} model${modelIds.length === 1 ? "" : "s"} failed to add`,
         );
       } else {
         toast.success(
@@ -618,50 +481,9 @@ function AddPlanogramDialog({
                 </div>
 
                 {selectedModels.length > 0 ? (
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium">Selected models</p>
-                    <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border p-3">
-                      {selectedModels.map((m) => (
-                        <div
-                          key={m.id}
-                          className="flex flex-wrap items-center gap-3 text-sm"
-                        >
-                          <span className="min-w-0 flex-1 truncate">
-                            <span className="font-mono">{m.skuCode}</span> — {m.name}
-                          </span>
-                          <div className="flex items-center gap-2">
-                            <Label
-                              htmlFor={`shelf-max-${m.id}`}
-                              className="shrink-0 text-xs text-muted-foreground"
-                            >
-                              Max Qty
-                            </Label>
-                            <Input
-                              id={`shelf-max-${m.id}`}
-                              type="number"
-                              min={1}
-                              step={1}
-                              className="h-8 w-20 tabular-nums"
-                              value={maxQtyByModel[m.id] ?? "1"}
-                              onChange={(e) =>
-                                setMaxQtyByModel((prev) => ({
-                                  ...prev,
-                                  [m.id]: e.target.value,
-                                }))
-                              }
-                              disabled={pending}
-                              aria-label={`Max Qty for ${m.skuCode}`}
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Starting value only. The next forecast upload replaces it with{" "}
-                      {TARGET_FORECAST_FORMULA}. Suggested order qty = Max Qty − on-hand
-                      (STK).
-                    </p>
-                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    A new SKU cannot be ordered until a forecast upload includes this branch.
+                  </p>
                 ) : null}
               </>
             ) : (
@@ -676,7 +498,7 @@ function AddPlanogramDialog({
               Cancel
             </Button>
             <Button
-              disabled={pending || loading || !shelfMaxValid}
+              disabled={pending || loading || selectedModels.length === 0}
               onClick={submit}
             >
               {selectedModels.length > 0

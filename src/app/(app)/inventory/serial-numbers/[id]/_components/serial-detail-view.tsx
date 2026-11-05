@@ -849,13 +849,7 @@ function LocationCard({ serial }: { serial: SerialTraceability }) {
             />
             <DetailRow
               label="On planogram"
-              value={
-                serial.planogram.onPlanogram
-                  ? serial.planogram.maxQty != null
-                    ? `Yes · Max Qty ${serial.planogram.maxQty}`
-                    : "Yes"
-                  : "No"
-              }
+              value={serial.planogram.onPlanogram ? "Yes" : "No"}
             />
             <DetailRow
               label={DR_DATE_LABEL}
