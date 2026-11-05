@@ -5,6 +5,7 @@ import { Plus, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +24,7 @@ export interface LocationRow {
   id: string;
   code: string;
   name: string;
+  isDefault?: boolean;
 }
 
 interface LocationsDialogProps {
@@ -37,6 +39,8 @@ interface LocationsDialogProps {
   /** Calls `onAdded` only when the location was saved, so the inputs keep their text on error. */
   onAdd: (ownerId: string, code: string, name: string, onAdded: () => void) => void;
   onRemove: (ownerId: string, location: LocationRow) => void;
+  /** Shows a "Set as default" tick per location. Service centers have no default location. */
+  onSetDefault?: (ownerId: string, location: LocationRow, isDefault: boolean) => void;
 }
 
 /** List, add and remove the locations inside one warehouse or service center. */
@@ -48,6 +52,7 @@ export function LocationsDialog({
   onOpenChange,
   onAdd,
   onRemove,
+  onSetDefault,
 }: LocationsDialogProps) {
   const [locCode, setLocCode] = useState("");
   const [locName, setLocName] = useState("");
@@ -105,6 +110,18 @@ export function LocationsDialog({
                   {loc.code}
                 </Badge>
                 <span className="min-w-0 flex-1 truncate">{loc.name}</span>
+                {onSetDefault ? (
+                  <Label className="flex min-h-11 shrink-0 cursor-pointer items-center gap-2 text-xs font-normal">
+                    <Checkbox
+                      checked={loc.isDefault === true}
+                      disabled={pending}
+                      onCheckedChange={(value) =>
+                        owner && onSetDefault(owner.id, loc, value === true)
+                      }
+                    />
+                    Set as default
+                  </Label>
+                ) : null}
                 <Button
                   type="button"
                   size="icon"

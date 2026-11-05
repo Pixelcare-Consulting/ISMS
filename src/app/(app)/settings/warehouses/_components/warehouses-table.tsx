@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import {
   addWarehouseLocationAction,
   deleteWarehouseLocationAction,
+  setWarehouseDefaultLocationAction,
   syncWarehousesFromSapAction,
 } from "@/features/warehouses/actions/warehouse.actions";
 import { SapSyncButton } from "@/features/sap/components/sap-sync-button";
@@ -37,6 +38,7 @@ interface LocationRow {
   id: string;
   code: string;
   name: string;
+  isDefault: boolean;
 }
 
 interface WarehouseRow {
@@ -66,7 +68,7 @@ export function WarehousesTable({
   const [pending, startTransition] = useTransition();
   const [deletingLocation, setDeletingLocation] = useState<{
     warehouseId: string;
-    location: LocationRow;
+    location: Pick<LocationRow, "id" | "code">;
   } | null>(null);
   const [locationsWarehouseId, setLocationsWarehouseId] = useState<string | null>(null);
   // Read from `rows` so the dialog shows adds and removes as soon as they land.
@@ -136,6 +138,31 @@ export function WarehousesTable({
     },
     [router],
   );
+
+  function setDefaultLocation(warehouseId: string, locationId: string, isDefault: boolean) {
+    startTransition(async () => {
+      const result = await setWarehouseDefaultLocationAction({ warehouseId, locationId, isDefault });
+      if (result.error) {
+        toast.error(String(result.error));
+        return;
+      }
+      toast.success(isDefault ? "Default location set" : "Default location cleared");
+      setRows((currentRows) =>
+        currentRows.map((warehouse) =>
+          warehouse.id === warehouseId
+            ? {
+                ...warehouse,
+                locations: warehouse.locations.map((location) => ({
+                  ...location,
+                  isDefault: isDefault && location.id === locationId,
+                })),
+              }
+            : warehouse,
+        ),
+      );
+      router.refresh();
+    });
+  }
 
   function removeLocation() {
     if (!deletingLocation) return;
@@ -342,6 +369,9 @@ export function WarehousesTable({
         }}
         onAdd={addLocation}
         onRemove={(warehouseId, location) => setDeletingLocation({ warehouseId, location })}
+        onSetDefault={(warehouseId, location, isDefault) =>
+          setDefaultLocation(warehouseId, location.id, isDefault)
+        }
       />
 
       <DeleteConfirmDialog

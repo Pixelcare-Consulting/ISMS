@@ -70,6 +70,7 @@ import {
 } from "@/features/logistics/lib/shipment";
 import {
   PULLOUT_LINE_DECISION,
+  defaultReceiveLocation,
 } from "@/features/logistics/services/pullout-posting.planner";
 import type { PulloutDetail } from "@/features/logistics/services/pullout-posting.service";
 import { PulloutConditionBadge } from "@/features/logistics/components/pullout-condition-badge";
@@ -171,16 +172,6 @@ function recordedNames(names: readonly string[]) {
       ))}
     </ul>
   );
-}
-
-/** Where the unit was before, or the only location there is. Otherwise the receiver picks. */
-function defaultReceiveLocation(
-  line: ItemRow,
-  locations: PulloutDetail["receiveLocations"],
-): string {
-  const recorded = locations.find((location) => location.id === line.recordedLocationId);
-  if (recorded) return recorded.id;
-  return locations.length === 1 ? (locations[0]?.id ?? "") : "";
 }
 
 function ReceivedCell({ row }: { row: ItemRow }) {
@@ -626,7 +617,7 @@ export function PulloutDetailView({
       Object.fromEntries(
         detail.lines.map((line) => [
           line.serialNumberId,
-          defaultReceiveLocation(line, detail.receiveLocations),
+          defaultReceiveLocation(line.recordedLocationId, detail.receiveLocations),
         ]),
       ),
   );

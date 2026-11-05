@@ -420,3 +420,18 @@ export function planPulloutReceive(input: {
   const awaiting = input.lines.filter((line) => !line.received).length;
   return { ok: true, lines, completes: lines.length === awaiting };
 }
+
+/**
+ * The warehouse's default location, else where the unit was before, else the only location
+ * there is. Otherwise the receiver picks.
+ */
+export function defaultReceiveLocation(
+  recordedLocationId: string | null,
+  locations: readonly { id: string; isDefault: boolean }[],
+): string {
+  const preset =
+    locations.find((location) => location.isDefault) ??
+    locations.find((location) => location.id === recordedLocationId);
+  if (preset) return preset.id;
+  return locations.length === 1 ? (locations[0]?.id ?? "") : "";
+}

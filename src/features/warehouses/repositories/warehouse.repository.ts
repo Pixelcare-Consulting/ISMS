@@ -147,6 +147,23 @@ export const warehouseRepository = {
     });
   },
 
+  /** Moves the warehouse's one default to this location; `null` leaves it with none. */
+  setDefaultLocation(warehouseId: string, locationId: string | null) {
+    return prisma.$transaction(async (tx) => {
+      // Clear first: warehouse_locations_default_uq allows one default per warehouse.
+      await tx.warehouseLocation.updateMany({
+        where: { warehouseId, isDefault: true },
+        data: { isDefault: false },
+      });
+      if (!locationId) return 0;
+      const { count } = await tx.warehouseLocation.updateMany({
+        where: { id: locationId, warehouseId },
+        data: { isDefault: true },
+      });
+      return count;
+    });
+  },
+
   deleteLocation(warehouseId: string, locationId: string) {
     return prisma.warehouseLocation.deleteMany({
       where: { id: locationId, warehouseId },

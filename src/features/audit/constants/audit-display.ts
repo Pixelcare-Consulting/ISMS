@@ -61,6 +61,7 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "warehouse.deleted": "Warehouse removed",
   "warehouse.location_created": "Warehouse location added",
   "warehouse.location_deleted": "Warehouse location removed",
+  "warehouse.location_default_changed": "Default warehouse location changed",
   "stock_count.session_created": "Stock count session created",
   "stock_count.started": "Stock count started",
   "stock_count.line_recorded": "Stock count line recorded",

@@ -108,7 +108,7 @@ export interface PulloutDetail {
   warehouse: { id: string; name: string; code: string };
   warehouseLocation: { name: string; code: string } | null;
   /** Locations of the destination warehouse. Filled while the pull-out can be received. */
-  receiveLocations: { id: string; code: string; name: string }[];
+  receiveLocations: { id: string; code: string; name: string; isDefault: boolean }[];
   /** Set on pull-outs made before the form dropped the reason. */
   reason: { id: string; code: string; name: string; color: string | null } | null;
   attachments: PulloutAttachment[];
@@ -635,7 +635,7 @@ export const pulloutPostingService = {
       pullout.statusCode.code === PULLOUT_WORKFLOW_CODE.in_transit
         ? prisma.warehouseLocation.findMany({
             where: { warehouseId: pullout.warehouse.id },
-            select: { id: true, code: true, name: true },
+            select: { id: true, code: true, name: true, isDefault: true },
             orderBy: { code: "asc" },
           })
         : Promise.resolve([]),

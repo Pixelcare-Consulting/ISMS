@@ -1526,6 +1526,8 @@ model WarehouseLocation {
   warehouseId String   @map("warehouse_id")
   code        String
   name        String
+  /// At most one per warehouse: warehouse_locations_default_uq in the migration.
+  isDefault   Boolean  @default(false) @map("is_default")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 

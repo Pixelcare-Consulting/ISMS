@@ -15,6 +15,7 @@ jest.mock("@/lib/auth/permissions", () => ({
 import { postingPermissionError } from "@/features/logistics/services/logistics-posting-access";
 import {
   planPulloutApprove,
+  defaultReceiveLocation,
   planPulloutReceive,
   planPulloutCreate,
   planPulloutFinalize,
@@ -647,5 +648,26 @@ describe("pull-out receiving", () => {
     });
 
     expect(plan.ok).toBe(true);
+  });
+});
+
+describe("defaultReceiveLocation", () => {
+  const location = (id: string, isDefault = false) => ({ id, isDefault });
+
+  it("prefers the warehouse default over where the unit was before", () => {
+    expect(defaultReceiveLocation("loc1", [location("loc1"), location("loc2", true)])).toBe("loc2");
+  });
+
+  it("falls back to the unit's recorded location when there is no default", () => {
+    expect(defaultReceiveLocation("loc2", [location("loc1"), location("loc2")])).toBe("loc2");
+  });
+
+  it("uses the only location there is", () => {
+    expect(defaultReceiveLocation(null, [location("loc1")])).toBe("loc1");
+  });
+
+  it("leaves the choice to the receiver otherwise", () => {
+    expect(defaultReceiveLocation("elsewhere", [location("loc1"), location("loc2")])).toBe("");
+    expect(defaultReceiveLocation(null, [])).toBe("");
   });
 });
