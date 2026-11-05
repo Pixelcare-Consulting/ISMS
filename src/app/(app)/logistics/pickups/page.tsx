@@ -33,7 +33,7 @@ export default async function PickupsPage({ searchParams }: PickupsPageProps) {
   return (
     <div className="space-y-4">
       <SectionPageLead>
-        Request a pull-out, approve it, save the logistics list, then send it. Warehouse receipt is not available yet, so units stay in transit.
+        Request a pull-out, approve it, save the logistics list, then send it. The warehouse receives each unit into a location.
       </SectionPageLead>
       <PulloutKpisStrip kpis={kpis} />
       <PulloutsPanel

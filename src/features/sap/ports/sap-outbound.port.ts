@@ -23,13 +23,6 @@ export interface SapOutboundPort {
     job: SapIntegrationJob;
   }): Promise<string>;
 
-  /** Pull-out → Inventory Transfer Request (ITR / OWTQ). */
-  createPulloutItr(input: {
-    tenantId: string;
-    userId?: string;
-    job: SapIntegrationJob;
-  }): Promise<string>;
-
   /** Legacy `delivery_partial_return` jobs queued before returns needed approval. No new ones are queued. */
   createPartialDeliveryInventoryTransfer(input: {
     tenantId: string;

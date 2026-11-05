@@ -1,4 +1,9 @@
-import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
+import {
+  assertExclusivePlacement,
+  loadCurrentPlacements,
+  lockSerialNumbers,
+} from "@/features/inventory/services/serial-placement";
+import { assertExclusiveClaim } from "@/features/logistics/services/delivery-posting.planner";
 import {
   pulloutAttachmentError,
 } from "@/features/logistics/constants/pullout-attachments";
@@ -8,11 +13,10 @@ import {
   PULLOUT_WORKFLOW_CODE,
   type PulloutWorkflowCodeKey,
 } from "@/features/logistics/constants/workflow-codes";
-import { sapService } from "@/features/sap/services/sap.service";
 import type { AllocatableSerial } from "@/features/logistics/services/posting-planner-types";
 import {
   planPulloutApprove,
-  planPulloutComplete,
+  planPulloutReceive,
   planPulloutCreate,
   pulloutDestination,
   planPulloutFinalize,
@@ -23,9 +27,10 @@ import {
   PULLOUT_LINE_DECISION,
   pulloutClassificationError,
   pulloutCondition,
-  pulloutSapMessage,
   type PulloutConditionView,
   type PulloutDecisionLineView,
+  type PulloutReceipt,
+  type PulloutReceivePlan,
   type PulloutStatus,
 } from "@/features/logistics/services/pullout-posting.planner";
 import {
@@ -78,17 +83,13 @@ export interface PulloutDestination {
   code: string;
 }
 
-export interface PulloutSapJob {
-  id: string;
-  status: string;
-  sapDocRef: string | null;
-  stub: boolean;
-  message: string;
-}
-
 export interface PulloutAttachment {
   id: string;
   fileName: string;
+}
+
+export interface PulloutReceiveInput {
+  lines: PulloutReceipt[];
 }
 
 export interface PulloutDetail {
@@ -106,6 +107,8 @@ export interface PulloutDetail {
   branch: { id: string; name: string };
   warehouse: { id: string; name: string; code: string };
   warehouseLocation: { name: string; code: string } | null;
+  /** Locations of the destination warehouse. Filled while the pull-out can be received. */
+  receiveLocations: { id: string; code: string; name: string }[];
   /** Set on pull-outs made before the form dropped the reason. */
   reason: { id: string; code: string; name: string; color: string | null } | null;
   attachments: PulloutAttachment[];
@@ -121,8 +124,12 @@ export interface PulloutDetail {
     classificationNames: string[];
     unitPackingConditionNames: string[];
     accessoryCompletenessNames: string[];
+    /** The unit's location before it left the branch, offered first on receipt. */
+    recordedLocationId: string | null;
+    receivedAt: string | null;
+    receivedByName: string | null;
+    receivedLocation: { code: string; name: string } | null;
   }[];
-  sapJob: PulloutSapJob | null;
   history: { id: string; action: string; at: string; userName: string | null }[];
 }
 
@@ -204,6 +211,7 @@ async function loadPullout(db: PostingDb | typeof prisma, tenantId: string, pull
         select: {
           serialNumberId: true,
           decision: true,
+          receivedAt: true,
           serialNumber: { select: { serialNo: true } },
           priorStatusCodeId: true,
           priorStatusCode: { select: { code: true } },
@@ -223,12 +231,14 @@ async function loadPullout(db: PostingDb | typeof prisma, tenantId: string, pull
     : [];
   const inventoryBySerial = new Map(inventory.map((row) => [row.serialNumberId, row]));
   const lines: (PulloutDecisionLineView & {
+    received: boolean;
     priorStatusCodeId: string | null;
     serialNo: string;
   })[] = pullout.lines.map((line) => ({
     serialNumberId: line.serialNumberId,
     serialNo: line.serialNumber.serialNo,
     decision: line.decision,
+    received: line.receivedAt !== null,
     priorCode: asHoldCode(line.priorStatusCode?.code),
     priorStatusCodeId: line.priorStatusCodeId,
     inventoryCode: asInventoryCode(inventoryBySerial.get(line.serialNumberId)?.statusCode.code),
@@ -366,28 +376,6 @@ function savedNames(names: readonly (string | null | undefined)[]): string[] {
   });
 }
 
-function jobStub(metadata: unknown): boolean {
-  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return false;
-  return (metadata as { stub?: unknown }).stub === true;
-}
-
-async function loadSapJob(tenantId: string, pulloutId: string): Promise<PulloutSapJob | null> {
-  const job = await prisma.sapIntegrationJob.findFirst({
-    where: { tenantId, referenceId: pulloutId, jobType: "pullout_itr" },
-    orderBy: { createdAt: "desc" },
-    select: { id: true, status: true, sapDocRef: true },
-  });
-  if (!job) return null;
-  const audit = await prisma.auditLog.findFirst({
-    where: { tenantId, entityId: pulloutId, action: "sap.pullout_itr_processed" },
-    orderBy: { createdAt: "desc" },
-    select: { metadata: true },
-  });
-  const stub = jobStub(audit?.metadata);
-  const view = { id: job.id, status: job.status, sapDocRef: job.sapDocRef, stub };
-  return { ...view, message: pulloutSapMessage(view) };
-}
-
 interface ApprovalIds {
   codes: Awaited<ReturnType<typeof inventoryIds>>;
   nextStatusId: string;
@@ -462,6 +450,33 @@ async function approveInTx(
       metadata: { pulloutNo: fresh.pulloutNo },
     },
   });
+}
+
+const RECEIVE_CLAIM_LOST = "Some units are no longer in transit at the branch";
+
+/** Id to label, refusing any location outside the pull-out's destination warehouse. */
+async function loadReceiveLocations(
+  tenantId: string,
+  warehouseId: string,
+  locationIds: readonly string[],
+): Promise<Map<string, string>> {
+  const ids = [...new Set(locationIds)];
+  const rows = await prisma.warehouseLocation.findMany({
+    where: { id: { in: ids }, warehouseId, warehouse: { tenantId } },
+    select: { id: true, code: true, warehouse: { select: { name: true } } },
+  });
+  if (rows.length !== ids.length) throw new Error("That location is not in the destination warehouse");
+  return new Map(rows.map((row) => [row.id, `${row.warehouse.name} / ${row.code}`]));
+}
+
+function serialsByLocation(lines: PulloutReceivePlan["lines"]): Map<string, string[]> {
+  const grouped = new Map<string, string[]>();
+  for (const line of lines) {
+    const ids = grouped.get(line.warehouseLocationId) ?? [];
+    ids.push(line.serialNumberId);
+    grouped.set(line.warehouseLocationId, ids);
+  }
+  return grouped;
 }
 
 async function resolveDestination(tenantId: string, branchId: string): Promise<PulloutDestination> {
@@ -570,6 +585,9 @@ export const pulloutPostingService = {
             serialNumberId: true,
             decision: true,
             remarks: true,
+            receivedAt: true,
+            receivedBy: { select: { name: true } },
+            receivedLocation: { select: { code: true, name: true } },
             priorStatusCode: { select: { code: true } },
             classifications: {
               select: { pulloutClassification: { select: { name: true } } },
@@ -599,18 +617,28 @@ export const pulloutPostingService = {
             branchId: pullout.branch.id,
             serialNumberId: { in: pullout.lines.map((line) => line.serialNumberId) },
           },
-          select: { serialNumberId: true, statusCode: { select: { code: true } } },
+          select: {
+            serialNumberId: true,
+            warehouseLocationId: true,
+            statusCode: { select: { code: true } },
+          },
         })
       : [];
     const inventoryBySerial = new Map(inventory.map((row) => [row.serialNumberId, row]));
-    const [history, sapJob] = await Promise.all([
+    const [history, receiveLocations] = await Promise.all([
       prisma.auditLog.findMany({
         where: { tenantId: actor.tenantId, entityType: "BranchPullout", entityId: pullout.id },
         orderBy: { createdAt: "desc" },
         take: 40,
         select: { id: true, action: true, createdAt: true, user: { select: { name: true } } },
       }),
-      loadSapJob(actor.tenantId, pullout.id),
+      pullout.statusCode.code === PULLOUT_WORKFLOW_CODE.in_transit
+        ? prisma.warehouseLocation.findMany({
+            where: { warehouseId: pullout.warehouse.id },
+            select: { id: true, code: true, name: true },
+            orderBy: { code: "asc" },
+          })
+        : Promise.resolve([]),
     ]);
     return {
       id: pullout.id,
@@ -630,6 +658,7 @@ export const pulloutPostingService = {
       branch: pullout.branch,
       warehouse: pullout.warehouse,
       warehouseLocation: pullout.warehouseLocation,
+      receiveLocations,
       reason: pullout.reasonStatusCode,
       lines: pullout.lines.map((line) => ({
         serialNumberId: line.serialNumberId,
@@ -649,8 +678,11 @@ export const pulloutPostingService = {
         accessoryCompletenessNames: savedNames(
           line.accessoryCompletenesses.map((row) => row.accessoryCompleteness.name),
         ),
+        recordedLocationId: inventoryBySerial.get(line.serialNumberId)?.warehouseLocationId ?? null,
+        receivedAt: line.receivedAt?.toISOString() ?? null,
+        receivedByName: displayName(line.receivedBy?.name),
+        receivedLocation: line.receivedLocation,
       })),
-      sapJob,
       history: history.map((row) => ({
         id: row.id,
         action: row.action,
@@ -1232,9 +1264,6 @@ export const pulloutPostingService = {
     await authorizePosting(actor, "pullout.finalize", current.branchId);
     const preview = planPulloutFinalize(current);
     if (!preview.ok) throw new Error(preview.error);
-    if (preview.createsWarehouseInventory || preview.setsCompleted || preview.nextStatus !== "in_transit") {
-      throw new Error("Warehouse receipt is not available yet. Units stay in transit.");
-    }
 
     const codes = await inventoryIds(actor.tenantId);
     const nextStatusId = await workflowId(actor.tenantId, "in_transit");
@@ -1247,9 +1276,6 @@ export const pulloutPostingService = {
           if (!fresh) throw new Error("Pull-out not found");
           const plan = planPulloutFinalize(fresh);
           if (!plan.ok) throw new Error(plan.error);
-          if (plan.createsWarehouseInventory || plan.setsCompleted) {
-            throw new Error("Warehouse receipt is not available yet. Units stay in transit.");
-          }
           if (plan.idempotent) return;
           await lockSerialNumbers(
             tx,
@@ -1304,33 +1330,139 @@ export const pulloutPostingService = {
       }
     }
 
-    const job = await sapService.emitPulloutItr(actor.tenantId, {
-      id: current.id,
-      pulloutNo: current.pulloutNo,
-      branchId: current.branchId,
-      warehouseId: current.warehouseId,
-    });
-    const sapJob = await loadSapJob(actor.tenantId, current.id);
     return {
       id: current.id,
       pulloutNo: current.pulloutNo,
       status: "in_transit" as const,
       idempotent: preview.idempotent,
-      sapJob: sapJob ?? {
-        id: job.id,
-        status: job.status,
-        sapDocRef: job.sapDocRef,
-        stub: false,
-        message: pulloutSapMessage({ status: job.status, stub: false }),
-      },
     };
   },
 
-  async complete(actor: PostingActor, pulloutId: string) {
+  /**
+   * Warehouse receipt, ISMS only: SAP is not touched. Each unit's in-transit branch row is
+   * replaced by a warehouse row, which is what stops the SAP serial sync putting it back at
+   * the branch (`planReplicate` leaves anything with a warehouse placement alone).
+   */
+  async complete(actor: PostingActor, pulloutId: string, input: PulloutReceiveInput) {
     await authorizePosting(actor, "pullout.complete", null);
     const current = await loadPullout(prisma, actor.tenantId, pulloutId);
     if (!current) throw new Error("Pull-out not found");
-    const refused = planPulloutComplete();
-    throw new Error(refused.error);
+    const preview = planPulloutReceive({
+      status: current.status,
+      lines: current.lines,
+      receipts: input.lines,
+    });
+    if (!preview.ok) throw new Error(preview.error);
+
+    const locationById = await loadReceiveLocations(
+      actor.tenantId,
+      current.warehouseId,
+      preview.lines.map((line) => line.warehouseLocationId),
+    );
+    const codes = await inventoryIds(actor.tenantId);
+    const inTransitId = await workflowId(actor.tenantId, "in_transit");
+    const completedId = await workflowId(actor.tenantId, "completed");
+
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const fresh = await loadPullout(tx, actor.tenantId, pulloutId);
+        if (!fresh) throw new Error("Pull-out not found");
+        const plan = planPulloutReceive({
+          status: fresh.status,
+          lines: fresh.lines,
+          receipts: input.lines,
+        });
+        if (!plan.ok) throw new Error(plan.error);
+
+        const serialIds = plan.lines.map((line) => line.serialNumberId);
+        await lockSerialNumbers(tx, serialIds);
+        await assertMovable(actor.tenantId, serialIds);
+        const placements = await loadCurrentPlacements(tx, serialIds);
+        assertExclusivePlacement({
+          placements,
+          replacingIds: placements
+            .filter(
+              (row) =>
+                row.table === "branch" && row.branchId === fresh.branchId && row.statusCode === "DIT",
+            )
+            .map((row) => row.id),
+        });
+
+        const removed = await tx.branchInventory.deleteMany({
+          where: {
+            tenantId: actor.tenantId,
+            branchId: fresh.branchId,
+            serialNumberId: { in: serialIds },
+            statusCodeId: codes.DIT,
+          },
+        });
+        assertExclusiveClaim(removed.count, serialIds.length, RECEIVE_CLAIM_LOST);
+
+        const now = new Date();
+        await tx.warehouseInventory.createMany({
+          data: plan.lines.map((line) => ({
+            tenantId: actor.tenantId,
+            serialNumberId: line.serialNumberId,
+            warehouseLocationId: line.warehouseLocationId,
+            systemStatus: line.priorCode,
+            systemUpdatedAt: now,
+          })),
+        });
+
+        for (const [warehouseLocationId, ids] of serialsByLocation(plan.lines)) {
+          const claimed = await tx.branchPulloutLine.updateMany({
+            where: { pulloutId, serialNumberId: { in: ids }, receivedAt: null },
+            data: {
+              receivedAt: now,
+              receivedById: actor.userId,
+              receivedLocationId: warehouseLocationId,
+            },
+          });
+          assertExclusiveClaim(claimed.count, ids.length, RECEIVE_CLAIM_LOST);
+        }
+
+        await tx.serialNumberHistory.createMany({
+          data: plan.lines.map((line) => ({
+            tenantId: actor.tenantId,
+            serialNumberId: line.serialNumberId,
+            txnType: "pullout" as const,
+            details: `Received on ${fresh.pulloutNo} at ${locationById.get(line.warehouseLocationId)}`,
+            status: line.priorCode,
+            createdById: actor.userId,
+          })),
+        });
+
+        if (plan.completes) {
+          await claimHeader(tx, "branchPullout", {
+            id: pulloutId,
+            tenantId: actor.tenantId,
+            fromStatusCodeIds: [inTransitId],
+            toStatusCodeId: completedId,
+            message: "This pull-out was updated by someone else",
+          });
+        }
+        await tx.auditLog.create({
+          data: {
+            tenantId: actor.tenantId,
+            userId: actor.userId,
+            action: plan.completes ? "pullout.completed" : "pullout.received",
+            entityType: "BranchPullout",
+            entityId: pulloutId,
+            metadata: {
+              pulloutNo: fresh.pulloutNo,
+              serialCount: plan.lines.length,
+              units: plan.lines.map((line) => ({
+                serialNumberId: line.serialNumberId,
+                condition: line.priorCode,
+                location: locationById.get(line.warehouseLocationId),
+              })),
+            },
+          },
+        });
+        return { id: pulloutId, pulloutNo: fresh.pulloutNo, completed: plan.completes };
+      });
+    } catch (error) {
+      throw postingError(error, "Failed to receive the units");
+    }
   },
 };

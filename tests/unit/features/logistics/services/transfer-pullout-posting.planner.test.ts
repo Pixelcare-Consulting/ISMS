@@ -15,7 +15,7 @@ jest.mock("@/lib/auth/permissions", () => ({
 import { postingPermissionError } from "@/features/logistics/services/logistics-posting-access";
 import {
   planPulloutApprove,
-  planPulloutComplete,
+  planPulloutReceive,
   planPulloutCreate,
   planPulloutFinalize,
   planPulloutLineApprove,
@@ -25,7 +25,6 @@ import {
   pulloutClassificationError,
   pulloutCondition,
   pulloutDestination,
-  pulloutSapMessage,
   type PulloutDecisionLineView,
   type PulloutLineView,
 } from "@/features/logistics/services/pullout-posting.planner";
@@ -309,8 +308,6 @@ describe("pull-out posting planner", () => {
     if (!finalized.ok) return;
     expect(finalized.nextStatus).toBe("in_transit");
     expect(finalized.moves).toEqual([{ serialNumberId: "s1", nextCode: "DIT" }]);
-    expect(finalized.createsWarehouseInventory).toBe(false);
-    expect(finalized.setsCompleted).toBe(false);
   });
 
   it("restores a rejected reserve and keeps defective units defective until they leave", () => {
@@ -347,8 +344,6 @@ describe("pull-out posting planner", () => {
     expect(finalized.ok).toBe(true);
     if (!finalized.ok) return;
     expect(finalized.nextStatus).toBe("in_transit");
-    expect(finalized.createsWarehouseInventory).toBe(false);
-    expect(finalized.setsCompleted).toBe(false);
   });
 
   it("takes stock and defective units on the same pull-out", () => {
@@ -475,17 +470,6 @@ describe("pull-out posting planner", () => {
     if (plan.ok) return;
     expect(plan.error).toMatch(/reject/i);
   });
-
-  it("refuses warehouse receipt", () => {
-    expect(planPulloutComplete().ok).toBe(false);
-    expect(planPulloutComplete().error).toMatch(/stay in transit/i);
-  });
-
-  it("does not describe a stub SAP job as posted", () => {
-    expect(pulloutSapMessage({ status: "pending", stub: false })).toMatch(/not been posted/i);
-    expect(pulloutSapMessage({ status: "completed", stub: true })).toMatch(/not been posted/i);
-    expect(pulloutSapMessage({ status: "completed", stub: false })).not.toMatch(/not been posted/i);
-  });
 });
 
 describe("logistics posting permissions", () => {
@@ -519,5 +503,149 @@ describe("pulloutDestination", () => {
 
   it("returns null when neither warehouse is available", () => {
     expect(pulloutDestination(null, null)).toBeNull();
+  });
+});
+
+describe("pull-out receiving", () => {
+  const inTransit = (
+    serialNumberId: string,
+    overrides: Partial<Parameters<typeof planPulloutReceive>[0]["lines"][number]> = {},
+  ) => ({
+    serialNumberId,
+    priorCode: "STK" as const,
+    inventoryCode: "DIT" as const,
+    received: false,
+    ...overrides,
+  });
+  const receipt = (serialNumberId: string, warehouseLocationId = "loc-1") => ({
+    serialNumberId,
+    warehouseLocationId,
+  });
+
+  it("keeps each unit's original STK or DEF and its chosen location", () => {
+    const plan = planPulloutReceive({
+      status: "in_transit",
+      lines: [inTransit("s1"), inTransit("s2", { priorCode: "DEF" })],
+      receipts: [receipt("s1", "loc-1"), receipt("s2", "loc-2")],
+    });
+
+    expect(plan).toEqual({
+      ok: true,
+      lines: [
+        { serialNumberId: "s1", priorCode: "STK", warehouseLocationId: "loc-1" },
+        { serialNumberId: "s2", priorCode: "DEF", warehouseLocationId: "loc-2" },
+      ],
+      completes: true,
+    });
+  });
+
+  it("stays open while units are still in transit", () => {
+    const plan = planPulloutReceive({
+      status: "in_transit",
+      lines: [inTransit("s1"), inTransit("s2")],
+      receipts: [receipt("s1")],
+    });
+
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.completes).toBe(false);
+  });
+
+  it("completes when the last unit arrives", () => {
+    const plan = planPulloutReceive({
+      status: "in_transit",
+      lines: [inTransit("s1", { received: true, inventoryCode: null }), inTransit("s2")],
+      receipts: [receipt("s2")],
+    });
+
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.completes).toBe(true);
+  });
+
+  it.each([
+    ["pending_logistics", "Only an in-transit pull-out can be received"],
+    ["completed", "Only an in-transit pull-out can be received"],
+  ] as const)("refuses a %s pull-out", (status, error) => {
+    expect(
+      planPulloutReceive({ status, lines: [inTransit("s1")], receipts: [receipt("s1")] }),
+    ).toEqual({ ok: false, error });
+  });
+
+  it("needs at least one unit", () => {
+    expect(
+      planPulloutReceive({ status: "in_transit", lines: [inTransit("s1")], receipts: [] }),
+    ).toEqual({ ok: false, error: "Select the units that arrived" });
+  });
+
+  it("refuses the same unit twice in one receipt", () => {
+    expect(
+      planPulloutReceive({
+        status: "in_transit",
+        lines: [inTransit("s1")],
+        receipts: [receipt("s1"), receipt("s1")],
+      }),
+    ).toEqual({ ok: false, error: "Each serial can only be received once" });
+  });
+
+  it("refuses a unit that is not on the pull-out", () => {
+    expect(
+      planPulloutReceive({
+        status: "in_transit",
+        lines: [inTransit("s1")],
+        receipts: [receipt("s9")],
+      }),
+    ).toEqual({ ok: false, error: "A selected serial is not on this pull-out" });
+  });
+
+  it("refuses a unit that was already received", () => {
+    expect(
+      planPulloutReceive({
+        status: "in_transit",
+        lines: [inTransit("s1", { received: true, inventoryCode: null }), inTransit("s2")],
+        receipts: [receipt("s1")],
+      }),
+    ).toEqual({ ok: false, error: "A selected unit was already received" });
+  });
+
+  it("needs a location for every unit", () => {
+    expect(
+      planPulloutReceive({
+        status: "in_transit",
+        lines: [inTransit("s1")],
+        receipts: [receipt("s1", "")],
+      }),
+    ).toEqual({ ok: false, error: "Choose a warehouse location for every unit" });
+  });
+
+  it("refuses a unit that is no longer in transit", () => {
+    expect(
+      planPulloutReceive({
+        status: "in_transit",
+        lines: [inTransit("s1", { inventoryCode: "STK" })],
+        receipts: [receipt("s1")],
+      }),
+    ).toEqual({ ok: false, error: "Some units are no longer in transit at the branch" });
+  });
+
+  it("refuses a unit with no recorded STK or DEF", () => {
+    const plan = planPulloutReceive({
+      status: "in_transit",
+      lines: [inTransit("s1", { priorCode: null })],
+      receipts: [receipt("s1")],
+    });
+
+    expect(plan.ok).toBe(false);
+    if (plan.ok) return;
+    expect(plan.error).toMatch(/Prior status was not recorded/);
+  });
+
+  it("lets a repeated Send pass after some units were received", () => {
+    const plan = planPulloutFinalize({
+      status: "in_transit",
+      lines: [inTransit("s1", { received: true, inventoryCode: null }), inTransit("s2")],
+    });
+
+    expect(plan.ok).toBe(true);
   });
 });

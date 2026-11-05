@@ -10,6 +10,7 @@ import type {
  */
 export const SAP_JOB_TYPE_LABELS: Record<SapIntegrationJobType, string> = {
   approved_order: "Approved order → ITR or SO",
+  /** Retired: pull-outs are ISMS only. Kept so jobs queued before that still have a label. */
   pullout_itr: "Pull-out → Inventory Transfer Request (ITR / OWTQ)",
   sales_summary: "Sales summary export",
   inventory_sync_inbound: "Inventory sync from SAP",
@@ -34,7 +35,6 @@ export const SAP_JOB_STATUS_LABELS: Record<SapIntegrationJobStatus, string> = {
 export const SAP_REFERENCE_TYPES = {
   BranchOrder: "BranchOrder",
   BranchDelivery: "BranchDelivery",
-  BranchPullout: "BranchPullout",
   DeliveryTransfer: "DeliveryTransfer",
   DeliveryReturnRequest: "DeliveryReturnRequest",
   StockVariance: "StockVariance",

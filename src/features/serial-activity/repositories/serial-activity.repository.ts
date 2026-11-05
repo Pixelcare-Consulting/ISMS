@@ -605,6 +605,70 @@ async function pulledOutSource(
   };
 }
 
+/** One event per received unit, dated when it arrived rather than when the pull-out began. */
+async function pulloutReceivedSource(
+  tenantId: string,
+  { window, q, dateFilter, dir }: SourceOptions,
+): Promise<SourceResult> {
+  const where: Prisma.BranchPulloutLineWhereInput = {
+    receivedAt: { not: null, ...dateFilter },
+    pullout: { tenantId },
+    ...(q
+      ? {
+          OR: [
+            { serialNumber: { serialNo: textContains(q) } },
+            { pullout: { pulloutNo: textContains(q) } },
+          ],
+        }
+      : {}),
+  };
+  const [rows, count] = await Promise.all([
+    prisma.branchPulloutLine.findMany({
+      where,
+      orderBy: { receivedAt: dir },
+      take: window,
+      select: {
+        id: true,
+        receivedAt: true,
+        priorStatusCode: { select: { code: true } },
+        receivedLocation: { select: { code: true } },
+        receivedBy: userSelect,
+        serialNumber: { select: { serialNo: true, model: modelSelect } },
+        pullout: {
+          select: {
+            pulloutNo: true,
+            branch: { select: { name: true } },
+            warehouse: { select: { name: true } },
+          },
+        },
+      },
+    }),
+    prisma.branchPulloutLine.count({ where }),
+  ]);
+  return {
+    count,
+    events: rows.flatMap((r) => {
+      const serial = serialFields(r.serialNumber);
+      if (!serial || !r.receivedAt) return [];
+      return [
+        {
+          id: `pulled_out_received:${r.id}`,
+          type: "pulled_out" as const,
+          typeLabel: "Pull-out received",
+          timestamp: r.receivedAt,
+          serialNo: serial.serialNo,
+          modelLabel: serial.modelLabel,
+          location: placeLabel(null, r.pullout.warehouse, r.receivedLocation),
+          reference: r.pullout.pulloutNo,
+          referenceDetails: referenceDetails(route(r.pullout.branch.name, r.pullout.warehouse.name)),
+          status: r.priorStatusCode ? `Received: ${r.priorStatusCode.code}` : "Received",
+          performedBy: performedByLabel(r.receivedBy),
+        },
+      ];
+    }),
+  };
+}
+
 /** Unit-transfer steps the audit log keeps; line steps carry `lineId` in metadata. */
 const UNIT_TRANSFER_TRAIL_LABELS: Record<string, string> = {
   "delivery_transfer.line_approved": "Approved",
@@ -1466,7 +1530,7 @@ const SOURCES: Record<SerialActivityType, ActivitySource[]> = {
   status: [statusSource],
   transferred: [transferredSource, unitTransferSource, deliveryReturnSource],
   sold: [soldSource, officialSalesAuditSource],
-  pulled_out: [pulledOutSource],
+  pulled_out: [pulledOutSource, pulloutReceivedSource],
   counted: [countedSource],
 };
 

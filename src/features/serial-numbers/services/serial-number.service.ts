@@ -302,6 +302,26 @@ function buildTimeline(row: SerialTraceabilityRow): SerialTimelineEvent[] {
         .join(" · "),
       href: `/logistics/pickups?q=${encodeURIComponent(pullout.pulloutNo)}`,
     });
+    if (line.receivedAt) {
+      events.push({
+        id: `pullout-received-${line.id}`,
+        type: "pullout",
+        label: "Received at warehouse",
+        at: line.receivedAt,
+        branch: null,
+        status: null,
+        detail: [
+          line.receivedLocation
+            ? `${pullout.warehouse?.name ?? "—"} / ${line.receivedLocation.code}`
+            : pullout.warehouse?.name,
+          line.priorStatusCode?.code,
+          pullout.pulloutNo,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        href: `/logistics/pickups?q=${encodeURIComponent(pullout.pulloutNo)}`,
+      });
+    }
   }
 
   for (const line of row.deliveryLines) {

@@ -50,6 +50,8 @@ import {
 import { parseManilaDateTime, parseScheduleDate } from "@/features/logistics/lib/shipment";
 import {
   PULLOUT_CREATE_INPUT_ERROR,
+  PULLOUT_RECEIVE_INPUT_ERROR,
+  pulloutReceiveSchema,
   pulloutSchema,
 } from "@/features/logistics/schemas/pullout.schema";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
@@ -807,21 +809,25 @@ export async function updatePulloutListAction(id: string, input: unknown) {
 export async function releasePulloutAction(id: string) {
   const session = await requirePermission(LOGISTICS_MANAGE);
   try {
-    const result = await pulloutPostingService.finalize(postingActor(session), id);
+    await pulloutPostingService.finalize(postingActor(session), id);
     revalidatePullout(id);
-    return { success: true as const, sapJob: result.sapJob };
+    return { success: true as const };
   } catch (error) {
     return actionError(error, "Failed to send the pull-out");
   }
 }
 
-export async function completePulloutAction(id: string) {
+export async function completePulloutAction(id: string, input: unknown) {
   const session = await requirePermission(LOGISTICS_MANAGE);
+  const parsed = pulloutReceiveSchema.safeParse(input);
+  if (!parsed.success) return { error: PULLOUT_RECEIVE_INPUT_ERROR };
   try {
-    await pulloutPostingService.complete(postingActor(session), id);
-    return { success: true as const };
+    const result = await pulloutPostingService.complete(postingActor(session), id, parsed.data);
+    revalidatePullout(id);
+    revalidatePath("/inventory/warehouse-stock");
+    return { success: true as const, completed: result.completed };
   } catch (error) {
-    return actionError(error, "Warehouse receipt is not available yet. Units stay in transit.");
+    return actionError(error, "Failed to receive the units");
   }
 }
 

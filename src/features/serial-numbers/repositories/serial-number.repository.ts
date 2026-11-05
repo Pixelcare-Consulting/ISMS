@@ -140,6 +140,9 @@ const serialTraceabilityInclude = {
     orderBy: { pullout: { createdAt: "desc" } },
     select: {
       id: true,
+      receivedAt: true,
+      receivedLocation: { select: { code: true } },
+      priorStatusCode: { select: { code: true } },
       pullout: {
         select: {
           id: true,
@@ -832,7 +835,7 @@ function inFlightSerialWorkflow(): Prisma.SerialNumberWhereInput {
       },
       {
         pulloutLines: {
-          some: { pullout: { statusCode: { code: { in: [...OPEN_PULLOUT_CODES] } } } },
+          some: { receivedAt: null, pullout: { statusCode: { code: { in: [...OPEN_PULLOUT_CODES] } } } },
         },
       },
       {

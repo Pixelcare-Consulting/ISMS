@@ -203,6 +203,7 @@ export async function openDocumentIdsBySerial(
       where: {
         serialNumberId: { in: serialNumberIds },
         ...(except?.pulloutId ? { pulloutId: { not: except.pulloutId } } : {}),
+        receivedAt: null,
         pullout: {
           tenantId,
           statusCode: { code: { in: [...OPEN_PULLOUT_STATUS_CODES] } },

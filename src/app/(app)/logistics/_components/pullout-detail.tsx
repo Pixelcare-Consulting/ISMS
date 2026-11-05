@@ -55,6 +55,7 @@ import {
 import {
   approvePulloutLineAction,
   approvePulloutTlAction,
+  completePulloutAction,
   deletePulloutLineAction,
   listPulloutSerialsAction,
   listWarehousesForLogisticsAction,
@@ -172,8 +173,30 @@ function recordedNames(names: readonly string[]) {
   );
 }
 
+/** Where the unit was before, or the only location there is. Otherwise the receiver picks. */
+function defaultReceiveLocation(
+  line: ItemRow,
+  locations: PulloutDetail["receiveLocations"],
+): string {
+  const recorded = locations.find((location) => location.id === line.recordedLocationId);
+  if (recorded) return recorded.id;
+  return locations.length === 1 ? (locations[0]?.id ?? "") : "";
+}
+
+function ReceivedCell({ row }: { row: ItemRow }) {
+  if (!row.receivedAt) return <span className="text-muted-foreground">In transit</span>;
+  const who = [formatWhen(row.receivedAt, true), row.receivedByName].filter(Boolean).join(" · ");
+  return (
+    <div>
+      <p>{row.receivedLocation ? (joinedLabel(row.receivedLocation.name, row.receivedLocation.code) ?? "—") : "—"}</p>
+      {who ? <p className="text-xs text-muted-foreground">{who}</p> : null}
+    </div>
+  );
+}
+
 function pulloutItemColumns(
   renderAction: ((row: ItemRow) => ReactNode) | null,
+  renderReceived: ((row: ItemRow) => ReactNode) | null,
 ): CompactLineColumn<ItemRow>[] {
   const columns: CompactLineColumn<ItemRow>[] = [
     {
@@ -218,6 +241,14 @@ function pulloutItemColumns(
       cell: (row) => textOrDash(row.remarks),
     },
   ];
+  if (renderReceived) {
+    columns.push({
+      id: "received",
+      header: "Warehouse location",
+      className: "min-w-52",
+      cell: renderReceived,
+    });
+  }
   if (renderAction) {
     columns.push({
       id: "actions",
@@ -589,6 +620,16 @@ export function PulloutDetailView({
   const [extrasState, setExtrasState] = useState<ExtraSerialLoad>("idle");
   const [extrasAttempt, setExtrasAttempt] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState<ItemRow | null>(null);
+  const [receiveIds, setReceiveIds] = useState<string[]>([]);
+  const [receiveLocationBySerial, setReceiveLocationBySerial] = useState<Record<string, string>>(
+    () =>
+      Object.fromEntries(
+        detail.lines.map((line) => [
+          line.serialNumberId,
+          defaultReceiveLocation(line, detail.receiveLocations),
+        ]),
+      ),
+  );
 
   useEffect(() => {
     if (!canEditList) return;
@@ -640,17 +681,45 @@ export function PulloutDetailView({
     setExtrasAttempt((attempt) => attempt + 1);
   }
 
-  function run(
-    action: () => Promise<{ error: string } | { success: true; sapJob?: { message: string } }>,
-    success: string,
-  ) {
+  function run(action: () => Promise<{ error: string } | { success: true }>, success: string) {
     startTransition(async () => {
       const result = await action();
       if ("error" in result) {
         toast.error(result.error);
         return;
       }
-      toast.success("sapJob" in result && result.sapJob ? result.sapJob.message : success);
+      toast.success(success);
+      router.refresh();
+    });
+  }
+
+  function toggleReceive(serialNumberId: string, checked: boolean) {
+    setReceiveIds((current) =>
+      checked ? [...current, serialNumberId] : current.filter((id) => id !== serialNumberId),
+    );
+  }
+
+  function setReceiveLocation(serialNumberIds: readonly string[], locationId: string) {
+    setReceiveLocationBySerial((current) => ({
+      ...current,
+      ...Object.fromEntries(serialNumberIds.map((id) => [id, locationId])),
+    }));
+  }
+
+  function receiveSelected() {
+    startTransition(async () => {
+      const result = await completePulloutAction(detail.id, {
+        lines: receiveIds.map((serialNumberId) => ({
+          serialNumberId,
+          warehouseLocationId: receiveLocationBySerial[serialNumberId] ?? "",
+        })),
+      });
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(result.completed ? "Pull-out received and completed" : "Units received");
+      setReceiveIds([]);
       router.refresh();
     });
   }
@@ -661,6 +730,18 @@ export function PulloutDetailView({
   const showApprove = isReserve && capabilities.canApproveTl;
   const showReject = showApprove && capabilities.canRejectTransfer;
   const showSend = canEditList && detail.status.code === PULLOUT_WORKFLOW_CODE.pending_logistics;
+  const inTransit = detail.status.code === PULLOUT_WORKFLOW_CODE.in_transit;
+  const canReceive = inTransit && capabilities.canCompletePullout;
+  const showReceipts = inTransit || detail.status.code === PULLOUT_WORKFLOW_CODE.completed;
+  const awaitingIds = detail.lines
+    .filter((line) => !line.receivedAt)
+    .map((line) => line.serialNumberId);
+  const receiveOptions = detail.receiveLocations.map((location) => ({
+    id: location.id,
+    label: joinedLabel(location.name, location.code) ?? location.name,
+  }));
+  const receiveReady =
+    receiveIds.length > 0 && receiveIds.every((id) => receiveLocationBySerial[id]);
   const canAttach =
     capabilities.canCreate &&
     inScope(branchScope, detail.branch.id) &&
@@ -785,31 +866,113 @@ export function PulloutDetailView({
     );
   }
 
+  function receiveLineAction(row: ItemRow) {
+    if (row.receivedAt) return <span className="text-xs text-emerald-700">Received</span>;
+    return (
+      <Checkbox
+        checked={receiveIds.includes(row.serialNumberId)}
+        disabled={pending || receiveOptions.length === 0}
+        aria-label={`Receive ${row.serialNo}`}
+        onCheckedChange={(value) => toggleReceive(row.serialNumberId, value === true)}
+      />
+    );
+  }
+
+  function receiveLocationCell(row: ItemRow) {
+    if (row.receivedAt) return <ReceivedCell row={row} />;
+    return (
+      <SearchableSelect
+        id={`receive-location-${row.serialNumberId}`}
+        options={receiveOptions}
+        value={receiveLocationBySerial[row.serialNumberId] ?? ""}
+        onChange={(locationId) => setReceiveLocation([row.serialNumberId], locationId)}
+        placeholder="Select location…"
+        searchPlaceholder="Search locations…"
+        disabled={pending || !receiveIds.includes(row.serialNumberId)}
+      />
+    );
+  }
+
   function lineActionRenderer(): ((row: ItemRow) => ReactNode) | null {
     if (showApprove) return reserveLineAction;
     if (canEditList) return listLineAction;
+    if (canReceive) return receiveLineAction;
     return null;
+  }
+
+  function receivedRenderer(): ((row: ItemRow) => ReactNode) | null {
+    if (canReceive) return receiveLocationCell;
+    return showReceipts ? (row) => <ReceivedCell row={row} /> : null;
+  }
+
+  function receiveToolbar(): ReactNode {
+    if (!canReceive || awaitingIds.length === 0) return undefined;
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <SearchableSelect
+          id="receive-location-all"
+          className="w-56"
+          options={receiveOptions}
+          value=""
+          onChange={(locationId) => setReceiveLocation(receiveIds, locationId)}
+          placeholder="Set location for selected"
+          searchPlaceholder="Search locations…"
+          disabled={pending || receiveIds.length === 0}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          disabled={pending || receiveOptions.length === 0}
+          onClick={() =>
+            setReceiveIds(receiveIds.length === awaitingIds.length ? [] : awaitingIds)
+          }
+        >
+          {receiveIds.length === awaitingIds.length ? "Clear selection" : "Select all"}
+        </Button>
+      </div>
+    );
   }
 
   function logisticsNote(): ReactNode {
     if (detail.status.code === PULLOUT_WORKFLOW_CODE.pending_logistics) {
       return (
         <p className="text-sm text-muted-foreground">
-          Sending does not put stock in the warehouse yet.
+          Sending puts the units in transit. The warehouse receives them next.
         </p>
       );
     }
-    if (detail.status.code === PULLOUT_WORKFLOW_CODE.in_transit) {
+    if (!inTransit) return null;
+    if (canReceive && receiveOptions.length === 0) {
       return (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-          {`Warehouse receipt is not available yet. After this pull-out is sent, the units stay in transit at ${detail.branch.name}.`}
+          {`${detail.warehouse.name} has no locations yet. Add one in Settings → Warehouses to receive these units.`}
         </p>
       );
     }
-    return null;
+    return (
+      <p className="text-sm text-muted-foreground">
+        {canReceive
+          ? "Tick the units that arrived and choose where each one goes. Units you leave stay in transit."
+          : `Units stay in transit at ${detail.branch.name} until the warehouse receives them.`}
+      </p>
+    );
   }
 
   function headerActions(): ReactNode {
+    if (canReceive) {
+      return (
+        <Button
+          type="button"
+          disabled={pending || !receiveReady}
+          title={
+            receiveIds.length > 0 && !receiveReady ? "Choose a location for every unit" : undefined
+          }
+          onClick={receiveSelected}
+        >
+          {receiveIds.length > 0 ? `Receive ${receiveIds.length}` : "Receive"}
+        </Button>
+      );
+    }
     if (isReserve) {
       if (!showApprove) return null;
       return (
@@ -907,13 +1070,15 @@ export function PulloutDetailView({
         <CompactLineTable
           rows={detail.lines}
           getRowId={(row) => row.serialNumberId}
-          columns={pulloutItemColumns(lineActionRenderer())}
+          columns={pulloutItemColumns(lineActionRenderer(), receivedRenderer())}
           searchText={(row) => [
             row.skuCode,
             row.modelName,
             row.serialNo,
             row.priorCode,
             row.remarks,
+            row.receivedLocation?.code,
+            row.receivedLocation?.name,
             ...row.classificationNames,
             ...row.unitPackingConditionNames,
             ...row.accessoryCompletenessNames,
@@ -933,9 +1098,11 @@ export function PulloutDetailView({
               >
                 {addOpen ? "Hide serials" : "Add serials"}
               </Button>
-            ) : undefined
+            ) : (
+              receiveToolbar()
+            )
           }
-          minWidth="72rem"
+          minWidth={showReceipts ? "86rem" : "72rem"}
         />
         {canEditList && addOpen ? (
           <AddSerialsPanel
@@ -957,9 +1124,6 @@ export function PulloutDetailView({
             at: row.at,
           }))}
         />
-        <p className="mt-4 text-sm text-muted-foreground">
-          {detail.sapJob?.message ?? "No SAP request has been queued for this pull-out."}
-        </p>
       </RecordSection>
     </RecordSheet>
   );

@@ -20,3 +20,16 @@ export const pulloutSchema = z.object({
 });
 
 export const PULLOUT_CREATE_INPUT_ERROR = "Choose a branch and the details for each serial";
+
+export const pulloutReceiveSchema = z.object({
+  lines: z
+    .array(
+      z.object({
+        serialNumberId: z.string().min(1),
+        warehouseLocationId: z.string().min(1),
+      }),
+    )
+    .min(1),
+});
+
+export const PULLOUT_RECEIVE_INPUT_ERROR = "Choose a warehouse location for every unit";

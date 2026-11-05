@@ -30,6 +30,7 @@ export const PULLOUTS_MODULE_GUIDE: ModuleGuideContent = {
   tips: [
     { label: "One pull-out can hold stock and defective units. Only stock units need a classification" },
     { label: "Branch completes release in Operations after pickup is scheduled" },
+    { label: "Warehouse receives each unit into a location, keeping its STK or DEF status. Units not yet received stay in transit" },
   ],
   storageKey: "module-guide.logistics.pullouts",
 };

@@ -28,7 +28,9 @@ type PulloutAuditAction =
   | "pullout.attachment_added"
   | "pullout.rejected"
   | "pullout.list_saved"
-  | "pullout.finalized";
+  | "pullout.finalized"
+  | "pullout.received"
+  | "pullout.completed";
 
 const PULLOUT_ICONS: Readonly<Record<string, ProgressStageIcon>> = {
   [PULLOUT_WORKFLOW_CODE.requested]: "approval",
@@ -51,6 +53,8 @@ function asPulloutAuditAction(action: string): PulloutAuditAction | null {
     case "pullout.rejected":
     case "pullout.list_saved":
     case "pullout.finalized":
+    case "pullout.received":
+    case "pullout.completed":
       return action;
     default:
       return null;
@@ -77,6 +81,10 @@ export function pulloutAuditLabel(action: string): string {
       return "Logistics list saved";
     case "pullout.finalized":
       return "Sent — in transit";
+    case "pullout.received":
+      return "Units received";
+    case "pullout.completed":
+      return "Received — completed";
     default: {
       const unreachable: never = known;
       return unreachable;
@@ -98,8 +106,9 @@ function historyAction(code: string): string | null {
       return "pullout.list_saved";
     case PULLOUT_WORKFLOW_CODE.in_transit:
     case PULLOUT_WORKFLOW_CODE.pulled_out:
-    case PULLOUT_WORKFLOW_CODE.completed:
       return "pullout.finalized";
+    case PULLOUT_WORKFLOW_CODE.completed:
+      return "pullout.completed";
     default:
       return null;
   }

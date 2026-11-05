@@ -383,6 +383,7 @@ model User {
   branchDefectReportsDecided         BranchDefectReport[]          @relation("BranchDefectReportDecider")
   branchDefectReportPhotosUploaded   BranchDefectReportPhoto[]     @relation("BranchDefectReportPhotoUploadedBy")
   branchPulloutLinesDecided          BranchPulloutLine[]           @relation("BranchPulloutLineDecidedBy")
+  branchPulloutLinesReceived         BranchPulloutLine[]           @relation("BranchPulloutLineReceivedBy")
   branchPulloutAttachmentsUploaded   BranchPulloutAttachment[]     @relation("BranchPulloutAttachmentUploadedBy")
   branchPulloutsCreated              BranchPullout[]               @relation("BranchPulloutCreatedBy")
   serialNumbersCreated               SerialNumber[]                @relation("SerialNumberCreatedBy")
@@ -1533,6 +1534,7 @@ model WarehouseLocation {
   branchInventories    BranchInventory[]
   aors                 Aor[]
   branchPullouts       BranchPullout[]
+  pulloutLinesReceived BranchPulloutLine[]   @relation("BranchPulloutLineReceivedLocation")
   deliveryLinesFrom    BranchDeliveryLine[]  @relation("DeliveryLineWarehouseFrom")
   branchReturnRequests BranchReturnRequest[]
   deliveryReturnLines  DeliveryReturnLine[]
@@ -2455,11 +2457,17 @@ model BranchPulloutLine {
   decidedAt               DateTime? @map("decided_at")
   decidedById             String?   @map("decided_by_id")
   remarks                 String?
+  /// Set when the warehouse receives the unit. ISMS only: pull-outs do not post to SAP.
+  receivedAt              DateTime? @map("received_at")
+  receivedById            String?   @map("received_by_id")
+  receivedLocationId      String?   @map("received_location_id")
 
   pullout                 BranchPullout                           @relation(fields: [pulloutId], references: [id], onDelete: Cascade)
   serialNumber            SerialNumber                            @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
   priorStatusCode         ReasonStatusCode?                       @relation("PulloutLinePriorStatus", fields: [priorStatusCodeId], references: [id], onDelete: SetNull)
   decidedBy               User?                                   @relation("BranchPulloutLineDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+  receivedBy              User?                                   @relation("BranchPulloutLineReceivedBy", fields: [receivedById], references: [id], onDelete: SetNull)
+  receivedLocation        WarehouseLocation?                      @relation("BranchPulloutLineReceivedLocation", fields: [receivedLocationId], references: [id], onDelete: SetNull)
   classifications         BranchPulloutLineClassification[]
   packingConditions       BranchPulloutLinePackingCondition[]
   accessoryCompletenesses BranchPulloutLineAccessoryCompleteness[]
@@ -2467,6 +2475,8 @@ model BranchPulloutLine {
   @@unique([pulloutId, serialNumberId])
   @@index([priorStatusCodeId])
   @@index([decidedById])
+  @@index([receivedById])
+  @@index([receivedLocationId])
   @@map("branch_pullout_lines")
 }
 

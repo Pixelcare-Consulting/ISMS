@@ -1,6 +1,6 @@
 /**
  * Branch pull-out rules. Finalize stops at in-transit on the source branch.
- * It does not create warehouse stock and does not mark the request completed.
+ * Pull-outs are ISMS only: nothing here posts to SAP. See `planPulloutReceive`.
  */
 
 import type { PulloutWorkflowCodeKey } from "@/features/logistics/constants/workflow-codes";
@@ -78,9 +78,23 @@ export interface PulloutFinalizePlan {
   ok: true;
   nextStatus: "in_transit";
   moves: { serialNumberId: string; nextCode: "DIT" }[];
-  createsWarehouseInventory: false;
-  setsCompleted: false;
   idempotent: boolean;
+}
+
+export interface PulloutReceiptLineView extends PulloutLineView {
+  received: boolean;
+}
+
+export interface PulloutReceipt {
+  serialNumberId: string;
+  warehouseLocationId: string;
+}
+
+export interface PulloutReceivePlan {
+  ok: true;
+  /** `priorCode` is the unit's original STK or DEF, which it keeps in the warehouse. */
+  lines: { serialNumberId: string; priorCode: HoldCode; warehouseLocationId: string }[];
+  completes: boolean;
 }
 
 const REJECTABLE: readonly PulloutStatus[] = ["pending_tl", "requested"];
@@ -324,14 +338,14 @@ export function planPulloutUpdateList(input: {
 
 export function planPulloutFinalize(input: {
   status: PulloutStatus;
-  lines: readonly PulloutLineView[];
+  lines: readonly (PulloutLineView & { received?: boolean })[];
 }): PulloutFinalizePlan | PlanFailure {
   if (input.lines.length === 0) {
     return { ok: false, error: "This pull-out has no serials to send" };
   }
 
   if (input.status === "in_transit") {
-    const allTransit = input.lines.every((line) => line.inventoryCode === "DIT");
+    const allTransit = input.lines.every((line) => line.received || line.inventoryCode === "DIT");
     if (!allTransit) {
       return { ok: false, error: "Some serials are not ready to leave the branch" };
     }
@@ -339,8 +353,6 @@ export function planPulloutFinalize(input: {
       ok: true,
       nextStatus: "in_transit",
       moves: [],
-      createsWarehouseInventory: false,
-      setsCompleted: false,
       idempotent: true,
     };
   }
@@ -362,27 +374,49 @@ export function planPulloutFinalize(input: {
     ok: true,
     nextStatus: "in_transit",
     moves,
-    createsWarehouseInventory: false,
-    setsCompleted: false,
     idempotent: false,
   };
 }
 
-/** Warehouse receipt of an in-transit pull-out is not implemented. */
-export function planPulloutComplete(): PlanFailure {
-  return {
-    ok: false,
-    error: "Warehouse receipt is not available yet. Units stay in transit.",
-  };
-}
-
-export function pulloutSapMessage(
-  job: { status: string; stub: boolean } | null,
-): string {
-  if (!job) return "No SAP request has been queued for this pull-out.";
-  const status = job.status.replaceAll("_", " ");
-  if (job.stub || job.status !== "completed") {
-    return `SAP request is ${status}. It has not been posted to SAP.`;
+/**
+ * Receives the units that arrived. A pull-out can arrive in parts: the rest stay in transit
+ * and the pull-out completes on the last unit. Pull-outs do not post to SAP.
+ */
+export function planPulloutReceive(input: {
+  status: PulloutStatus;
+  lines: readonly PulloutReceiptLineView[];
+  receipts: readonly PulloutReceipt[];
+}): PulloutReceivePlan | PlanFailure {
+  if (input.status !== "in_transit") {
+    return { ok: false, error: "Only an in-transit pull-out can be received" };
   }
-  return `SAP request is ${status}.`;
+  if (input.receipts.length === 0) return { ok: false, error: "Select the units that arrived" };
+  if (!uniqueSerialIds(input.receipts.map((receipt) => receipt.serialNumberId))) {
+    return { ok: false, error: "Each serial can only be received once" };
+  }
+
+  const lineBySerial = new Map(input.lines.map((line) => [line.serialNumberId, line]));
+  const lines: PulloutReceivePlan["lines"] = [];
+  for (const receipt of input.receipts) {
+    const line = lineBySerial.get(receipt.serialNumberId);
+    if (!line) return { ok: false, error: "A selected serial is not on this pull-out" };
+    if (line.received) return { ok: false, error: "A selected unit was already received" };
+    if (!receipt.warehouseLocationId) {
+      return { ok: false, error: "Choose a warehouse location for every unit" };
+    }
+    if (line.priorCode !== "STK" && line.priorCode !== "DEF") {
+      return missingPrior(line.serialNumberId);
+    }
+    if (line.inventoryCode !== "DIT") {
+      return { ok: false, error: "Some units are no longer in transit at the branch" };
+    }
+    lines.push({
+      serialNumberId: line.serialNumberId,
+      priorCode: line.priorCode,
+      warehouseLocationId: receipt.warehouseLocationId,
+    });
+  }
+
+  const awaiting = input.lines.filter((line) => !line.received).length;
+  return { ok: true, lines, completes: lines.length === awaiting };
 }

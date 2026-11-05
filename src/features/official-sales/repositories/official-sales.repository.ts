@@ -412,6 +412,7 @@ export const officialSalesRepository = {
     const openPullout = await prisma.branchPulloutLine.findFirst({
       where: {
         serialNumberId,
+        receivedAt: null,
         pullout: {
           tenantId,
           statusCode: {
