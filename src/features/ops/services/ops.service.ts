@@ -9,6 +9,7 @@ import {
   pulloutPostingService,
   type PulloutCreateInput,
 } from "@/features/logistics/services/pullout-posting.service";
+import type { TransferLineRemarks } from "@/features/logistics/lib/transfer-line-remarks";
 import type { PostingActor } from "@/features/logistics/services/posting-support";
 import { transferPostingService } from "@/features/logistics/services/transfer-posting.service";
 import { opsRepository } from "@/features/ops/repositories/ops.repository";
@@ -74,7 +75,7 @@ export const opsService = {
       modelId: string;
       quantity: number;
       serialNumberIds: string[];
-      notes?: string;
+      lineRemarks?: TransferLineRemarks;
       transferNo?: string;
     },
   ) {

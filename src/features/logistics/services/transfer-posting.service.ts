@@ -10,6 +10,10 @@ import {
   resolveLogisticsBranchScope,
   transferIsVisible,
 } from "@/features/logistics/lib/transfer-visibility";
+import {
+  transferLineRemark,
+  type TransferLineRemarks,
+} from "@/features/logistics/lib/transfer-line-remarks";
 import { nextTransferNo } from "@/features/logistics/lib/transfer-number";
 import { resolveLogisticsCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import {
@@ -83,6 +87,7 @@ export interface TransferDetail {
     branchName: string | null;
     decision: "pending" | "accepted" | "rejected";
     remarks: string | null;
+    requestRemarks: string | null;
   }[];
   history: { id: string; action: string; at: string; userName: string | null }[];
 }
@@ -644,6 +649,7 @@ export const transferPostingService = {
             serialNumberId: true,
             decision: true,
             remarks: true,
+            requestRemarks: true,
             priorStatusCode: { select: { code: true } },
             serialNumber: {
               select: { serialNo: true, model: { select: { id: true, skuCode: true, name: true } } },
@@ -714,6 +720,7 @@ export const transferPostingService = {
           branchName: row?.branch.name ?? null,
           decision: asLineDecision(line.decision),
           remarks: line.remarks,
+          requestRemarks: line.requestRemarks,
         };
       }),
       history: history.map((row) => ({
@@ -782,7 +789,7 @@ export const transferPostingService = {
       modelId: string;
       quantity: number;
       serialNumberIds: string[];
-      notes?: string;
+      lineRemarks?: TransferLineRemarks;
       transferNo?: string;
     },
   ) {
@@ -800,7 +807,6 @@ export const transferPostingService = {
 
     const codes = await inventoryIds(actor.tenantId);
     const statusCodeId = await workflowId(actor.tenantId, "pending_tl");
-    const notes = input.notes?.trim() || null;
     const requestedNo = input.transferNo?.trim() || "";
 
     const save = (transferNo: string) =>
@@ -832,13 +838,13 @@ export const transferPostingService = {
             toBranchId: input.toBranchId,
             transferNo,
             statusCodeId,
-            notes,
             createdById: actor.userId,
             lines: {
               create: plan.holds.map((hold) => ({
                 serialNumberId: hold.serialNumberId,
                 quantity: 1,
                 priorStatusCodeId: codes[hold.priorCode],
+                requestRemarks: transferLineRemark(input.lineRemarks, hold.serialNumberId),
               })),
             },
             approvalLevels: { create: [{ level: 1, roleSlug: "tl" }] },

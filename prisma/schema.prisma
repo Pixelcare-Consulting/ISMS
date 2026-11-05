@@ -2398,6 +2398,8 @@ model BranchTransferLine {
   /// Receiving branch outcome. Pending until that branch accepts or rejects the serial.
   decision          String    @default("pending")
   remarks           String?
+  /// Requester's remark for this serial. `remarks` is the receiving branch's rejection reason.
+  requestRemarks    String?   @map("request_remarks")
   decidedAt         DateTime? @map("decided_at")
   decidedById       String?   @map("decided_by_id")
 

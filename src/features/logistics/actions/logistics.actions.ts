@@ -58,6 +58,7 @@ import {
   pulloutReceiveSchema,
   pulloutSchema,
 } from "@/features/logistics/schemas/pullout.schema";
+import { transferLineRemarksSchema } from "@/features/logistics/lib/transfer-line-remarks";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
@@ -130,7 +131,7 @@ const transferSchema = z.object({
   modelId: z.string().min(1),
   quantity: z.number().int().positive(),
   serialNumberIds: z.array(z.string().min(1)).min(1),
-  notes: z.string().optional(),
+  lineRemarks: transferLineRemarksSchema,
   transferNo: z
     .string()
     .trim()

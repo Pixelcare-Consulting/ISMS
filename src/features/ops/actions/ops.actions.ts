@@ -27,6 +27,7 @@ import {
   deliveryReturnUnitsSchema,
   type DeliveryReturnDetail,
 } from "@/features/logistics/services/delivery-return.service";
+import { transferLineRemarksSchema } from "@/features/logistics/lib/transfer-line-remarks";
 import { hasPermission, requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
 
 const OPS_CREATE_PERMISSIONS = [LOGISTICS_CREATE, LOGISTICS_MANAGE, "orders.create"] as const;
@@ -37,7 +38,7 @@ const transferSchema = z.object({
   modelId: z.string().min(1),
   quantity: z.number().int().positive(),
   serialNumberIds: z.array(z.string().min(1)).min(1),
-  notes: z.string().optional(),
+  lineRemarks: transferLineRemarksSchema,
   transferNo: z
     .string()
     .trim()
