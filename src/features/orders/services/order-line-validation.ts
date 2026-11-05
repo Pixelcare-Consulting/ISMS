@@ -3,7 +3,7 @@ import type { BranchOrderType } from "@prisma/client";
 import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
 import { planogramRepository } from "@/features/planogram/repositories/planogram.repository";
 
-/** Planogram, hold/retired, and Shelf max − STK checks used by typed orders. */
+/** Planogram, hold/retired, and Max Qty − STK checks used by typed orders. */
 export async function validateOrderLines(
   tenantId: string,
   branchId: string,
@@ -43,7 +43,7 @@ export async function validateOrderLines(
     const remainingCapacity = Math.max(0, planogram.maxQty - stockCount);
     if (line.quantity > remainingCapacity) {
       throw new Error(
-        `Quantity for ${model.skuCode} exceeds shelf capacity (${remainingCapacity} remaining of Shelf max ${planogram.maxQty})`,
+        `Quantity for ${model.skuCode} exceeds Max Qty (${remainingCapacity} remaining of ${planogram.maxQty})`,
       );
     }
   }

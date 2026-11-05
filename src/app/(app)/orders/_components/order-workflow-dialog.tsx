@@ -42,7 +42,7 @@ import type { ApprovalTimelineSource } from "@/features/orders/lib/order-approva
 import { worksheetLinesOnOrder } from "@/features/orders/lib/order-create-details";
 import {
   worksheetBrandSalesQty,
-  worksheetPlanningFigures,
+  worksheetFiguresForBrand,
 } from "@/features/orders/lib/order-worksheet";
 import { worksheetOrderTotals } from "@/features/orders/lib/order-worksheet-filters";
 import { buildOrderReviewSnapshot, type OrderReviewSnapshot } from "@/features/orders/lib/order-review-snapshot";
@@ -173,20 +173,9 @@ export function OrderWorkflowDialog({
       orderType,
       "readonly",
     );
-    return worksheetPlanningFigures({
-      lines: projected.map((line) => ({
-        brandId: line.brandId,
-        srp: line.srp,
-        cbm: line.cbm,
-        salesAmount: line.salesAmount,
-        salesUnavailable: line.salesUnavailable,
-        milDays: line.milDays,
-        onPlanogram: line.onPlanogram,
-        onHandQty: line.inventory.onHandQty,
-        requestedQty: line.requestedQty,
-        approvedQty: line.approvedQty,
-      })),
-      brandId: brandId || null,
+    return worksheetFiguresForBrand({
+      lines: projected,
+      brandId,
       brandQuotas: worksheet.payload.brandQuotas,
       daysElapsed: worksheet.payload.summary.daysElapsed,
     });

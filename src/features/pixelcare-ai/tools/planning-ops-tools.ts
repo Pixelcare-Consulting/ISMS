@@ -70,7 +70,7 @@ function kpiLabel(key: DashboardKpiKey, kpis: DashboardKpis): string {
     case "openAtr":
       return "Open returns";
     case "belowPlanogramCapacity":
-      return "Branches below shelf max";
+      return "Branches below Max Qty";
     case "milBreaches":
       return "MIL alerts";
     case "allocationGaps":
@@ -413,7 +413,7 @@ export function buildPlanningOpsTools(session: AppSession) {
 
     listAllocationGaps: tool({
       description:
-        "List computed allocation / shelf gaps for a planning period (Shelf max vs stock). Uses existing allocation rows — does not run allocation.",
+        "List computed allocation / shelf gaps for a planning period (Max Qty vs stock). Uses existing allocation rows — does not run allocation.",
       inputSchema: z.object({
         periodId: z
           .string()
@@ -475,7 +475,7 @@ export function buildPlanningOpsTools(session: AppSession) {
           periodLabel: period.label,
           total: gaps.length,
           gaps,
-          note: "Shelf max is planogram capacity already stored on the allocation row. SUG for order create remains Shelf max − STK on Order Analytics.",
+          note: "Max Qty is planogram capacity already stored on the allocation row. SUG for order create remains Max Qty − STK on Order Analytics.",
           nextSteps: [
             { label: "Open Planning", href: "/settings/planning" },
             {
@@ -615,7 +615,7 @@ export function buildPlanningOpsTools(session: AppSession) {
 
     getPlanogramAlerts: tool({
       description:
-        "Read MIL and below Shelf max (capacity) alert counts by branch for the user's AOR. Say Shelf max — never maxQty.",
+        "Read MIL and below Max Qty (capacity) alert counts by branch for the user's AOR. Say Max Qty — never maxQty.",
       inputSchema: z.object({
         reason: z.string().max(120).optional(),
       }),
@@ -668,7 +668,7 @@ export function buildPlanningOpsTools(session: AppSession) {
           milBreaches: details.milBreaches,
           belowCapacityBranches,
           milBreachBranches,
-          note: "belowCapacity counts SKU-branch rows where on-hand is under Shelf max (planogram capacity).",
+          note: "belowCapacity counts SKU-branch rows where on-hand is under Max Qty (planogram capacity).",
           nextSteps: [
             { label: "Open Planogram", href: "/settings/planogram" },
             { label: "Open Dashboard", href: "/dashboard" },

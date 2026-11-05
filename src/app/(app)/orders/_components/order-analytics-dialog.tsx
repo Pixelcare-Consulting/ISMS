@@ -46,7 +46,7 @@ const COLUMN_HELP = {
   inventory: "Units at the branch by status, such as stock and in transit.",
   sales: "Units sold this month.",
   rate: "This model's share of this month's sales for the models loaded on this branch.",
-  milQty: "Target units for this model. This is the shelf maximum.",
+  milQty: "Target units for this model. This is the Max Qty.",
   milAmt: "Target units times the selling price.",
 } as const;
 
@@ -253,7 +253,7 @@ export function OrderAnalyticsDialog({
                                 <span className="flex w-full min-w-0 flex-col items-end gap-1 leading-tight">
                                   <span>{suggest.qty.toLocaleString()}</span>
                                   <span className="block max-w-full text-right text-[11px] font-normal leading-tight whitespace-normal text-muted-foreground">
-                                    Shelf max {line.milQty.toLocaleString()}
+                                    Max Qty {line.milQty.toLocaleString()}
                                   </span>
                                 </span>
                               ) : (
@@ -262,7 +262,7 @@ export function OrderAnalyticsDialog({
                                     {suggest.message}
                                   </span>
                                   <span className="block max-w-full text-right text-[11px] font-normal leading-tight whitespace-normal text-muted-foreground">
-                                    Shelf max {line.milQty.toLocaleString()}
+                                    Max Qty {line.milQty.toLocaleString()}
                                   </span>
                                 </span>
                               )}

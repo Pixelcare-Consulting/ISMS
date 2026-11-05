@@ -34,7 +34,7 @@ export const SAMPLE_SHELF_GAPS = {
   label: "SAMPLE DATA — not live planogram",
   branch: SAMPLE_BRANCH_LABEL,
   formula:
-    "Suggested order qty / SUG = Shelf max − on-hand (STK) (= Math.max(0, Shelf max − STK))",
+    "Suggested order qty / SUG = Max Qty − on-hand (STK) (= Math.max(0, Max Qty − STK))",
   retrievedAt: "2026-10-15T00:00:00.000Z",
   sourceHref: "/orders/manual?tab=analytics",
   lines: [
@@ -239,7 +239,7 @@ export const SAMPLE_ALLOCATION_GAPS = {
       gapQty: 2,
     },
   ],
-  note: "Shelf max is planogram capacity already stored on the allocation row.",
+  note: "Max Qty is planogram capacity already stored on the allocation row.",
   nextSteps: [{ label: "Open Planning", href: "/settings/planning" }],
 };
 
@@ -311,7 +311,7 @@ export const SAMPLE_PLANOGRAM_ALERTS = {
       count: 1,
     },
   ],
-  note: "belowCapacity counts SKU-branch rows where on-hand is under Shelf max.",
+  note: "belowCapacity counts SKU-branch rows where on-hand is under Max Qty.",
   nextSteps: [{ label: "Open Planogram", href: "/settings/planogram" }],
 };
 

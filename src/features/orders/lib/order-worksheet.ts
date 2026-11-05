@@ -1,11 +1,12 @@
 /**
  * Pure order-worksheet rules. No database access.
- * SUG is shelf max minus STK. DII is stock value divided by Manila daily sales.
+ * SUG is Max Qty minus STK. DII is stock value divided by Manila daily sales.
  */
 
 import type { BranchOrderType, SkuStatus } from "@prisma/client";
 
 import type { ManilaMonthWindow } from "@/features/orders/utils/manila-calendar";
+import type { ProjectedWorksheetLine } from "@/features/orders/lib/order-worksheet-rows";
 import {
   NO_SALES_DII_REASON,
   OFF_PLANOGRAM_SUGGESTION_REASON,
@@ -306,6 +307,33 @@ export function worksheetPlanningFigures(input: {
     totalInventoryAmount: inventoryAmount + approvedOrderAmount,
     totalCbm,
   };
+}
+
+/**
+ * Planning figures for lines already projected onto the sheet.
+ * Screens with a brand filter call this so the figures follow it. An empty brand id is all brands.
+ */
+export function worksheetFiguresForBrand(input: {
+  lines: readonly ProjectedWorksheetLine[];
+  brandId: string | null;
+  brandQuotas: readonly OrderWorksheetBrandQuota[];
+  daysElapsed: number;
+}): WorksheetPlanningFigures {
+  return worksheetPlanningFigures({
+    ...input,
+    lines: input.lines.map((line) => ({
+      brandId: line.brandId,
+      srp: line.srp,
+      cbm: line.cbm,
+      salesAmount: line.salesAmount,
+      salesUnavailable: line.salesUnavailable,
+      milDays: line.milDays,
+      onPlanogram: line.onPlanogram,
+      onHandQty: line.inventory.onHandQty,
+      requestedQty: line.requestedQty,
+      approvedQty: line.approvedQty,
+    })),
+  });
 }
 
 function quotaQuantity(

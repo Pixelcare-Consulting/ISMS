@@ -45,7 +45,12 @@ jest.mock("@/features/logistics/services/sap-copy-to-follow.notifier", () => ({
   notifyCopyToAttention: jest.fn(async () => "none"),
 }));
 jest.mock("@/features/orders/services/sap-sales-order-import.service", () => ({
-  importSapSalesOrders: jest.fn(async () => ({ imported: 0, skipped: 0 })),
+  importSapSalesOrders: jest.fn(async () => ({
+    enabled: true,
+    imported: 0,
+    skipped: 0,
+    skipReasons: [],
+  })),
   findDeliveryNotesBySalesOrder: jest.fn(async () => new Map()),
   findSalesOrderStates: jest.fn(async () => new Map()),
 }));
@@ -260,7 +265,12 @@ it("records a sold serial as FAILED so the document is retried, not applied", as
 });
 
 it("imports SAP-made Sales Orders, then follows their DRs by base SO", async () => {
-  (importSapSalesOrders as jest.Mock).mockResolvedValue({ imported: 1, skipped: 0 });
+  (importSapSalesOrders as jest.Mock).mockResolvedValue({
+    enabled: true,
+    imported: 1,
+    skipped: 2,
+    skipReasons: ["SO 1 has no lines"],
+  });
   mockPrisma.branchDelivery.findMany.mockImplementation(
     async ({ where }: { where: { order?: { source?: string } } }) =>
       where.order?.source === "SAP"
@@ -276,7 +286,13 @@ it("imports SAP-made Sales Orders, then follows their DRs by base SO", async () 
 
   const result = await runSapCopyToFollow("t1");
 
-  expect(result.importedOrders).toBe(1);
+  expect(result).toMatchObject({
+    importedOrders: 1,
+    soImportOff: false,
+    skippedOrders: 2,
+    skippedOrderReasons: ["SO 1 has no lines"],
+    soImportError: null,
+  });
   expect(findDeliveryNotesBySalesOrder).toHaveBeenCalledWith({ id: "c1" }, [94001]);
   expect(request).toHaveBeenCalledWith(expect.objectContaining({ path: "/DeliveryNotes(175224)" }));
   // The cancelled DR is flagged against the SAP order's delivery, like any other DR.
@@ -326,6 +342,22 @@ it("flags a SAP-made SO closed without a DR once, so logistics can close the ord
       update: {},
     }),
   );
+});
+
+it("tells the caller when Sales Orders are not imported, or could not be read", async () => {
+  (importSapSalesOrders as jest.Mock).mockResolvedValueOnce({
+    enabled: false,
+    imported: 0,
+    skipped: 0,
+    skipReasons: [],
+  });
+  expect((await runSapCopyToFollow("t1")).soImportOff).toBe(true);
+
+  (importSapSalesOrders as jest.Mock).mockRejectedValueOnce(new Error("SAP is down"));
+  expect(await runSapCopyToFollow("t1")).toMatchObject({
+    soImportOff: false,
+    soImportError: "SAP is down",
+  });
 });
 
 it("fills a missing DR# from DCS Remarks typed after the IT was followed", async () => {

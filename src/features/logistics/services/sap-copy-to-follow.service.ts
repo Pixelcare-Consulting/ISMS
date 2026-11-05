@@ -87,6 +87,11 @@ export interface SapCopyToFollowResult {
   scanned: number;
   /** Sales Orders made in SAP that became ISMS orders this run. */
   importedOrders: number;
+  /** No start date in Ordering settings, so Sales Orders made in SAP are not read. */
+  soImportOff: boolean;
+  skippedOrders: number;
+  skippedOrderReasons: string[];
+  soImportError: string | null;
 }
 
 interface OpenDelivery {
@@ -789,6 +794,10 @@ export function runSapCopyToFollow(
       flagged: 0,
       scanned: 0,
       importedOrders: 0,
+      soImportOff: false,
+      skippedOrders: 0,
+      skippedOrderReasons: [],
+      soImportError: null,
     };
     const creds = await sapServiceLayerService.getCredentials(tenantId);
     if (!creds) return result;
@@ -804,11 +813,13 @@ export function runSapCopyToFollow(
       // Before the DR pass, so a DR made from a just-imported SO is followed this run.
       const imported = await importSapSalesOrders(creds, tenantId, deadline);
       result.importedOrders = imported.imported;
+      result.soImportOff = !imported.enabled;
+      result.skippedOrders = imported.skipped;
+      result.skippedOrderReasons = imported.skipReasons;
     } catch (e) {
-      logger.error(
-        { tenantId, err: e instanceof Error ? e.message : e },
-        "sap copy-to follow: SAP Sales Order import failed",
-      );
+      const message = e instanceof Error ? e.message : "Unknown error";
+      result.soImportError = message;
+      logger.error({ tenantId, err: message }, "sap copy-to follow: SAP Sales Order import failed");
     }
 
     await retryFailed(creds, tenantId, codes, deadline, result);

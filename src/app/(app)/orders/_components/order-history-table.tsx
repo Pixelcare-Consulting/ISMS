@@ -10,6 +10,7 @@ import {
   parseTablePageSize,
   type TablePageSize,
 } from "@/components/data-table/table-page-size";
+import { CheckSapNowButton } from "@/app/(app)/logistics/_components/check-sap-now-button";
 import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { OrderSourceBadge } from "@/features/orders/components/order-source-badge";
@@ -44,6 +45,8 @@ interface OrderHistoryTableProps {
     totalPages: number;
   };
   basePath: string;
+  /** Offers "Check SAP now": Sales Orders made in SAP land here, already approved. */
+  canCheckSap?: boolean;
   initialSort?: string;
   initialSortDir?: string;
 }
@@ -79,6 +82,7 @@ function formatHistoryDate(value: string): string {
 export function OrderHistoryTable({
   result,
   basePath,
+  canCheckSap = false,
   initialSort = "createdAt",
   initialSortDir = "desc",
 }: OrderHistoryTableProps) {
@@ -251,6 +255,7 @@ export function OrderHistoryTable({
         suggestions,
       }}
       pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
+      toolbarActions={canCheckSap ? <CheckSapNowButton size="default" /> : undefined}
       pagination={{
         total: result.total,
         page: result.page,

@@ -348,7 +348,7 @@ describe("suggestionApplyService.apply", () => {
 });
 
 describe("manual and special suggestions", () => {
-  it("counts outstanding supply once and does not invent a qty without a shelf max", async () => {
+  it("counts outstanding supply once and does not invent a qty without a Max Qty", async () => {
     (reasonStatusRepository.findCodeId as jest.Mock).mockImplementation(
       async (_tenant: string, _category: string, code: string) => ({ id: code === "STK" ? "stk" : "dit" }),
     );

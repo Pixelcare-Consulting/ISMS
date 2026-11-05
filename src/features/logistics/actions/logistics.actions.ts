@@ -15,6 +15,7 @@ import {
   LOGISTICS_DELIVERY_TRANSFER_RECEIVE,
   LOGISTICS_MANAGE,
   LOGISTICS_PAGE_PERMISSIONS,
+  SAP_CHECK_PERMISSIONS,
 } from "@/features/logistics/constants/logistics-permissions";
 import { logisticsRepository } from "@/features/logistics/repositories/logistics.repository";
 import { deliveryPostingService } from "@/features/logistics/services/delivery-posting.service";
@@ -364,7 +365,7 @@ export async function createDeliveryAction(input: unknown) {
  * 10 minutes). A run already in progress is joined, not repeated.
  */
 export async function checkSapCopyToNowAction() {
-  const session = await requireAnyPermission([...DISPATCH_PERMISSIONS]);
+  const session = await requireAnyPermission(SAP_CHECK_PERMISSIONS);
   try {
     const result = await runSapCopyToFollow(session.user.tenantId, { budgetMs: 45_000 });
     revalidateLogisticsPaths();

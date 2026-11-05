@@ -94,10 +94,12 @@ export const DATASET_CATALOG = {
   },
   order_summary: {
     label: "Order summary",
-    description: "Every order request by created date (Manila), with requested and approved totals.",
+    description:
+      "Every order request by status date (Manila): created, approved, rejected or cancelled, with requested and approved totals.",
     dashboardDateRange: true,
     columns: [
       date("date", "Date"),
+      str("statusDate", "Status Date"),
       str("createdAt", "Created"),
       str("orderNumber", "Order #"),
       str("source", "Source"),
@@ -117,14 +119,14 @@ export const DATASET_CATALOG = {
   },
   daily_stock: {
     label: "Daily stock",
-    description: "Planogram shelf max vs on-hand and sold quantity for one day.",
+    description: "Planogram Max Qty vs on-hand and sold quantity for one day.",
     dashboardDateRange: false,
     columns: [
       date("date", "Date"),
       str("branch", "Branch"),
       str("skuCode", "SKU"),
       str("model", "Model"),
-      num("shelfMax", "Shelf Max"),
+      num("shelfMax", "Max Qty"),
       num("invQty", "Inventory"),
       num("soldQty", "Sold"),
     ],

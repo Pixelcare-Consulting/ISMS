@@ -24,6 +24,8 @@ import {
 } from "@/features/forecast/services/forecast-import.workbook";
 import { formatPeriodDate } from "@/features/master-data/types/client-price-list";
 import { pickDisplayPriceListRow } from "@/features/master-data/utils/resolve-price-list";
+import type { PlanogramRefreshSummary } from "@/features/planogram/lib/target-forecast-qty";
+import { planogramForecastRefreshService } from "@/features/planogram/services/planogram-forecast-refresh.service";
 import { getUserBranchIds } from "@/lib/aor/scope";
 import { hasPermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
@@ -63,6 +65,8 @@ interface ImportPlan {
   preview: ForecastImportPreview;
   periodLabel: string;
   writes: ImportWrite[];
+  /** Every branch named in the file, including rows with no change to write. */
+  branchIds: string[];
 }
 
 export interface ForecastImportActor {
@@ -168,6 +172,7 @@ async function loadTemplateRows(actor: ForecastImportActor): Promise<SfeTemplate
     where: {
       tenantId: actor.tenantId,
       branch: { status: "active", ...branchScope },
+      model: { status: "active" },
     },
     select: {
       branchId: true,
@@ -566,7 +571,7 @@ async function buildPlan(
       canApply:
         errors.length === 0 &&
         Boolean(periodLabel) &&
-        (writes.length > 0 || periodWillActivate),
+        (writes.length > 0 || periodWillActivate || branchRevenue.size > 0),
       errors,
       warnings,
       rows: previewRows.slice(0, 200),
@@ -574,6 +579,7 @@ async function buildPlan(
     },
     periodLabel,
     writes,
+    branchIds: [...branchRevenue.keys()],
   };
 }
 
@@ -698,6 +704,7 @@ function emptyChunkProgress(
   unchangedCount: number,
   sfeUnchangedCount: number,
   periodLabel: string,
+  planogram: PlanogramRefreshSummary,
 ): ForecastImportChunkProgress {
   return {
     processed: total,
@@ -720,6 +727,7 @@ function emptyChunkProgress(
       sfeCreated: 0,
       sfeUpdated: 0,
       sfeUnchanged: sfeUnchangedCount,
+      planogram,
     },
   };
 }
@@ -824,9 +832,27 @@ export const forecastImportService = {
       });
     }
 
+    const refreshPlanogram = () =>
+      planogramForecastRefreshService.refreshForBranches({
+        tenantId: input.actor.tenantId,
+        actorUserId: input.actor.userId,
+        periodId: period.id,
+        periodLabel,
+        branchIds: plan.branchIds,
+      });
+
+    // The plan stays cached until the refresh succeeds, so Apply can be retried.
     if (total === 0 || input.offset >= total) {
+      const planogram = await refreshPlanogram();
       invalidatePlan(planKey);
-      return emptyChunkProgress(total, planKey, unchangedCount, sfeUnchangedCount, periodLabel);
+      return emptyChunkProgress(
+        total,
+        planKey,
+        unchangedCount,
+        sfeUnchangedCount,
+        periodLabel,
+        planogram,
+      );
     }
 
     const chunk = writes.slice(input.offset, input.offset + APPLY_CHUNK_SIZE);
@@ -839,6 +865,7 @@ export const forecastImportService = {
     );
     const nextOffset = input.offset + chunk.length;
     const done = nextOffset >= total;
+    const planogram = done ? await refreshPlanogram() : undefined;
     if (done) invalidatePlan(planKey);
 
     return {
@@ -863,6 +890,7 @@ export const forecastImportService = {
             sfeCreated: written.sfeCreated,
             sfeUpdated: written.sfeUpdated,
             sfeUnchanged: sfeUnchangedCount,
+            planogram,
           }
         : undefined,
     };
@@ -906,6 +934,7 @@ export const forecastImportService = {
           sfeCreated,
           sfeUpdated,
           sfeUnchanged,
+          planogram: progress.result?.planogram,
         };
       }
       offset = progress.nextOffset;

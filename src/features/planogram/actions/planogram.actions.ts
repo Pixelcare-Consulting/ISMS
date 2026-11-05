@@ -175,7 +175,7 @@ export async function updatePlanogramMaxQtyAction(input: unknown) {
     revalidatePlanogram(parsed.data.branchId);
     return { success: true as const };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "Failed to update Shelf max" };
+    return { error: e instanceof Error ? e.message : "Failed to update Max Qty" };
   }
 }
 

@@ -51,7 +51,7 @@
           "4": {
             "Name": "shelfMax",
             "NameInSource": "shelfMax",
-            "Alias": "Shelf Max",
+            "Alias": "Max Qty",
             "Type": "System.Decimal"
           },
           "5": {
@@ -327,7 +327,7 @@
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "SHELF MAX"
+                "Value": "MAX QTY"
               },
               "HorAlignment": "Right",
               "VertAlignment": "Center",

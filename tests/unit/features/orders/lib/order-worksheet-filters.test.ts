@@ -1,6 +1,8 @@
 import {
   paginateWorksheetLines,
+  requestedLinesFirst,
   visibleWorksheetLines,
+  worksheetLineTag,
   WORKSHEET_PAGE_SIZE,
   worksheetOrderTotals,
   worksheetRequestedFooter,
@@ -141,5 +143,29 @@ describe("Supply Planning approvals beyond the request", () => {
       brandId: "",
     });
     expect(visible.map((row) => row.approvedQty)).toEqual([2]);
+  });
+
+  it("lists requested models first and keeps sheet order inside each group", () => {
+    const rows = [line(0, null), line(2, 2), line(0, 1), line(1, 1)];
+    const sections = requestedLinesFirst(rows);
+    expect(sections.rows).toEqual([rows[1], rows[3], rows[0], rows[2]]);
+    expect(sections.requestedCount).toBe(2);
+    expect(sections.otherCount).toBe(2);
+  });
+
+  it("groups by the request, so changing the approved qty does not move a row", () => {
+    const before = requestedLinesFirst([line(3, 3), line(0, null)]);
+    const after = requestedLinesFirst([line(3, 0), line(0, 5)]);
+    expect(after.rows.map((row) => row.requestedQty)).toEqual(
+      before.rows.map((row) => row.requestedQty),
+    );
+  });
+
+  it("tags requested rows and rows Supply Planning added", () => {
+    expect(worksheetLineTag(line(3, 3))).toBe("Requested");
+    expect(worksheetLineTag(line(3, 0))).toBe("Requested");
+    expect(worksheetLineTag(line(0, 2))).toBe("Added");
+    expect(worksheetLineTag(line(0, 0))).toBeNull();
+    expect(worksheetLineTag(line(0, null))).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import type { BranchOrderStatus } from "@prisma/client";
+import type { BranchOrderStatus, Prisma } from "@prisma/client";
 
 import {
   BRANCH_ORDER_SOURCE_LABELS,
@@ -8,10 +8,10 @@ import {
 import { prisma } from "@/lib/database/client";
 
 export interface OrderSummaryReportFilters {
-  /** Created on or after (inclusive). */
-  createdFrom: Date;
-  /** Created on or before (inclusive). */
-  createdTo: Date;
+  /** Status date on or after (inclusive). See `orderStatusDate`. */
+  from: Date;
+  /** Status date on or before (inclusive). */
+  to: Date;
   statuses: BranchOrderStatus[];
   /** Undefined: every branch. */
   branchIds?: string[];
@@ -19,8 +19,10 @@ export interface OrderSummaryReportFilters {
 
 /** One row per order: what was asked for, what was approved, and where it stands. */
 export interface OrderSummaryReportRow {
-  /** YYYY-MM-DD, Manila. */
+  /** Status date, YYYY-MM-DD, Manila. */
   date: string;
+  /** Status date, YYYY-MM-DD HH:mm, Manila. */
+  statusDate: string;
   /** YYYY-MM-DD HH:mm, Manila. */
   createdAt: string;
   orderNumber: string;
@@ -68,15 +70,67 @@ function round(value: number, places: number): number {
   return Math.round(value * factor) / factor;
 }
 
+interface OrderDates {
+  status: BranchOrderStatus;
+  createdAt: Date;
+  updatedAt: Date;
+  processedAt: Date | null;
+  approvalLevels: readonly { rejectedAt: Date | null }[];
+}
+
+/**
+ * The date an order is listed under: created while pending, approved once approved, and the
+ * day it was rejected or cancelled. An SO closed in SAP has no rejecting level, and a
+ * cancelled order changes no further, so its last update is the cancellation.
+ */
+export function orderStatusDate(order: OrderDates): Date {
+  switch (order.status) {
+    case "approved":
+      return order.processedAt ?? order.createdAt;
+    case "rejected":
+    case "cancelled": {
+      const decided = order.approvalLevels.flatMap((level) => level.rejectedAt ?? []);
+      if (decided.length === 0) return order.updatedAt;
+      return new Date(Math.max(...decided.map((date) => date.getTime())));
+    }
+    default:
+      return order.createdAt;
+  }
+}
+
+/** The same rule as `orderStatusDate`, as a query. Keep the two in step. */
+function statusDateWhere(
+  statuses: readonly BranchOrderStatus[],
+  window: Prisma.DateTimeFilter,
+): Prisma.BranchOrderWhereInput[] {
+  const closed = statuses.filter((status) => status === "rejected" || status === "cancelled");
+  const open = statuses.filter(
+    (status) => status !== "approved" && status !== "rejected" && status !== "cancelled",
+  );
+  const where: Prisma.BranchOrderWhereInput[] = [];
+  if (open.length > 0) where.push({ status: { in: open }, createdAt: window });
+  if (statuses.includes("approved")) where.push({ status: "approved", processedAt: window });
+  if (closed.length > 0) {
+    where.push(
+      { status: { in: closed }, approvalLevels: { some: { rejectedAt: window } } },
+      {
+        status: { in: closed },
+        updatedAt: window,
+        approvalLevels: { none: { rejectedAt: { not: null } } },
+      },
+    );
+  }
+  return where;
+}
+
 export const orderSummaryReportService = {
-  /** Orders created in the window, oldest first; the Stimulsoft dataset reads these rows. */
+  /** Orders by status date, oldest first; the Stimulsoft dataset reads these rows. */
   async listRows(tenantId: string, filters: OrderSummaryReportFilters): Promise<OrderSummaryReportRow[]> {
     if (filters.statuses.length === 0 || (filters.branchIds && filters.branchIds.length === 0)) return [];
     const orders = await prisma.branchOrder.findMany({
       where: {
         tenantId,
-        status: { in: filters.statuses },
-        createdAt: { gte: filters.createdFrom, lte: filters.createdTo },
+        OR: statusDateWhere(filters.statuses, { gte: filters.from, lte: filters.to }),
         ...(filters.branchIds ? { branchId: { in: filters.branchIds } } : {}),
       },
       select: {
@@ -85,6 +139,9 @@ export const orderSummaryReportService = {
         orderType: true,
         status: true,
         createdAt: true,
+        updatedAt: true,
+        processedAt: true,
+        approvalLevels: { select: { rejectedAt: true } },
         sapDocType: true,
         sapDocNum: true,
         branch: { select: { name: true } },
@@ -101,7 +158,11 @@ export const orderSummaryReportService = {
       orderBy: { createdAt: "asc" },
     });
 
-    return orders.map((order) => {
+    const dated = orders
+      .map((order) => ({ order, statusDate: orderStatusDate(order) }))
+      .sort((a, b) => a.statusDate.getTime() - b.statusDate.getTime());
+
+    return dated.map(({ order, statusDate }) => {
       const approved = order.status === "approved";
       let requestedQty = 0;
       let approvedQty = 0;
@@ -120,10 +181,11 @@ export const orderSummaryReportService = {
         totalCbm += (approved ? lineApproved : line.quantity) * cbm;
         if (line.model.brand?.name) brands.add(line.model.brand.name);
       }
-      const created = manilaDateTime(order.createdAt);
+      const listed = manilaDateTime(statusDate);
       return {
-        date: created.date,
-        createdAt: created.dateTime,
+        date: listed.date,
+        statusDate: listed.dateTime,
+        createdAt: manilaDateTime(order.createdAt).dateTime,
         orderNumber: order.orderNumber,
         source: BRANCH_ORDER_SOURCE_LABELS[order.source],
         orderType: BRANCH_ORDER_TYPE_LABELS[order.orderType],

@@ -201,7 +201,7 @@ export function buildPixelcareAiTools(
 
     explainShelfGaps: tool({
       description:
-        "Explain shelf gaps / SUG for a branch using planogram Shelf max and STK. Suggested order qty / SUG = Shelf max − on-hand (STK) (= Math.max(0, Shelf max − STK)). Say Shelf max never maxQty. Omit branchId when Context Active branch is set.",
+        "Explain shelf gaps / SUG for a branch using planogram Max Qty and STK. Suggested order qty / SUG = Max Qty − on-hand (STK) (= Math.max(0, Max Qty − STK)). Say Max Qty never maxQty. Omit branchId when Context Active branch is set.",
       inputSchema: z.object({
         branchId: z
           .string()
@@ -280,7 +280,7 @@ export function buildPixelcareAiTools(
             sample: false,
             retrievedAt: retrievedAt(),
             formula:
-              "Suggested order qty / SUG = Shelf max − on-hand (STK) (= Math.max(0, Shelf max − STK))",
+              "Suggested order qty / SUG = Max Qty − on-hand (STK) (= Math.max(0, Max Qty − STK))",
             sourceHref: analyticsHref,
             branch: {
               id: access.branch.id,
@@ -348,7 +348,7 @@ export function buildPixelcareAiTools(
 
     prepareReplenishmentProposal: tool({
       description:
-        "Read shelf gaps and save a replenishment proposal only. SUG = Shelf max − STK. Returns quantities, reasons, links, and exceptions with the label Proposed — not created. Does not create, submit, approve, or send an order.",
+        "Read shelf gaps and save a replenishment proposal only. SUG = Max Qty − STK. Returns quantities, reasons, links, and exceptions with the label Proposed — not created. Does not create, submit, approve, or send an order.",
       inputSchema: z.object({
         branchId: z
           .string()

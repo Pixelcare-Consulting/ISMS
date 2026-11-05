@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { SAP_CHECK_PERMISSIONS } from "@/features/logistics/constants/logistics-permissions";
 import { BRANCH_ORDER_TYPE_LABELS } from "@/features/orders/constants/order-status";
 import {
   getOrdersKpisAction,
@@ -218,6 +219,10 @@ export async function OrdersTypePage({
   const canAccessSuggestedOrders =
     hasPermission(session.user.permissions, "forecast.manage") ||
     hasPermission(session.user.permissions, "planogram.manage");
+  // Sales Orders made in SAP import as manual orders, so only this page offers the check.
+  const canCheckSap =
+    combinedManualSpecial &&
+    SAP_CHECK_PERMISSIONS.some((permission) => hasPermission(session.user.permissions, permission));
   const typeLabel = BRANCH_ORDER_TYPE_LABELS[orderType];
   const basePath = combinedManualSpecial ? "/orders/manual" : ORDER_TYPE_ROUTE[orderType];
   const preserved = {
@@ -362,6 +367,7 @@ export async function OrdersTypePage({
                 ) : null}
                 <OrdersTable
                   result={ordersResult}
+                  canCheckSap={canCheckSap}
                   viewerRoleSlugs={viewerRoleSlugs}
                   canEdit={canEdit}
                   fixedOrderType={combinedManualSpecial ? undefined : orderType}
@@ -398,6 +404,7 @@ export async function OrdersTypePage({
             historyResult ? (
               <OrderHistoryTable
                 result={historyResult}
+                canCheckSap={canCheckSap}
                 basePath={basePath}
                 initialSort={params.sort ?? "createdAt"}
                 initialSortDir={params.dir ?? "desc"}

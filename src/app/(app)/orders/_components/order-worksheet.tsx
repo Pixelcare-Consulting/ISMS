@@ -3,11 +3,20 @@
 import { useTable } from "@tanstack/react-table";
 import type { BranchOrderType } from "@prisma/client";
 import { CircleHelp, Trash2 } from "lucide-react";
-import { createContext, useContext, useId, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  Fragment,
+  useContext,
+  useId,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { InventoryStatusChips } from "@/app/(app)/orders/_components/inventory-status-chips";
 import { WorksheetModelLabel } from "@/app/(app)/orders/_components/worksheet-model-label";
 import { TablePagination } from "@/components/data-table/table-pagination";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -25,12 +34,16 @@ import {
   EMPTY_WORKSHEET_LINE_FILTER,
   paginateWorksheetLines,
   planogramBrandOptions,
+  requestedLinesFirst,
   visibleWorksheetLines,
   WORKSHEET_PAGE_SIZE,
+  worksheetLineTag,
   worksheetOrderTotals,
   worksheetRequestedFooter,
   worksheetTotalsLabel,
   type WorksheetLineFilter,
+  type WorksheetLineTag,
+  type WorksheetRequestedSections,
 } from "@/features/orders/lib/order-worksheet-filters";
 import {
   projectWorksheetLines,
@@ -75,9 +88,9 @@ const WORKSHEET_COLUMN_HELP = {
   onHand:
     "Branch stock in STK status. This includes STK units still pending defect inspection. Units on the way are not included.",
   suggestShelf:
-    "Shelf gap. Shelf maximum minus units on hand. The shelf maximum is shown under the suggestion. This is not the planning forecast.",
+    "Shelf gap. Max Qty minus units on hand. Max Qty is shown under the suggestion. This is not the planning forecast.",
   suggestPlan:
-    "Comes from the released plan. This is the remaining Drop 1 for this branch and model after quantities already on a draft or order. When the model has a shelf maximum, it is shown under the suggestion.",
+    "Comes from the released plan. This is the remaining Drop 1 for this branch and model after quantities already on a draft or order. When the model has a Max Qty, it is shown under the suggestion.",
   cbm: "Cubic meters for this line. When a quantity is entered, this is that quantity times the model's CBM. Otherwise it is the model's own CBM. 0.0000 means the model has no CBM.",
   requested: "Quantity the branch asked for. Zero means the row is not part of the order.",
   approved:
@@ -92,10 +105,9 @@ const WORKSHEET_COLUMN_HELP = {
     "Units at the branch by status. On-hand stock is always shown. Other statuses appear when the branch has them.",
   sales: "Units sold this month, up to today.",
   rate: "This model's sales this month divided by that brand's sales this month.",
-  milQty: "Shelf maximum for this model.",
+  milQty: "Max Qty for this model.",
   order: "Quantity the branch asked for.",
-  spCbm:
-    "Cubic meters for the approved quantity (the request until Supply Planning changes it). This is the model's CBM times that quantity.",
+  spCbm: "Cubic meters for the quantity asked for. This is the model's CBM times that quantity.",
 } as const;
 
 export type OrderWorksheetColumnSet = "default" | "supply-planning";
@@ -135,9 +147,11 @@ export interface OrderWorksheetProps {
   columnSet?: OrderWorksheetColumnSet;
   /**
    * When set, the brand filter belongs to the parent.
-   * Supply Planning keeps it on the left rail. An empty string is all brands.
+   * Supply Planning keeps it on the left rail. Create Order keeps it on the form so the
+   * summary follows it. An empty string is all brands.
    */
   brandId?: string;
+  onBrandIdChange?: (brandId: string) => void;
   /** Month-to-date sales by brand, used for the rate column. Not stored on the line. */
   brandSalesQty?: ReadonlyMap<string, number | null>;
 }
@@ -168,6 +182,7 @@ export function OrderWorksheet({
   hideSummary = false,
   columnSet = "default",
   brandId: controlledBrandId,
+  onBrandIdChange,
   brandSalesQty = EMPTY_BRAND_SALES,
 }: OrderWorksheetProps) {
   const [filter, setFilter] = useState<WorksheetLineFilter>(EMPTY_WORKSHEET_LINE_FILTER);
@@ -178,6 +193,11 @@ export function OrderWorksheet({
     () => ({ ...filter, brandId }),
     [brandId, filter],
   );
+  const applyFilter = (next: WorksheetLineFilter) => {
+    setFilter(brandControlled ? { ...next, brandId: "" } : next);
+    onBrandIdChange?.(next.brandId);
+    setPage(1);
+  };
   const projectionMode = mode === "create" ? "create" : "readonly";
   const storedRows = useMemo(
     () => projectWorksheetLines(lines, drafts, orderType, projectionMode),
@@ -187,9 +207,14 @@ export function OrderWorksheet({
     () => visibleWorksheetLines(storedRows, appliedFilter),
     [appliedFilter, storedRows],
   );
+  // Supply Planning sees every model, so the requested ones are set apart from the rest.
+  const sections = useMemo(
+    () => (columnSet === "supply-planning" ? requestedLinesFirst(visibleRows) : null),
+    [columnSet, visibleRows],
+  );
   const pageSlice = useMemo(
-    () => paginateWorksheetLines(visibleRows, page, WORKSHEET_PAGE_SIZE),
-    [page, visibleRows],
+    () => paginateWorksheetLines(sections?.rows ?? visibleRows, page, WORKSHEET_PAGE_SIZE),
+    [page, sections, visibleRows],
   );
   const totals = useMemo(
     () => worksheetOrderTotals(storedRows, { includeApproved: showApprovedQty }),
@@ -257,11 +282,8 @@ export function OrderWorksheet({
     return (
       <CreateOrderLineList
         brands={createBrands}
-        filter={filter}
-        onFilterChange={(next) => {
-          setFilter(next);
-          setPage(1);
-        }}
+        filter={appliedFilter}
+        onFilterChange={applyFilter}
         loading={loading}
         error={error ?? null}
         lineCount={lines.length}
@@ -314,10 +336,7 @@ export function OrderWorksheet({
           filter={appliedFilter}
           brands={brands}
           hideBrandFilter={columnSet === "supply-planning"}
-          onChange={(next) => {
-            setFilter(brandControlled ? { ...next, brandId: "" } : next);
-            setPage(1);
-          }}
+          onChange={applyFilter}
           action={null}
         />
         {loading && lines.length === 0 ? (
@@ -333,6 +352,7 @@ export function OrderWorksheet({
             <WorksheetLinesTable
               rows={pageSlice.rows}
               columns={columns}
+              sections={sections}
               minWidth={columnSet === "supply-planning" ? "72rem" : undefined}
             />
             <div className="shrink-0">
@@ -566,7 +586,7 @@ function CreateOrderLineList({
 /**
  * One dense row that stays inside the page width.
  * The model name takes leftover space and wraps. Other columns can shrink.
- * Order: No., checkbox, Model, Stock, Sales, Rate, Shelf max, Suggest, Qty, Note, CBM, Details, Remove.
+ * Order: No., checkbox, Model, Stock, Sales, Rate, Max Qty, Suggest, Qty, Note, CBM, Details, Remove.
  */
 const CREATE_LINE_GRID =
   "grid w-full min-w-0 items-center gap-x-1 sm:gap-x-2 [grid-template-columns:1.5rem_1.25rem_minmax(4.5rem,1.8fr)_minmax(2.25rem,0.5fr)_minmax(0,0.55fr)_minmax(3.25rem,0.8fr)_minmax(0,0.65fr)_minmax(3rem,0.75fr)_minmax(2.25rem,0.72fr)_minmax(0,0.5fr)_minmax(2.75rem,0.7fr)_minmax(0,0.6fr)_1.5rem] [&>*]:min-w-0";
@@ -605,7 +625,7 @@ function CreateLineHeader({
       <span className="text-right">Stock</span>
       <span className="text-right">Sales</span>
       <span className="text-right">Rate</span>
-      <span className="text-right">Shelf max</span>
+      <span className="text-right">Max Qty</span>
       <span className="text-right">Suggest</span>
       <span className="text-center">Qty</span>
       <span className="sr-only">Note</span>
@@ -1286,8 +1306,23 @@ function ModelColumnCell({ row }: WorksheetBodyCellProps) {
   return <ModelCell row={row.original} />;
 }
 
+const LINE_TAG_CLASS: Record<WorksheetLineTag, string> = {
+  Requested: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  Added: "border-sky-200 bg-sky-50 text-sky-800",
+};
+
 function SkuCodeColumnCell({ row }: WorksheetBodyCellProps) {
-  return <p className="break-words font-medium">{row.original.skuCode}</p>;
+  const tag = worksheetLineTag(row.original);
+  return (
+    <div className="space-y-1">
+      <p className="break-words font-medium">{row.original.skuCode}</p>
+      {tag ? (
+        <Badge variant="outline" className={cn("font-normal", LINE_TAG_CLASS[tag])}>
+          {tag}
+        </Badge>
+      ) : null}
+    </div>
+  );
 }
 
 function StackedInventoryColumnCell({ row }: WorksheetBodyCellProps) {
@@ -1333,8 +1368,9 @@ function ReadOnlyRemarksColumnCell({ row }: WorksheetBodyCellProps) {
   return <RemarkText value={row.original.remarks} />;
 }
 
+/** Stays on the request; only Total CBM follows the approved qty. */
 function SupplyPlanningCbmColumnCell({ row }: WorksheetBodyCellProps) {
-  const quantity = row.original.approvedQty ?? row.original.requestedQty;
+  const quantity = row.original.requestedQty;
   const unit = Number.isFinite(row.original.cbm) ? row.original.cbm : 0;
   const total = Number.isFinite(quantity) && quantity > 0 ? quantity * unit : 0;
   return <>{formatWorksheetCbm(total)}</>;
@@ -1422,10 +1458,12 @@ function RemoveColumnCell({ row }: WorksheetBodyCellProps) {
 function WorksheetLinesTable({
   rows,
   columns,
+  sections = null,
   minWidth,
 }: {
   rows: ProjectedWorksheetLine[];
   columns: DataTableColumn<ProjectedWorksheetLine>[];
+  sections?: WorksheetRequestedSections<ProjectedWorksheetLine> | null;
   minWidth?: string;
 }) {
   const table = useTable({
@@ -1475,28 +1513,73 @@ function WorksheetLinesTable({
               ))}
             </TableHeader>
             <TableBody>
-              {table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell
-                      key={cell.id}
-                      style={
-                        cell.column.columnDef.meta?.width
-                          ? { width: cell.column.columnDef.meta.width }
-                          : undefined
-                      }
-                      className={bodyCellClass(cell.column.columnDef.meta)}
-                    >
-                      <table.FlexRender cell={cell} />
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))}
+              {table.getRowModel().rows.map((row, position, pageRows) => {
+                const requested = row.original.requestedQty >= 1;
+                const previous = pageRows[position - 1]?.original;
+                // Each page repeats the heading of the section it opens on.
+                const opensSection =
+                  sections !== null &&
+                  (previous === undefined || previous.requestedQty >= 1 !== requested);
+                return (
+                  <Fragment key={row.id}>
+                    {opensSection ? (
+                      <WorksheetSectionRow
+                        requested={requested}
+                        count={requested ? sections.requestedCount : sections.otherCount}
+                        colSpan={columns.length}
+                      />
+                    ) : null}
+                    <TableRow>
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell
+                          key={cell.id}
+                          style={
+                            cell.column.columnDef.meta?.width
+                              ? { width: cell.column.columnDef.meta.width }
+                              : undefined
+                          }
+                          className={bodyCellClass(cell.column.columnDef.meta)}
+                        >
+                          <table.FlexRender cell={cell} />
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  </Fragment>
+                );
+              })}
             </TableBody>
           </table>
         </div>
       </GlobalTableStickyContext.Provider>
     </TooltipProvider>
+  );
+}
+
+function WorksheetSectionRow({
+  requested,
+  count,
+  colSpan,
+}: {
+  requested: boolean;
+  count: number;
+  colSpan: number;
+}) {
+  return (
+    <TableRow className="bg-muted hover:bg-muted">
+      <th
+        scope="colgroup"
+        colSpan={colSpan}
+        className="px-2 py-1.5 text-left text-xs font-semibold text-foreground"
+      >
+        {/* The sheet scrolls sideways on small screens; the heading stays in view. */}
+        <span className="sticky left-2">
+          {requested ? "Requested" : "Other models"} ({count.toLocaleString()})
+          {requested ? null : (
+            <span className="ml-2 font-normal">Enter an approved qty to add one to this order.</span>
+          )}
+        </span>
+      </th>
+    </TableRow>
   );
 }
 
@@ -1516,7 +1599,7 @@ function ShelfMaxLine({ shelfMax }: { shelfMax: number | null }) {
   if (shelfMax == null) return null;
   return (
     <span className="block max-w-full text-right text-[11px] font-normal leading-tight whitespace-normal text-muted-foreground">
-      Shelf max {formatQty(shelfMax)}
+      Max Qty {formatQty(shelfMax)}
     </span>
   );
 }
@@ -1715,7 +1798,7 @@ function RequestedCell({
   const blockedReason =
     !row.requestable
       ? row.onPlanogram && row.sugQty === 0
-        ? "Shelf full"
+        ? "At Max Qty"
         : "Not available to order"
       : undefined;
   return (
@@ -2031,14 +2114,17 @@ function WorksheetSummary({
 
 export function OrderWorksheetAsideSummary({
   summary,
+  figures,
   totals,
   loading = false,
 }: {
   summary: OrderWorksheetSummary | null;
+  /** DII and stock for the selected brand. Totals stay on the whole order. */
+  figures: WorksheetPlanningFigures | null;
   totals: ReturnType<typeof worksheetOrderTotals>;
   loading?: boolean;
 }) {
-  if (!summary) {
+  if (!summary || !figures) {
     return (
       <p className="text-right text-sm text-muted-foreground">
         {loading ? "Loading stock and totals…" : "Stock and totals appear after a branch is selected."}
@@ -2046,15 +2132,15 @@ export function OrderWorksheetAsideSummary({
     );
   }
 
-  const dii = formatDii(summary.computedDii, summary.diiUnavailableReason, summary.salesUnavailable);
+  const dii = formatDii(figures.computedDii, figures.diiUnavailableReason, figures.salesUnavailable);
   const counted = formatAsOf(summary.inventoryAsOf);
   const countedHint = counted === "N/A" ? null : `Counted ${counted}`;
   const diiHint = dii.hint ?? plainSalesPeriod(summary.salesPeriodLabel);
   const sentence = summarySentence("create", "current", null);
   const rows: { label: string; value: string; hint: string | null; strong?: boolean }[] = [
     { label: "Computed DII", value: dii.value, hint: diiHint },
-    { label: "Target DII", value: formatTargetDii(summary.targetDiiDays), hint: "Branch quota" },
-    { label: "Stock value", value: formatPeso(summary.inventoryAmount), hint: countedHint },
+    { label: "Target DII", value: formatTargetDii(figures.targetDiiDays), hint: "Branch quota" },
+    { label: "Stock value", value: formatPeso(figures.inventoryAmount), hint: countedHint },
     {
       label: "Requested value",
       value: formatPeso(totals.requestedAmount),
@@ -2250,7 +2336,7 @@ function RemarkText({ value }: { value: string }) {
 }
 
 function shelfSuggestionCaption(row: ProjectedWorksheetLine): string {
-  const shelf = row.shelfMax == null ? "no shelf max" : `shelf max ${formatQty(row.shelfMax)}`;
+  const shelf = row.shelfMax == null ? "no Max Qty" : `Max Qty ${formatQty(row.shelfMax)}`;
   const formula = `Suggestion uses ${shelf} minus units on hand. Incoming and open orders are not subtracted.`;
   if (row.sugQty != null) return formula;
   const why =
