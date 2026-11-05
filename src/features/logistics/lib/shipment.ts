@@ -17,7 +17,9 @@ export const EMPTY_SHIPMENT: LogisticsShipment = {
 const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /** True only after waybill, courier, and schedule date are all saved. */
-export function shipmentIsReady(shipment: LogisticsShipment): boolean {
+export function shipmentIsReady(
+  shipment: Pick<LogisticsShipment, "waybillNo" | "courierName" | "scheduledAt">,
+): boolean {
   return Boolean(shipment.waybillNo?.trim() && shipment.courierName?.trim() && shipment.scheduledAt);
 }
 

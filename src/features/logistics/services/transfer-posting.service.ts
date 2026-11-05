@@ -1,6 +1,6 @@
 import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
-import type { LogisticsShipment } from "@/features/logistics/lib/shipment";
+import { shipmentIsReady, type LogisticsShipment } from "@/features/logistics/lib/shipment";
 import {
   DIFFERENT_DEALER_GROUP_MESSAGE,
   sameDealerGroup,
@@ -271,6 +271,7 @@ async function loadLines(
   statusCodeId: string;
   rsNo: string | null;
   drNo: string | null;
+  shipmentReady: boolean;
   lines: (TransferLineView & { priorStatusCodeId: string | null })[];
 } | null> {
   const transfer = await db.branchTransfer.findFirst({
@@ -284,6 +285,9 @@ async function loadLines(
       statusCode: { select: { code: true } },
       rsNo: true,
       drNo: true,
+      waybillNo: true,
+      courierName: true,
+      scheduledAt: true,
       lines: {
         select: {
           serialNumberId: true,
@@ -318,6 +322,11 @@ async function loadLines(
     statusCodeId: transfer.statusCodeId,
     rsNo: transfer.rsNo,
     drNo: transfer.drNo,
+    shipmentReady: shipmentIsReady({
+      waybillNo: transfer.waybillNo,
+      courierName: transfer.courierName,
+      scheduledAt: transfer.scheduledAt?.toISOString() ?? null,
+    }),
     lines: transfer.lines.map((line) => {
       const row = inventoryBySerial.get(line.serialNumberId);
       const onSource = row?.branchId === transfer.fromBranchId;

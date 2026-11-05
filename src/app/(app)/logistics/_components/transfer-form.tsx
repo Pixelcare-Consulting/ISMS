@@ -41,6 +41,7 @@ import {
   type TransferLineRemarks,
 } from "@/features/logistics/lib/transfer-line-remarks";
 import { nextTransferNo } from "@/features/logistics/lib/transfer-number";
+import { shipmentIsReady } from "@/features/logistics/lib/shipment";
 import { printTransferSlips } from "@/features/logistics/lib/transfer-slip-print";
 import type { TransferDetail } from "@/features/logistics/services/transfer-posting.service";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
@@ -140,6 +141,8 @@ const APPROVE_NOTE =
 const REJECT_NOTE = "Rejected requests release only the units reserved on this transfer.";
 const RELEASE_NOTE =
   "Release sends these units in transit. Stock at the receiving branch does not increase until they are accepted.";
+const SAVE_SHIPMENT_TO_RELEASE =
+  "Save the waybill, courier and schedule date to release these units.";
 const RECEIVE_NOTE =
   "This serial moves to the receiving branch as stock. Its delivery receipt number updates. The original delivery date stays the same.";
 const REJECT_SERIAL_NOTE =
@@ -521,6 +524,7 @@ function TransferPageWorkspace({
   detail,
   canReceive,
   canEditShipment,
+  needsShipmentToRelease,
   pending,
   workflowStatuses,
   onAccept,
@@ -531,6 +535,7 @@ function TransferPageWorkspace({
   detail: TransferDetail;
   canReceive: boolean;
   canEditShipment: boolean;
+  needsShipmentToRelease: boolean;
   pending: boolean;
   workflowStatuses: readonly WorkflowStatusOption[];
   onAccept: (line: TransferLineRow) => void;
@@ -570,6 +575,7 @@ function TransferPageWorkspace({
         {showsOnTheWay(kind) ? (
           <p className="text-sm">{onTheWayLine(serialsStillOnTheWay(detail))}</p>
         ) : null}
+        {needsShipmentToRelease ? <p className="text-sm">{SAVE_SHIPMENT_TO_RELEASE}</p> : null}
       </RecordSection>
       <LogisticsShipmentSection
         key={`${detail.shipment.waybillNo ?? ""}|${detail.shipment.courierName ?? ""}|${detail.shipment.scheduledAt ?? ""}`}
@@ -745,13 +751,15 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
       capabilities?.canRejectTransfer &&
       inScope(branchScope, detail.fromBranch.id),
   );
-  const canRelease = Boolean(
+  const mayRelease = Boolean(
     hasLines &&
       detail &&
       releasable &&
       capabilities?.canExecuteTransfer &&
       inScope(branchScope, detail.fromBranch.id),
   );
+  const shipmentSaved = Boolean(detail && shipmentIsReady(detail.shipment));
+  const canRelease = mayRelease && shipmentSaved;
   const receivable = detail?.status.code === TRANSFER_WORKFLOW_CODE.in_transit;
   const canReceive = Boolean(
     hasLines &&
@@ -1078,6 +1086,7 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
           detail={detail}
           canReceive={canReceive}
           canEditShipment={canEditShipment}
+          needsShipmentToRelease={mayRelease && !shipmentSaved}
           pending={pending}
           workflowStatuses={workflowStatuses}
           onShipmentSaved={() => onUpdated?.()}

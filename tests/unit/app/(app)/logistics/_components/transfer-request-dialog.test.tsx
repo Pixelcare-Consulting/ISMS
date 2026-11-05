@@ -3,6 +3,7 @@ import "@testing-library/jest-dom";
 
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
+import { TransferForm } from "@/app/(app)/logistics/_components/transfer-form";
 import { TransferRequestDialog } from "@/app/(app)/logistics/_components/transfer-request-dialog";
 import {
   getTransferDetailAction,
@@ -11,6 +12,7 @@ import {
   listTransferSerialsAction,
 } from "@/features/logistics/actions/logistics.actions";
 import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
+import { EMPTY_SHIPMENT, type LogisticsShipment } from "@/features/logistics/lib/shipment";
 import type { TransferDetail } from "@/features/logistics/services/transfer-posting.service";
 
 jest.mock("sonner", () => ({
@@ -29,6 +31,13 @@ jest.mock("@/features/logistics/actions/logistics.actions", () => ({
   rejectTransferSerialAction: jest.fn(),
   saveTransferShipmentAction: jest.fn(),
 }));
+
+const SAVED_SHIPMENT: LogisticsShipment = {
+  ...EMPTY_SHIPMENT,
+  waybillNo: "WB-1",
+  courierName: "LBC",
+  scheduledAt: "2026-11-05",
+};
 
 const listBranches = jest.mocked(listBranchesForLogisticsAction);
 const listModels = jest.mocked(listTransferModelsAction);
@@ -67,7 +76,7 @@ function detail(overrides: Partial<TransferDetail> = {}): TransferDetail {
     id: "transfer-1",
     transferNo: "XFR-1",
     notes: null,
-    shipment: { waybillNo: null, courierName: null, scheduledAt: null },
+    shipment: EMPTY_SHIPMENT,
     createdAt: "2026-11-05T01:00:00.000Z",
     createdBy: "Paula Staff",
     status: { code: "pending_tl", name: "Pending TL", color: null },
@@ -94,6 +103,10 @@ function detail(overrides: Partial<TransferDetail> = {}): TransferDetail {
     history: [],
     ...overrides,
   } as TransferDetail;
+}
+
+function releasableDetail(shipment: LogisticsShipment): TransferDetail {
+  return detail({ status: { code: "for_transfer", name: "For transfer", color: null }, shipment });
 }
 
 beforeAll(() => {
@@ -165,6 +178,33 @@ describe("new transfer request form", () => {
   });
 });
 
+describe("transfer page", () => {
+  const scope = { capabilities: { canExecuteTransfer: true } as LogisticsActionCapabilities };
+
+  it("tells Logistics what to save before Release appears", () => {
+    render(
+      <TransferForm mode="view" layout="page" detail={releasableDetail(EMPTY_SHIPMENT)} {...scope} />,
+    );
+    expect(
+      screen.getByText("Save the waybill, courier and schedule date to release these units."),
+    ).toBeInTheDocument();
+  });
+
+  it("drops that line once they are saved", () => {
+    render(
+      <TransferForm mode="view" layout="page" detail={releasableDetail(SAVED_SHIPMENT)} {...scope} />,
+    );
+    expect(screen.queryByText(/to release these units/)).not.toBeInTheDocument();
+  });
+
+  it("does not tell people who cannot release", () => {
+    render(
+      <TransferForm mode="view" layout="page" detail={releasableDetail(EMPTY_SHIPMENT)} capabilities={{} as LogisticsActionCapabilities} />,
+    );
+    expect(screen.queryByText(/to release these units/)).not.toBeInTheDocument();
+  });
+});
+
 describe("branch transfer dialog", () => {
   it("shows the remark the requester wrote on each serial", async () => {
     getDetail.mockResolvedValue({ success: true, detail: detail() } as Awaited<
@@ -224,6 +264,30 @@ describe("branch transfer dialog", () => {
     await screen.findByText("SN-1");
     expect(screen.queryAllByRole("button", { name: "Accept" })).toHaveLength(offered ? 1 : 0);
     expect(screen.queryAllByRole("button", { name: "Reject" })).toHaveLength(offered ? 1 : 0);
+  });
+
+  it.each([
+    ["without the waybill, courier and schedule", EMPTY_SHIPMENT, 0],
+    ["with the waybill, courier and schedule", SAVED_SHIPMENT, 1],
+  ])("offers Logistics Release %s", async (_, shipment, buttons) => {
+    getDetail.mockResolvedValue({
+      success: true,
+      detail: releasableDetail(shipment),
+    } as Awaited<ReturnType<typeof getTransferDetailAction>>);
+    render(
+      <TransferRequestDialog
+        open
+        onOpenChange={jest.fn()}
+        onSubmit={jest.fn()}
+        onCreated={jest.fn()}
+        transferId="transfer-1"
+        capabilities={{ canExecuteTransfer: true } as LogisticsActionCapabilities}
+      />,
+    );
+    await screen.findByText("SN-1");
+    await waitFor(() =>
+      expect(screen.queryAllByRole("button", { name: "Release" })).toHaveLength(buttons),
+    );
   });
 
   it("still shows the remark on transfers created before per-serial remarks", async () => {
