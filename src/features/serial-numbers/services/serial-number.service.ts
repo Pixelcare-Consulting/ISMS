@@ -322,6 +322,20 @@ function buildTimeline(row: SerialTraceabilityRow): SerialTimelineEvent[] {
         href: `/logistics/pickups?q=${encodeURIComponent(pullout.pulloutNo)}`,
       });
     }
+    if (line.rejectedAt) {
+      events.push({
+        id: `pullout-rejected-${line.id}`,
+        type: "pullout",
+        label: "Rejected, back at branch",
+        at: line.rejectedAt,
+        branch: pullout.branch?.name ?? null,
+        status: null,
+        detail: [line.rejectionRemarks, line.priorStatusCode?.code, pullout.pulloutNo]
+          .filter(Boolean)
+          .join(" · "),
+        href: `/logistics/pickups?q=${encodeURIComponent(pullout.pulloutNo)}`,
+      });
+    }
   }
 
   for (const line of row.deliveryLines) {

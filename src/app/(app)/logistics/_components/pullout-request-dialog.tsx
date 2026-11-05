@@ -45,10 +45,12 @@ const PULLOUT_CREATE_FORM_ID = "pullout-create-form";
 const POPOVER_CLASS = "z-[100]";
 const SERIAL_PAGE_SIZE = 10;
 const EMPTY_LOOKUP_MESSAGE = "None in Master data";
-const UNIT_COLUMN_COUNT = 9;
+const UNIT_COLUMN_COUNT = 10;
 const MISSING_SERIALS_SHOWN = 3;
 
 const EMPTY_CHECKLIST_OPTIONS: PulloutChecklistOptions = {
+  reasons: [],
+  problemDescriptions: [],
   classifications: [],
   unitPackingConditions: [],
   accessoryCompleteness: [],
@@ -62,11 +64,14 @@ const MANILA_DATE = new Intl.DateTimeFormat("en-PH", {
 });
 
 type ChecklistField =
+  | "problemDescriptionIds"
   | "pulloutClassificationIds"
   | "unitPackingConditionIds"
   | "accessoryCompletenessIds";
 
 interface PulloutLineChoice {
+  pulloutReasonCodeId: string;
+  problemDescriptionIds: string[];
   pulloutClassificationIds: string[];
   unitPackingConditionIds: string[];
   accessoryCompletenessIds: string[];
@@ -76,6 +81,8 @@ interface PulloutLineChoice {
 type DestinationState = { warehouse: PulloutDestination } | { error: string };
 
 const EMPTY_CHOICE: PulloutLineChoice = {
+  pulloutReasonCodeId: "",
+  problemDescriptionIds: [],
   pulloutClassificationIds: [],
   unitPackingConditionIds: [],
   accessoryCompletenessIds: [],
@@ -113,8 +120,16 @@ function needsClassification(serial: PulloutSerialOption): boolean {
   return serial.inventoryCode === "STK";
 }
 
+/** A stock unit picks a reason. A defective unit's reason is fixed, so it names the problem. */
+function reasonComplete(serial: PulloutSerialOption, choice: PulloutLineChoice): boolean {
+  return serial.inventoryCode === "STK"
+    ? choice.pulloutReasonCodeId !== ""
+    : choice.problemDescriptionIds.length > 0;
+}
+
 function unitComplete(serial: PulloutSerialOption, choice: PulloutLineChoice): boolean {
   return (
+    reasonComplete(serial, choice) &&
     (!needsClassification(serial) || choice.pulloutClassificationIds.length > 0) &&
     choice.unitPackingConditionIds.length > 0 &&
     choice.accessoryCompletenessIds.length > 0
@@ -261,6 +276,8 @@ export function PulloutRequestDialog({
         toast.error(checklist.error);
       } else {
         setChecklistOptions({
+          reasons: checklist.reasons,
+          problemDescriptions: checklist.problemDescriptions,
           classifications: checklist.classifications,
           unitPackingConditions: checklist.unitPackingConditions,
           accessoryCompleteness: checklist.accessoryCompleteness,
@@ -360,6 +377,13 @@ export function PulloutRequestDialog({
     });
   }
 
+  function setReason(serialNumberId: string, pulloutReasonCodeId: string) {
+    setChoices((current) => ({
+      ...current,
+      [serialNumberId]: { ...choiceFor(current, serialNumberId), pulloutReasonCodeId },
+    }));
+  }
+
   function setRemarks(serialNumberId: string, remarks: string) {
     setChoices((current) => ({
       ...current,
@@ -425,6 +449,10 @@ export function PulloutRequestDialog({
           const choice = choiceFor(choices, serial.serialNumberId);
           return {
             serialNumberId: serial.serialNumberId,
+            pulloutReasonCodeId:
+              serial.inventoryCode === "STK" ? choice.pulloutReasonCodeId : undefined,
+            problemDescriptionIds:
+              serial.inventoryCode === "DEF" ? choice.problemDescriptionIds : [],
             pulloutClassificationIds: needsClassification(serial)
               ? choice.pulloutClassificationIds
               : [],
@@ -566,7 +594,7 @@ export function PulloutRequestDialog({
                 }}
               />
               <div className="min-w-0 overflow-x-auto rounded-md border">
-                <table className="w-full min-w-[66rem] table-fixed text-sm">
+                <table className="w-full min-w-[76rem] table-fixed text-sm">
                   <thead className="bg-muted/40 text-left text-muted-foreground">
                     <tr>
                       <th className="w-10 px-2 py-2 align-middle font-medium" scope="col">
@@ -594,6 +622,9 @@ export function PulloutRequestDialog({
                       </th>
                       <th className="w-16 px-2 py-2 align-middle font-medium" scope="col">
                         Status
+                      </th>
+                      <th className="px-2 py-2 align-middle font-medium" scope="col">
+                        Reason
                       </th>
                       <th className="px-2 py-2 align-middle font-medium" scope="col">
                         Classification
@@ -657,6 +688,38 @@ export function PulloutRequestDialog({
                                 name={serial.inventoryCode}
                               />
                             </td>
+                            {serial.inventoryCode === "STK" ? (
+                              <td className="px-2 py-2 align-top">
+                                <SearchableSelect
+                                  id={`pullout-reason-${serial.serialNumberId}`}
+                                  ariaLabel={`Reason for ${serial.serialNo}`}
+                                  options={checklistOptions.reasons.map((reason) => ({
+                                    id: reason.id,
+                                    label: reason.name,
+                                  }))}
+                                  value={choice.pulloutReasonCodeId}
+                                  onChange={(id) => setReason(serial.serialNumberId, id)}
+                                  placeholder="Select…"
+                                  searchPlaceholder="Search reasons…"
+                                  disabled={fieldsDisabled}
+                                  popoverClassName={POPOVER_CLASS}
+                                />
+                              </td>
+                            ) : (
+                              <ChecklistCell
+                                label={`Problem description for ${serial.serialNo}`}
+                                options={checklistOptions.problemDescriptions}
+                                selectedIds={choice.problemDescriptionIds}
+                                disabled={fieldsDisabled}
+                                onChange={(ids) =>
+                                  setChecklistIds(
+                                    serial.serialNumberId,
+                                    "problemDescriptionIds",
+                                    ids,
+                                  )
+                                }
+                              />
+                            )}
                             {needsClassification(serial) ? (
                               <ChecklistCell
                                 label={`Classification for ${serial.serialNo}`}
@@ -749,7 +812,8 @@ export function PulloutRequestDialog({
               {missingDetails.length > 0 ? (
                 <p className="text-sm text-muted-foreground">
                   Choose unit packing condition and acc completeness for every selected unit, plus
-                  classification for STK units. {missingDetailsText(missingDetails)}
+                  reason and classification for STK units and a problem description for DEF units.{" "}
+                  {missingDetailsText(missingDetails)}
                 </p>
               ) : null}
             </section>

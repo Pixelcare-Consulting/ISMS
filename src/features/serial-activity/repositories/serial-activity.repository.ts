@@ -548,6 +548,8 @@ async function pulledOutSource(
       take: window,
       select: {
         id: true,
+        reasonCode: { select: { name: true } },
+        problemDescriptions: { select: { problemDescription: { select: { name: true } } } },
         serialNumber: { select: { serialNo: true, model: modelSelect } },
         pullout: {
           select: {
@@ -577,6 +579,9 @@ async function pulledOutSource(
     events: rows.flatMap((r) => {
       const serial = serialFields(r.serialNumber);
       if (!serial) return [];
+      // Older pull-outs hold one reason on the header instead of one per unit.
+      const reason = r.reasonCode?.name ?? r.pullout.reasonStatusCode?.name;
+      const problems = r.problemDescriptions.map((row) => row.problemDescription.name);
       return [
         {
           id: `pulled_out:${r.id}`,
@@ -590,9 +595,8 @@ async function pulledOutSource(
           reference: r.pullout.pulloutNo,
           referenceDetails: referenceDetails(
             route(r.pullout.branch.name, r.pullout.warehouse.name),
-            r.pullout.reasonStatusCode
-              ? `Reason: ${r.pullout.reasonStatusCode.name}`
-              : null,
+            reason ? `Reason: ${reason}` : null,
+            problems.length > 0 ? `Problem: ${problems.join(", ")}` : null,
             r.pullout.waybillNo ? `Waybill ${r.pullout.waybillNo}` : null,
             r.pullout.notes ? `Note: ${r.pullout.notes}` : null,
             ...approvalReferenceLines(r.pullout.approvalLevels, approvers),
@@ -663,6 +667,73 @@ async function pulloutReceivedSource(
           referenceDetails: referenceDetails(route(r.pullout.branch.name, r.pullout.warehouse.name)),
           status: r.priorStatusCode ? `Received: ${r.priorStatusCode.code}` : "Received",
           performedBy: performedByLabel(r.receivedBy),
+        },
+      ];
+    }),
+  };
+}
+
+/** One event per unit rejected in transit, dated when it was refused. */
+async function pulloutRejectedSource(
+  tenantId: string,
+  { window, q, dateFilter, dir }: SourceOptions,
+): Promise<SourceResult> {
+  const where: Prisma.BranchPulloutLineWhereInput = {
+    rejectedAt: { not: null, ...dateFilter },
+    pullout: { tenantId },
+    ...(q
+      ? {
+          OR: [
+            { serialNumber: { serialNo: textContains(q) } },
+            { pullout: { pulloutNo: textContains(q) } },
+          ],
+        }
+      : {}),
+  };
+  const [rows, count] = await Promise.all([
+    prisma.branchPulloutLine.findMany({
+      where,
+      orderBy: { rejectedAt: dir },
+      take: window,
+      select: {
+        id: true,
+        rejectedAt: true,
+        rejectionRemarks: true,
+        priorStatusCode: { select: { code: true } },
+        rejectedBy: userSelect,
+        serialNumber: { select: { serialNo: true, model: modelSelect } },
+        pullout: {
+          select: {
+            pulloutNo: true,
+            branch: { select: { name: true } },
+            warehouse: { select: { name: true } },
+          },
+        },
+      },
+    }),
+    prisma.branchPulloutLine.count({ where }),
+  ]);
+  return {
+    count,
+    events: rows.flatMap((r) => {
+      const serial = serialFields(r.serialNumber);
+      if (!serial || !r.rejectedAt) return [];
+      return [
+        {
+          id: `pulled_out_rejected:${r.id}`,
+          type: "pulled_out" as const,
+          typeLabel: "Pull-out rejected",
+          timestamp: r.rejectedAt,
+          serialNo: serial.serialNo,
+          modelLabel: serial.modelLabel,
+          location: r.pullout.branch.name,
+          reference: r.pullout.pulloutNo,
+          referenceDetails: referenceDetails(
+            route(r.pullout.branch.name, r.pullout.warehouse.name),
+            r.rejectionRemarks ? `Reason: ${r.rejectionRemarks}` : null,
+          ),
+          status: r.priorStatusCode ? `Back at branch: ${r.priorStatusCode.code}` : "Back at branch",
+          performedBy: performedByLabel(r.rejectedBy),
         },
       ];
     }),
@@ -1530,7 +1601,7 @@ const SOURCES: Record<SerialActivityType, ActivitySource[]> = {
   status: [statusSource],
   transferred: [transferredSource, unitTransferSource, deliveryReturnSource],
   sold: [soldSource, officialSalesAuditSource],
-  pulled_out: [pulledOutSource, pulloutReceivedSource],
+  pulled_out: [pulledOutSource, pulloutReceivedSource, pulloutRejectedSource],
   counted: [countedSource],
 };
 

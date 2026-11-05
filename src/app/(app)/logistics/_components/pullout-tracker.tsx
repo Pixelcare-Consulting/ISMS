@@ -30,6 +30,7 @@ type PulloutAuditAction =
   | "pullout.list_saved"
   | "pullout.finalized"
   | "pullout.received"
+  | "pullout.line_rejected"
   | "pullout.completed";
 
 const PULLOUT_ICONS: Readonly<Record<string, ProgressStageIcon>> = {
@@ -54,6 +55,7 @@ function asPulloutAuditAction(action: string): PulloutAuditAction | null {
     case "pullout.list_saved":
     case "pullout.finalized":
     case "pullout.received":
+    case "pullout.line_rejected":
     case "pullout.completed":
       return action;
     default:
@@ -83,6 +85,8 @@ export function pulloutAuditLabel(action: string): string {
       return "Sent — in transit";
     case "pullout.received":
       return "Units received";
+    case "pullout.line_rejected":
+      return "Unit rejected";
     case "pullout.completed":
       return "Received — completed";
     default: {

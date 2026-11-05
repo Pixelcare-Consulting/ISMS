@@ -23,6 +23,11 @@ export const PULLOUT_LINE_DECISION = { pending: "pending", accepted: "accepted" 
 /** Matches SAP's row Remarks column, as on delivery returns. */
 export const PULLOUT_LINE_REMARKS_MAX = 30;
 
+export const PULLOUT_REJECTION_REMARKS_MAX = 200;
+
+/** The `pullout_reason` code every defective unit carries. Stock units pick from the others. */
+export const PULLOUT_DEFECTIVE_REASON_CODE = "DEF";
+
 export interface PulloutLineView {
   serialNumberId: string;
   priorCode: HoldCode | null;
@@ -83,6 +88,7 @@ export interface PulloutFinalizePlan {
 
 export interface PulloutReceiptLineView extends PulloutLineView {
   received: boolean;
+  rejected: boolean;
 }
 
 export interface PulloutReceipt {
@@ -95,6 +101,14 @@ export interface PulloutReceivePlan {
   /** `priorCode` is the unit's original STK or DEF, which it keeps in the warehouse. */
   lines: { serialNumberId: string; priorCode: HoldCode; warehouseLocationId: string }[];
   completes: boolean;
+}
+
+export interface PulloutLineRejectPlan {
+  ok: true;
+  serialNumberId: string;
+  restoreCode: HoldCode;
+  /** Set when this was the last open unit. Nothing received means nothing arrived. */
+  closesAs: "completed" | "cancelled" | null;
 }
 
 const REJECTABLE: readonly PulloutStatus[] = ["pending_tl", "requested"];
@@ -128,6 +142,20 @@ export function pulloutClassificationError(
     return classificationCount > 0 ? null : "Choose a classification for every STK unit";
   }
   return classificationCount > 0 ? "Defective units have no classification" : null;
+}
+
+/** A stock unit gives a reason. A defective unit's reason is fixed, so it names the problem. */
+export function pulloutReasonError(
+  priorCode: HoldCode,
+  reasonChosen: boolean,
+  problemCount: number,
+): string | null {
+  if (priorCode === "STK") {
+    if (!reasonChosen) return "Choose a reason for every STK unit";
+    return problemCount > 0 ? "Stock units have no problem description" : null;
+  }
+  if (reasonChosen) return "Defective units are always pulled out as defective";
+  return problemCount > 0 ? null : "Choose a problem description for every DEF unit";
 }
 
 /**
@@ -338,14 +366,16 @@ export function planPulloutUpdateList(input: {
 
 export function planPulloutFinalize(input: {
   status: PulloutStatus;
-  lines: readonly (PulloutLineView & { received?: boolean })[];
+  lines: readonly (PulloutLineView & { received?: boolean; rejected?: boolean })[];
 }): PulloutFinalizePlan | PlanFailure {
   if (input.lines.length === 0) {
     return { ok: false, error: "This pull-out has no serials to send" };
   }
 
   if (input.status === "in_transit") {
-    const allTransit = input.lines.every((line) => line.received || line.inventoryCode === "DIT");
+    const allTransit = input.lines.every(
+      (line) => line.received || line.rejected || line.inventoryCode === "DIT",
+    );
     if (!allTransit) {
       return { ok: false, error: "Some serials are not ready to leave the branch" };
     }
@@ -378,6 +408,11 @@ export function planPulloutFinalize(input: {
   };
 }
 
+/** Still waiting on the warehouse: neither received nor rejected. */
+function awaitingReceipt(line: PulloutReceiptLineView): boolean {
+  return !line.received && !line.rejected;
+}
+
 /**
  * Receives the units that arrived. A pull-out can arrive in parts: the rest stay in transit
  * and the pull-out completes on the last unit. Pull-outs do not post to SAP.
@@ -401,6 +436,7 @@ export function planPulloutReceive(input: {
     const line = lineBySerial.get(receipt.serialNumberId);
     if (!line) return { ok: false, error: "A selected serial is not on this pull-out" };
     if (line.received) return { ok: false, error: "A selected unit was already received" };
+    if (line.rejected) return { ok: false, error: "A selected unit was rejected" };
     if (!receipt.warehouseLocationId) {
       return { ok: false, error: "Choose a warehouse location for every unit" };
     }
@@ -417,8 +453,48 @@ export function planPulloutReceive(input: {
     });
   }
 
-  const awaiting = input.lines.filter((line) => !line.received).length;
+  const awaiting = input.lines.filter(awaitingReceipt).length;
   return { ok: true, lines, completes: lines.length === awaiting };
+}
+
+/**
+ * Refuses one in-transit unit that did not arrive or cannot be accepted. It goes back to the
+ * branch as its original STK or DEF, which is also where SAP still has it. A unit that is
+ * really lost then shows as missing on the branch's stock count.
+ */
+export function planPulloutLineReject(input: {
+  status: PulloutStatus;
+  lines: readonly PulloutReceiptLineView[];
+  serialNumberId: string;
+  remarks: string;
+}): PulloutLineRejectPlan | PlanFailure {
+  if (input.status !== "in_transit") {
+    return { ok: false, error: "Only an in-transit unit can be rejected" };
+  }
+  if (!input.remarks.trim()) {
+    return { ok: false, error: "Enter the reason for rejecting this unit" };
+  }
+  const line = input.lines.find((row) => row.serialNumberId === input.serialNumberId);
+  if (!line) return { ok: false, error: "This serial is not on this pull-out" };
+  if (line.received) return { ok: false, error: "This unit was already received" };
+  if (line.rejected) return { ok: false, error: "This unit was already rejected" };
+  if (line.priorCode !== "STK" && line.priorCode !== "DEF") {
+    return missingPrior(line.serialNumberId);
+  }
+  if (line.inventoryCode !== "DIT") {
+    return { ok: false, error: "This unit is no longer in transit at the branch" };
+  }
+
+  const othersAwaiting = input.lines.some(
+    (row) => row.serialNumberId !== input.serialNumberId && awaitingReceipt(row),
+  );
+  const anyReceived = input.lines.some((row) => row.received);
+  return {
+    ok: true,
+    serialNumberId: line.serialNumberId,
+    restoreCode: line.priorCode,
+    closesAs: othersAwaiting ? null : anyReceived ? "completed" : "cancelled",
+  };
 }
 
 /**

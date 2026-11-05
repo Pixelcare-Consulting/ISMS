@@ -33,6 +33,7 @@ import {
   deliveryTransferService,
   type DeliveryTransferDraft,
 } from "@/features/logistics/services/delivery-transfer.service";
+import { PULLOUT_DEFECTIVE_REASON_CODE } from "@/features/logistics/services/pullout-posting.planner";
 import { pulloutPostingService } from "@/features/logistics/services/pullout-posting.service";
 import { transferPostingService } from "@/features/logistics/services/transfer-posting.service";
 import type { PostingActor } from "@/features/logistics/services/posting-support";
@@ -51,6 +52,8 @@ import { parseManilaDateTime, parseScheduleDate } from "@/features/logistics/lib
 import {
   PULLOUT_CREATE_INPUT_ERROR,
   PULLOUT_RECEIVE_INPUT_ERROR,
+  PULLOUT_LINE_REJECT_INPUT_ERROR,
+  pulloutLineRejectSchema,
   pulloutReceiveSchema,
   pulloutSchema,
 } from "@/features/logistics/schemas/pullout.schema";
@@ -137,6 +140,7 @@ const transferSchema = z.object({
 const pulloutListSchema = z.object({
   warehouseId: z.string().min(1),
   waybillNo: z.string().optional(),
+  courierName: z.string().trim().max(120).optional(),
   scheduledAt: z.string().optional(),
   actualPulloutDate: z.string().optional(),
   notes: z.string().optional(),
@@ -659,9 +663,14 @@ export interface PulloutChecklistOptions {
   classifications: { id: string; name: string }[];
   unitPackingConditions: { id: string; name: string }[];
   accessoryCompleteness: { id: string; name: string }[];
+  /** Reasons a stock unit can pick. Defective units are always the DEF reason. */
+  reasons: { id: string; name: string }[];
+  problemDescriptions: { id: string; name: string }[];
 }
 
 const EMPTY_CHECKLIST_OPTIONS: PulloutChecklistOptions = {
+  reasons: [],
+  problemDescriptions: [],
   classifications: [],
   unitPackingConditions: [],
   accessoryCompleteness: [],
@@ -676,12 +685,23 @@ export async function listPulloutChecklistOptionsAction(): Promise<
   const orderBy = { name: "asc" as const };
   const select = { id: true, name: true };
   try {
-    const [classifications, unitPackingConditions, accessoryCompleteness] = await Promise.all([
-      prisma.pulloutClassification.findMany({ where, orderBy, select }),
-      prisma.unitPackingCondition.findMany({ where, orderBy, select }),
-      prisma.accessoryCompleteness.findMany({ where, orderBy, select }),
-    ]);
-    return { classifications, unitPackingConditions, accessoryCompleteness };
+    const [classifications, unitPackingConditions, accessoryCompleteness, problemDescriptions, reasons] =
+      await Promise.all([
+        prisma.pulloutClassification.findMany({ where, orderBy, select }),
+        prisma.unitPackingCondition.findMany({ where, orderBy, select }),
+        prisma.accessoryCompleteness.findMany({ where, orderBy, select }),
+        prisma.problemDescription.findMany({ where, orderBy, select }),
+        prisma.reasonStatusCode.findMany({
+          where: {
+            ...where,
+            code: { not: PULLOUT_DEFECTIVE_REASON_CODE },
+            reasonStatus: { category: "pullout_reason" },
+          },
+          orderBy: { sortOrder: "asc" },
+          select,
+        }),
+      ]);
+    return { classifications, unitPackingConditions, accessoryCompleteness, problemDescriptions, reasons };
   } catch (error) {
     return { ...EMPTY_CHECKLIST_OPTIONS, ...actionError(error, "Failed to load pull-out checklist options") };
   }
@@ -794,6 +814,7 @@ export async function updatePulloutListAction(id: string, input: unknown) {
       pulloutId: id,
       warehouseId: parsed.data.warehouseId,
       waybillNo: parsed.data.waybillNo,
+      courierName: parsed.data.courierName,
       scheduledAt,
       actualScheduledDate,
       notes: parsed.data.notes,
@@ -828,6 +849,19 @@ export async function completePulloutAction(id: string, input: unknown) {
     return { success: true as const, completed: result.completed };
   } catch (error) {
     return actionError(error, "Failed to receive the units");
+  }
+}
+
+export async function rejectPulloutLineAction(id: string, serialNumberId: string, input: unknown) {
+  const session = await requirePermission(LOGISTICS_MANAGE);
+  const parsed = pulloutLineRejectSchema.safeParse(input);
+  if (!parsed.success) return { error: PULLOUT_LINE_REJECT_INPUT_ERROR };
+  try {
+    await pulloutPostingService.rejectLine(postingActor(session), id, serialNumberId, parsed.data);
+    revalidatePullout(id);
+    return { success: true as const };
+  } catch (error) {
+    return actionError(error, "Failed to reject this unit");
   }
 }
 

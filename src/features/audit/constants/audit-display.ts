@@ -55,6 +55,7 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "transfer.executed": "Transfer executed",
   "transfer.received": "Transfer received",
   "pullout.received": "Pull-out units received",
+  "pullout.line_rejected": "Pull-out unit rejected",
   "pullout.completed": "Pull-out completed",
   "warehouse.created": "Warehouse created",
   "warehouse.updated": "Warehouse updated",

@@ -18,6 +18,8 @@ jest.mock("@/features/logistics/actions/logistics.actions", () => ({
     { id: "branch-b", name: "Branch B" },
   ]),
   listPulloutChecklistOptionsAction: jest.fn(async () => ({
+    reasons: [{ id: "reason-1", name: "Overstock" }],
+    problemDescriptions: [{ id: "problem-1", name: "No power" }],
     classifications: [{ id: "class-1", name: "Good" }],
     unitPackingConditions: [{ id: "packing-1", name: "Sealed" }],
     accessoryCompleteness: [{ id: "accessory-1", name: "Complete" }],
@@ -114,8 +116,17 @@ async function fillClassification(serialNo: string) {
   await chooseOption(`Classification for ${serialNo}`, "Good");
 }
 
+async function fillReason(serialNo: string) {
+  await chooseOption(`Reason for ${serialNo}`, "Overstock");
+}
+
+async function fillProblem(serialNo: string) {
+  await chooseOption(`Problem description for ${serialNo}`, "No power");
+}
+
 async function pickUnitDetails(serialNo: string) {
   await pickUnit(serialNo);
+  await fillReason(serialNo);
   await fillClassification(serialNo);
   await fillDetails(serialNo);
 }
@@ -186,6 +197,7 @@ describe("PulloutRequestDialog units", () => {
     expect(screen.getAllByRole("table")).toHaveLength(1);
     expect(screen.getByRole("heading", { name: "Transfer details" })).toBeInTheDocument();
     const fields = [
+      "Reason for BRANCH-A-STK",
       "Classification for BRANCH-A-STK",
       "Unit packing condition for BRANCH-A-STK",
       "Acc completeness for BRANCH-A-STK",
@@ -194,6 +206,9 @@ describe("PulloutRequestDialog units", () => {
       expect(screen.getByRole("combobox", { name })).toBeDisabled();
     }
     expect(screen.getByRole("textbox", { name: "Remarks for BRANCH-A-STK" })).toBeDisabled();
+    expect(
+      screen.getByRole("combobox", { name: "Problem description for BRANCH-A-DEF" }),
+    ).toBeDisabled();
 
     await pickUnit("BRANCH-A-STK");
     for (const name of fields) {
@@ -233,11 +248,31 @@ describe("PulloutRequestDialog units", () => {
     expect(screen.getByText(/Still missing: BRANCH-A-STK, BRANCH-A-DEF/)).toBeInTheDocument();
 
     await fillDetails("BRANCH-A-DEF");
+    await fillProblem("BRANCH-A-DEF");
     expect(screen.getByText(/Still missing: BRANCH-A-STK/)).toBeInTheDocument();
     expect(screen.queryByText(/Still missing: BRANCH-A-DEF/)).not.toBeInTheDocument();
   });
 
-  it("submits a defective unit without classification", async () => {
+  it("gives each unit the Reason field for its type", async () => {
+    useBothUnitTypes();
+    renderDialog();
+    await formShown();
+    await chooseBranch("Branch A");
+    await pickUnit("BRANCH-A-STK");
+    await pickUnit("BRANCH-A-DEF");
+
+    expect(screen.getByRole("columnheader", { name: "Reason" })).toBeInTheDocument();
+    const stock = within(unitRow("BRANCH-A-STK"));
+    expect(stock.getByRole("combobox", { name: "Reason for BRANCH-A-STK" })).toBeEnabled();
+    expect(stock.queryByRole("combobox", { name: /Problem description/ })).not.toBeInTheDocument();
+    const defective = within(unitRow("BRANCH-A-DEF"));
+    expect(
+      defective.getByRole("combobox", { name: "Problem description for BRANCH-A-DEF" }),
+    ).toBeEnabled();
+    expect(defective.queryByRole("combobox", { name: /^Reason/ })).not.toBeInTheDocument();
+  });
+
+  it("submits a defective unit with its problem and no classification or reason", async () => {
     useBothUnitTypes();
     const { props } = renderDialog();
     await formShown();
@@ -245,6 +280,8 @@ describe("PulloutRequestDialog units", () => {
     await screen.findByText("Warehouse of branch-a (WH1)");
     await pickUnit("BRANCH-A-DEF");
     await fillDetails("BRANCH-A-DEF");
+    expect(submitButton()).toBeDisabled();
+    await fillProblem("BRANCH-A-DEF");
 
     await act(async () => {
       fireEvent.click(submitButton());
@@ -252,9 +289,34 @@ describe("PulloutRequestDialog units", () => {
 
     expect(props.onSubmit).toHaveBeenCalledTimes(1);
     const [input] = props.onSubmit.mock.calls[0] as unknown as [
-      { lines: { pulloutClassificationIds: string[] }[] },
+      {
+        lines: {
+          pulloutClassificationIds: string[];
+          pulloutReasonCodeId?: string;
+          problemDescriptionIds: string[];
+        }[];
+      },
     ];
-    expect(input.lines[0]?.pulloutClassificationIds).toEqual([]);
+    expect(input.lines[0]).toMatchObject({
+      pulloutClassificationIds: [],
+      pulloutReasonCodeId: undefined,
+      problemDescriptionIds: ["problem-1"],
+    });
+  });
+
+  it("holds a stock unit until its reason is chosen", async () => {
+    useBothUnitTypes();
+    renderDialog();
+    await formShown();
+    await chooseBranch("Branch A");
+    await screen.findByText("Warehouse of branch-a (WH1)");
+    await pickUnit("BRANCH-A-STK");
+    await fillClassification("BRANCH-A-STK");
+    await fillDetails("BRANCH-A-STK");
+    expect(submitButton()).toBeDisabled();
+
+    await fillReason("BRANCH-A-STK");
+    expect(submitButton()).toBeEnabled();
   });
 
   it("holds a stock unit until its classification is chosen", async () => {
@@ -264,6 +326,7 @@ describe("PulloutRequestDialog units", () => {
     await chooseBranch("Branch A");
     await screen.findByText("Warehouse of branch-a (WH1)");
     await pickUnit("BRANCH-A-STK");
+    await fillReason("BRANCH-A-STK");
     await fillDetails("BRANCH-A-STK");
     expect(submitButton()).toBeDisabled();
 

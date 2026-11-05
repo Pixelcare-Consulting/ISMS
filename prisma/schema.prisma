@@ -384,6 +384,7 @@ model User {
   branchDefectReportPhotosUploaded   BranchDefectReportPhoto[]     @relation("BranchDefectReportPhotoUploadedBy")
   branchPulloutLinesDecided          BranchPulloutLine[]           @relation("BranchPulloutLineDecidedBy")
   branchPulloutLinesReceived         BranchPulloutLine[]           @relation("BranchPulloutLineReceivedBy")
+  branchPulloutLinesRejected         BranchPulloutLine[]           @relation("BranchPulloutLineRejectedBy")
   branchPulloutAttachmentsUploaded   BranchPulloutAttachment[]     @relation("BranchPulloutAttachmentUploadedBy")
   branchPulloutsCreated              BranchPullout[]               @relation("BranchPulloutCreatedBy")
   serialNumbersCreated               SerialNumber[]                @relation("SerialNumberCreatedBy")
@@ -1114,8 +1115,9 @@ model ProblemDescription {
   createdAt    DateTime           @default(now()) @map("created_at")
   updatedAt    DateTime           @updatedAt @map("updated_at")
 
-  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant               Tenant                                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branchReturnRequests BranchReturnRequest[]
+  pulloutLines         BranchPulloutLineProblemDescription[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -1700,6 +1702,7 @@ model ReasonStatusCode {
   branchTransfers               BranchTransfer[]
   branchPulloutsWorkflow        BranchPullout[]                @relation("PulloutWorkflowStatus")
   branchPulloutsReasonCode      BranchPullout[]                @relation("PulloutReasonCode")
+  branchPulloutLinesReason      BranchPulloutLine[]            @relation("PulloutLineReason")
   transferLinePriorStatuses     BranchTransferLine[]           @relation("TransferLinePriorStatus")
   pulloutLinePriorStatuses      BranchPulloutLine[]            @relation("PulloutLinePriorStatus")
   serviceCenterInventories      ServiceCenterInventory[]
@@ -2421,6 +2424,7 @@ model BranchPullout {
   reasonStatusId      String?   @map("reason_status_id")
   reasonStatusCodeId  String?   @map("reason_status_code_id")
   waybillNo           String?   @map("waybill_no")
+  courierName         String?   @map("courier_name")
   scheduledAt         DateTime? @map("scheduled_at")
   actualScheduledDate DateTime? @map("actual_scheduled_date")
   scheduledById       String?   @map("scheduled_by_id")
@@ -2459,10 +2463,16 @@ model BranchPulloutLine {
   decidedAt               DateTime? @map("decided_at")
   decidedById             String?   @map("decided_by_id")
   remarks                 String?
+  /// Pull-out reason. A defective unit is always the DEF reason, with problem descriptions saying why.
+  reasonCodeId            String? @map("reason_code_id")
   /// Set when the warehouse receives the unit. ISMS only: pull-outs do not post to SAP.
   receivedAt              DateTime? @map("received_at")
   receivedById            String?   @map("received_by_id")
   receivedLocationId      String?   @map("received_location_id")
+  /// Set when the unit is refused while in transit. It goes back to the branch as STK or DEF.
+  rejectedAt              DateTime? @map("rejected_at")
+  rejectedById            String?   @map("rejected_by_id")
+  rejectionRemarks        String?   @map("rejection_remarks")
 
   pullout                 BranchPullout                           @relation(fields: [pulloutId], references: [id], onDelete: Cascade)
   serialNumber            SerialNumber                            @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
@@ -2470,7 +2480,10 @@ model BranchPulloutLine {
   decidedBy               User?                                   @relation("BranchPulloutLineDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
   receivedBy              User?                                   @relation("BranchPulloutLineReceivedBy", fields: [receivedById], references: [id], onDelete: SetNull)
   receivedLocation        WarehouseLocation?                      @relation("BranchPulloutLineReceivedLocation", fields: [receivedLocationId], references: [id], onDelete: SetNull)
+  reasonCode              ReasonStatusCode?                       @relation("PulloutLineReason", fields: [reasonCodeId], references: [id], onDelete: SetNull)
+  rejectedBy              User?                                   @relation("BranchPulloutLineRejectedBy", fields: [rejectedById], references: [id], onDelete: SetNull)
   classifications         BranchPulloutLineClassification[]
+  problemDescriptions     BranchPulloutLineProblemDescription[]
   packingConditions       BranchPulloutLinePackingCondition[]
   accessoryCompletenesses BranchPulloutLineAccessoryCompleteness[]
 
@@ -2479,6 +2492,8 @@ model BranchPulloutLine {
   @@index([decidedById])
   @@index([receivedById])
   @@index([receivedLocationId])
+  @@index([reasonCodeId])
+  @@index([rejectedById])
   @@map("branch_pullout_lines")
 }
 
@@ -2512,6 +2527,20 @@ model BranchPulloutLineClassification {
   @@unique([pulloutLineId, pulloutClassificationId])
   @@index([pulloutClassificationId])
   @@map("branch_pullout_line_classifications")
+}
+
+/// One problem on a defective pull-out line, from the list returns use. Removing the line or the lookup deletes this row, not the pull-out.
+model BranchPulloutLineProblemDescription {
+  id                   String @id @default(cuid())
+  pulloutLineId        String @map("pullout_line_id")
+  problemDescriptionId String @map("problem_description_id")
+
+  pulloutLine        BranchPulloutLine  @relation(fields: [pulloutLineId], references: [id], onDelete: Cascade)
+  problemDescription ProblemDescription @relation(fields: [problemDescriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([pulloutLineId, problemDescriptionId])
+  @@index([problemDescriptionId])
+  @@map("branch_pullout_line_problem_descriptions")
 }
 
 /// One packing condition on a pull-out line. Removing the line or the lookup deletes this row, not the pull-out.

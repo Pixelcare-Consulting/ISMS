@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import {
   useEffect,
   useState,
+  useId,
   useTransition,
   type ChangeEvent,
   type FormEvent,
@@ -15,6 +16,8 @@ import {
   DocumentDetailBand,
   LogisticsHistoryBody,
 } from "@/app/(app)/logistics/_components/logistics-detail-ui";
+import { ShipmentPrintButton } from "@/app/(app)/logistics/_components/logistics-shipment-section";
+import { pulloutPrintDocument } from "@/app/(app)/logistics/_components/pullout-print";
 import { pulloutAuditLabel, PulloutTracker } from "@/app/(app)/logistics/_components/pullout-tracker";
 import {
   CompactLineTable,
@@ -41,7 +44,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { Textarea } from "@/components/ui/textarea";
 import {
   PULLOUT_ATTACHMENT_ACCEPT,
   PULLOUT_ATTACHMENT_MAX_FILES,
@@ -60,6 +65,7 @@ import {
   listPulloutSerialsAction,
   listWarehousesForLogisticsAction,
   rejectPulloutAction,
+  rejectPulloutLineAction,
   releasePulloutAction,
   updatePulloutListAction,
   uploadPulloutAttachmentAction,
@@ -70,6 +76,7 @@ import {
 } from "@/features/logistics/lib/shipment";
 import {
   PULLOUT_LINE_DECISION,
+  PULLOUT_REJECTION_REMARKS_MAX,
   defaultReceiveLocation,
 } from "@/features/logistics/services/pullout-posting.planner";
 import type { PulloutDetail } from "@/features/logistics/services/pullout-posting.service";
@@ -174,7 +181,33 @@ function recordedNames(names: readonly string[]) {
   );
 }
 
+function ReasonCell({ row }: { row: ItemRow }) {
+  if (!row.reasonName && row.problemDescriptionNames.length === 0) return <Dash />;
+  return (
+    <div>
+      {row.reasonName ? <p>{row.reasonName}</p> : null}
+      {row.problemDescriptionNames.length > 0 ? (
+        <ul className="text-xs text-muted-foreground">
+          {row.problemDescriptionNames.map((name) => (
+            <li key={name}>{name}</li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 function ReceivedCell({ row }: { row: ItemRow }) {
+  if (row.rejectedAt) {
+    const who = [formatWhen(row.rejectedAt, true), row.rejectedByName].filter(Boolean).join(" · ");
+    return (
+      <div>
+        <p className="text-destructive">Rejected, back at branch</p>
+        {row.rejectionRemarks ? <p>{row.rejectionRemarks}</p> : null}
+        {who ? <p className="text-xs text-muted-foreground">{who}</p> : null}
+      </div>
+    );
+  }
   if (!row.receivedAt) return <span className="text-muted-foreground">In transit</span>;
   const who = [formatWhen(row.receivedAt, true), row.receivedByName].filter(Boolean).join(" · ");
   return (
@@ -209,6 +242,12 @@ function pulloutItemColumns(
         const prior = asPriorCode(row.priorCode);
         return prior ? <StatusCodeBadge code={prior} name={prior} /> : <Dash />;
       },
+    },
+    {
+      id: "reason",
+      header: "Reason",
+      className: "min-w-40",
+      cell: (row) => <ReasonCell row={row} />,
     },
     {
       id: "classification",
@@ -377,11 +416,13 @@ function LogisticsSection({
   canEdit,
   pending,
   waybillNo,
+  courierName,
   warehouseId,
   scheduledAt,
   actualDate,
   warehouses,
   onWaybillNo,
+  onCourierName,
   onWarehouseId,
   onScheduledAt,
   onActualDate,
@@ -391,11 +432,13 @@ function LogisticsSection({
   canEdit: boolean;
   pending: boolean;
   waybillNo: string;
+  courierName: string;
   warehouseId: string;
   scheduledAt: string;
   actualDate: string;
   warehouses: { id: string; name: string; code: string }[];
   onWaybillNo: (value: string) => void;
+  onCourierName: (value: string) => void;
   onWarehouseId: (value: string) => void;
   onScheduledAt: (value: string) => void;
   onActualDate: (value: string) => void;
@@ -415,6 +458,15 @@ function LogisticsSection({
                 value={waybillNo}
                 disabled={pending}
                 onChange={(event) => onWaybillNo(event.target.value)}
+              />
+            </Field>
+            <Field label="Courier" htmlFor="pullout-courier">
+              <Input
+                id="pullout-courier"
+                value={courierName}
+                maxLength={120}
+                disabled={pending}
+                onChange={(event) => onCourierName(event.target.value)}
               />
             </Field>
             <Field label="Date-Time Schedule" htmlFor="pullout-schedule">
@@ -454,6 +506,7 @@ function LogisticsSection({
         ) : (
           <>
             <RecordReadout label="Waybill No" value={textOrDash(detail.waybillNo)} />
+            <RecordReadout label="Courier" value={textOrDash(detail.courierName)} />
             <RecordReadout
               label="Date-Time Schedule"
               value={textOrDash(formatWhen(detail.scheduledAt, true))}
@@ -604,6 +657,7 @@ export function PulloutDetailView({
   const [extraSerials, setExtraSerials] = useState<ExtraSerial[]>([]);
   const [warehouseId, setWarehouseId] = useState(detail.warehouse.id);
   const [waybillNo, setWaybillNo] = useState(detail.waybillNo ?? "");
+  const [courierName, setCourierName] = useState(detail.courierName ?? "");
   const [scheduledAt, setScheduledAt] = useState(manilaDateTimeInputValue(detail.scheduledAt));
   const [actualDate, setActualDate] = useState(scheduleDateInputValue(detail.actualScheduledDate));
   const [selected, setSelected] = useState<string[]>(detail.lines.map((line) => line.serialNumberId));
@@ -611,6 +665,9 @@ export function PulloutDetailView({
   const [extrasState, setExtrasState] = useState<ExtraSerialLoad>("idle");
   const [extrasAttempt, setExtrasAttempt] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState<ItemRow | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<ItemRow | null>(null);
+  const [rejectRemarks, setRejectRemarks] = useState("");
+  const rejectRemarksId = useId();
   const [receiveIds, setReceiveIds] = useState<string[]>([]);
   const [receiveLocationBySerial, setReceiveLocationBySerial] = useState<Record<string, string>>(
     () =>
@@ -723,10 +780,14 @@ export function PulloutDetailView({
   const showSend = canEditList && detail.status.code === PULLOUT_WORKFLOW_CODE.pending_logistics;
   const inTransit = detail.status.code === PULLOUT_WORKFLOW_CODE.in_transit;
   const canReceive = inTransit && capabilities.canCompletePullout;
-  const showReceipts = inTransit || detail.status.code === PULLOUT_WORKFLOW_CODE.completed;
+  const showReceipts =
+    inTransit ||
+    detail.status.code === PULLOUT_WORKFLOW_CODE.completed ||
+    detail.lines.some((line) => line.rejectedAt);
   const awaitingIds = detail.lines
-    .filter((line) => !line.receivedAt)
+    .filter((line) => !line.receivedAt && !line.rejectedAt)
     .map((line) => line.serialNumberId);
+  const printDocument = pulloutPrintDocument(detail);
   const receiveOptions = detail.receiveLocations.map((location) => ({
     id: location.id,
     label: joinedLabel(location.name, location.code) ?? location.name,
@@ -741,6 +802,7 @@ export function PulloutDetailView({
   const listDirty =
     warehouseId !== detail.warehouse.id ||
     waybillNo !== (detail.waybillNo ?? "") ||
+    courierName !== (detail.courierName ?? "") ||
     scheduledAt !== manilaDateTimeInputValue(detail.scheduledAt) ||
     actualDate !== scheduleDateInputValue(detail.actualScheduledDate) ||
     !sameIds(
@@ -762,6 +824,7 @@ export function PulloutDetailView({
         updatePulloutListAction(detail.id, {
           warehouseId,
           waybillNo,
+          courierName,
           scheduledAt,
           actualPulloutDate: actualDate,
           serialNumberIds: selected,
@@ -789,6 +852,20 @@ export function PulloutDetailView({
     const { serialNumberId } = deleteTarget;
     setDeleteTarget(null);
     run(() => deletePulloutLineAction(detail.id, serialNumberId), "Unit deleted from this pull-out");
+  }
+
+  function closeReject() {
+    setRejectTarget(null);
+    setRejectRemarks("");
+  }
+
+  function confirmReject() {
+    if (!rejectTarget) return;
+    const { serialNumberId } = rejectTarget;
+    const remarks = rejectRemarks.trim();
+    closeReject();
+    toggleReceive(serialNumberId, false);
+    run(() => rejectPulloutLineAction(detail.id, serialNumberId, { remarks }), "Unit rejected");
   }
 
   function reserveLineAction(row: ItemRow) {
@@ -859,21 +936,35 @@ export function PulloutDetailView({
 
   function receiveLineAction(row: ItemRow) {
     if (row.receivedAt) return <span className="text-xs text-emerald-700">Received</span>;
+    if (row.rejectedAt) return <span className="text-xs text-destructive">Rejected</span>;
     return (
-      <Checkbox
-        checked={receiveIds.includes(row.serialNumberId)}
-        disabled={pending || receiveOptions.length === 0}
-        aria-label={`Receive ${row.serialNo}`}
-        onCheckedChange={(value) => toggleReceive(row.serialNumberId, value === true)}
-      />
+      <div className="flex items-center justify-end gap-2">
+        <Checkbox
+          checked={receiveIds.includes(row.serialNumberId)}
+          disabled={pending || receiveOptions.length === 0}
+          aria-label={`Receive ${row.serialNo}`}
+          onCheckedChange={(value) => toggleReceive(row.serialNumberId, value === true)}
+        />
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={pending}
+          aria-label={`Reject ${row.serialNo}`}
+          onClick={() => setRejectTarget(row)}
+        >
+          Reject
+        </Button>
+      </div>
     );
   }
 
   function receiveLocationCell(row: ItemRow) {
-    if (row.receivedAt) return <ReceivedCell row={row} />;
+    if (row.receivedAt || row.rejectedAt) return <ReceivedCell row={row} />;
     return (
       <SearchableSelect
         id={`receive-location-${row.serialNumberId}`}
+        ariaLabel={`Warehouse location for ${row.serialNo}`}
         options={receiveOptions}
         value={receiveLocationBySerial[row.serialNumberId] ?? ""}
         onChange={(locationId) => setReceiveLocation([row.serialNumberId], locationId)}
@@ -928,7 +1019,9 @@ export function PulloutDetailView({
     if (detail.status.code === PULLOUT_WORKFLOW_CODE.pending_logistics) {
       return (
         <p className="text-sm text-muted-foreground">
-          Sending puts the units in transit. The warehouse receives them next.
+          {printDocument
+            ? "Sending puts the units in transit. The warehouse receives them next."
+            : "Save the waybill, courier and schedule to print the slip. Sending puts the units in transit."}
         </p>
       );
     }
@@ -943,7 +1036,7 @@ export function PulloutDetailView({
     return (
       <p className="text-sm text-muted-foreground">
         {canReceive
-          ? "Tick the units that arrived and choose where each one goes. Units you leave stay in transit."
+          ? "Tick the units that arrived and choose where each one goes. Reject a unit that did not arrive. Units you leave stay in transit."
           : `Units stay in transit at ${detail.branch.name} until the warehouse receives them.`}
       </p>
     );
@@ -1047,11 +1140,13 @@ export function PulloutDetailView({
         canEdit={canEditList}
         pending={pending}
         waybillNo={waybillNo}
+        courierName={courierName}
         warehouseId={warehouseId}
         scheduledAt={scheduledAt}
         actualDate={actualDate}
         warehouses={warehouses}
         onWaybillNo={setWaybillNo}
+        onCourierName={setCourierName}
         onWarehouseId={setWarehouseId}
         onScheduledAt={setScheduledAt}
         onActualDate={setActualDate}
@@ -1068,8 +1163,11 @@ export function PulloutDetailView({
             row.serialNo,
             row.priorCode,
             row.remarks,
+            row.reasonName,
+            row.rejectionRemarks,
             row.receivedLocation?.code,
             row.receivedLocation?.name,
+            ...row.problemDescriptionNames,
             ...row.classificationNames,
             ...row.unitPackingConditionNames,
             ...row.accessoryCompletenessNames,
@@ -1093,7 +1191,7 @@ export function PulloutDetailView({
               receiveToolbar()
             )
           }
-          minWidth={showReceipts ? "86rem" : "72rem"}
+          minWidth={showReceipts ? "96rem" : "82rem"}
         />
         {canEditList && addOpen ? (
           <AddSerialsPanel
@@ -1135,7 +1233,12 @@ export function PulloutDetailView({
             {detail.condition ? <PulloutConditionBadge condition={detail.condition} /> : null}
           </span>
         }
-        actions={headerActions()}
+        actions={
+          <>
+            {headerActions()}
+            <ShipmentPrintButton document={printDocument} />
+          </>
+        }
       />
       {canEditList ? (
         <form id={PULLOUT_LIST_FORM_ID} onSubmit={submitList}>
@@ -1160,6 +1263,36 @@ export function PulloutDetailView({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={confirmDelete}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={rejectTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) closeReject();
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{`Reject ${rejectTarget?.serialNo ?? "this unit"}?`}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {`Use this when the unit did not arrive or cannot be accepted. It goes back to ${detail.branch.name} as ${rejectTarget?.priorCode ?? "its original status"}. If it is lost, the next stock count shows it as missing.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="grid gap-1.5">
+            <Label htmlFor={rejectRemarksId}>Reason for rejection</Label>
+            <Textarea
+              id={rejectRemarksId}
+              value={rejectRemarks}
+              maxLength={PULLOUT_REJECTION_REMARKS_MAX}
+              onChange={(event) => setRejectRemarks(event.target.value)}
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction disabled={!rejectRemarks.trim()} onClick={confirmReject}>
+              Reject unit
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

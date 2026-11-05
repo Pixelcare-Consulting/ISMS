@@ -22,11 +22,14 @@ import {
   planPulloutFinalize,
   planPulloutLineApprove,
   planPulloutLineDelete,
+  planPulloutLineReject,
   planPulloutReject,
   planPulloutUpdateList,
+  PULLOUT_DEFECTIVE_REASON_CODE,
   PULLOUT_LINE_DECISION,
   pulloutClassificationError,
   pulloutCondition,
+  pulloutReasonError,
   type PulloutConditionView,
   type PulloutDecisionLineView,
   type PulloutReceipt,
@@ -62,9 +65,14 @@ export interface PulloutSerialOption {
   inventoryCode: "STK" | "DEF";
 }
 
-/** Details for one selected serial. Classification is for stock pull-outs only. */
+/**
+ * Details for one selected serial. Classification and reason are for stock units,
+ * problem descriptions for defective ones.
+ */
 export interface PulloutCreateLine {
   serialNumberId: string;
+  pulloutReasonCodeId?: string;
+  problemDescriptionIds: string[];
   pulloutClassificationIds: string[];
   unitPackingConditionIds: string[];
   accessoryCompletenessIds: string[];
@@ -92,12 +100,17 @@ export interface PulloutReceiveInput {
   lines: PulloutReceipt[];
 }
 
+export interface PulloutLineRejectInput {
+  remarks: string;
+}
+
 export interface PulloutDetail {
   id: string;
   pulloutNo: string;
   condition: PulloutConditionView | null;
   notes: string | null;
   waybillNo: string | null;
+  courierName: string | null;
   createdAt: string;
   createdByName: string | null;
   scheduledAt: string | null;
@@ -116,6 +129,8 @@ export interface PulloutDetail {
     serialNumberId: string;
     decision: string;
     remarks: string | null;
+    reasonName: string | null;
+    problemDescriptionNames: string[];
     serialNo: string;
     skuCode: string;
     modelName: string;
@@ -129,6 +144,9 @@ export interface PulloutDetail {
     receivedAt: string | null;
     receivedByName: string | null;
     receivedLocation: { code: string; name: string } | null;
+    rejectedAt: string | null;
+    rejectedByName: string | null;
+    rejectionRemarks: string | null;
   }[];
   history: { id: string; action: string; at: string; userName: string | null }[];
 }
@@ -203,6 +221,7 @@ async function loadPullout(db: PostingDb | typeof prisma, tenantId: string, pull
       branchId: true,
       warehouseId: true,
       waybillNo: true,
+      courierName: true,
       scheduledAt: true,
       notes: true,
       statusCodeId: true,
@@ -212,6 +231,7 @@ async function loadPullout(db: PostingDb | typeof prisma, tenantId: string, pull
           serialNumberId: true,
           decision: true,
           receivedAt: true,
+          rejectedAt: true,
           serialNumber: { select: { serialNo: true } },
           priorStatusCodeId: true,
           priorStatusCode: { select: { code: true } },
@@ -232,6 +252,7 @@ async function loadPullout(db: PostingDb | typeof prisma, tenantId: string, pull
   const inventoryBySerial = new Map(inventory.map((row) => [row.serialNumberId, row]));
   const lines: (PulloutDecisionLineView & {
     received: boolean;
+    rejected: boolean;
     priorStatusCodeId: string | null;
     serialNo: string;
   })[] = pullout.lines.map((line) => ({
@@ -239,6 +260,7 @@ async function loadPullout(db: PostingDb | typeof prisma, tenantId: string, pull
     serialNo: line.serialNumber.serialNo,
     decision: line.decision,
     received: line.receivedAt !== null,
+    rejected: line.rejectedAt !== null,
     priorCode: asHoldCode(line.priorStatusCode?.code),
     priorStatusCodeId: line.priorStatusCodeId,
     inventoryCode: asInventoryCode(inventoryBySerial.get(line.serialNumberId)?.statusCode.code),
@@ -324,6 +346,7 @@ function checklistBySerial(lines: readonly PulloutCreateLine[]): Map<string, Pul
   for (const line of lines) {
     if (!line.serialNumberId) throw new Error(CHECKLIST_REQUIRED);
     assertNoDuplicateIds(line.pulloutClassificationIds);
+    assertNoDuplicateIds(line.problemDescriptionIds);
     requireChecklistIds(line.unitPackingConditionIds);
     requireChecklistIds(line.accessoryCompletenessIds);
     if (bySerial.has(line.serialNumberId)) {
@@ -341,7 +364,11 @@ async function assertActiveChecklist(
   const classificationIds = [...new Set(lines.flatMap((line) => line.pulloutClassificationIds))];
   const packingIds = [...new Set(lines.flatMap((line) => line.unitPackingConditionIds))];
   const accessoryIds = [...new Set(lines.flatMap((line) => line.accessoryCompletenessIds))];
-  const [classifications, packings, accessories] = await Promise.all([
+  const problemIds = [...new Set(lines.flatMap((line) => line.problemDescriptionIds))];
+  const reasonIds = [
+    ...new Set(lines.flatMap((line) => (line.pulloutReasonCodeId ? [line.pulloutReasonCodeId] : []))),
+  ];
+  const [classifications, packings, accessories, problems, reasons] = await Promise.all([
     prisma.pulloutClassification.findMany({
       where: { tenantId, recordStatus: "active", id: { in: classificationIds } },
       select: { id: true },
@@ -354,15 +381,33 @@ async function assertActiveChecklist(
       where: { tenantId, recordStatus: "active", id: { in: accessoryIds } },
       select: { id: true },
     }),
+    prisma.problemDescription.findMany({
+      where: { tenantId, recordStatus: "active", id: { in: problemIds } },
+      select: { id: true },
+    }),
+    prisma.reasonStatusCode.findMany({
+      where: {
+        tenantId,
+        recordStatus: "active",
+        id: { in: reasonIds },
+        code: { not: PULLOUT_DEFECTIVE_REASON_CODE },
+        reasonStatus: { category: "pullout_reason" },
+      },
+      select: { id: true },
+    }),
   ]);
   const activeClassifications = new Set(classifications.map((row) => row.id));
   const activePackings = new Set(packings.map((row) => row.id));
   const activeAccessories = new Set(accessories.map((row) => row.id));
+  const activeProblems = new Set(problems.map((row) => row.id));
+  const activeReasons = new Set(reasons.map((row) => row.id));
   for (const line of lines) {
     if (
       line.pulloutClassificationIds.some((id) => !activeClassifications.has(id)) ||
       line.unitPackingConditionIds.some((id) => !activePackings.has(id)) ||
-      line.accessoryCompletenessIds.some((id) => !activeAccessories.has(id))
+      line.accessoryCompletenessIds.some((id) => !activeAccessories.has(id)) ||
+      line.problemDescriptionIds.some((id) => !activeProblems.has(id)) ||
+      (line.pulloutReasonCodeId !== undefined && !activeReasons.has(line.pulloutReasonCodeId))
     ) {
       throw new Error(CHECKLIST_INACTIVE);
     }
@@ -566,6 +611,7 @@ export const pulloutPostingService = {
         pulloutNo: true,
         notes: true,
         waybillNo: true,
+        courierName: true,
         createdAt: true,
         scheduledAt: true,
         actualScheduledDate: true,
@@ -588,7 +634,15 @@ export const pulloutPostingService = {
             receivedAt: true,
             receivedBy: { select: { name: true } },
             receivedLocation: { select: { code: true, name: true } },
+            rejectedAt: true,
+            rejectedBy: { select: { name: true } },
+            rejectionRemarks: true,
             priorStatusCode: { select: { code: true } },
+            reasonCode: { select: { name: true } },
+            problemDescriptions: {
+              select: { problemDescription: { select: { name: true } } },
+              orderBy: { problemDescription: { name: "asc" } },
+            },
             classifications: {
               select: { pulloutClassification: { select: { name: true } } },
               orderBy: { pulloutClassification: { name: "asc" } },
@@ -649,6 +703,7 @@ export const pulloutPostingService = {
       attachments: pullout.attachments,
       notes: pullout.notes,
       waybillNo: pullout.waybillNo,
+      courierName: pullout.courierName,
       createdAt: pullout.createdAt.toISOString(),
       createdByName: displayName(pullout.createdBy?.name),
       scheduledAt: pullout.scheduledAt?.toISOString() ?? null,
@@ -664,6 +719,10 @@ export const pulloutPostingService = {
         serialNumberId: line.serialNumberId,
         decision: line.decision,
         remarks: line.remarks,
+        reasonName: line.reasonCode?.name ?? null,
+        problemDescriptionNames: savedNames(
+          line.problemDescriptions.map((row) => row.problemDescription.name),
+        ),
         serialNo: line.serialNumber.serialNo,
         skuCode: line.serialNumber.model.skuCode,
         modelName: line.serialNumber.model.name,
@@ -682,6 +741,9 @@ export const pulloutPostingService = {
         receivedAt: line.receivedAt?.toISOString() ?? null,
         receivedByName: displayName(line.receivedBy?.name),
         receivedLocation: line.receivedLocation,
+        rejectedAt: line.rejectedAt?.toISOString() ?? null,
+        rejectedByName: displayName(line.rejectedBy?.name),
+        rejectionRemarks: line.rejectionRemarks,
       })),
       history: history.map((row) => ({
         id: row.id,
@@ -712,14 +774,29 @@ export const pulloutPostingService = {
       throw new Error(CHECKLIST_REQUIRED);
     }
     for (const line of plan.lines) {
-      const classificationCount =
-        checklist.get(line.serialNumberId)?.pulloutClassificationIds.length ?? 0;
-      const classificationError = pulloutClassificationError(line.priorCode, classificationCount);
+      const choice = checklist.get(line.serialNumberId);
+      const classificationError = pulloutClassificationError(
+        line.priorCode,
+        choice?.pulloutClassificationIds.length ?? 0,
+      );
       if (classificationError) throw new Error(classificationError);
+      const reasonError = pulloutReasonError(
+        line.priorCode,
+        Boolean(choice?.pulloutReasonCodeId),
+        choice?.problemDescriptionIds.length ?? 0,
+      );
+      if (reasonError) throw new Error(reasonError);
     }
 
     const codes = await inventoryIds(actor.tenantId);
     const statusCodeId = await workflowId(actor.tenantId, "pending_tl");
+    const defectiveReasonId = plan.lines.some((line) => line.priorCode === "DEF")
+      ? await reasonStatusService.requireCodeId(
+          actor.tenantId,
+          "pullout_reason",
+          PULLOUT_DEFECTIVE_REASON_CODE,
+        )
+      : null;
 
     try {
       return await prisma.$transaction(async (tx) => {
@@ -759,6 +836,13 @@ export const pulloutPostingService = {
                   serialNumberId: line.serialNumberId,
                   priorStatusCodeId: codes[line.priorCode],
                   remarks: choice.remarks?.trim() || null,
+                  reasonCodeId:
+                    line.priorCode === "DEF" ? defectiveReasonId : choice.pulloutReasonCodeId,
+                  problemDescriptions: {
+                    create: choice.problemDescriptionIds.map((problemDescriptionId) => ({
+                      problemDescriptionId,
+                    })),
+                  },
                   classifications: {
                     create: choice.pulloutClassificationIds.map((pulloutClassificationId) => ({
                       pulloutClassificationId,
@@ -1098,6 +1182,7 @@ export const pulloutPostingService = {
       pulloutId: string;
       warehouseId?: string;
       waybillNo?: string | null;
+      courierName?: string | null;
       scheduledAt?: Date | null;
       actualScheduledDate?: Date | null;
       notes?: string | null;
@@ -1218,6 +1303,8 @@ export const pulloutPostingService = {
           data: {
             warehouseId,
             waybillNo: input.waybillNo === undefined ? fresh.waybillNo : input.waybillNo?.trim() || null,
+            courierName:
+              input.courierName === undefined ? fresh.courierName : input.courierName?.trim() || null,
             notes: input.notes === undefined ? fresh.notes : input.notes?.trim() || null,
             ...(input.actualScheduledDate === undefined
               ? {}
@@ -1464,5 +1551,95 @@ export const pulloutPostingService = {
     } catch (error) {
       throw postingError(error, "Failed to receive the units");
     }
+  },
+
+  /** Refuses one in-transit unit. See `planPulloutLineReject` for where it goes. */
+  async rejectLine(
+    actor: PostingActor,
+    pulloutId: string,
+    serialNumberId: string,
+    input: PulloutLineRejectInput,
+  ) {
+    await authorizePosting(actor, "pullout.complete", null);
+    const remarks = input.remarks.trim();
+    const current = await loadPullout(prisma, actor.tenantId, pulloutId);
+    if (!current) throw new Error("Pull-out not found");
+    const preview = planPulloutLineReject({ ...current, serialNumberId, remarks });
+    if (!preview.ok) throw new Error(preview.error);
+
+    const codes = await inventoryIds(actor.tenantId);
+    const inTransitId = await workflowId(actor.tenantId, "in_transit");
+    const closedIds = {
+      completed: await workflowId(actor.tenantId, "completed"),
+      cancelled: await workflowId(actor.tenantId, "cancelled"),
+    };
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        await lockSerialNumbers(tx, [serialNumberId]);
+        const fresh = await loadPullout(tx, actor.tenantId, pulloutId);
+        if (!fresh) throw new Error("Pull-out not found");
+        const plan = planPulloutLineReject({ ...fresh, serialNumberId, remarks });
+        if (!plan.ok) throw new Error(plan.error);
+        await assertMovable(actor.tenantId, [serialNumberId]);
+
+        await claimInventory(tx, {
+          tenantId: actor.tenantId,
+          branchId: fresh.branchId,
+          serialNumberIds: [serialNumberId],
+          fromStatusCodeId: codes.DIT,
+          toStatusCodeId: codes[plan.restoreCode],
+          userId: actor.userId,
+          message: RECEIVE_CLAIM_LOST,
+        });
+        const claimed = await tx.branchPulloutLine.updateMany({
+          where: { pulloutId, serialNumberId, receivedAt: null, rejectedAt: null },
+          data: {
+            rejectedAt: new Date(),
+            rejectedById: actor.userId,
+            rejectionRemarks: remarks,
+          },
+        });
+        assertExclusiveClaim(claimed.count, 1, RECEIVE_CLAIM_LOST);
+
+        await writeHistory(tx, {
+          tenantId: actor.tenantId,
+          userId: actor.userId,
+          pulloutNo: fresh.pulloutNo,
+          serialNumberIds: [serialNumberId],
+          status: plan.restoreCode,
+          details: `Rejected on ${fresh.pulloutNo}, back at the branch: ${remarks}`,
+        });
+        if (plan.closesAs) {
+          await claimHeader(tx, "branchPullout", {
+            id: pulloutId,
+            tenantId: actor.tenantId,
+            fromStatusCodeIds: [inTransitId],
+            toStatusCodeId: closedIds[plan.closesAs],
+            message: "This pull-out was updated by someone else",
+          });
+        }
+        const closingAction = plan.closesAs === "completed" ? "pullout.completed" : "pullout.rejected";
+        await tx.auditLog.create({
+          data: {
+            tenantId: actor.tenantId,
+            userId: actor.userId,
+            action: plan.closesAs ? closingAction : "pullout.line_rejected",
+            entityType: "BranchPullout",
+            entityId: pulloutId,
+            metadata: {
+              pulloutNo: fresh.pulloutNo,
+              serialNo: fresh.lines.find((line) => line.serialNumberId === serialNumberId)?.serialNo,
+              condition: plan.restoreCode,
+              remarks,
+            },
+          },
+        });
+      });
+    } catch (error) {
+      throw postingError(error, "Failed to reject this unit");
+    }
+
+    return { id: current.id };
   },
 };

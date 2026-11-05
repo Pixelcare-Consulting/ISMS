@@ -3,7 +3,7 @@ jest.mock("@/lib/database/client", () => {
     $queryRaw: jest.fn(),
     branchPullout: { findFirst: jest.fn(), updateMany: jest.fn() },
     branchPulloutLine: { updateMany: jest.fn() },
-    branchInventory: { findMany: jest.fn(), deleteMany: jest.fn() },
+    branchInventory: { findMany: jest.fn(), deleteMany: jest.fn(), updateMany: jest.fn() },
     warehouseInventory: { createMany: jest.fn() },
     serialNumberHistory: { createMany: jest.fn() },
     auditLog: { create: jest.fn() },
@@ -69,6 +69,7 @@ function pullout(lines: { id: string; prior: string; receivedAt?: Date | null }[
       serialNumberId: line.id,
       decision: "accepted",
       receivedAt: line.receivedAt ?? null,
+      rejectedAt: null,
       serialNumber: { serialNo: line.id.toUpperCase() },
       priorStatusCodeId: `id-${line.prior}`,
       priorStatusCode: { code: line.prior },
@@ -114,6 +115,7 @@ beforeEach(() => {
     count: where.serialNumberId.in.length,
   }));
   mockTx.branchPullout.updateMany.mockResolvedValue({ count: 1 });
+  mockTx.branchInventory.updateMany.mockResolvedValue({ count: 1 });
 });
 
 describe("pulloutPostingService.complete", () => {
@@ -246,5 +248,106 @@ describe("pulloutPostingService.complete", () => {
       pulloutPostingService.complete({ ...actor, permissions: [] }, "p1", { lines: [receipt("s1")] }),
     ).rejects.toThrow();
     expect(mockTx.warehouseInventory.createMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("pulloutPostingService.rejectLine", () => {
+  const remarks = { remarks: " Lost by courier " };
+
+  beforeEach(() => {
+    mockTx.branchPulloutLine.updateMany.mockResolvedValue({ count: 1 });
+  });
+
+  it("puts the unit back at the branch with its original status", async () => {
+    setUp([
+      { id: "s1", prior: "DEF" },
+      { id: "s2", prior: "STK" },
+    ]);
+
+    await pulloutPostingService.rejectLine(actor, "p1", "s1", remarks);
+
+    expect(lockSerialNumbers).toHaveBeenCalledWith(mockTx, ["s1"]);
+    expect(mockTx.branchInventory.updateMany).toHaveBeenCalledWith({
+      where: {
+        tenantId: "t1",
+        branchId: "b1",
+        serialNumberId: { in: ["s1"] },
+        statusCodeId: "id-DIT",
+      },
+      data: { statusCodeId: "id-DEF", updatedById: "u1" },
+    });
+    expect(mockTx.warehouseInventory.createMany).not.toHaveBeenCalled();
+  });
+
+  it("records who rejected it, when, and why", async () => {
+    setUp([
+      { id: "s1", prior: "STK" },
+      { id: "s2", prior: "STK" },
+    ]);
+
+    await pulloutPostingService.rejectLine(actor, "p1", "s1", remarks);
+
+    expect(mockTx.branchPulloutLine.updateMany).toHaveBeenCalledWith({
+      where: { pulloutId: "p1", serialNumberId: "s1", receivedAt: null, rejectedAt: null },
+      data: { rejectedAt: expect.any(Date), rejectedById: "u1", rejectionRemarks: "Lost by courier" },
+    });
+    expect(mockTx.serialNumberHistory.createMany.mock.calls[0]?.[0].data).toEqual([
+      {
+        tenantId: "t1",
+        serialNumberId: "s1",
+        txnType: "pullout",
+        details: "Rejected on PLT-1, back at the branch: Lost by courier",
+        status: "STK",
+        createdById: "u1",
+      },
+    ]);
+  });
+
+  it("leaves the pull-out open while other units are in transit", async () => {
+    setUp([
+      { id: "s1", prior: "STK" },
+      { id: "s2", prior: "STK" },
+    ]);
+
+    await pulloutPostingService.rejectLine(actor, "p1", "s1", remarks);
+
+    expect(mockTx.branchPullout.updateMany).not.toHaveBeenCalled();
+    expect(mockTx.auditLog.create.mock.calls[0]?.[0].data.action).toBe("pullout.line_rejected");
+  });
+
+  it("completes the pull-out when the rest were received", async () => {
+    setUp([
+      { id: "s1", prior: "STK" },
+      { id: "s2", prior: "STK", receivedAt: new Date() },
+    ]);
+
+    await pulloutPostingService.rejectLine(actor, "p1", "s1", remarks);
+
+    expect(mockTx.branchPullout.updateMany).toHaveBeenCalledWith({
+      where: { id: "p1", tenantId: "t1", statusCodeId: { in: ["id-in_transit"] } },
+      data: { statusCodeId: "id-completed" },
+    });
+    expect(mockTx.auditLog.create.mock.calls[0]?.[0].data.action).toBe("pullout.completed");
+  });
+
+  it("cancels the pull-out when nothing arrived", async () => {
+    setUp([{ id: "s1", prior: "STK" }]);
+
+    await pulloutPostingService.rejectLine(actor, "p1", "s1", remarks);
+
+    expect(mockTx.branchPullout.updateMany).toHaveBeenCalledWith({
+      where: { id: "p1", tenantId: "t1", statusCodeId: { in: ["id-in_transit"] } },
+      data: { statusCodeId: "id-cancelled" },
+    });
+    expect(mockTx.auditLog.create.mock.calls[0]?.[0].data.action).toBe("pullout.rejected");
+  });
+
+  it("refuses a user without the receive permission", async () => {
+    setUp([{ id: "s1", prior: "STK" }]);
+
+    await expect(
+      pulloutPostingService.rejectLine({ ...actor, permissions: [] }, "p1", "s1", remarks),
+    ).rejects.toThrow();
+    expect(mockTx.branchInventory.updateMany).not.toHaveBeenCalled();
   });
 });

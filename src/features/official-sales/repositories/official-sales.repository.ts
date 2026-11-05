@@ -413,6 +413,7 @@ export const officialSalesRepository = {
       where: {
         serialNumberId,
         receivedAt: null,
+        rejectedAt: null,
         pullout: {
           tenantId,
           statusCode: {
