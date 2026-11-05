@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 
 import { DocumentDetailBand } from "@/app/(app)/logistics/_components/logistics-detail-ui";
 import { ShipmentPrintButton } from "@/app/(app)/logistics/_components/logistics-shipment-section";
-import { shipmentPrintDocument } from "@/app/(app)/logistics/_components/shipment-print";
 import {
   hasTransferDocumentAction,
   TransferDocumentActionButtons,
@@ -13,27 +12,11 @@ import {
   type TransferDocumentActions,
   type TransferFormHandle,
 } from "@/app/(app)/logistics/_components/transfer-form";
+import { transferPrintDocument } from "@/app/(app)/logistics/_components/transfer-print";
 import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import type { WorkflowStatusOption } from "@/features/logistics/constants/workflow-codes";
 import type { TransferDetail } from "@/features/logistics/services/transfer-posting.service";
-
-function transferPrintDocument(detail: TransferDetail) {
-  return shipmentPrintDocument({
-    title: "Transfer",
-    documentNo: detail.transferNo,
-    shipment: detail.shipment,
-    fields: [
-      { label: "Releasing branch", value: detail.fromBranch.name },
-      { label: "Receiving branch", value: detail.toBranch.name },
-    ],
-    lines: detail.lines.map((line) => ({
-      model: `${line.skuCode} ${line.modelName}`,
-      detail: line.serialNo,
-    })),
-    lineHeaders: { model: "Model", detail: "Serial number" },
-  });
-}
 
 const NO_DOCUMENT_ACTIONS: TransferDocumentActions = {
   canApprove: false,

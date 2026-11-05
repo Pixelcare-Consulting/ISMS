@@ -13,6 +13,7 @@ jest.mock("@/lib/database/client", () => ({
     stockCountSession: { findFirst: jest.fn() },
     serialNumber: { findMany: jest.fn() },
     branchDeliveryLine: { findMany: jest.fn() },
+    branchTransferLine: { findMany: jest.fn() },
   },
 }));
 
@@ -82,6 +83,7 @@ describe("P-Count filled sheet and variance workbook", () => {
   beforeEach(() => {
     (prisma.serialNumber.findMany as jest.Mock).mockResolvedValue([]);
     (prisma.branchDeliveryLine.findMany as jest.Mock).mockResolvedValue([]);
+    (prisma.branchTransferLine.findMany as jest.Mock).mockResolvedValue([]);
   });
 
   it("derives remarks from the line and variance, and keeps catalog-unknown serials", async () => {
@@ -153,6 +155,60 @@ describe("P-Count filled sheet and variance workbook", () => {
         { model: "", serial: "GHOST-2", remark: "IN FILE NOT IN STK" },
       ]),
     );
+  });
+
+  it("shows the transfer DR number and keeps the original DR date for ageing", async () => {
+    (prisma.stockCountSession.findFirst as jest.Mock).mockResolvedValue({
+      branchId: "branch-1",
+      branch: { name: "Main", sapCode: "BR01" },
+      lines: [
+        {
+          expectedInCount: true,
+          status: "counted",
+          notes: "P-COUNT: STK",
+          variance: null,
+          serialNumber: { id: "s1", serialNo: "SN-1" },
+          model: { name: "Widget", skuCode: "W", brand: { name: "Brand" } },
+          branchInventory: {
+            createdAt: new Date("2026-09-01T00:00:00.000Z"),
+            updatedAt: new Date("2026-09-01T00:00:00.000Z"),
+            updatedBy: null,
+            statusCode: { code: "STK" },
+          },
+        },
+      ],
+      variances: [],
+    });
+    (prisma.branchDeliveryLine.findMany as jest.Mock).mockResolvedValue([
+      {
+        serialNumberId: "s1",
+        delivery: {
+          deliveryNo: "DLV-OLD",
+          acceptedAt: new Date("2026-01-15T00:00:00.000Z"),
+          createdAt: new Date("2026-01-14T00:00:00.000Z"),
+        },
+      },
+    ]);
+    (prisma.branchTransferLine.findMany as jest.Mock).mockResolvedValue([
+      {
+        serialNumberId: "s1",
+        decidedAt: new Date("2026-09-01T00:00:00.000Z"),
+        transfer: { drNo: "DR-XFR", transferNo: "XFR-1" },
+      },
+    ]);
+
+    const { buffer } = await buildMonthlySirTemplate({
+      tenantId: "tenant-1",
+      sessionId: "session-1",
+      generatedBy: "Ada",
+      scannedSerialNos: [],
+    });
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
+    const sheet = workbook.worksheets[0]!;
+
+    expect(cellText(sheet, 6, 2)).toBe("2026-01-15");
+    expect(cellText(sheet, 6, 3)).toBe("DR-XFR");
   });
 
   it("lists a catalog-unknown surplus on the variance sheet with a blank model", async () => {

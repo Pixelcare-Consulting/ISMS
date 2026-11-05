@@ -915,7 +915,7 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
       }
       const slip = action.type === "approve" ? approvedSlip(result) : null;
       if (slip) {
-        const opened = printTransferSlips({
+        printTransferSlips({
           transferNo: slip.transferNo || detail.transferNo,
           rsNo: slip.rsNo,
           drNo: slip.drNo,
@@ -926,9 +926,6 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
             model: modelLabel({ skuCode: line.skuCode, name: line.modelName }),
           })),
         });
-        if (!opened) {
-          toast.message("Release slip and delivery receipt are ready to print");
-        }
       }
       toast.success(successMessage(action));
       setPendingConfirm(null);
@@ -1425,7 +1422,7 @@ function approvedSlip(result: object): { rsNo: string; drNo: string; transferNo:
 
 function printCurrentSlips(detail: TransferDetail) {
   if (!detail.rsNo || !detail.drNo) return;
-  const opened = printTransferSlips({
+  printTransferSlips({
     transferNo: detail.transferNo,
     rsNo: detail.rsNo,
     drNo: detail.drNo,
@@ -1436,7 +1433,6 @@ function printCurrentSlips(detail: TransferDetail) {
       model: modelLabel({ skuCode: line.skuCode, name: line.modelName }),
     })),
   });
-  if (!opened) toast.message("Release slip and delivery receipt are ready to print");
 }
 
 function runTransferAction(id: string, action: PendingConfirm, remarks: string) {

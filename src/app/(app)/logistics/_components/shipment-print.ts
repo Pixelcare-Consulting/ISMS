@@ -1,4 +1,5 @@
 import { formatScheduleDate, shipmentIsReady, type LogisticsShipment } from "@/features/logistics/lib/shipment";
+import { printHtml } from "@/utils/print-html";
 
 export interface ShipmentPrintLine {
   model: string;
@@ -110,16 +111,7 @@ export function shipmentPrintHtml(document: ShipmentPrintDocument): string {
 </html>`;
 }
 
-/** Opens the saved waybill sheet and the browser print dialog. */
-export function printShipmentDocument(document: ShipmentPrintDocument): boolean {
-  const popup = window.open("", "_blank", "noopener,noreferrer");
-  if (!popup) return false;
-  popup.document.open();
-  popup.document.write(shipmentPrintHtml(document));
-  popup.document.close();
-  popup.focus();
-  window.setTimeout(() => {
-    popup.print();
-  }, 150);
-  return true;
+/** Opens the browser print dialog for the saved waybill sheet. */
+export function printShipmentDocument(document: ShipmentPrintDocument): void {
+  printHtml(shipmentPrintHtml(document));
 }

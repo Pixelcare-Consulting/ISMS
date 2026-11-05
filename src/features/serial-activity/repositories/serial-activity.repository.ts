@@ -25,6 +25,7 @@ import {
   type ApproverRef,
   type AuditTrailEntry,
 } from "@/features/serial-activity/lib/approval-reference";
+import { transferReferenceLines } from "@/features/serial-activity/lib/transfer-reference";
 import {
   DELIVERY_RETURN_HISTORY_PREFIX,
   documentReferenceFromHistoryDetails,
@@ -383,10 +384,15 @@ async function transferredSource(
       take: window,
       select: {
         id: true,
+        decision: true,
+        remarks: true,
+        requestRemarks: true,
         serialNumber: { select: { serialNo: true, model: modelSelect } },
         transfer: {
           select: {
             transferNo: true,
+            rsNo: true,
+            drNo: true,
             createdAt: true,
             notes: true,
             fromBranch: { select: { name: true } },
@@ -422,6 +428,13 @@ async function transferredSource(
             route(r.transfer.fromBranch.name, r.transfer.toBranch.name),
             r.transfer.notes ? `Note: ${r.transfer.notes}` : null,
             ...approvalReferenceLines(r.transfer.approvalLevels, approvers),
+            ...transferReferenceLines({
+              rsNo: r.transfer.rsNo,
+              drNo: r.transfer.drNo,
+              decision: r.decision,
+              remarks: r.remarks,
+              requestRemarks: r.requestRemarks,
+            }),
           ),
           status: `Transfer: ${r.transfer.statusCode.name}`,
           performedBy: performedByLabel(r.transfer.createdBy),

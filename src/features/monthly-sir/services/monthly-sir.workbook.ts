@@ -9,6 +9,7 @@ import {
   pcountDisplayRemark,
   serialFromUncataloguedVariance,
 } from "@/features/monthly-sir/constants/pcount-upload";
+import { inventoryRepository } from "@/features/inventory/repositories/inventory.repository";
 import { prisma } from "@/lib/database/client";
 
 const HEADERS = [
@@ -131,6 +132,11 @@ async function latestDeliveries(tenantId: string, serialNumberIds: string[]) {
         deliveryDate: row.delivery.acceptedAt ?? row.delivery.createdAt,
       });
     }
+  }
+  const transfers = await inventoryRepository.findNewestTransferReceipts(tenantId, serialNumberIds);
+  for (const [serialNumberId, slip] of transfers) {
+    const deliveryDate = result.get(serialNumberId)?.deliveryDate ?? null;
+    result.set(serialNumberId, { deliveryNo: slip.drNo, deliveryDate });
   }
   return result;
 }

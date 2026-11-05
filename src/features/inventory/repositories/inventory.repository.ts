@@ -418,32 +418,7 @@ export const inventoryRepository = {
       }
     }
 
-    const acceptedLines = await prisma.branchTransferLine.findMany({
-      where: {
-        serialNumberId: { in: serialNumberIds },
-        decision: "accepted",
-        transfer: { tenantId, drNo: { not: null } },
-      },
-      select: {
-        serialNumberId: true,
-        decidedAt: true,
-        transfer: { select: { drNo: true, transferNo: true } },
-      },
-    });
-    const newestTransfer = new Map<string, { drNo: string; transferNo: string; decidedAt: number }>();
-    for (const row of acceptedLines) {
-      const drNo = row.transfer.drNo;
-      if (!drNo) continue;
-      const decidedAt = row.decidedAt?.getTime() ?? 0;
-      const current = newestTransfer.get(row.serialNumberId);
-      if (!current || decidedAt >= current.decidedAt) {
-        newestTransfer.set(row.serialNumberId, {
-          drNo,
-          transferNo: row.transfer.transferNo,
-          decidedAt,
-        });
-      }
-    }
+    const newestTransfer = await this.findNewestTransferReceipts(tenantId, serialNumberIds);
     for (const [serialNumberId, slip] of newestTransfer) {
       const existing = latest.get(serialNumberId);
       if (existing) {
@@ -458,6 +433,43 @@ export const inventoryRepository = {
       });
     }
     return Array.from(latest.values());
+  },
+
+  /**
+   * The DR number from each serial's most recently accepted transfer. A transfer replaces the
+   * DR number only: the DR date stays the original delivery's, which ageing counts from.
+   */
+  async findNewestTransferReceipts(
+    tenantId: string,
+    serialNumberIds: string[],
+  ): Promise<Map<string, { drNo: string; transferNo: string }>> {
+    const acceptedLines = await prisma.branchTransferLine.findMany({
+      where: {
+        serialNumberId: { in: serialNumberIds },
+        decision: "accepted",
+        transfer: { tenantId, drNo: { not: null } },
+      },
+      select: {
+        serialNumberId: true,
+        decidedAt: true,
+        transfer: { select: { drNo: true, transferNo: true } },
+      },
+    });
+    const newest = new Map<string, { drNo: string; transferNo: string; decidedAt: number }>();
+    for (const row of acceptedLines) {
+      const drNo = row.transfer.drNo;
+      if (!drNo) continue;
+      const decidedAt = row.decidedAt?.getTime() ?? 0;
+      const current = newest.get(row.serialNumberId);
+      if (!current || decidedAt >= current.decidedAt) {
+        newest.set(row.serialNumberId, {
+          drNo,
+          transferNo: row.transfer.transferNo,
+          decidedAt,
+        });
+      }
+    }
+    return newest;
   },
 
   /**

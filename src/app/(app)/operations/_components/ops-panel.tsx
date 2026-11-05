@@ -11,6 +11,7 @@ import {
 } from "@/app/(app)/logistics/_components/delivery-receive-dialog";
 import { PulloutRequestDialog } from "@/app/(app)/logistics/_components/pullout-request-dialog";
 import type { PulloutCreateInput } from "@/features/logistics/services/pullout-posting.service";
+import type { TransferCreateInput } from "@/app/(app)/logistics/_components/transfer-form";
 import { TransferRequestDialog } from "@/app/(app)/logistics/_components/transfer-request-dialog";
 import {
   DeliveryReturnCell,
@@ -130,15 +131,7 @@ export function OpsPanel({
     status: (p) => p.statusCode.name,
   });
 
-  function submitTransfer(input: {
-    fromBranchId: string;
-    toBranchId: string;
-    modelId: string;
-    quantity: number;
-    serialNumberIds: string[];
-    notes?: string;
-    transferNo?: string;
-  }) {
+  function submitTransfer(input: TransferCreateInput) {
     return createTransferAction(input);
   }
 

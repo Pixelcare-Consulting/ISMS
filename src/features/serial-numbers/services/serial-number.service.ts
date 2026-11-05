@@ -19,6 +19,10 @@ import {
   loadWarehouseNames,
   warehouseCodesMissingNames,
 } from "@/features/serial-numbers/services/serial-location-names";
+import {
+  transferDecisionLedgerText,
+  transferReferenceLines,
+} from "@/features/serial-activity/lib/transfer-reference";
 import { prisma } from "@/lib/database/client";
 import { decimalToNumberOrNull } from "@/lib/database/decimal";
 
@@ -283,6 +287,26 @@ function buildTimeline(row: SerialTraceabilityRow): SerialTimelineEvent[] {
         .join(" · "),
       href: `/logistics/transfers?q=${encodeURIComponent(transfer.transferNo)}`,
     });
+    if (line.decidedAt && (line.decision === "accepted" || line.decision === "rejected")) {
+      events.push({
+        id: `transfer-decided-${line.id}`,
+        type: "transfer",
+        label: line.decision === "accepted" ? "Transfer accepted" : "Transfer rejected",
+        at: line.decidedAt,
+        branch: null,
+        status: null,
+        detail:
+          transferDecisionLedgerText(transfer.transferNo, line.decision, row.history) ??
+          transferReferenceLines({
+            rsNo: transfer.rsNo,
+            drNo: transfer.drNo,
+            decision: line.decision,
+            remarks: line.remarks,
+            requestRemarks: line.requestRemarks,
+          }).join(" · "),
+        href: `/logistics/transfers?q=${encodeURIComponent(transfer.transferNo)}`,
+      });
+    }
   }
 
   for (const line of row.pulloutLines) {

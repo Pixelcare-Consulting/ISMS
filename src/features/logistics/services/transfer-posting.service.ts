@@ -15,6 +15,7 @@ import {
   type TransferLineRemarks,
 } from "@/features/logistics/lib/transfer-line-remarks";
 import { nextTransferNo } from "@/features/logistics/lib/transfer-number";
+import { transferDecisionPrefix } from "@/features/serial-activity/lib/transfer-reference";
 import { resolveLogisticsCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import {
   asWorkflowCode,
@@ -161,7 +162,7 @@ const MOVEMENT_DATE = new Intl.DateTimeFormat("en-PH", {
 });
 
 function movementDetails(input: {
-  verb: "Accepted" | "Rejected";
+  decision: "accepted" | "rejected";
   transferNo: string;
   approvedAt: Date | null;
   approvedBy: string | null;
@@ -171,7 +172,7 @@ function movementDetails(input: {
 }): string {
   const when = input.approvedAt ? MOVEMENT_DATE.format(input.approvedAt) : "—";
   const remarks = input.remarks?.trim() || "—";
-  return `${input.verb} on ${input.transferNo}. Approval date ${when}. Approved by ${input.approvedBy ?? "—"}. Remarks: ${remarks}. RS ${input.rsNo}. DR ${input.drNo}.`;
+  return `${transferDecisionPrefix(input.decision, input.transferNo)} Approval date ${when}. Approved by ${input.approvedBy ?? "—"}. Remarks: ${remarks}. RS ${input.rsNo}. DR ${input.drNo}.`;
 }
 
 function isTransferNoConflict(error: unknown): boolean {
@@ -517,7 +518,7 @@ async function decideSerials(actor: PostingActor, transferId: string, input: Ser
         serialNumberIds: movedIds,
         status: "STK",
         details: movementDetails({
-          verb: input.kind === "accept" ? "Accepted" : "Rejected",
+          decision: input.kind === "accept" ? "accepted" : "rejected",
           transferNo: fresh.transferNo,
           approvedAt: approval?.approvedAt ?? null,
           approvedBy: creatorName(approver),

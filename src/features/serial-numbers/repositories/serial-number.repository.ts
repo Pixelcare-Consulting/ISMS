@@ -124,10 +124,16 @@ const serialTraceabilityInclude = {
     orderBy: { transfer: { createdAt: "desc" } },
     select: {
       id: true,
+      decision: true,
+      decidedAt: true,
+      remarks: true,
+      requestRemarks: true,
       transfer: {
         select: {
           id: true,
           transferNo: true,
+          rsNo: true,
+          drNo: true,
           createdAt: true,
           fromBranch: { select: { id: true, name: true, sapCode: true } },
           toBranch: { select: { id: true, name: true, sapCode: true } },
