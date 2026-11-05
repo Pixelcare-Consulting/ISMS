@@ -35,11 +35,12 @@ import { prisma } from "@/lib/database/client";
 
 /**
  * Full return of a dispatched delivery's in-transit units (Step 5).
- * Request (operator) → approve or reject (approver) → on approve, the SAP IT or
- * Return posts inline and the job's success path moves the units back
- * (delivery-return-completion). A failed post leaves the request APPROVED with
- * sapError, retried from the deliveries list, or cancelled by an approver while
- * SAP has no document for it.
+ * Logistics rejects units at receipt after confirming the list; the request is approved
+ * on the spot and the SAP IT or Return posts inline, and the job's success path moves the
+ * units back (delivery-return-completion). There is no separate approval step (client,
+ * 2026-10-30). A failed post leaves the request APPROVED with sapError, retried from the
+ * deliveries list, or cancelled while SAP has no document for it. `decide` only settles
+ * requests made before that change, still PENDING_APPROVAL.
  */
 
 /** Input rules shared by the logistics and operations actions. */
@@ -207,11 +208,14 @@ async function postToSap(actor: PostingActor, request: { id: string; requestNo: 
 }
 
 export const deliveryReturnService = {
-  /** Operator asks to send in-transit units back (all, or the ticked ones). Units stay DIT until the return completes. */
+  /**
+   * Logistics rejects in-transit units (all, or the ticked ones): the request is approved
+   * at once and its SAP IT / Return posts inline. Units stay DIT until SAP takes it.
+   */
   async request(
     actor: PostingActor,
     input: { deliveryId: string; reason?: string | null; units?: DeliveryReturnUnitInput[] | null },
-  ): Promise<{ id: string; requestNo: string }> {
+  ): Promise<{ id: string; requestNo: string } & DeliveryReturnOutcome> {
     requireCapability(actor, "canRequestDeliveryReturn");
     const reason = cleanText(input.reason) || DEFAULT_REJECT_REMARKS;
 
@@ -242,8 +246,9 @@ export const deliveryReturnService = {
     if (!sapReady.ok) throw new Error(sapReady.error);
     const serialIds = plan.lines.map((line) => line.serialNumberId);
 
+    let created: { id: string; requestNo: string };
     try {
-      return await prisma.$transaction(async (tx) => {
+      created = await prisma.$transaction(async (tx) => {
         // Same order as accept: serials, then the delivery row. Re-check under both locks.
         await lockSerialNumbers(tx, serialIds);
         await lockDeliveryRow(tx, actor.tenantId, delivery.id);
@@ -278,6 +283,10 @@ export const deliveryReturnService = {
             requestNo: nextReturnNo(),
             reason,
             requestedById: actor.userId,
+            // Confirming the reject is the approval: no one else decides it.
+            status: "APPROVED",
+            decidedById: actor.userId,
+            decidedAt: new Date(),
             lines: {
               create: plan.lines.map((line) => ({
                 ...line,
@@ -300,6 +309,7 @@ export const deliveryReturnService = {
               deliveryId: delivery.id,
               reason,
               serialNumberIds: serialIds,
+              approvedOnRequest: true,
               ...(defectiveIds.size > 0 ? { defectiveSerialNumberIds: [...defectiveIds] } : {}),
             },
           },
@@ -309,6 +319,9 @@ export const deliveryReturnService = {
     } catch (error) {
       throw returnError(error, "Failed to request the return");
     }
+
+    await postToSap(actor, created, false);
+    return { ...created, ...(await readOutcome(actor.tenantId, created.id)) };
   },
 
   /** One reject request, for the review dialog. A delivery can have several. */
@@ -425,7 +438,11 @@ export const deliveryReturnService = {
    * same transaction so no worker posts it later.
    */
   async cancelApproved(actor: PostingActor, returnId: string, note: string): Promise<DeliveryReturnOutcome> {
-    requireCapability(actor, "canApproveDeliveryReturn");
+    // Logistics, who now rejects without an approver, may also back out of a failed post.
+    const caps = resolveLogisticsCapabilities(actor.permissions);
+    if (!caps.canApproveDeliveryReturn && !caps.canRequestDeliveryReturn) {
+      throw new Error(CAPABILITY_ERRORS.canApproveDeliveryReturn);
+    }
     const request = await loadScopedReturn(actor, returnId);
     const decisionNote = cleanText(note);
     const plan = planReturnCancel(request, decisionNote);

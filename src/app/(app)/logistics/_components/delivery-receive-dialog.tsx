@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useId, useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { returnRequestTerm } from "@/features/logistics/constants/delivery-workflow-labels";
+import { toastOutcome } from "@/app/(app)/logistics/_components/delivery-return-dialogs";
 import {
   DEFAULT_REJECT_REMARKS,
   RETURN_LINE_REMARKS_MAX,
@@ -12,7 +12,10 @@ import {
   RETURN_REASON_MAX,
 } from "@/features/logistics/services/delivery-return.planner";
 import type { DeliveryReceiptLine } from "@/features/logistics/services/delivery-posting.service";
-import type { DeliveryReturnUnitInput } from "@/features/logistics/services/delivery-return.service";
+import type {
+  DeliveryReturnOutcome,
+  DeliveryReturnUnitInput,
+} from "@/features/logistics/services/delivery-return.service";
 import type { OrderSapDocType } from "@/features/orders/constants/order-sap-doc-type";
 import { Button } from "@/components/ui/button";
 import { LoadingModal } from "@/components/ui/loading-modal";
@@ -41,7 +44,7 @@ type LoadLinesResult =
   | { success: true; status: string; lines: DeliveryReceiptLine[] }
   | { error: string };
 
-type ReturnResult = { success: true; requestNo: string } | { error: string };
+type ReturnResult = ({ success: true; requestNo: string } & DeliveryReturnOutcome) | { error: string };
 
 type AcceptResult =
   | { success: true; movedCount: number; status: "accepted" | "partial" }
@@ -67,8 +70,9 @@ interface DeliveryReceiveDialogProps {
 /**
  * Branch receipt of a dispatched delivery. Every in-transit unit starts ticked:
  * receive or return all of them, or untick some to act on the ticked ones only.
- * A return goes to the TL for approval and, once approved, posts the SAP Return
- * (SO) or IT (ITR). Units on an open unit transfer are settled there, not here.
+ * Rejecting shows the units for confirmation; confirming posts the SAP Return (SO) or
+ * IT (ITR) right away, with no approval step. Units on an open unit transfer are
+ * settled there, not here.
  */
 export function DeliveryReceiveDialog({
   target,
@@ -164,7 +168,6 @@ function ReceiveBody({
   const ticked = inTransit.filter((line) => selected.includes(line.serialNumberId));
   const allTicked = inTransit.length > 0 && ticked.length === inTransit.length;
   const scope = allTicked ? "all" : `ticked (${ticked.length})`;
-  const requestTerm = returnRequestTerm(target.sapDocType);
 
   function toggle(serialNumberId: string, checked: boolean) {
     setSelected((current) =>
@@ -212,7 +215,7 @@ function ReceiveBody({
         setRejectError(result.error);
         return;
       }
-      toast.success(`${requestTerm} ${result.requestNo} sent to the TL for approval.`);
+      toastOutcome(result);
       onReceived();
       onClose();
     });
@@ -227,9 +230,9 @@ function ReceiveBody({
             Reject {allTicked ? "all units" : serialCount(ticked.length)} on {target.deliveryNo}
           </DialogTitle>
           <DialogDescription>
-            This creates an {requestTerm} for the TL. Once approved, SAP gets the{" "}
-            {target.sapDocType === "ITR" ? "IT" : "Return"} and the units go back to the warehouse. Until then
-            they stay in transit. Remarks and Mark DEF are optional; a unit marked DEF returns to the warehouse as defective.
+            Check the units below. Confirming creates the {target.sapDocType === "ITR" ? "IT" : "Return"} in SAP
+            right away and the units go back to the warehouse; there is no approval step. Remarks and Mark DEF are
+            optional; a unit marked DEF returns to the warehouse as defective.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-1.5">
@@ -298,7 +301,9 @@ function ReceiveBody({
             Back
           </Button>
           <Button variant="destructive" className="max-sm:h-11" disabled={pending} onClick={submitReject}>
-            {pending ? "Sending…" : `Reject and send ${requestTerm}`}
+            {pending
+              ? "Posting to SAP…"
+              : `Confirm reject and post ${target.sapDocType === "ITR" ? "IT" : "Return"}`}
           </Button>
         </DialogFooter>
       </>
@@ -439,12 +444,12 @@ function DoneSection({ title, lines }: { title: string; lines: DeliveryReceiptLi
   );
 }
 
-/** Units on a reject request still waiting for the TL or SAP: no actions here until it settles. */
+/** Units on a reject still waiting for SAP: no actions here until it settles. */
 function PendingRejectSection({ lines }: { lines: DeliveryReceiptLine[] }) {
   if (lines.length === 0) return null;
   return (
     <section className="space-y-2">
-      <h3 className="text-sm font-medium">Waiting on reject request ({lines.length})</h3>
+      <h3 className="text-sm font-medium">Waiting on SAP for the reject ({lines.length})</h3>
       <ul className="space-y-2">
         {lines.map((line) => (
           <li

@@ -1,4 +1,10 @@
-import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
+import type { BranchOrderSource, BranchOrderStatus, BranchOrderType } from "@prisma/client";
+
+/** Where the order was made: in ISMS, or as a Sales Order directly in SAP. */
+export const BRANCH_ORDER_SOURCE_LABELS: Record<BranchOrderSource, string> = {
+  ISMS: "ISMS",
+  SAP: "SAP",
+};
 
 export const BRANCH_ORDER_STATUS_LABELS: Record<BranchOrderStatus, string> = {
   draft: "Draft",

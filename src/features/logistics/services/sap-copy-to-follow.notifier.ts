@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 
 import { LOGISTICS_DELIVERY_DISPATCH } from "@/features/logistics/constants/logistics-permissions";
-import { SAP_FOLLOW_STATUS } from "@/features/logistics/services/sap-copy-to-follow.planner";
+import {
+  CLOSED_SALES_ORDER_KIND,
+  SAP_FOLLOW_STATUS,
+} from "@/features/logistics/services/sap-copy-to-follow.planner";
 import {
   SAP_CHANGE_NOTIFICATION_PREFIX,
   sapChangeWatchRepository,
@@ -49,8 +52,10 @@ export function describeAttention(docs: readonly AttentionDocument[]): {
   const count = docs.length;
   const title =
     count === 1
-      ? `SAP ${docs[0]!.docKind} ${docs[0]!.displayNo} could not be added to a delivery`
-      : `${count} SAP documents could not be added to deliveries`;
+      ? docs[0]!.docKind === CLOSED_SALES_ORDER_KIND
+        ? `SAP SO ${docs[0]!.displayNo} was closed without a DR`
+        : `SAP ${docs[0]!.docKind} ${docs[0]!.displayNo} could not be added to a delivery`
+      : `${count} SAP documents need attention on deliveries`;
   const lines = docs
     .slice(0, BODY_SAMPLE)
     .map((doc) => `${doc.docKind} ${doc.displayNo} (${doc.deliveryNo}): ${doc.error ?? "needs review"}`);

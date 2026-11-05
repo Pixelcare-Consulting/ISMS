@@ -112,7 +112,7 @@ export function tableFromToolOutput(
         columns: [
           { key: "skuCode", label: "SKU", mono: true },
           { key: "name", label: "Name", wrap: true },
-          { key: "shelfMax", label: "Shelf max", align: "right" },
+          { key: "shelfMax", label: "Max Qty", align: "right" },
           { key: "stkQty", label: "STK", align: "right" },
           { key: "sugQty", label: "SUG", align: "right" },
         ],
@@ -184,7 +184,7 @@ export function tableFromToolOutput(
           { key: "skuCode", label: "SKU", mono: true },
           { key: "name", label: "Name", wrap: true },
           { key: "branchName", label: "Branch", wrap: true },
-          { key: "shelfMax", label: "Shelf max", align: "right" },
+          { key: "shelfMax", label: "Max Qty", align: "right" },
           { key: "currentStock", label: "Stock", align: "right" },
           { key: "gapQty", label: "Gap", align: "right" },
         ],
@@ -237,7 +237,7 @@ export function tableFromToolOutput(
     case "getPlanogramAlerts": {
       const below = asRowArray(data.belowCapacityBranches).map((row) => ({
         ...row,
-        alertType: "Below Shelf max",
+        alertType: "Below Max Qty",
       }));
       const mil = asRowArray(data.milBreachBranches).map((row) => ({
         ...row,

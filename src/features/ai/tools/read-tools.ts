@@ -33,7 +33,7 @@ function kpiLabel(key: DashboardKpiKey, kpis: DashboardKpis): string {
     case "openAtr":
       return "Open returns";
     case "belowPlanogramCapacity":
-      return "Branches below shelf max";
+      return "Branches below Max Qty";
     case "milBreaches":
       return "MIL alerts";
     case "allocationGaps":

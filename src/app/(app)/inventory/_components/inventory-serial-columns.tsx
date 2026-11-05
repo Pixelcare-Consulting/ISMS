@@ -12,7 +12,7 @@ import { InventoryUnitStatusCell } from "@/features/inventory/components/invento
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { type DataTableColumn, type DataTableFeatures } from "@/lib/data-table";
-import { SAP_DOC_DATE_LABEL, SAP_DOC_NO_LABEL } from "@/features/logistics/lib/sap-doc-number";
+import { DR_DATE_LABEL, SAP_DOC_NO_LABEL } from "@/features/logistics/lib/sap-doc-number";
 
 const serialHelper = createColumnHelper<DataTableFeatures, InventoryListItem>();
 
@@ -104,7 +104,7 @@ export function createInventorySerialColumns({
     }),
     serialHelper.accessor((row) => row.deliveryDate ?? "", {
       id: "drDate",
-      header: SAP_DOC_DATE_LABEL,
+      header: DR_DATE_LABEL,
       enableSorting: sortable,
       cell: ({ row }) => formatInventoryDrDate(row.original.deliveryDate),
       meta: { mobile: "detail", className: "tabular-nums" },

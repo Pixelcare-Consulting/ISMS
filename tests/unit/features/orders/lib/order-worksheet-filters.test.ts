@@ -1,6 +1,8 @@
 import {
   paginateWorksheetLines,
+  requestedLinesFirst,
   visibleWorksheetLines,
+  worksheetLineTag,
   WORKSHEET_PAGE_SIZE,
   worksheetOrderTotals,
   worksheetRequestedFooter,
@@ -110,5 +112,60 @@ describe("paginateWorksheetLines", () => {
     expect(second.indexOffset).toBe(10);
     expect(second.indexOffset + 1).toBe(11);
     expect(second.total).toBe(12);
+  });
+});
+
+describe("Supply Planning approvals beyond the request", () => {
+  const line = (requestedQty: number, approvedQty: number | null) => ({
+    modelId: `m-${requestedQty}-${approvedQty}`,
+    skuCode: "SKU",
+    name: "Model",
+    brandId: "b1",
+    requestedQty,
+    approvedQty,
+    srp: 100,
+    cbm: 2,
+  });
+
+  it("totals approved CBM as approved qty times each line's CBM, including unrequested lines", () => {
+    const totals = worksheetOrderTotals([line(3, 3), line(1, 0), line(0, 2), line(0, null)], {
+      includeApproved: true,
+    });
+    expect(totals.requestedCbm).toBe(8);
+    expect(totals.approvedCbm).toBe(10);
+    expect(totals.approvedAmount).toBe(500);
+  });
+
+  it("keeps a row approved without a request under 'with a quantity'", () => {
+    const visible = visibleWorksheetLines([line(0, 2), line(0, null)], {
+      orderedOnly: true,
+      modelSearch: "",
+      brandId: "",
+    });
+    expect(visible.map((row) => row.approvedQty)).toEqual([2]);
+  });
+
+  it("lists requested models first and keeps sheet order inside each group", () => {
+    const rows = [line(0, null), line(2, 2), line(0, 1), line(1, 1)];
+    const sections = requestedLinesFirst(rows);
+    expect(sections.rows).toEqual([rows[1], rows[3], rows[0], rows[2]]);
+    expect(sections.requestedCount).toBe(2);
+    expect(sections.otherCount).toBe(2);
+  });
+
+  it("groups by the request, so changing the approved qty does not move a row", () => {
+    const before = requestedLinesFirst([line(3, 3), line(0, null)]);
+    const after = requestedLinesFirst([line(3, 0), line(0, 5)]);
+    expect(after.rows.map((row) => row.requestedQty)).toEqual(
+      before.rows.map((row) => row.requestedQty),
+    );
+  });
+
+  it("tags requested rows and rows Supply Planning added", () => {
+    expect(worksheetLineTag(line(3, 3))).toBe("Requested");
+    expect(worksheetLineTag(line(3, 0))).toBe("Requested");
+    expect(worksheetLineTag(line(0, 2))).toBe("Added");
+    expect(worksheetLineTag(line(0, 0))).toBeNull();
+    expect(worksheetLineTag(line(0, null))).toBeNull();
   });
 });

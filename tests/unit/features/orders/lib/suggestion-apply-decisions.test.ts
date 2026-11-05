@@ -68,7 +68,7 @@ describe("suggestion apply decisions", () => {
     ).toBe(2);
   });
 
-  it("counts manual outstanding once and skips a suggestion when shelf max is missing", () => {
+  it("counts manual outstanding once and skips a suggestion when Max Qty is missing", () => {
     const outstanding = outstandingByModel({
       lines: [
         {

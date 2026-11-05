@@ -588,7 +588,7 @@ export function OrderAnalyticsPanel({
           items={[
             {
               key: "dii",
-              label: "DII",
+              label: "Computed DII",
               value: formatDiiValue(data.summary.computedDii),
             },
             {

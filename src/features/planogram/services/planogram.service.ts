@@ -1,6 +1,10 @@
 import { auditService } from "@/features/audit/services/audit.service";
 import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
 import { formatPeriodDate } from "@/features/master-data/types/client-price-list";
+import {
+  parseMaxQtyCalc,
+  type MaxQtyCalc,
+} from "@/features/planogram/lib/target-forecast-qty";
 import { pickDisplayPriceListRow } from "@/features/master-data/utils/resolve-price-list";
 import type {
   PlanogramIndexBranch,
@@ -14,6 +18,8 @@ export interface PlanogramRow {
   branchId: string;
   modelId: string;
   maxQty: number;
+  maxQtyCalc: MaxQtyCalc | null;
+  maxQtyEditedByHand: boolean;
   effectiveFrom: string | null;
   stockCount: number;
   ditCount: number;
@@ -133,6 +139,8 @@ export const planogramService = {
         branchId: string;
         modelId: string;
         maxQty: number;
+        maxQtyCalc: unknown;
+        maxQtyEditedAt: Date | null;
         model: {
           id: string;
           skuCode: string;
@@ -149,6 +157,8 @@ export const planogramService = {
           branchId: entry.branchId,
           modelId: entry.modelId,
           maxQty: entry.maxQty,
+          maxQtyCalc: parseMaxQtyCalc(entry.maxQtyCalc),
+          maxQtyEditedByHand: entry.maxQtyEditedAt != null,
           effectiveFrom: price.effectiveFrom,
           stockCount: stockByModel.get(entry.modelId) ?? 0,
           ditCount: ditByModel.get(entry.modelId) ?? 0,
@@ -172,13 +182,8 @@ export const planogramService = {
     actorUserId: string;
     branchId: string;
     modelId: string;
-    maxQty: number;
     daysThreshold?: number;
   }) {
-    if (input.maxQty < 1) {
-      throw new Error("Shelf max must be at least 1");
-    }
-
     const model = await masterDataRepository.findModel(input.tenantId, input.modelId);
     if (!model) throw new Error(`Model not found: ${input.modelId} (tenant: ${input.tenantId})`);
     if (model.status !== "active") throw new Error("Only active SKUs can be added to a planogram");
@@ -202,7 +207,6 @@ export const planogramService = {
     const entry = await planogramRepository.createEntry(input.tenantId, {
       branchId: input.branchId,
       modelId: input.modelId,
-      maxQty: input.maxQty,
     });
 
     const milDays = input.daysThreshold ?? 30;
@@ -220,7 +224,7 @@ export const planogramService = {
       action: "planogram.model_added",
       entityType: "BranchPlanogram",
       entityId: entry.id,
-      metadata: { branchId: input.branchId, modelId: input.modelId, maxQty: input.maxQty },
+      metadata: { branchId: input.branchId, modelId: input.modelId },
     });
 
     return entry;
@@ -230,13 +234,13 @@ export const planogramService = {
     tenantId: string;
     actorUserId: string;
     branchId: string;
-    items: { modelId: string; maxQty: number }[];
+    modelIds: string[];
     daysThreshold?: number;
   }): Promise<{
     added: number;
     errors: { modelId: string; error: string; emptyReason?: PlanogramAddEmptyReason }[];
   }> {
-    if (input.items.length === 0) {
+    if (input.modelIds.length === 0) {
       throw new Error("Select at least one model");
     }
 
@@ -247,27 +251,26 @@ export const planogramService = {
       emptyReason?: PlanogramAddEmptyReason;
     }[] = [];
 
-    for (const item of input.items) {
+    for (const modelId of input.modelIds) {
       try {
         await planogramService.addModel({
           tenantId: input.tenantId,
           actorUserId: input.actorUserId,
           branchId: input.branchId,
-          modelId: item.modelId,
-          maxQty: item.maxQty,
+          modelId,
           daysThreshold: input.daysThreshold,
         });
         added += 1;
       } catch (e) {
         if (e instanceof PlanogramModelNotAllowedError) {
           errors.push({
-            modelId: item.modelId,
+            modelId,
             error: e.message,
             emptyReason: e.emptyReason,
           });
         } else {
           errors.push({
-            modelId: item.modelId,
+            modelId,
             error: e instanceof Error ? e.message : "Failed to add model",
           });
         }
@@ -283,7 +286,7 @@ export const planogramService = {
     planogramId: string;
     maxQty: number;
   }) {
-    if (input.maxQty < 1) throw new Error("Shelf max must be at least 1");
+    if (input.maxQty < 1) throw new Error("Max Qty must be at least 1");
 
     const entry = await planogramRepository.findPlanogramEntryById(
       input.tenantId,
@@ -755,7 +758,7 @@ export const planogramService = {
       const remainingCapacity = Math.max(0, entry.maxQty - stockCount);
       if (line.quantity > remainingCapacity) {
         throw new Error(
-          `Quantity for ${model.skuCode} exceeds shelf capacity (${remainingCapacity} remaining of Shelf max ${entry.maxQty})`,
+          `Quantity for ${model.skuCode} exceeds Max Qty (${remainingCapacity} remaining of ${entry.maxQty})`,
         );
       }
     }

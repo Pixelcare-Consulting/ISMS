@@ -39,6 +39,33 @@ const updateSchema = z
     }
   });
 
+const sapSoImportSchema = z.object({
+  since: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a start date.")
+    .refine((value) => !Number.isNaN(Date.parse(value)), "Pick a valid start date.")
+    .nullable(),
+});
+
+export async function updateSapSoImportSinceAction(input: unknown) {
+  const session = await requirePermission("ordering_settings.manage");
+  const parsed = sapSoImportSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+  try {
+    await orderingPolicyService.setSapSoImportSince({
+      tenantId: session.user.tenantId,
+      actorUserId: session.user.id,
+      since: parsed.data.since,
+    });
+    revalidatePath("/settings/ordering");
+    return { success: true as const };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to save the SAP Sales Order import" };
+  }
+}
+
 export async function updateOrderingPolicyAction(input: unknown) {
   const session = await requirePermission("ordering_settings.manage");
   const parsed = updateSchema.safeParse(input);

@@ -70,7 +70,7 @@ describe("shelfGapSuggestion", () => {
     ).toEqual({ canCalculate: true, suggestedQty: 0 });
   });
 
-  it("treats a zero shelf maximum as a real maximum", () => {
+  it("treats a zero Max Qty as a real maximum", () => {
     expect(
       shelfGapSuggestion({
         shelfMax: 0,

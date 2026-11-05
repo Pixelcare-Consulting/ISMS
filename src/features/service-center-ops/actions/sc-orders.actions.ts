@@ -114,7 +114,11 @@ export async function approveScOrderAction(orderId: string) {
   }
 
   revalidateScOrders();
-  return { success: true as const };
+  const posted = await prisma.serviceCenterOrder.findFirst({
+    where: { id: order.id, tenantId: session.user.tenantId },
+    select: { sapDocNum: true },
+  });
+  return { success: true as const, sapDocNum: posted?.sapDocNum ?? null };
 }
 
 export async function rejectScOrderAction(orderId: string, comment?: string) {

@@ -209,7 +209,7 @@ export function EditOrderDialog({
                 className="min-w-0 flex-1"
                 options={availableToAdd.map((m) => ({
                   id: m.id,
-                  label: `${m.skuCode} — ${m.name}${m.maxQty != null ? ` (Shelf max ${m.maxQty})` : ""}`,
+                  label: `${m.skuCode} — ${m.name}${m.maxQty != null ? ` (Max Qty ${m.maxQty})` : ""}`,
                 }))}
                 popoverClassName={stacked ? "z-[100]" : undefined}
                 value={addModelId}

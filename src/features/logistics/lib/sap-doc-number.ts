@@ -3,7 +3,10 @@ import { FOLLOWED_KIND_FOR_ORDER } from "@/features/logistics/services/sap-copy-
 
 /** Column and field label for a delivery's SAP document number. */
 export const SAP_DOC_NO_LABEL = "SAP doc#";
-export const SAP_DOC_DATE_LABEL = "SAP doc date";
+/** Delivery receipt number: the IT's DCS Remarks, or the DR's number. */
+export const DR_NO_LABEL = "DR#";
+/** Posting date of the IT / DR the delivery came on. */
+export const DR_DATE_LABEL = "DR date";
 
 /**
  * "DR: 12345" (A/R Delivery, from an SO) or "IT: 6789" (Inventory Transfer, from an ITR),

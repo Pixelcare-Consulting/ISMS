@@ -1,7 +1,9 @@
 /**
  * Workbook contract for bulk branch-quota import (Settings → Branch Quotas).
  *
- * Sheet "Branch Quotas" — branch_name, brand_name, month (YYYY-MM), quota_amount.
+ * Sheet "Branch Quotas" — branch_name, brand_name, month (YYYY-MM), quota_amount, target_dii.
+ * target_dii (days) is optional: a file without the column leaves Target DII as it is, a
+ * blank cell clears it.
  * Unique key is branch + brand + month (first of month). Unknown name / brand → row error.
  * Names match after trim, ignoring case. More than one branch with that name is an error.
  * A file that still uses the branch SAP code does not match these columns.
@@ -15,6 +17,7 @@ export const BRANCH_QUOTA_SHEET_HEADERS = [
   "brand_name",
   "month",
   "quota_amount",
+  "target_dii",
 ] as const;
 
 /**
@@ -32,6 +35,8 @@ export const BRANCH_QUOTA_IMPORT_ALIAS_MAP: Record<string, string> = {
   quotaamount: "quotaamount",
   quota: "quotaamount",
   amount: "quotaamount",
+  targetdii: "targetdii",
+  dii: "targetdii",
 };
 
 export const BRANCH_QUOTA_IMPORT_REQUIRED_COLUMNS = [
@@ -43,6 +48,7 @@ export const BRANCH_QUOTA_IMPORT_REQUIRED_COLUMNS = [
 
 export const BRANCH_QUOTA_IMPORT_FIELD_LABELS: Record<string, string> = {
   quotaAmount: "Quota amount",
+  targetDii: "Target DII",
 };
 
 export interface BranchQuotaImportRowError {

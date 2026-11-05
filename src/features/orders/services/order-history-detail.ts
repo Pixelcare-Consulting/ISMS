@@ -167,6 +167,7 @@ export async function getOrderHistoryDetail(
     id: order.id,
     orderNumber: order.orderNumber,
     orderType: order.orderType,
+    source: order.source,
     status: order.status,
     dealerName: order.branch.dealer?.name?.trim() || null,
     paymentLabel: formattedPayment && formattedPayment !== "—" ? formattedPayment : null,

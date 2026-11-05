@@ -8,6 +8,8 @@ import { lockDeliveryRow, txWorkflowCodeId } from "@/features/logistics/services
 import { notifyCopyToAttention } from "@/features/logistics/services/sap-copy-to-follow.notifier";
 import {
   checkFollowedDocument,
+  CLOSED_SALES_ORDER_KIND,
+  dcsRemarksDrNo,
   deliveryStatusAfterFollow,
   parseFollowedDocument,
   placementsToReplace,
@@ -17,6 +19,11 @@ import {
   type SapFollowStatus,
 } from "@/features/logistics/services/sap-copy-to-follow.planner";
 import type { OrderSapDocType } from "@/features/orders/constants/order-sap-doc-type";
+import {
+  findDeliveryNotesBySalesOrder,
+  findSalesOrderStates,
+  importSapSalesOrders,
+} from "@/features/orders/services/sap-sales-order-import.service";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { sapSyncCursorRepository } from "@/features/sap/repositories/sap-sync-cursor.repository";
 import { sapErrorMessage, sapPageSize } from "@/features/sap/services/sap-master-data";
@@ -42,6 +49,13 @@ import { logger } from "@/lib/shared/logger";
 
 /** How long one run may spend before it stops; the next tick continues from the cursor. */
 const DEFAULT_BUDGET_MS = 60_000;
+/** Open deliveries of SAP-made SOs whose DRs each run looks up, in batches of 20. */
+const SAP_SOURCED_DELIVERIES_PER_RUN = 100;
+const SAP_SOURCED_BATCH = 20;
+/** Consignment deliveries still missing a DR# that each run re-reads DCS Remarks for. */
+const DR_NO_REFRESH_PER_RUN = 20;
+/** DCS Remarks typed this long after the IT are not looked for any more. */
+const DR_NO_REFRESH_WINDOW_DAYS = 30;
 /** A FAILED document is retried this many times, then left for a person. */
 const MAX_ATTEMPTS = 10;
 /** FAILED documents retried per run, so a backlog of bad documents cannot crowd out new ones. */
@@ -71,6 +85,13 @@ export interface SapCopyToFollowResult {
   flagged: number;
   /** Documents SAP listed since the last run, ISMS's or not. */
   scanned: number;
+  /** Sales Orders made in SAP that became ISMS orders this run. */
+  importedOrders: number;
+  /** No start date in Ordering settings, so Sales Orders made in SAP are not read. */
+  soImportOff: boolean;
+  skippedOrders: number;
+  skippedOrderReasons: string[];
+  soImportError: string | null;
 }
 
 interface OpenDelivery {
@@ -417,7 +438,8 @@ async function applyDocument(
           ...(delivery.sapDocEntry == null
             ? {
                 sapDocEntry: doc.docEntry,
-                drNo: doc.displayNo,
+                sapDocNo: doc.displayNo,
+                drNo: doc.drNo,
                 drDate: doc.docDate ? new Date(doc.docDate) : null,
               }
             : {}),
@@ -587,6 +609,177 @@ async function retryFailed(
 }
 
 /**
+ * DRs of Sales Orders made in SAP carry no ISMS order number, so the DR listing above never
+ * sees them. Look them up by base SO for those orders' open deliveries instead.
+ */
+async function followSapSourcedDeliveries(
+  creds: SapServiceLayerCredentials,
+  tenantId: string,
+  codes: InventoryCodes,
+  deadline: number,
+  result: SapCopyToFollowResult,
+): Promise<void> {
+  const rows = await prisma.branchDelivery.findMany({
+    where: {
+      tenantId,
+      statusCode: { code: { in: OPEN_DELIVERY_CODES } },
+      order: { source: "SAP", sapDocType: "SO", sapDocEntry: { not: null } },
+    },
+    orderBy: { createdAt: "asc" },
+    take: SAP_SOURCED_DELIVERIES_PER_RUN,
+    select: {
+      id: true,
+      order: { select: { orderNumber: true, sapDocType: true, sapDocEntry: true } },
+    },
+  });
+  const deliveries: OpenDelivery[] = rows.flatMap((row) =>
+    row.order?.sapDocType && row.order.sapDocEntry != null
+      ? [
+          {
+            id: row.id,
+            orderNumber: row.order.orderNumber,
+            sapDocType: row.order.sapDocType,
+            sapDocEntry: row.order.sapDocEntry,
+          },
+        ]
+      : [],
+  );
+
+  for (let i = 0; i < deliveries.length && Date.now() < deadline; i += SAP_SOURCED_BATCH) {
+    const batch = deliveries.slice(i, i + SAP_SOURCED_BATCH);
+    const drsBySo = await findDeliveryNotesBySalesOrder(
+      creds,
+      batch.map((delivery) => delivery.sapDocEntry),
+    );
+    await flagSalesOrdersClosedWithoutDr(
+      creds,
+      tenantId,
+      batch.filter((delivery) => !drsBySo.has(delivery.sapDocEntry)),
+    );
+    const drEntries = [...drsBySo.values()].flat();
+    if (drEntries.length === 0) continue;
+    const known = await prisma.deliverySapDocument.findMany({
+      where: { tenantId, docKind: "DR", docEntry: { in: drEntries } },
+      select: { docEntry: true },
+    });
+    const seen = new Set(known.map((row) => row.docEntry));
+    for (const delivery of batch) {
+      for (const drEntry of drsBySo.get(delivery.sapDocEntry) ?? []) {
+        if (seen.has(drEntry) || Date.now() >= deadline) continue;
+        await followDocument(creds, tenantId, "DR", drEntry, delivery, codes, result);
+      }
+    }
+  }
+}
+
+/**
+ * An SO made in SAP can be closed by hand (or cancelled) with no DR, so its delivery would
+ * wait forever. Record it as a FLAGGED entry on the delivery: logistics is notified through
+ * the attention notification and can close the order from the delivery page. Recorded
+ * once; a resolved entry stays resolved.
+ */
+async function flagSalesOrdersClosedWithoutDr(
+  creds: SapServiceLayerCredentials,
+  tenantId: string,
+  deliveries: readonly OpenDelivery[],
+): Promise<void> {
+  if (deliveries.length === 0) return;
+  const known = await prisma.deliverySapDocument.findMany({
+    where: {
+      tenantId,
+      docKind: CLOSED_SALES_ORDER_KIND,
+      docEntry: { in: deliveries.map((delivery) => delivery.sapDocEntry) },
+    },
+    select: { docEntry: true },
+  });
+  const seen = new Set(known.map((row) => row.docEntry));
+  const unchecked = deliveries.filter((delivery) => !seen.has(delivery.sapDocEntry));
+  if (unchecked.length === 0) return;
+
+  const states = await findSalesOrderStates(
+    creds,
+    unchecked.map((delivery) => delivery.sapDocEntry),
+  );
+  for (const delivery of unchecked) {
+    const state = states.get(delivery.sapDocEntry);
+    if (!state?.closed) continue;
+    const how = state.cancelled ? "cancelled" : "closed";
+    const error = `SO ${state.docNum} was ${how} in SAP without a DR, so nothing will be delivered for ${delivery.orderNumber}. Close the order in ISMS, or check the SO in SAP.`;
+    await prisma.deliverySapDocument.upsert({
+      where: {
+        tenantId_docKind_docEntry: {
+          tenantId,
+          docKind: CLOSED_SALES_ORDER_KIND,
+          docEntry: delivery.sapDocEntry,
+        },
+      },
+      create: {
+        tenantId,
+        deliveryId: delivery.id,
+        docKind: CLOSED_SALES_ORDER_KIND,
+        docEntry: delivery.sapDocEntry,
+        docNum: state.docNum,
+        displayNo: String(state.docNum),
+        status: SAP_FOLLOW_STATUS.FLAGGED,
+        serialCount: 0,
+        error,
+      },
+      update: {},
+    });
+    logger.warn(
+      { tenantId, deliveryId: delivery.id, sapDocNum: state.docNum, how },
+      "sap copy-to follow: SAP-made SO closed without a DR",
+    );
+  }
+}
+
+/**
+ * SAP users often type the DR# into the IT's DCS Remarks after adding the IT, so a delivery
+ * applied without one is re-read on later runs: one $select call for a small batch.
+ */
+async function refreshMissingDrNumbers(
+  creds: SapServiceLayerCredentials,
+  tenantId: string,
+): Promise<void> {
+  const since = new Date(Date.now() - DR_NO_REFRESH_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  const pending = await prisma.branchDelivery.findMany({
+    where: {
+      tenantId,
+      drNo: null,
+      sapDocEntry: { not: null },
+      order: { sapDocType: "ITR" },
+      updatedAt: { gte: since },
+    },
+    orderBy: { updatedAt: "desc" },
+    take: DR_NO_REFRESH_PER_RUN,
+    select: { id: true, sapDocEntry: true },
+  });
+  const entries = pending.flatMap((row) =>
+    row.sapDocEntry != null ? [{ id: row.id, docEntry: row.sapDocEntry }] : [],
+  );
+  if (entries.length === 0) return;
+
+  const { entity } = SOURCES.IT;
+  const filter = encodeURIComponent(entries.map((row) => `DocEntry eq ${row.docEntry}`).join(" or "));
+  const data = await sapGet<{ value?: Record<string, unknown>[] }>(
+    creds,
+    `/${entity}?$filter=${filter}&$select=DocEntry,U_DcsRemarks`,
+    entity,
+  );
+  const drNoByEntry = new Map<number, string>();
+  for (const row of data?.value ?? []) {
+    const drNo = dcsRemarksDrNo(row.U_DcsRemarks);
+    if (drNo) drNoByEntry.set(Number(row.DocEntry), drNo);
+  }
+  for (const row of entries) {
+    const drNo = drNoByEntry.get(row.docEntry);
+    if (!drNo) continue;
+    // drNo: null in the filter keeps a value someone set meanwhile.
+    await prisma.branchDelivery.updateMany({ where: { id: row.id, tenantId, drNo: null }, data: { drNo } });
+  }
+}
+
+/**
  * Follow up Copy To documents for one tenant. Does nothing when SAP is not configured.
  * Locked per tenant, so overlapping cron ticks join the run in flight.
  */
@@ -595,7 +788,17 @@ export function runSapCopyToFollow(
   options?: { budgetMs?: number },
 ): Promise<SapCopyToFollowResult> {
   return withSapSyncLock(`copy-to-follow:${tenantId}`, async () => {
-    const result: SapCopyToFollowResult = { applied: 0, failed: 0, flagged: 0, scanned: 0 };
+    const result: SapCopyToFollowResult = {
+      applied: 0,
+      failed: 0,
+      flagged: 0,
+      scanned: 0,
+      importedOrders: 0,
+      soImportOff: false,
+      skippedOrders: 0,
+      skippedOrderReasons: [],
+      soImportError: null,
+    };
     const creds = await sapServiceLayerService.getCredentials(tenantId);
     if (!creds) return result;
 
@@ -605,6 +808,19 @@ export function runSapCopyToFollow(
       reasonStatusService.requireCodeId(tenantId, "inventory_system", "STK"),
     ]);
     const codes = { dit, stk };
+
+    try {
+      // Before the DR pass, so a DR made from a just-imported SO is followed this run.
+      const imported = await importSapSalesOrders(creds, tenantId, deadline);
+      result.importedOrders = imported.imported;
+      result.soImportOff = !imported.enabled;
+      result.skippedOrders = imported.skipped;
+      result.skippedOrderReasons = imported.skipReasons;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Unknown error";
+      result.soImportError = message;
+      logger.error({ tenantId, err: message }, "sap copy-to follow: SAP Sales Order import failed");
+    }
 
     await retryFailed(creds, tenantId, codes, deadline, result);
     for (const kind of ["IT", "DR"] as const) {
@@ -619,6 +835,24 @@ export function runSapCopyToFollow(
     }
 
     try {
+      await followSapSourcedDeliveries(creds, tenantId, codes, deadline, result);
+    } catch (e) {
+      logger.error(
+        { tenantId, err: e instanceof Error ? e.message : e },
+        "sap copy-to follow: DRs of SAP-made orders failed",
+      );
+    }
+
+    try {
+      await refreshMissingDrNumbers(creds, tenantId);
+    } catch (e) {
+      logger.error(
+        { tenantId, err: e instanceof Error ? e.message : e },
+        "sap copy-to follow: DR# refresh failed",
+      );
+    }
+
+    try {
       // Every run, so the notification also clears once a person resolves the last one.
       await notifyCopyToAttention(tenantId);
     } catch (e) {
@@ -628,7 +862,7 @@ export function runSapCopyToFollow(
       );
     }
 
-    if (result.applied + result.failed + result.flagged > 0) {
+    if (result.applied + result.failed + result.flagged + result.importedOrders > 0) {
       logger.info({ tenantId, ...result }, "sap copy-to follow finished");
     }
     return result;

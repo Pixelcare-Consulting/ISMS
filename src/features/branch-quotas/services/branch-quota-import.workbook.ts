@@ -19,6 +19,8 @@ export interface BranchQuotaTemplateRow {
   brandName: string;
   month: string;
   quotaAmount: string;
+  /** Days; empty when not set. */
+  targetDii: string;
 }
 
 const EMPTY_SHEET: SheetRows = { present: false, columns: new Set(), rows: [] };
@@ -130,14 +132,14 @@ export async function buildBranchQuotaTemplateWorkbook(
   const sheet = workbook.addWorksheet(BRANCH_QUOTA_SHEET_NAME);
   sheet.addRow([...BRANCH_QUOTA_SHEET_HEADERS]);
   for (const row of rows) {
-    sheet.addRow([row.branchName, row.brandName, row.month, row.quotaAmount]);
+    sheet.addRow([row.branchName, row.brandName, row.month, row.quotaAmount, row.targetDii]);
   }
   if (rows.length === 0) {
     const now = new Date();
     const month = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
-    sheet.addRow(["Western Makati", "Devant", month, "100"]);
+    sheet.addRow(["Western Makati", "Devant", month, "100", "30"]);
   }
-  styleHeader(sheet, [28, 20, 12, 14]);
+  styleHeader(sheet, [28, 20, 12, 14, 12]);
 
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);

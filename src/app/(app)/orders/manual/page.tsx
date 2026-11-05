@@ -8,6 +8,7 @@ interface PageProps {
     sort?: string;
     dir?: string;
     tl?: string;
+    brand?: string;
     type?: string;
   }>;
 }

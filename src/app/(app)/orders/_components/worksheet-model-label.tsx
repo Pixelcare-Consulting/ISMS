@@ -2,7 +2,7 @@ import { displayModelName } from "@/features/orders/lib/worksheet-model-display"
 
 /**
  * SKU/Model cell shared by the order sheet and order analytics.
- * Line 1 is the code. Line 2 is the name, at the same size as the shelf-max line.
+ * Line 1 is the code. Line 2 is the name, at the same size as the Max Qty line.
  */
 export function WorksheetModelLabel({ skuCode, name }: { skuCode: string; name: string }) {
   const modelName = displayModelName(skuCode, name);

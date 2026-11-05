@@ -47,6 +47,8 @@ interface QuotaRow {
   brandId: string;
   quotaDate: Date | string;
   quotaAmount: string | number;
+  /** Days; null when not set. */
+  targetDii: string | number | null;
   branch: { id: string; name: string; sapCode: string };
   brand: { id: string; name: string };
 }
@@ -89,6 +91,7 @@ export function BranchQuotasTable({ quotas }: { quotas: QuotaRow[] }) {
     return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
   });
   const [quotaAmount, setQuotaAmount] = useState("100");
+  const [targetDii, setTargetDii] = useState("");
 
   const filtered = useMemo(
     () =>
@@ -118,6 +121,7 @@ export function BranchQuotasTable({ quotas }: { quotas: QuotaRow[] }) {
     brand: (row) => row.brand.name,
     month: (row) => new Date(row.quotaDate),
     quotaAmount: (row) => Number(row.quotaAmount),
+    targetDii: (row) => (row.targetDii == null ? -1 : Number(row.targetDii)),
   });
   const {
     page,
@@ -146,6 +150,7 @@ export function BranchQuotasTable({ quotas }: { quotas: QuotaRow[] }) {
       `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`,
     );
     setQuotaAmount("100");
+    setTargetDii("");
     setSheetOpen(true);
     void ensureOptions();
   }
@@ -156,6 +161,7 @@ export function BranchQuotasTable({ quotas }: { quotas: QuotaRow[] }) {
     setBrandId(row.brandId);
     setQuotaMonth(toMonthInput(row.quotaDate));
     setQuotaAmount(String(row.quotaAmount));
+    setTargetDii(row.targetDii == null ? "" : String(Number(row.targetDii)));
     setSheetOpen(true);
     void ensureOptions();
   }
@@ -167,6 +173,7 @@ export function BranchQuotasTable({ quotas }: { quotas: QuotaRow[] }) {
       brandId,
       quotaDate: quotaMonth,
       quotaAmount: Number(quotaAmount),
+      targetDii: targetDii.trim() === "" ? null : Number(targetDii),
     };
     startTransition(async () => {
       const result = editing
@@ -236,6 +243,14 @@ export function BranchQuotasTable({ quotas }: { quotas: QuotaRow[] }) {
         header: "Quota",
         enableSorting: true,
         cell: ({ row }) => Number(row.original.quotaAmount).toLocaleString(),
+        meta: { align: "end", className: "tabular-nums" },
+      }),
+      quotaColumn.display({
+        id: "targetDii",
+        header: "Target DII",
+        enableSorting: true,
+        cell: ({ row }) =>
+          row.original.targetDii == null ? "—" : `${Number(row.original.targetDii)} days`,
         meta: { align: "end", className: "tabular-nums" },
       }),
       quotaColumn.display({
@@ -370,6 +385,23 @@ export function BranchQuotasTable({ quotas }: { quotas: QuotaRow[] }) {
                   required
                   disabled={pending}
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="quota-target-dii">Target DII (days)</Label>
+                <Input
+                  id="quota-target-dii"
+                  type="number"
+                  min={0.1}
+                  step={0.1}
+                  inputMode="decimal"
+                  placeholder="Not set"
+                  value={targetDii}
+                  onChange={(e) => setTargetDii(e.target.value)}
+                  disabled={pending}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Days of inventory this brand should carry. Shown on orders as Target DII.
+                </p>
               </div>
             </div>
             <SheetFooter className="border-t border-border/60">

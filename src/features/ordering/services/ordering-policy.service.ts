@@ -115,4 +115,26 @@ export const orderingPolicyService = {
     });
     return policy;
   },
+
+  /** YYYY-MM-DD from which Sales Orders made in SAP are imported, or null while off. */
+  async getSapSoImportSince(tenantId: string): Promise<string | null> {
+    const row = await orderingPolicyRepository.findByTenant(tenantId);
+    return row?.sapSoImportSince ? row.sapSoImportSince.toISOString().slice(0, 10) : null;
+  },
+
+  async setSapSoImportSince(input: { tenantId: string; actorUserId: string; since: string | null }) {
+    const policy = await orderingPolicyRepository.setSapSoImportSince(
+      input.tenantId,
+      input.since ? new Date(input.since) : null,
+    );
+    await auditService.log({
+      tenantId: input.tenantId,
+      userId: input.actorUserId,
+      action: "ordering_policy.sap_so_import_updated",
+      entityType: "OrderingPolicy",
+      entityId: policy.id,
+      metadata: { sapSoImportSince: input.since },
+    });
+    return policy;
+  },
 };

@@ -357,6 +357,18 @@ export const appNavigation: NavEntry[] = [
     icon: ClipboardList,
     items: [
       {
+        href: "/reports/order-summary",
+        label: "Order summary",
+        icon: ClipboardList,
+        anyPermissions: [
+          "reports.view",
+          "orders.view",
+          "orders.manual.view",
+          "orders.special.view",
+          "orders.auto_replenish.view",
+        ],
+      },
+      {
         href: "/reports/processed-orders",
         label: "Processed orders",
         icon: ClipboardList,

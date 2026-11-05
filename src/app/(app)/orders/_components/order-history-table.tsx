@@ -10,8 +10,10 @@ import {
   parseTablePageSize,
   type TablePageSize,
 } from "@/components/data-table/table-page-size";
+import { CheckSapNowButton } from "@/app/(app)/logistics/_components/check-sap-now-button";
 import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
+import { OrderSourceBadge } from "@/features/orders/components/order-source-badge";
 import { OrderTypeBadge } from "@/features/orders/components/order-type-badge";
 import { ORDER_TYPE_ROUTE } from "@/features/orders/constants/order-type-route";
 import { BRANCH_ORDER_STATUS_LABELS } from "@/features/orders/constants/order-status";
@@ -43,6 +45,8 @@ interface OrderHistoryTableProps {
     totalPages: number;
   };
   basePath: string;
+  /** Offers "Check SAP now": Sales Orders made in SAP land here, already approved. */
+  canCheckSap?: boolean;
   initialSort?: string;
   initialSortDir?: string;
 }
@@ -78,6 +82,7 @@ function formatHistoryDate(value: string): string {
 export function OrderHistoryTable({
   result,
   basePath,
+  canCheckSap = false,
   initialSort = "createdAt",
   initialSortDir = "desc",
 }: OrderHistoryTableProps) {
@@ -138,6 +143,12 @@ export function OrderHistoryTable({
         header: "Type",
         enableSorting: true,
         cell: ({ row }) => <OrderTypeBadge orderType={row.original.orderType} />,
+      }),
+      historyColumn.display({
+        id: "source",
+        header: "Source",
+        enableSorting: false,
+        cell: ({ row }) => <OrderSourceBadge source={row.original.source} />,
       }),
       historyColumn.display({
         id: "modeOfPayment",
@@ -244,6 +255,7 @@ export function OrderHistoryTable({
         suggestions,
       }}
       pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
+      toolbarActions={canCheckSap ? <CheckSapNowButton size="default" /> : undefined}
       pagination={{
         total: result.total,
         page: result.page,

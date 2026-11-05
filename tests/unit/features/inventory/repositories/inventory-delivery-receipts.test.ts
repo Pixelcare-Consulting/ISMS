@@ -15,7 +15,7 @@ function line(
   serialNumberId: string,
   delivery: Partial<{
     deliveryNo: string;
-    drNo: string | null;
+    sapDocNo: string | null;
     drDate: Date | null;
     acceptedAt: Date | null;
     createdAt: Date;
@@ -26,7 +26,7 @@ function line(
     serialNumberId,
     delivery: {
       deliveryNo: "DLV-1",
-      drNo: null,
+      sapDocNo: null,
       drDate: null,
       acceptedAt: null,
       createdAt: new Date("2026-01-01T00:00:00.000Z"),
@@ -42,10 +42,10 @@ describe("inventoryRepository.findLatestDeliveryReceipts", () => {
     findTransferLines.mockResolvedValue([]);
   });
 
-  it("DIT unit shows DR# from drNo", async () => {
+  it("DIT unit shows the delivery's SAP doc#", async () => {
     const drDate = new Date("2026-10-10T00:00:00.000Z");
     findMany.mockResolvedValue([
-      line("sn-1", { deliveryNo: "DLV-9", drNo: "DR-5001", drDate }),
+      line("sn-1", { deliveryNo: "DLV-9", sapDocNo: "DR-5001", drDate }),
     ]);
 
     const [row] = await inventoryRepository.findLatestDeliveryReceipts("t1", [
@@ -62,7 +62,7 @@ describe("inventoryRepository.findLatestDeliveryReceipts", () => {
     ["ITR", "IT: 5001"],
   ] as const)("prefixes the SAP doc# of an %s order as %s", async (sapDocType, expected) => {
     findMany.mockResolvedValue([
-      line("sn-1", { drNo: "5001", order: { sapDocType } }),
+      line("sn-1", { sapDocNo: "5001", order: { sapDocType } }),
     ]);
 
     const [row] = await inventoryRepository.findLatestDeliveryReceipts("t1", ["sn-1"]);
@@ -98,7 +98,7 @@ describe("inventoryRepository.findLatestDeliveryReceipts", () => {
   it("keeps the delivery with the latest date per serial", async () => {
     findMany.mockResolvedValue([
       line("sn-1", { deliveryNo: "OLD", createdAt: new Date("2026-01-01") }),
-      line("sn-1", { deliveryNo: "NEW", drNo: "DR-2", drDate: new Date("2026-05-01") }),
+      line("sn-1", { deliveryNo: "NEW", sapDocNo: "DR-2", drDate: new Date("2026-05-01") }),
     ]);
     const rows = await inventoryRepository.findLatestDeliveryReceipts("t1", ["sn-1"]);
     expect(rows).toHaveLength(1);
@@ -108,7 +108,7 @@ describe("inventoryRepository.findLatestDeliveryReceipts", () => {
   it("shows the transfer delivery receipt number and keeps the original date", async () => {
     const drDate = new Date("2026-02-01T00:00:00.000Z");
     findMany.mockResolvedValue([
-      line("sn-1", { deliveryNo: "DLV-1", drNo: "DR-OLD", drDate }),
+      line("sn-1", { deliveryNo: "DLV-1", sapDocNo: "DR-OLD", drDate }),
     ]);
     findTransferLines.mockResolvedValue([
       {

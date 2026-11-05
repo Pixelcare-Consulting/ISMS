@@ -39,7 +39,7 @@ describe("tableFromToolOutput", () => {
       "stkQty",
       "sugQty",
     ]);
-    expect(table?.columns.find((c) => c.key === "shelfMax")?.label).toBe("Shelf max");
+    expect(table?.columns.find((c) => c.key === "shelfMax")?.label).toBe("Max Qty");
     expect(table?.rows[0]?.shelfMax).toBe(6);
   });
 
@@ -80,7 +80,7 @@ describe("tableFromToolOutput", () => {
     ]);
   });
 
-  it("builds an allocation gaps table with Shelf max", () => {
+  it("builds an allocation gaps table with Max Qty", () => {
     const table = tableFromToolOutput("listAllocationGaps", {
       gaps: [
         {
@@ -94,7 +94,7 @@ describe("tableFromToolOutput", () => {
       ],
     });
     expect(table?.caption).toBe("Allocation gaps");
-    expect(table?.columns.find((c) => c.key === "shelfMax")?.label).toBe("Shelf max");
+    expect(table?.columns.find((c) => c.key === "shelfMax")?.label).toBe("Max Qty");
   });
 
   it("builds a P-Count sessions table", () => {

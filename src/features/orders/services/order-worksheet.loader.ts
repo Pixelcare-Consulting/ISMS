@@ -108,7 +108,7 @@ export async function loadOrderWorksheet(
     reasonStatusRepository.listActiveCodesByCategory(tenantId, "inventory_system"),
     prisma.branchQuota.findMany({
       where: { tenantId, branchId: input.branchId, quotaDate },
-      select: { brandId: true, quotaAmount: true },
+      select: { brandId: true, quotaAmount: true, targetDii: true },
     }),
   ]);
   if (!branch) throw new Error("Branch not found");
@@ -179,6 +179,7 @@ export async function loadOrderWorksheet(
     brandQuotas: quotaRows.map((row) => ({
       brandId: row.brandId,
       quantity: decimalToNumber(row.quotaAmount),
+      targetDii: row.targetDii == null ? null : decimalToNumber(row.targetDii),
     })),
     milDaysByModel: new Map(milRows.map((row) => [row.modelId, row.daysThreshold] as const)),
     statusColors: new Map(statusCodes.map((code) => [code.code, code.color] as const)),

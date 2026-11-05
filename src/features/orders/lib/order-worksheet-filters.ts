@@ -53,6 +53,8 @@ export interface WorksheetFilterableLine {
   name: string;
   brandId: string | null;
   requestedQty: number;
+  /** Rows Supply Planning approved without a request count as having a quantity. */
+  approvedQty?: number | null;
 }
 
 export interface WorksheetTotalLine {
@@ -69,6 +71,19 @@ export interface WorksheetOrderTotals {
   approvedCbm: number;
 }
 
+export type WorksheetLineTag = "Requested" | "Added";
+
+/**
+ * How a row came to be on the order. A requested row stays "Requested" even at approved 0;
+ * "Added" is a model Supply Planning gave a quantity without a request.
+ */
+export function worksheetLineTag(
+  line: Pick<WorksheetFilterableLine, "requestedQty" | "approvedQty">,
+): WorksheetLineTag | null {
+  if (line.requestedQty >= 1) return "Requested";
+  return (line.approvedQty ?? 0) > 0 ? "Added" : null;
+}
+
 /**
  * Returns the same line objects that still match. It does not copy or clear
  * quantities, remarks, or any other stored field.
@@ -80,12 +95,34 @@ export function visibleWorksheetLines<T extends WorksheetFilterableLine>(
   const search = filter.modelSearch.trim().toLowerCase();
   const brandId = filter.brandId.trim();
   return lines.filter((line) => {
-    if (filter.orderedOnly && line.requestedQty < 1) return false;
+    if (filter.orderedOnly && worksheetLineTag(line) === null) return false;
     if (brandId && line.brandId !== brandId) return false;
     if (!search) return true;
     const haystack = `${line.skuCode} ${line.name}`.toLowerCase();
     return haystack.includes(search);
   });
+}
+
+export interface WorksheetRequestedSections<T> {
+  rows: T[];
+  requestedCount: number;
+  otherCount: number;
+}
+
+/**
+ * Requested models first, each group in sheet order. Groups by the request and not the
+ * approved qty, so a row stays put while Supply Planning types in it.
+ */
+export function requestedLinesFirst<T extends { requestedQty: number }>(
+  lines: readonly T[],
+): WorksheetRequestedSections<T> {
+  const requested = lines.filter((line) => line.requestedQty >= 1);
+  const others = lines.filter((line) => line.requestedQty < 1);
+  return {
+    rows: [...requested, ...others],
+    requestedCount: requested.length,
+    otherCount: others.length,
+  };
 }
 
 /** Totals always come from the full stored list, never from the visible subset. */
@@ -100,11 +137,14 @@ export function worksheetOrderTotals(
   const includeApproved = options?.includeApproved === true;
 
   for (const line of lines) {
-    if (line.requestedQty < 1) continue;
-    requestedAmount += line.requestedQty * line.srp;
-    requestedCbm += line.requestedQty * line.cbm;
+    if (line.requestedQty >= 1) {
+      requestedAmount += line.requestedQty * line.srp;
+      requestedCbm += line.requestedQty * line.cbm;
+    }
     if (!includeApproved) continue;
-    const approved = line.approvedQty ?? line.requestedQty;
+    // Supply Planning may approve a model that was not requested.
+    const approved = line.approvedQty ?? (line.requestedQty >= 1 ? line.requestedQty : 0);
+    if (approved < 1) continue;
     approvedAmount += approved * line.srp;
     approvedCbm += approved * line.cbm;
   }

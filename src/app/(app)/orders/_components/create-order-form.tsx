@@ -65,7 +65,11 @@ import {
   type OrderDealerOption,
   type OrderModeOfPaymentOption,
 } from "@/features/orders/lib/order-party";
-import { worksheetOrderTotals } from "@/features/orders/lib/order-worksheet-filters";
+import { worksheetFiguresForBrand } from "@/features/orders/lib/order-worksheet";
+import {
+  planogramBrandOptions,
+  worksheetOrderTotals,
+} from "@/features/orders/lib/order-worksheet-filters";
 import { formatWorksheetCbm } from "@/features/orders/lib/order-worksheet-metrics";
 import {
   EMPTY_WORKSHEET_DRAFT,
@@ -209,6 +213,7 @@ export function CreateOrderForm({
   const [drafts, setDrafts] = useState<Record<string, WorksheetDraftInput>>({});
   const [additionalIds, setAdditionalIds] = useState<string[]>([]);
   const [removedIds, setRemovedIds] = useState<string[]>([]);
+  const [brandId, setBrandId] = useState("");
   const [windowBlock, setWindowBlock] = useState<string | null>(null);
   const [catalog, setCatalog] = useState<SpecialModelOption[]>([]);
   const [additionalOpen, setAdditionalOpen] = useState(false);
@@ -241,6 +246,22 @@ export function CreateOrderForm({
     const removed = new Set(removedIds);
     return worksheet.lines.filter((line) => !removed.has(line.modelId));
   }, [removedIds, worksheet]);
+  // A brand whose last line was removed falls back to all brands.
+  const activeBrandId = useMemo(() => {
+    if (!worksheet) return "";
+    const options = planogramBrandOptions(worksheet.brands, sheetLines);
+    return options.some((brand) => brand.id === brandId) ? brandId : "";
+  }, [brandId, sheetLines, worksheet]);
+  // Uses every loaded line: removing a model from the order leaves its stock at the branch.
+  const planningFigures = useMemo(() => {
+    if (!worksheet) return null;
+    return worksheetFiguresForBrand({
+      lines: projectedLines,
+      brandId: activeBrandId,
+      brandQuotas: worksheet.brandQuotas,
+      daysElapsed: worksheet.summary.daysElapsed,
+    });
+  }, [activeBrandId, projectedLines, worksheet]);
   const asideLines = useMemo(
     () => projectWorksheetLines(sheetLines, drafts, orderType, "create"),
     [drafts, orderType, sheetLines],
@@ -282,6 +303,7 @@ export function CreateOrderForm({
     setDrafts({});
     setAdditionalIds([]);
     setRemovedIds([]);
+    setBrandId("");
     setAdditionalOpen(false);
   }
 
@@ -788,6 +810,8 @@ export function CreateOrderForm({
                 summary={worksheet?.summary ?? null}
                 summaryMode="current"
                 hideSummary
+                brandId={activeBrandId}
+                onBrandIdChange={setBrandId}
                 filterAction={additionalItemAction}
                 showApprovedQty={false}
                 approvedQtyEditable={false}
@@ -804,6 +828,7 @@ export function CreateOrderForm({
               <div className="border-t border-border/70 pt-5">
                 <OrderWorksheetAsideSummary
                   summary={worksheet?.summary ?? null}
+                  figures={planningFigures}
                   totals={asideTotals}
                   loading={loadingWorksheet || (!worksheet && !worksheetError)}
                 />

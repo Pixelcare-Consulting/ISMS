@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { SAP_CHECK_PERMISSIONS } from "@/features/logistics/constants/logistics-permissions";
 import { BRANCH_ORDER_TYPE_LABELS } from "@/features/orders/constants/order-status";
 import {
   getOrdersKpisAction,
   listManualSpecialTeamLeadersAction,
   listOrderHistoryAction,
   listOrdersAction,
+  listOrderBrandOptionsAction,
   listOrderTeamLeadersAction,
 } from "@/features/orders/actions/order.actions";
 import {
@@ -50,6 +52,8 @@ interface OrdersTypePageProps {
     dir?: string;
     /** Team Leader user id filter on the Orders tab. */
     tl?: string;
+    /** Brand id filter on the Orders tab: orders with at least one line of that brand. */
+    brand?: string;
     /** all | manual | special. Default all. Combined list only. */
     type?: string;
   }>;
@@ -120,6 +124,7 @@ function combinedListHref(
     sort?: string;
     dir?: string;
     tl?: string;
+    brand?: string;
   },
 ): string {
   const params = new URLSearchParams();
@@ -129,6 +134,7 @@ function combinedListHref(
   if (current.sort) params.set("sort", current.sort);
   if (current.sort && current.dir) params.set("dir", current.dir);
   if (current.tl && current.tab !== "history") params.set("tl", current.tl);
+  if (current.brand && current.tab !== "history") params.set("brand", current.brand);
   const query = params.toString();
   return query ? `/orders/manual?${query}` : "/orders/manual";
 }
@@ -213,6 +219,10 @@ export async function OrdersTypePage({
   const canAccessSuggestedOrders =
     hasPermission(session.user.permissions, "forecast.manage") ||
     hasPermission(session.user.permissions, "planogram.manage");
+  // Sales Orders made in SAP import as manual orders, so only this page offers the check.
+  const canCheckSap =
+    combinedManualSpecial &&
+    SAP_CHECK_PERMISSIONS.some((permission) => hasPermission(session.user.permissions, permission));
   const typeLabel = BRANCH_ORDER_TYPE_LABELS[orderType];
   const basePath = combinedManualSpecial ? "/orders/manual" : ORDER_TYPE_ROUTE[orderType];
   const preserved = {
@@ -221,10 +231,12 @@ export async function OrdersTypePage({
     sort: params.sort,
     dir: params.dir,
     tl: params.tl,
+    brand: params.brand,
   };
 
   const teamLeaderId = params.tl?.trim() || undefined;
-  const [kpis, ordersResult, historyResult, teamLeaders] = await Promise.all([
+  const brandId = params.brand?.trim() || undefined;
+  const [kpis, ordersResult, historyResult, teamLeaders, brands] = await Promise.all([
     combinedManualSpecial
       ? getOrdersKpisAction(undefined, listFilter)
       : getOrdersKpisAction(orderType),
@@ -238,6 +250,7 @@ export async function OrdersTypePage({
                 sort: params.sort,
                 sortDir: params.dir,
                 teamLeaderId,
+                brandId,
               }
             : {
                 page,
@@ -246,6 +259,7 @@ export async function OrdersTypePage({
                 sort: params.sort,
                 sortDir: params.dir,
                 teamLeaderId,
+                brandId,
               },
         )
       : Promise.resolve(null),
@@ -272,6 +286,9 @@ export async function OrdersTypePage({
       ? combinedManualSpecial
         ? listManualSpecialTeamLeadersAction()
         : listOrderTeamLeadersAction(orderType)
+      : Promise.resolve([]),
+    activeTab === "orders"
+      ? listOrderBrandOptionsAction(combinedManualSpecial ? undefined : orderType)
       : Promise.resolve([]),
   ]);
 
@@ -350,6 +367,7 @@ export async function OrdersTypePage({
                 ) : null}
                 <OrdersTable
                   result={ordersResult}
+                  canCheckSap={canCheckSap}
                   viewerRoleSlugs={viewerRoleSlugs}
                   canEdit={canEdit}
                   fixedOrderType={combinedManualSpecial ? undefined : orderType}
@@ -377,6 +395,7 @@ export async function OrdersTypePage({
                   initialSort={params.sort ?? ""}
                   initialSortDir={params.dir ?? "desc"}
                   teamLeaders={teamLeaders}
+                  brands={brands}
                 />
               </div>
             ) : null
@@ -385,6 +404,7 @@ export async function OrdersTypePage({
             historyResult ? (
               <OrderHistoryTable
                 result={historyResult}
+                canCheckSap={canCheckSap}
                 basePath={basePath}
                 initialSort={params.sort ?? "createdAt"}
                 initialSortDir={params.dir ?? "desc"}

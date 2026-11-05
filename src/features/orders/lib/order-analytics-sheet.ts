@@ -4,7 +4,7 @@ import { NO_PLANNING_SUGGESTION_MESSAGE } from "@/features/orders/lib/order-work
 
 export interface AnalyticsSuggestInput {
   orderType: BranchOrderType;
-  /** Shelf maximum minus units on hand. */
+  /** Max Qty minus units on hand. */
   shelfGapQty: number;
   /** Remaining quantity from the released plan, when this order type uses it. */
   planQty?: number | null;
@@ -39,10 +39,10 @@ export function analyticsLineSuggest(input: AnalyticsSuggestInput): AnalyticsSug
 export function analyticsSuggestHelp(orderType: BranchOrderType): string {
   switch (orderType) {
     case "auto_replenish":
-      return "Remaining quantity from the released plan for this branch and model. When the model has a shelf maximum, it is shown under the suggestion.";
+      return "Remaining quantity from the released plan for this branch and model. When the model has a Max Qty, it is shown under the suggestion.";
     case "manual":
     case "special":
-      return "Shelf gap. Shelf maximum minus units on hand. The shelf maximum is shown under the suggestion. This is not a quantity on the order.";
+      return "Shelf gap. Max Qty minus units on hand. Max Qty is shown under the suggestion. This is not a quantity on the order.";
     default: {
       const _exhaustive: never = orderType;
       return _exhaustive;

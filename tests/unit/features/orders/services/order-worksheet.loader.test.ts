@@ -503,7 +503,7 @@ describe("loadOrderWorksheet", () => {
       { code: "DU", color: "amber" },
     ]);
     (prisma.branchQuota.findMany as jest.Mock).mockResolvedValue([
-      { brandId: "brand-1", quotaAmount: 40 },
+      { brandId: "brand-1", quotaAmount: 40, targetDii: 21 },
     ]);
     (prisma.branchInventory.findMany as jest.Mock).mockResolvedValue([
       {
@@ -521,7 +521,7 @@ describe("loadOrderWorksheet", () => {
     });
 
     expect(payload.deliveryFrequencyCode).toBe("F4");
-    expect(payload.brandQuotas).toEqual([{ brandId: "brand-1", quantity: 40 }]);
+    expect(payload.brandQuotas).toEqual([{ brandId: "brand-1", quantity: 40, targetDii: 21 }]);
     expect(payload.lines[0]?.milDays).toBe(14);
     expect(payload.lines[0]?.inventory.byStatus).toEqual(
       expect.arrayContaining([

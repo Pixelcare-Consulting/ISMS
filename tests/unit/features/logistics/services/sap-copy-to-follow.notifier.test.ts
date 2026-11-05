@@ -63,7 +63,7 @@ describe("describeAttention", () => {
   it("summarises several and links to the deliveries list", () => {
     const docs = [1, 2, 3, 4].map((n) => doc({ docEntry: n, displayNo: String(n), deliveryId: `d${n}` }));
     const described = describeAttention(docs);
-    expect(described.title).toBe("4 SAP documents could not be added to deliveries");
+    expect(described.title).toBe("4 SAP documents need attention on deliveries");
     expect(described.body.endsWith("and 1 more.")).toBe(true);
     expect(described.href).toBe("/logistics/deliveries");
   });
