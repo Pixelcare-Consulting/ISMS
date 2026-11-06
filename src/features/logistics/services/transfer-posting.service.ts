@@ -3,7 +3,9 @@ import {
   inventoryApprovalLedger,
   type InventoryApprovalDocument,
 } from "@/features/inventory-approvals/services/inventory-approval-ledger";
+import { aorRepository } from "@/features/aors/repositories/aor.repository";
 import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
+import { notificationService } from "@/features/notifications/services/notification.service";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { shipmentIsReady, type LogisticsShipment } from "@/features/logistics/lib/shipment";
 import {
@@ -20,6 +22,11 @@ import {
   type TransferLineRemarks,
 } from "@/features/logistics/lib/transfer-line-remarks";
 import { nextTransferNo } from "@/features/logistics/lib/transfer-number";
+import {
+  canApproveTransferAt,
+  NOT_TRANSFER_APPROVER_MESSAGE,
+  transferApprovalBranchIds,
+} from "@/features/logistics/lib/transfer-approver";
 import { transferDecisionPrefix } from "@/features/serial-activity/lib/transfer-reference";
 import { resolveLogisticsCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import {
@@ -53,9 +60,12 @@ import {
   type TransferLineView,
   type TransferStatus,
 } from "@/features/logistics/services/transfer-posting.planner";
+import { TEAM_LEADER_ROLE_SLUG } from "@/features/orders/constants/order-workflow";
 import { STOCK_COUNT_FREEZE_SESSION_STATUSES } from "@/features/stock-audit/constants/stock-count-workflow";
+import { getUserBranchIds } from "@/lib/aor/scope";
 import { prisma } from "@/lib/database/client";
 import { Prisma } from "@/lib/database/generated/prisma/client";
+import { logger } from "@/lib/shared/logger";
 
 const CLAIM_LOST = "One or more serials changed before this transfer could be saved";
 
@@ -151,6 +161,59 @@ async function assertTransferVisible(
     })
   ) {
     throw new Error("Transfer not found");
+  }
+}
+
+async function assertTransferApprover(actor: PostingActor, fromBranchId: string): Promise<void> {
+  const assignedBranchIds = await getUserBranchIds(actor.tenantId, actor.userId);
+  const approvalBranchIds = transferApprovalBranchIds(actor.roleSlugs, assignedBranchIds);
+  if (!canApproveTransferAt(approvalBranchIds, fromBranchId)) {
+    throw new Error(NOT_TRANSFER_APPROVER_MESSAGE);
+  }
+}
+
+/** Tells the releasing branch's team leaders. The transfer is already saved, so a failure only logs. */
+async function notifyTransferApprovers(
+  actor: PostingActor,
+  transfer: { id: string; transferNo: string; fromBranchId: string; toBranchId: string },
+): Promise<void> {
+  try {
+    const approverIds = await aorRepository.listUserIdsForBranchByRole(
+      actor.tenantId,
+      transfer.fromBranchId,
+      TEAM_LEADER_ROLE_SLUG,
+    );
+    const recipients = approverIds.filter((userId) => userId !== actor.userId);
+    if (recipients.length === 0) return;
+
+    const branches = await prisma.branch.findMany({
+      where: { tenantId: actor.tenantId, id: { in: [transfer.fromBranchId, transfer.toBranchId] } },
+      select: { id: true, name: true },
+    });
+    const branchName = (id: string) => branches.find((branch) => branch.id === id)?.name ?? "branch";
+
+    await Promise.all(
+      recipients.map((userId) =>
+        notificationService.createNotification({
+          tenantId: actor.tenantId,
+          actorUserId: actor.userId,
+          data: {
+            audience: "USER",
+            userId,
+            type: "transfer",
+            title: `${transfer.transferNo} · ${branchName(transfer.fromBranchId)}`,
+            body: `Transfer to ${branchName(transfer.toBranchId)} needs your approval.`,
+            href: `/logistics/transfers/${transfer.id}`,
+            metadata: { transferId: transfer.id },
+          },
+        }),
+      ),
+    );
+  } catch (error) {
+    logger.warn(
+      { tenantId: actor.tenantId, transferId: transfer.id, err: error },
+      "transfer approval notification failed",
+    );
   }
 }
 
@@ -909,17 +972,28 @@ export const transferPostingService = {
         return row;
       });
 
-    const transferNo = requestedNo || freshTransferNo();
-    try {
-      return await save(transferNo);
-    } catch (error) {
-      if (!isTransferNoConflict(error)) throw postingError(error, "Failed to create transfer");
+    const saveWithFreshNoOnConflict = async () => {
+      const transferNo = requestedNo || freshTransferNo();
       try {
-        return await save(freshTransferNo(transferNo));
-      } catch (retryError) {
-        throw postingError(retryError, "Failed to create transfer");
+        return await save(transferNo);
+      } catch (error) {
+        if (!isTransferNoConflict(error)) throw postingError(error, "Failed to create transfer");
+        try {
+          return await save(freshTransferNo(transferNo));
+        } catch (retryError) {
+          throw postingError(retryError, "Failed to create transfer");
+        }
       }
-    }
+    };
+
+    const row = await saveWithFreshNoOnConflict();
+    await notifyTransferApprovers(actor, {
+      id: row.id,
+      transferNo: row.transferNo,
+      fromBranchId: input.fromBranchId,
+      toBranchId: input.toBranchId,
+    });
+    return row;
   },
 
   async approve(actor: PostingActor, transferId: string) {
@@ -927,6 +1001,7 @@ export const transferPostingService = {
     if (!current) throw new Error("Transfer not found");
     await assertTransferVisible(actor, current);
     await authorizePosting(actor, "transfer.approve", current.fromBranchId);
+    await assertTransferApprover(actor, current.fromBranchId);
     const preview = planTransferApprove(current);
     if (!preview.ok) throw new Error(preview.error);
     if (preview.idempotent) {
@@ -1033,6 +1108,7 @@ export const transferPostingService = {
     if (!current) throw new Error("Transfer not found");
     await assertTransferVisible(actor, current);
     await authorizePosting(actor, "transfer.reject", current.fromBranchId);
+    await assertTransferApprover(actor, current.fromBranchId);
     const preview = planTransferReject(current);
     if (!preview.ok) throw new Error(preview.error);
     if (preview.idempotent) return { id: current.id, idempotent: true };

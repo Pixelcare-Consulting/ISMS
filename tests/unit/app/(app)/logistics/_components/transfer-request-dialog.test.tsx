@@ -197,6 +197,37 @@ describe("transfer page", () => {
     expect(screen.queryByText(/to release these units/)).not.toBeInTheDocument();
   });
 
+  it("offers Approve and Reject only on a branch this person can approve for", async () => {
+    const decide = { canApproveTl: true, canRejectTransfer: true } as LogisticsActionCapabilities;
+    const pending = detail({ status: { code: "pending_tl", name: "Pending TL", color: null } });
+    const onDocumentActionsChange = jest.fn();
+    const page = (approvalBranchIds: string[] | null) => (
+      <TransferForm
+        mode="view"
+        layout="page"
+        actionsPlacement="external"
+        detail={pending}
+        capabilities={decide}
+        approvalBranchIds={approvalBranchIds}
+        onDocumentActionsChange={onDocumentActionsChange}
+      />
+    );
+
+    const { rerender } = render(page(["branch-z"]));
+    await waitFor(() =>
+      expect(onDocumentActionsChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ canApprove: false, canReject: false }),
+      ),
+    );
+
+    rerender(page(["branch-a"]));
+    await waitFor(() =>
+      expect(onDocumentActionsChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ canApprove: true, canReject: true }),
+      ),
+    );
+  });
+
   it("does not tell people who cannot release", () => {
     render(
       <TransferForm mode="view" layout="page" detail={releasableDetail(EMPTY_SHIPMENT)} capabilities={{} as LogisticsActionCapabilities} />,

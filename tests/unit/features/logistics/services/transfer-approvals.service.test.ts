@@ -25,6 +25,13 @@ jest.mock("@/lib/auth", () => ({ auth: jest.fn() }));
 jest.mock("@/lib/auth/permissions", () => ({
   hasPermission: jest.fn(() => true),
 }));
+jest.mock("@/lib/aor/scope", () => ({ getUserBranchIds: jest.fn() }));
+jest.mock("@/features/aors/repositories/aor.repository", () => ({
+  aorRepository: { listUserIdsForBranchByRole: jest.fn() },
+}));
+jest.mock("@/features/notifications/services/notification.service", () => ({
+  notificationService: { createNotification: jest.fn() },
+}));
 jest.mock("@/features/logistics/services/posting-support", () => ({
   ...jest.requireActual("@/features/logistics/services/posting-support"),
   authorizePosting: jest.fn(),
@@ -48,7 +55,10 @@ jest.mock("@/features/reason-status/services/reason-status.service", () => ({
 }));
 
 import * as dbClient from "@/lib/database/client";
+import { aorRepository } from "@/features/aors/repositories/aor.repository";
 import { transferPostingService } from "@/features/logistics/services/transfer-posting.service";
+import { notificationService } from "@/features/notifications/services/notification.service";
+import { getUserBranchIds } from "@/lib/aor/scope";
 
 type Mocks = Record<string, Record<string, jest.Mock>>;
 const mockTx = (dbClient as unknown as { mockTx: Mocks }).mockTx;
@@ -57,8 +67,12 @@ const actor = {
   tenantId: "t1",
   userId: "u1",
   permissions: ["logistics.manage"],
-  roleSlugs: ["admin"],
+  roleSlugs: ["tl"],
 };
+
+const assignedBranches = getUserBranchIds as jest.Mock;
+const branchTls = aorRepository.listUserIdsForBranchByRole as jest.Mock;
+const createNotification = notificationService.createNotification as jest.Mock;
 
 function transfer(code: string, decision = "pending") {
   return {
@@ -98,31 +112,100 @@ beforeEach(() => {
   mockTx.branchTransferApprovalLevel.findFirst.mockResolvedValue({ id: "level-1", approvedAt: null, approvedById: null });
   mockTx.branchTransferLine.updateMany.mockResolvedValue({ count: 1 });
   mockTx.user.findFirst.mockResolvedValue(null);
+  assignedBranches.mockResolvedValue(["b1"]);
+  branchTls.mockResolvedValue([]);
+});
+
+function requestTransfer() {
+  const stock = (serialNumberId: string) => ({
+    serialNumberId,
+    statusCode: { code: "STK" },
+    serialNumber: { serialNo: serialNumberId.toUpperCase(), modelId: "m1" },
+    defectReports: [],
+  });
+  (dbClient.prisma as unknown as Mocks).branch.findMany.mockResolvedValue([
+    { id: "b1", dealerId: "d1", name: "Tiongsan Harrison" },
+    { id: "b2", dealerId: "d1", name: "Tiongsan Baguio" },
+  ]);
+  mockTx.branchInventory.findMany.mockResolvedValue([stock("s1"), stock("s2")]);
+  mockTx.branchTransfer.create.mockResolvedValue({ id: "x1", transferNo: "XFR-9" });
+  return transferPostingService.create(actor, {
+    fromBranchId: "b1",
+    toBranchId: "b2",
+    modelId: "m1",
+    quantity: 2,
+    serialNumberIds: ["s1", "s2"],
+    lineRemarks: { s1: "For display" },
+  });
+}
+
+describe("who can decide a transfer", () => {
+  const onlyTl = "Only the team leader assigned to the releasing branch can decide this transfer";
+
+  it.each([
+    ["a team leader on another branch", ["tl"], ["b9"]],
+    ["a team leader with no AOR rows", ["tl"], null],
+    ["another role assigned to the branch", ["logistics"], ["b1"]],
+    ["a tenant admin", ["tenant_admin"], null],
+  ])("refuses %s", async (_label, roleSlugs, branches) => {
+    setUp("pending_tl", "RSV");
+    assignedBranches.mockResolvedValue(branches);
+    const someone = { ...actor, roleSlugs };
+
+    await expect(transferPostingService.approve(someone, "x1")).rejects.toThrow(onlyTl);
+    await expect(transferPostingService.reject(someone, "x1")).rejects.toThrow(onlyTl);
+    expect(mockTx.inventoryApproval.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("lets a super admin step in", async () => {
+    setUp("pending_tl", "RSV");
+    assignedBranches.mockResolvedValue(null);
+
+    await transferPostingService.approve({ ...actor, roleSlugs: ["super_admin"] }, "x1");
+
+    expect(mockTx.inventoryApproval.updateMany).toHaveBeenCalled();
+  });
+});
+
+describe("approval request", () => {
+  it("goes to each team leader assigned to the releasing branch", async () => {
+    branchTls.mockResolvedValue(["tl-1", "tl-2"]);
+
+    await requestTransfer();
+
+    expect(branchTls).toHaveBeenCalledWith("t1", "b1", "tl");
+    expect(createNotification.mock.calls.map(([call]) => call.data)).toEqual([
+      expect.objectContaining({
+        audience: "USER",
+        userId: "tl-1",
+        type: "transfer",
+        title: "XFR-9 · Tiongsan Harrison",
+        body: "Transfer to Tiongsan Baguio needs your approval.",
+        href: "/logistics/transfers/x1",
+      }),
+      expect.objectContaining({ audience: "USER", userId: "tl-2" }),
+    ]);
+  });
+
+  it("does not notify the team leader who raised it", async () => {
+    branchTls.mockResolvedValue(["u1", "tl-2"]);
+
+    await requestTransfer();
+
+    expect(createNotification.mock.calls.map(([call]) => call.data.userId)).toEqual(["tl-2"]);
+  });
+
+  it("keeps the saved transfer when the notification fails", async () => {
+    branchTls.mockResolvedValue(["tl-1"]);
+    createNotification.mockRejectedValueOnce(new Error("bell down"));
+
+    await expect(requestTransfer()).resolves.toMatchObject({ transferNo: "XFR-9" });
+  });
 });
 
 describe("transfer approvals", () => {
   it("opens the TL step per unit on create, with each unit's remarks", async () => {
-    const stock = (serialNumberId: string) => ({
-      serialNumberId,
-      statusCode: { code: "STK" },
-      serialNumber: { serialNo: serialNumberId.toUpperCase(), modelId: "m1" },
-      defectReports: [],
-    });
-    (dbClient.prisma as unknown as Mocks).branch.findMany.mockResolvedValue([
-      { id: "b1", dealerId: "d1" },
-      { id: "b2", dealerId: "d1" },
-    ]);
-    mockTx.branchInventory.findMany.mockResolvedValue([stock("s1"), stock("s2")]);
-    mockTx.branchTransfer.create.mockResolvedValue({ id: "x1", transferNo: "XFR-9" });
-
-    await transferPostingService.create(actor, {
-      fromBranchId: "b1",
-      toBranchId: "b2",
-      modelId: "m1",
-      quantity: 2,
-      serialNumberIds: ["s1", "s2"],
-      lineRemarks: { s1: "For display" },
-    });
+    await requestTransfer();
 
     expect(mockTx.inventoryApproval.createMany.mock.calls[0]?.[0].data).toEqual([
       expect.objectContaining({

@@ -40,6 +40,7 @@ import {
   TRANSFER_LINE_REMARKS_MAX,
   type TransferLineRemarks,
 } from "@/features/logistics/lib/transfer-line-remarks";
+import { canApproveTransferAt } from "@/features/logistics/lib/transfer-approver";
 import { nextTransferNo } from "@/features/logistics/lib/transfer-number";
 import { shipmentIsReady } from "@/features/logistics/lib/shipment";
 import { printTransferSlips } from "@/features/logistics/lib/transfer-slip-print";
@@ -96,6 +97,8 @@ interface TransferFormProps {
   currentUserName?: string;
   capabilities?: LogisticsActionCapabilities;
   branchScope?: string[] | null;
+  /** From `transferApprovalBranchIds`: the branches this person approves for, `null` for all. */
+  approvalBranchIds?: string[] | null;
   detail?: TransferDetail | null;
   onSubmit?: (
     input: TransferCreateInput,
@@ -626,6 +629,7 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
       currentUserName = "",
       capabilities,
       branchScope = null,
+      approvalBranchIds = [],
       detail = null,
       onSubmit,
       onCreated,
@@ -743,13 +747,13 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
       waiting &&
       detail &&
       capabilities?.canApproveTl &&
-      inScope(branchScope, detail.fromBranch.id),
+      canApproveTransferAt(approvalBranchIds, detail.fromBranch.id),
   );
   const canReject = Boolean(
     waiting &&
       detail &&
       capabilities?.canRejectTransfer &&
-      inScope(branchScope, detail.fromBranch.id),
+      canApproveTransferAt(approvalBranchIds, detail.fromBranch.id),
   );
   const mayRelease = Boolean(
     hasLines &&

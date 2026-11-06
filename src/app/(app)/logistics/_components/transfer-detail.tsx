@@ -29,11 +29,13 @@ export function TransferDetailView({
   detail,
   capabilities,
   branchScope,
+  approvalBranchIds,
   workflowStatuses,
 }: {
   detail: TransferDetail;
   capabilities: LogisticsActionCapabilities;
   branchScope: string[] | null;
+  approvalBranchIds: string[] | null;
   workflowStatuses: readonly WorkflowStatusOption[];
 }) {
   const router = useRouter();
@@ -73,6 +75,7 @@ export function TransferDetailView({
         detail={detail}
         capabilities={capabilities}
         branchScope={branchScope}
+        approvalBranchIds={approvalBranchIds}
         workflowStatuses={workflowStatuses}
         onDocumentActionsChange={setDocumentActions}
         onUpdated={() => router.refresh()}

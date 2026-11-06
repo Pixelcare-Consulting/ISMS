@@ -237,6 +237,24 @@ export const aorRepository = {
     });
   },
 
+  /** Users holding this role who are assigned to the branch. Same rows as listBranchIdsForUser. */
+  async listUserIdsForBranchByRole(tenantId: string, branchId: string, roleSlug: string) {
+    const rows = await prisma.aor.findMany({
+      where: {
+        tenantId,
+        branchId,
+        user: {
+          deletedAt: null,
+          userRoles: { some: { role: { tenantId, slug: roleSlug, deletedAt: null } } },
+        },
+      },
+      select: { userId: true },
+      distinct: ["userId"],
+      orderBy: { userId: "asc" },
+    });
+    return rows.map((row) => row.userId);
+  },
+
   /** One query over all of a user's AOR rows (any target type). */
   async listScopeForUser(
     tenantId: string,

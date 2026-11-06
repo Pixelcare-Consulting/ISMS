@@ -316,8 +316,9 @@ export const appNavigation: NavEntry[] = [
         label: "Transfers",
         icon: ArrowLeftRight,
         // The unit-transfer permissions no longer open this page: its Unit transfers tab is
-        // hidden (see HIDDEN_TRANSFERS_PAGE_TABS).
-        anyPermissions: ["logistics.view", "logistics.create", "logistics.manage"],
+        // hidden (see HIDDEN_TRANSFERS_PAGE_TABS). orders.create is how a PS reaches the
+        // transfers they accept.
+        anyPermissions: ["logistics.view", "logistics.create", "logistics.manage", "orders.create"],
         countBadgeKey: "logisticsTransfers",
         activePathPrefixes: ["/logistics/delivery-transfers"],
       },

@@ -193,12 +193,13 @@ function revalidateDelivery(id: string) {
 }
 
 function postingActor(session: {
-  user: { tenantId: string; id: string; permissions?: string[] };
+  user: { tenantId: string; id: string; permissions?: string[]; roleSlugs?: string[] };
 }): PostingActor {
   return {
     tenantId: session.user.tenantId,
     userId: session.user.id,
     permissions: session.user.permissions,
+    roleSlugs: session.user.roleSlugs,
   };
 }
 
