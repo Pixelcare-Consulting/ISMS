@@ -22,6 +22,8 @@ export const LOGISTICS_DELIVERY_RETURN_APPROVE = "logistics.delivery_return.appr
 export const LOGISTICS_DELIVERY_TRANSFER_CREATE = "logistics.delivery_transfer.create";
 export const LOGISTICS_DELIVERY_TRANSFER_APPROVE = "logistics.delivery_transfer.approve";
 export const LOGISTICS_DELIVERY_TRANSFER_RECEIVE = "logistics.delivery_transfer.receive";
+/** Opens the Pull-outs module. Each action keeps its own permission below. */
+export const PULLOUTS_VIEW = "pullouts.view";
 
 /** "Check SAP now": Logistics on Deliveries, and order approvers on Orders. */
 export const SAP_CHECK_PERMISSIONS = [
@@ -89,6 +91,10 @@ export function resolveLogisticsCapabilities(
   permissions: string[] | undefined,
 ): LogisticsActionCapabilities {
   return resolveCapabilities(permissions, LOGISTICS_ACTION_CAPABILITIES);
+}
+
+export function canViewPullouts(permissions: string[] | undefined): boolean {
+  return hasPermission(permissions, PULLOUTS_VIEW);
 }
 
 export function canAccessLogistics(permissions: string[] | undefined): boolean {

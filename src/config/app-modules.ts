@@ -303,6 +303,15 @@ export const appModules: AppModule[] = [
     actions: permissionActions("view", "create", "manage"),
   },
   {
+    id: "pullouts",
+    name: "Pull-outs",
+    route: "/logistics/pickups",
+    slugPrefix: "pullouts",
+    navPermission: "pullouts.view",
+    description: "Open the Pull-outs module. Creating, approving and receiving use Logistics and Orders permissions.",
+    actions: permissionActions("view"),
+  },
+  {
     id: "sales",
     name: "Sales",
     route: "/sales",

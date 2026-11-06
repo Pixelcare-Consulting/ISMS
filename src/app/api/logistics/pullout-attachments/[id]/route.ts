@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { INVENTORY_APPROVAL_VIEW } from "@/features/inventory-approvals/constants/inventory-approval-display";
-import { canAccessLogistics } from "@/features/logistics/constants/logistics-permissions";
+import { canViewPullouts } from "@/features/logistics/constants/logistics-permissions";
 import { pulloutPostingService } from "@/features/logistics/services/pullout-posting.service";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/auth/permissions";
@@ -19,7 +19,7 @@ export async function GET(_request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Sign in required" }, { status: 401 });
   }
   const { permissions } = session.user;
-  if (!canAccessLogistics(permissions) && !hasPermission(permissions, INVENTORY_APPROVAL_VIEW)) {
+  if (!canViewPullouts(permissions) && !hasPermission(permissions, INVENTORY_APPROVAL_VIEW)) {
     return NextResponse.json({ error: "Access denied" }, { status: 403 });
   }
 

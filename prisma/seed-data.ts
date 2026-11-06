@@ -27,6 +27,7 @@ export const DEMO_USERS = [
   { email: "sp@demo.local", name: "Sales Planner", roleSlug: "sp" },
   { email: "spa@demo.local", name: "Supply Planning Associate", roleSlug: "spa" },
   { email: "logistics@demo.local", name: "Logistics", roleSlug: "logistics" },
+  { email: "receiver@demo.local", name: "Branch Receiver", roleSlug: "branch_receiver" },
   { email: "warehouse@demo.local", name: "Warehouse Operator", roleSlug: "warehouse_operator" },
   { email: "ae@demo.local", name: "Area Executive", roleSlug: "ae" },
   { email: "accounting@demo.local", name: "Accounting", roleSlug: "accounting" },
@@ -103,6 +104,7 @@ export const PERMISSIONS = [
   { slug: "logistics.view", name: "View logistics" },
   { slug: "logistics.create", name: "Create logistics transactions" },
   { slug: "logistics.manage", name: "Manage logistics" },
+  { slug: "pullouts.view", name: "View pull-outs" },
   { slug: "logistics.delivery.dispatch", name: "Dispatch deliveries (post IT/DR to SAP)" },
   { slug: "logistics.delivery.receive", name: "Accept delivered units" },
   { slug: "logistics.delivery_return.request", name: "Request full delivery return" },
@@ -256,6 +258,7 @@ export const ROLES = [
       ...ORDERS_CREATE_ALL,
       ...ORDERS_APPROVE_ALL,
       "logistics.view",
+      "pullouts.view",
       "logistics.create",
       "logistics.manage",
       ...DELIVERY_FLOW_PERMISSIONS,
@@ -364,6 +367,7 @@ export const ROLES = [
       "ai.assist",
       "inventory.view",
       ...ORDERS_VIEW_ALL,
+      "pullouts.view",
       ...ORDERS_CREATE_ALL,
       "sales.view",
       "sales.create",
@@ -393,6 +397,7 @@ export const ROLES = [
       "ai.assist",
       "inventory.view",
       "logistics.view",
+      "pullouts.view",
       "logistics.delivery_return.approve",
       ...ORDERS_VIEW_ALL,
       ...ORDERS_APPROVE_ALL,
@@ -434,6 +439,7 @@ export const ROLES = [
       "master_data.manage",
       "inventory.view",
       ...ORDERS_VIEW_ALL,
+      "pullouts.view",
       ...ORDERS_APPROVE_ALL,
       "planogram.manage",
       "forecast.view",
@@ -454,6 +460,7 @@ export const ROLES = [
       "ai.assist",
       "inventory.view",
       ...ORDERS_VIEW_ALL,
+      "pullouts.view",
       ...ORDERS_APPROVE_ALL,
       "planogram.view",
       "forecast.view",
@@ -473,6 +480,7 @@ export const ROLES = [
       "dashboard.manage",
       "ai.assist",
       ...ORDERS_VIEW_ALL,
+      "pullouts.view",
       ...ORDERS_APPROVE_ALL,
       "forecast.view",
       "forecast.manage",
@@ -491,6 +499,7 @@ export const ROLES = [
       "dashboard.manage",
       "ai.assist",
       ...ORDERS_VIEW_ALL,
+      "pullouts.view",
       ...ORDERS_APPROVE_ALL,
       "forecast.view",
       "forecast.manage",
@@ -510,6 +519,7 @@ export const ROLES = [
       "inventory.view",
       "warehouses.view",
       "logistics.view",
+      "pullouts.view",
       "logistics.delivery.dispatch",
       "logistics.delivery.receive",
       "logistics.delivery_return.request",
@@ -517,6 +527,12 @@ export const ROLES = [
       "logistics.delivery_transfer.approve",
       "logistics.delivery_transfer.receive",
     ],
+  },
+  {
+    slug: "branch_receiver",
+    name: "Branch Receiver",
+    description: "Accepts transfers and deliveries at a branch",
+    permissions: ["inventory.view", "logistics.view", "logistics.create", "pullouts.view"],
   },
   {
     slug: "logistics",
@@ -529,6 +545,7 @@ export const ROLES = [
       ...ORDERS_VIEW_ALL,
       ...ORDERS_APPROVE_ALL,
       "logistics.view",
+      "pullouts.view",
       "logistics.create",
       "logistics.manage",
       "logistics.delivery.dispatch",
@@ -564,6 +581,7 @@ export const ROLES = [
       "ai.assist",
       "inventory.view",
       ...ORDERS_VIEW_ALL,
+      "pullouts.view",
       "reports.view",
       "official_sales.view",
       "official_sales.manage",
@@ -620,6 +638,17 @@ export const USER_DEPARTMENTS: Record<string, (typeof DEPARTMENTS)[number]> = {
   "accounting@demo.local": "Operations",
 };
 
+/**
+ * Extra branches for the transfer and pull-out test accounts, by SAP code: Alturas Bohol
+ * (ABB001) and ICM Bohol (ABB002). Receiver stays off ICM so it cannot see a request
+ * before approval. Run with `pnpm run db:seed:test-accounts`.
+ */
+export const TEST_ACCOUNT_BRANCH_AORS = [
+  { email: "tl@demo.local", branchSapCodes: ["ABB001", "ABB002"] },
+  { email: "ps@demo.local", branchSapCodes: ["ABB002"] },
+  { email: "receiver@demo.local", branchSapCodes: ["ABB001"] },
+] as const;
+
 export type SeedProfile =
   | "minimal"
   | "full"
@@ -631,7 +660,8 @@ export type SeedProfile =
   | "psg"
   | "warehouse"
   | "cleanup-stock"
-  | "notifications";
+  | "notifications"
+  | "test-accounts";
 
 export function resolveSeedProfile(): SeedProfile {
   const raw = process.env.SEED_PROFILE?.trim().toLowerCase();
@@ -646,6 +676,7 @@ export function resolveSeedProfile(): SeedProfile {
     raw === "warehouse" ||
     raw === "cleanup-stock" ||
     raw === "notifications" ||
+    raw === "test-accounts" ||
     raw === "minimal"
   ) {
     return raw;

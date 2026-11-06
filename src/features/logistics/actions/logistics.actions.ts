@@ -15,6 +15,7 @@ import {
   LOGISTICS_DELIVERY_TRANSFER_RECEIVE,
   LOGISTICS_MANAGE,
   LOGISTICS_PAGE_PERMISSIONS,
+  PULLOUTS_VIEW,
   SAP_CHECK_PERMISSIONS,
 } from "@/features/logistics/constants/logistics-permissions";
 import { logisticsRepository } from "@/features/logistics/repositories/logistics.repository";
@@ -269,7 +270,7 @@ export async function getTransferKpisAction(): Promise<LogisticsKpis> {
 }
 
 export async function getPulloutKpisAction(): Promise<LogisticsKpis> {
-  const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
+  const session = await requirePermission(PULLOUTS_VIEW);
   const tid = session.user.tenantId;
   return buildLogisticsKpis(
     tid,
@@ -622,7 +623,7 @@ export async function listPulloutsAction(input?: {
   sort?: string;
   sortDir?: string;
 }) {
-  const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
+  const session = await requirePermission(PULLOUTS_VIEW);
   return logisticsRepository.listPullouts(
     session.user.tenantId,
     {
@@ -634,7 +635,7 @@ export async function listPulloutsAction(input?: {
 }
 
 export async function getPulloutDetailAction(id: string) {
-  const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
+  const session = await requirePermission(PULLOUTS_VIEW);
   try {
     const detail = await pulloutPostingService.getDetail(postingActor(session), id);
     return { success: true as const, detail };

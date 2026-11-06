@@ -12,6 +12,7 @@ import {
 } from "@/features/logistics/lib/transfer-visibility";
 import {
   canAccessLogistics,
+  canViewPullouts,
   resolveLogisticsCapabilities,
 } from "@/features/logistics/constants/logistics-permissions";
 import { transferApprovalBranchIds } from "@/features/logistics/lib/transfer-approver";
@@ -165,7 +166,7 @@ export async function getWorkflowNavCountBadgesAction(): Promise<WorkflowNavCoun
         return logisticsRepository.countAllTransfers(tenantId, where);
       })(),
       (async () => {
-        if (!canAccessLogistics(permissions)) return 0;
+        if (!canViewPullouts(permissions)) return 0;
         const caps = resolveLogisticsCapabilities(permissions);
         const codes = getPulloutActionableStatusCodes(caps);
         return logisticsRepository.countPulloutsByStatusCodes(tenantId, codes);

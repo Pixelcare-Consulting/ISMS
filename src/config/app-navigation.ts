@@ -326,7 +326,7 @@ export const appNavigation: NavEntry[] = [
         href: "/logistics/pickups",
         label: "Pull-outs",
         icon: ArrowUpToLine,
-        anyPermissions: ["logistics.view", "logistics.create", "logistics.manage"],
+        anyPermissions: ["pullouts.view"],
         countBadgeKey: "logisticsPullouts",
       },
       {
