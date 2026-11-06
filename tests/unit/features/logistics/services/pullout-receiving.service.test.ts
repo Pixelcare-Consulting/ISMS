@@ -6,6 +6,7 @@ jest.mock("@/lib/database/client", () => {
     branchInventory: { findMany: jest.fn(), deleteMany: jest.fn(), updateMany: jest.fn() },
     warehouseInventory: { createMany: jest.fn() },
     serialNumberHistory: { createMany: jest.fn() },
+    inventoryApproval: { createMany: jest.fn(), updateMany: jest.fn() },
     auditLog: { create: jest.fn() },
   };
   return {
@@ -221,6 +222,25 @@ describe("pulloutPostingService.complete", () => {
     expect(mockTx.auditLog.create.mock.calls[0]?.[0].data.action).toBe("pullout.received");
   });
 
+  it("marks the received units approved at the receiving step", async () => {
+    setUp([
+      { id: "s1", prior: "STK" },
+      { id: "s2", prior: "DEF" },
+    ]);
+
+    await pulloutPostingService.complete(actor, "p1", { lines: [receipt("s1")] });
+
+    expect(mockTx.inventoryApproval.updateMany.mock.calls[0]?.[0]).toMatchObject({
+      where: {
+        sourceType: "PULLOUT",
+        sourceId: "p1",
+        step: "RECEIVING",
+        serialNumberId: { in: ["s1"] },
+      },
+      data: { status: "APPROVED", decidedById: "u1" },
+    });
+  });
+
   it("refuses a location outside the destination warehouse", async () => {
     setUp([{ id: "s1", prior: "STK" }]);
 
@@ -301,6 +321,17 @@ describe("pulloutPostingService.rejectLine", () => {
         createdById: "u1",
       },
     ]);
+  });
+
+  it("marks the unit rejected at the receiving step, with why", async () => {
+    setUp([{ id: "s1", prior: "STK" }]);
+
+    await pulloutPostingService.rejectLine(actor, "p1", "s1", remarks);
+
+    expect(mockTx.inventoryApproval.updateMany.mock.calls[0]?.[0]).toMatchObject({
+      where: { sourceType: "PULLOUT", step: "RECEIVING", serialNumberId: { in: ["s1"] } },
+      data: { status: "REJECTED", decidedById: "u1", remarks: "Lost by courier" },
+    });
   });
 
   it("leaves the pull-out open while other units are in transit", async () => {

@@ -13,6 +13,7 @@ jest.mock("@/lib/auth/permissions", () => ({
 jest.mock("@/lib/database/client", () => ({
   prisma: {
     branchInventory: { findFirst: jest.fn() },
+    inventoryApproval: { createMany: jest.fn(), updateMany: jest.fn() },
     $transaction: jest.fn(),
   },
 }));
@@ -44,6 +45,7 @@ import { prisma } from "@/lib/database/client";
 
 const findInventory = prisma.branchInventory.findFirst as jest.Mock;
 const transaction = prisma.$transaction as jest.Mock;
+const approvalRows = prisma.inventoryApproval as unknown as { createMany: jest.Mock; updateMany: jest.Mock };
 const getBranchIds = aorService.getBranchIdsForUser as jest.Mock;
 
 const baseInventory = {
@@ -101,6 +103,18 @@ describe("defectService.reportDefect", () => {
     expect(defectRepository.writeDefectHistory).toHaveBeenCalledWith(
       expect.objectContaining({ status: "pending_inspection" }),
     );
+    expect(approvalRows.createMany.mock.calls[0][0].data).toEqual([
+      expect.objectContaining({
+        sourceType: "DEFECT_REPORT",
+        sourceId: "report-1",
+        sourceNo: null,
+        step: "INSPECTION",
+        serialNumberId: "sn-1",
+        status: "PENDING",
+        requestedById: "user-1",
+        problemDescription: "Screen crack",
+      }),
+    ]);
     expect(auditService.log).toHaveBeenCalledWith(
       expect.objectContaining({ action: "inventory.defect_reported" }),
     );
@@ -167,6 +181,7 @@ describe("defectService.approveDefect", () => {
         $queryRaw: jest.fn().mockResolvedValue([]),
         branchInventory: { update: jest.fn().mockResolvedValue(undefined) },
         branchDefectReport: { update: jest.fn().mockResolvedValue(undefined) },
+        inventoryApproval: approvalRows,
       };
       await fn(tx);
       return tx;
@@ -194,6 +209,10 @@ describe("defectService.approveDefect", () => {
     expect(defectRepository.writeDefectHistory).toHaveBeenCalledWith(
       expect.objectContaining({ status: "DEF" }),
     );
+    expect(approvalRows.updateMany.mock.calls[0][0]).toMatchObject({
+      where: { sourceType: "DEFECT_REPORT", sourceId: "report-1", step: "INSPECTION" },
+      data: { status: "APPROVED", decidedById: "mgr-1", remarks: "Confirmed damage" },
+    });
     expect(auditService.log).toHaveBeenCalledWith(
       expect.objectContaining({ action: "inventory.defect_approved" }),
     );
@@ -222,6 +241,10 @@ describe("defectService.rejectDefect", () => {
     expect(defectRepository.writeDefectHistory).toHaveBeenCalledWith(
       expect.objectContaining({ status: "STK" }),
     );
+    expect(approvalRows.updateMany.mock.calls[0][0]).toMatchObject({
+      where: { sourceType: "DEFECT_REPORT", sourceId: "report-1", step: "INSPECTION" },
+      data: { status: "REJECTED", decidedById: "mgr-1" },
+    });
     expect(auditService.log).toHaveBeenCalledWith(
       expect.objectContaining({ action: "inventory.defect_rejected" }),
     );

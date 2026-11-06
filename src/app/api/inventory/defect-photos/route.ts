@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { requirePermission } from "@/lib/auth/permissions";
+import { INVENTORY_APPROVAL_VIEW } from "@/features/inventory-approvals/constants/inventory-approval-display";
+import { requireAnyPermission } from "@/lib/auth/permissions";
 import { DEFECT_REPORT_PHOTOS_PREFIX, getObjectStorage } from "@/lib/storage";
 
 const MIME_BY_EXT: Record<string, string> = {
@@ -22,7 +23,7 @@ function mimeFromPath(storagePath: string): string {
 /** Serves defect report photos under the tenant's defect-report-photos prefix. */
 export async function GET(request: Request) {
   try {
-    const session = await requirePermission("inventory.view");
+    const session = await requireAnyPermission(["inventory.view", INVENTORY_APPROVAL_VIEW]);
     const url = new URL(request.url);
     const storagePath = url.searchParams.get("path")?.trim() ?? "";
     if (!storagePath) {

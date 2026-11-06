@@ -9,6 +9,7 @@ jest.mock("@/lib/database/client", () => {
     deliveryReturnLine: { findMany: jest.fn() },
     branchDelivery: { findFirst: jest.fn() },
     branchInventory: { count: jest.fn() },
+    inventoryApproval: { createMany: jest.fn(), updateMany: jest.fn() },
     auditLog: { create: jest.fn() },
   };
   return {
@@ -86,6 +87,7 @@ function scopedReturn(status = "PENDING_APPROVAL", sapDocEntry: number | null = 
     status,
     sapDocEntry,
     delivery: { branchId: "b1", sourceWarehouseId: "w1" },
+    lines: [{ serialNumberId: "s2" }, { serialNumberId: "s3" }],
   };
 }
 
@@ -152,6 +154,27 @@ describe("deliveryReturnService.request", () => {
     expect(mockTx.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ action: "delivery_return.requested" }) }),
     );
+  });
+
+  it("records the reject as requested and approved by the same person", async () => {
+    await deliveryReturnService.request(requester, { deliveryId: "del1", reason: "Wrong model" });
+
+    expect(mockTx.inventoryApproval.createMany.mock.calls[0]?.[0].data).toEqual([
+      expect.objectContaining({
+        sourceType: "DELIVERY_RETURN",
+        sourceNo: "RTN-1",
+        step: "APPROVAL",
+        serialNumberId: "s2",
+        status: "PENDING",
+        requestedById: "u1",
+        remarks: "Wrong model",
+      }),
+      expect.objectContaining({ serialNumberId: "s3", remarks: "Wrong model" }),
+    ]);
+    expect(mockTx.inventoryApproval.updateMany.mock.calls[0]?.[0].data).toMatchObject({
+      status: "APPROVED",
+      decidedById: "u1",
+    });
   });
 
   it("rejects only the ticked units; blank remarks fall back to the defaults", async () => {
@@ -302,6 +325,24 @@ describe("deliveryReturnService.decide", () => {
     expect(outcome.status).toBe("CANCELLED");
   });
 
+  it("records the decision on every unit of the return", async () => {
+    mockPrisma.deliveryReturnRequest.findFirst
+      .mockResolvedValueOnce(scopedReturn())
+      .mockResolvedValueOnce({ status: "CANCELLED", sapDocNo: null, sapError: null });
+
+    await deliveryReturnService.decide(approver, "r1", "REJECT", "Not needed");
+
+    expect(mockTx.inventoryApproval.updateMany.mock.calls[0]?.[0]).toMatchObject({
+      where: {
+        sourceType: "DELIVERY_RETURN",
+        sourceId: "r1",
+        step: "APPROVAL",
+        serialNumberId: { in: ["s2", "s3"] },
+      },
+      data: { status: "REJECTED", decidedById: "u2", remarks: "Not needed" },
+    });
+  });
+
   it("loses the claim when someone else decided first", async () => {
     mockPrisma.deliveryReturnRequest.findFirst.mockResolvedValueOnce(scopedReturn());
     mockTx.deliveryReturnRequest.updateMany.mockResolvedValue({ count: 0 });
@@ -412,6 +453,20 @@ describe("deliveryReturnService.cancelApproved", () => {
     );
     expect(emit).not.toHaveBeenCalled();
     expect(outcome.status).toBe("CANCELLED");
+  });
+
+  it("marks the approval cancelled, with the note", async () => {
+    mockPrisma.deliveryReturnRequest.findFirst
+      .mockResolvedValueOnce(scopedReturn("APPROVED"))
+      .mockResolvedValueOnce({ status: "CANCELLED", sapDocNo: null, sapError: null });
+
+    await deliveryReturnService.cancelApproved(approver, "r1", "Wrong units");
+
+    expect(mockTx.inventoryApproval.updateMany.mock.calls[0]?.[0].data).toMatchObject({
+      status: "CANCELLED",
+      decidedById: "u2",
+      remarks: "Wrong units",
+    });
   });
 
   it("needs a note, an APPROVED status and no SAP document", async () => {

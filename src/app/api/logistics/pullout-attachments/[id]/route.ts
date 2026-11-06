@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 
+import { INVENTORY_APPROVAL_VIEW } from "@/features/inventory-approvals/constants/inventory-approval-display";
 import { canAccessLogistics } from "@/features/logistics/constants/logistics-permissions";
 import { pulloutPostingService } from "@/features/logistics/services/pullout-posting.service";
 import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/auth/permissions";
 import { toAppSession } from "@/lib/auth/session";
 import { getObjectStorage } from "@/lib/storage";
 
@@ -10,13 +12,14 @@ interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
-/** Serves a pull-out attachment to anyone who can open pull-outs in this tenant. */
+/** Serves a pull-out attachment to anyone in this tenant who can open pull-outs or their approval trail. */
 export async function GET(_request: Request, context: RouteContext) {
   const session = toAppSession(await auth());
   if (!session?.user?.tenantId) {
     return NextResponse.json({ error: "Sign in required" }, { status: 401 });
   }
-  if (!canAccessLogistics(session.user.permissions)) {
+  const { permissions } = session.user;
+  if (!canAccessLogistics(permissions) && !hasPermission(permissions, INVENTORY_APPROVAL_VIEW)) {
     return NextResponse.json({ error: "Access denied" }, { status: 403 });
   }
 

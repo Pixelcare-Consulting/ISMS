@@ -4,6 +4,7 @@ jest.mock("@/lib/database/client", () => {
     branchInventory: { findMany: jest.fn(), updateMany: jest.fn() },
     branchPullout: { create: jest.fn() },
     serialNumberHistory: { createMany: jest.fn() },
+    inventoryApproval: { createMany: jest.fn(), updateMany: jest.fn() },
     auditLog: { create: jest.fn() },
   };
   return {
@@ -93,7 +94,7 @@ beforeEach(() => {
   mockPrisma.pulloutClassification.findMany.mockResolvedValue([{ id: "c1" }]);
   mockPrisma.unitPackingCondition.findMany.mockResolvedValue([{ id: "p1" }]);
   mockPrisma.accessoryCompleteness.findMany.mockResolvedValue([{ id: "a1" }]);
-  mockPrisma.problemDescription.findMany.mockResolvedValue([{ id: "no-power" }]);
+  mockPrisma.problemDescription.findMany.mockResolvedValue([{ id: "no-power", name: "No power" }]);
   mockPrisma.reasonStatusCode.findMany.mockResolvedValue([{ id: "over" }]);
   mockTx.branchPullout.create.mockResolvedValue({ id: "p1", pulloutNo: "PLT-1" });
 });
@@ -113,6 +114,27 @@ describe("pulloutPostingService.create reasons", () => {
       reasonCodeId: "pullout_reason-DEF",
       problemDescriptions: { create: [{ problemDescriptionId: "no-power" }] },
     });
+  });
+
+  it("opens a TL approval per unit, naming a defective unit's problems", async () => {
+    await pulloutPostingService.create(actor, {
+      branchId: "b1",
+      lines: [{ ...stockLine, remarks: "Overstock" }, defectiveLine],
+    });
+
+    expect(mockTx.inventoryApproval.createMany.mock.calls[0]?.[0].data).toEqual([
+      expect.objectContaining({
+        sourceType: "PULLOUT",
+        sourceId: "p1",
+        sourceNo: "PLT-1",
+        step: "TL_APPROVAL",
+        serialNumberId: "s1",
+        status: "PENDING",
+        remarks: "Overstock",
+        problemDescription: null,
+      }),
+      expect.objectContaining({ serialNumberId: "s2", problemDescription: "No power" }),
+    ]);
   });
 
   it("refuses a stock unit with no reason", async () => {

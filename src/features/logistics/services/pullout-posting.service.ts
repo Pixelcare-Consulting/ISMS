@@ -1,3 +1,8 @@
+
+import {
+  inventoryApprovalLedger,
+  type InventoryApprovalDocument,
+} from "@/features/inventory-approvals/services/inventory-approval-ledger";
 import {
   assertExclusivePlacement,
   loadCurrentPlacements,
@@ -295,6 +300,14 @@ async function writeHistory(
   });
 }
 
+function approvalDocument(
+  tenantId: string,
+  pullout: { id: string; pulloutNo: string },
+  step: "TL_APPROVAL" | "RECEIVING",
+): InventoryApprovalDocument {
+  return { tenantId, sourceType: "PULLOUT", sourceId: pullout.id, sourceNo: pullout.pulloutNo, step };
+}
+
 async function stampApproval(
   tx: PostingDb,
   pulloutId: string,
@@ -360,10 +373,11 @@ function checklistBySerial(lines: readonly PulloutCreateLine[]): Map<string, Pul
   return bySerial;
 }
 
+/** Refuses retired choices. Returns the problem description names by id, for the approval trail. */
 async function assertActiveChecklist(
   tenantId: string,
   lines: readonly PulloutCreateLine[],
-): Promise<void> {
+): Promise<Map<string, string>> {
   const classificationIds = [...new Set(lines.flatMap((line) => line.pulloutClassificationIds))];
   const packingIds = [...new Set(lines.flatMap((line) => line.unitPackingConditionIds))];
   const accessoryIds = [...new Set(lines.flatMap((line) => line.accessoryCompletenessIds))];
@@ -386,7 +400,7 @@ async function assertActiveChecklist(
     }),
     prisma.problemDescription.findMany({
       where: { tenantId, recordStatus: "active", id: { in: problemIds } },
-      select: { id: true },
+      select: { id: true, name: true },
     }),
     prisma.reasonStatusCode.findMany({
       where: {
@@ -415,6 +429,7 @@ async function assertActiveChecklist(
       throw new Error(CHECKLIST_INACTIVE);
     }
   }
+  return new Map(problems.map((row) => [row.id, row.name]));
 }
 
 /** Every planned unit has details, and they fit its own STK or DEF. */
@@ -488,6 +503,14 @@ function savedNames(names: readonly (string | null | undefined)[]): string[] {
   });
 }
 
+function problemDescriptionText(
+  choice: PulloutCreateLine | undefined,
+  namesById: ReadonlyMap<string, string>,
+): string | null {
+  const names = savedNames((choice?.problemDescriptionIds ?? []).map((id) => namesById.get(id)));
+  return names.length > 0 ? names.join(", ") : null;
+}
+
 interface ApprovalIds {
   codes: Awaited<ReturnType<typeof inventoryIds>>;
   nextStatusId: string;
@@ -544,6 +567,13 @@ async function approveInTx(
     },
   });
   await stampApproval(tx, pulloutId, actor.userId, "approved");
+  await inventoryApprovalLedger.recordDecision(tx, approvalDocument(actor.tenantId, fresh, "TL_APPROVAL"), {
+    serialNumberIds: fresh.lines
+      .filter((line) => line.decision === PULLOUT_LINE_DECISION.pending)
+      .map((line) => line.serialNumberId),
+    status: "APPROVED",
+    decidedById: actor.userId,
+  });
   await writeHistory(tx, {
     tenantId: actor.tenantId,
     userId: actor.userId,
@@ -825,7 +855,7 @@ export const pulloutPostingService = {
     await authorizePosting(actor, "pullout.create", input.branchId);
     const checklist = checklistBySerial(input.lines);
     const destination = await resolveDestination(actor.tenantId, input.branchId);
-    await assertActiveChecklist(actor.tenantId, input.lines);
+    const problemNames = await assertActiveChecklist(actor.tenantId, input.lines);
 
     const serials = await loadAllocatable(actor.tenantId, input.branchId, [...checklist.keys()]);
     const plan = planPulloutCreate({
@@ -887,6 +917,17 @@ export const pulloutPostingService = {
           serialNumberIds: reserved,
           status: "RSV",
           details: `Reserved on ${row.pulloutNo}`,
+        });
+        await inventoryApprovalLedger.recordRequested(tx, approvalDocument(actor.tenantId, row, "TL_APPROVAL"), {
+          requestedById: actor.userId,
+          units: plan.lines.map((line) => {
+            const choice = checklist.get(line.serialNumberId);
+            return {
+              serialNumberId: line.serialNumberId,
+              remarks: choice?.remarks,
+              problemDescription: problemDescriptionText(choice, problemNames),
+            };
+          }),
         });
         await tx.auditLog.create({
           data: {
@@ -959,6 +1000,11 @@ export const pulloutPostingService = {
             decidedById: actor.userId,
           },
         });
+        await inventoryApprovalLedger.recordDecision(tx, approvalDocument(actor.tenantId, fresh, "TL_APPROVAL"), {
+          serialNumberIds: [serialNumberId],
+          status: "APPROVED",
+          decidedById: actor.userId,
+        });
         await tx.auditLog.create({
           data: {
             tenantId: actor.tenantId,
@@ -1020,6 +1066,11 @@ export const pulloutPostingService = {
           });
         }
         await tx.branchPulloutLine.deleteMany({ where: { pulloutId, serialNumberId } });
+        await inventoryApprovalLedger.recordDecision(tx, approvalDocument(actor.tenantId, fresh, "TL_APPROVAL"), {
+          serialNumberIds: [serialNumberId],
+          status: "REJECTED",
+          decidedById: actor.userId,
+        });
         await tx.auditLog.create({
           data: {
             tenantId: actor.tenantId,
@@ -1158,6 +1209,11 @@ export const pulloutPostingService = {
           message: "This pull-out was updated by someone else",
         });
         await stampApproval(tx, pulloutId, actor.userId, "rejected");
+        await inventoryApprovalLedger.recordDecision(tx, approvalDocument(actor.tenantId, fresh, "TL_APPROVAL"), {
+          serialNumberIds: fresh.lines.map((line) => line.serialNumberId),
+          status: "REJECTED",
+          decidedById: actor.userId,
+        });
         for (const prior of ["STK", "DEF"] as const) {
           await writeHistory(tx, {
             tenantId: actor.tenantId,
@@ -1424,6 +1480,10 @@ export const pulloutPostingService = {
             status: "DIT",
             details: `In transit on ${fresh.pulloutNo}`,
           });
+          await inventoryApprovalLedger.recordRequested(tx, approvalDocument(actor.tenantId, fresh, "RECEIVING"), {
+            requestedById: actor.userId,
+            units: plan.moves.map((move) => ({ serialNumberId: move.serialNumberId })),
+          });
           await tx.auditLog.create({
             data: {
               tenantId: actor.tenantId,
@@ -1541,6 +1601,12 @@ export const pulloutPostingService = {
             createdById: actor.userId,
           })),
         });
+        await inventoryApprovalLedger.recordDecision(tx, approvalDocument(actor.tenantId, fresh, "RECEIVING"), {
+          serialNumberIds: serialIds,
+          status: "APPROVED",
+          decidedById: actor.userId,
+          decidedAt: now,
+        });
 
         if (plan.completes) {
           await claimHeader(tx, "branchPullout", {
@@ -1632,6 +1698,12 @@ export const pulloutPostingService = {
           serialNumberIds: [serialNumberId],
           status: plan.restoreCode,
           details: `Rejected on ${fresh.pulloutNo}, back at the branch: ${remarks}`,
+        });
+        await inventoryApprovalLedger.recordDecision(tx, approvalDocument(actor.tenantId, fresh, "RECEIVING"), {
+          serialNumberIds: [serialNumberId],
+          status: "REJECTED",
+          decidedById: actor.userId,
+          remarks,
         });
         if (plan.closesAs) {
           await claimHeader(tx, "branchPullout", {

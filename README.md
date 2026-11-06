@@ -78,6 +78,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/settings/users`, `/roles` | `users.manage` / `roles.manage` |
 | `/settings/departments` | `departments.manage` |
 | `/audit-logs/system`, `/audit-logs/serial-numbers` | `audit_logs.view` |
+| `/audit-logs/inventory-approvals` | `inventory_approvals.view` (read-only trace of every unit approval, Super Admin and Tenant Admin by default. One row per serial per approval step, starting Pending and updated in the same transaction as each decision through `inventoryApprovalLedger`. Covers defect reports, transfers, pull-outs, sales returns, delivery returns, unit transfers, and service center pull-outs and returns) |
 | `/settings/branches` | `branches.manage` (Branches Import: form-aligned sheet + prefills; creates missing sap_codes; accepts PSG ISMS; optional legacy Allowed Models; schedule UX shows company locked days + frequency suggestions) |
 | `/settings/branch-quotas` | `branch_quotas.view` (read-only) or `branch_quotas.manage` (add, edit, delete, import. Branch Quotas Import: template of current quotas, preview create/update, apply upsert by branch + brand + month) |
 | `/settings/ordering` | `ordering_settings.manage` (company locked weekdays + optional daily time lock in Manila, scoped to selected order modules; frequency code catalog incl. Daily / Three times a month) |

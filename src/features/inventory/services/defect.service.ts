@@ -1,10 +1,24 @@
 import { auditService } from "@/features/audit/services/audit.service";
+import {
+  inventoryApprovalLedger,
+  type InventoryApprovalDocument,
+} from "@/features/inventory-approvals/services/inventory-approval-ledger";
 import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
 import { aorService } from "@/features/aors/services/aor.service";
 import { defectRepository } from "@/features/inventory/repositories/defect.repository";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { hasPermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
+
+function approvalDocument(tenantId: string, reportId: string): InventoryApprovalDocument {
+  return {
+    tenantId,
+    sourceType: "DEFECT_REPORT",
+    sourceId: reportId,
+    sourceNo: null,
+    step: "INSPECTION",
+  };
+}
 
 async function assertBranchInAor(
   tenantId: string,
@@ -103,6 +117,17 @@ export const defectService = {
       })),
     });
 
+    await inventoryApprovalLedger.recordRequested(prisma, approvalDocument(input.tenantId, report.id), {
+      requestedById: input.actorUserId,
+      units: [
+        {
+          serialNumberId: inventory.serialNumberId,
+          remarks: input.remarks,
+          problemDescription: input.reason,
+        },
+      ],
+    });
+
     await defectRepository.writeDefectHistory({
       tenantId: input.tenantId,
       serialNumberId: inventory.serialNumberId,
@@ -173,6 +198,13 @@ export const defectService = {
           decisionRemarks: input.decisionRemarks,
         },
       });
+      await inventoryApprovalLedger.recordDecision(tx, approvalDocument(input.tenantId, report.id), {
+        serialNumberIds: [report.serialNumberId],
+        status: "APPROVED",
+        decidedById: input.actorUserId,
+        decidedAt,
+        remarks: input.decisionRemarks,
+      });
     });
 
     await defectRepository.writeDefectHistory({
@@ -229,6 +261,13 @@ export const defectService = {
       deciderUserId: input.actorUserId,
       decidedAt,
       decisionRemarks: input.decisionRemarks,
+    });
+    await inventoryApprovalLedger.recordDecision(prisma, approvalDocument(input.tenantId, report.id), {
+      serialNumberIds: [report.serialNumberId],
+      status: "REJECTED",
+      decidedById: input.actorUserId,
+      decidedAt,
+      remarks: input.decisionRemarks,
     });
 
     await defectRepository.writeDefectHistory({

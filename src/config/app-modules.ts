@@ -116,6 +116,15 @@ export const appModules: AppModule[] = [
     actions: permissionActions("view"),
   },
   {
+    id: "inventory_approvals",
+    name: "Inventory Approvals",
+    route: "/audit-logs/inventory-approvals",
+    slugPrefix: "inventory_approvals",
+    navPermission: "inventory_approvals.view",
+    description: "Read-only trace of every unit approval and its status",
+    actions: permissionActions("view"),
+  },
+  {
     id: "branches",
     name: "Branches",
     route: "/settings/branches",

@@ -10,6 +10,7 @@ jest.mock("@/lib/database/client", () => {
     warehouseInventory: { create: jest.fn() },
     serialNumberHistory: { create: jest.fn() },
     deliveryReturnRequest: { count: jest.fn() },
+    inventoryApproval: { createMany: jest.fn(), updateMany: jest.fn() },
     auditLog: { create: jest.fn() },
   };
   return {
@@ -124,6 +125,27 @@ describe("deliveryTransferService.release", () => {
     expect(result).toEqual({ sapDocNo: "700", sapError: null });
   });
 
+  it("opens the receiving step for the approved units only", async () => {
+    mockPrisma.deliveryTransfer.findFirst.mockResolvedValue(scopedTransfer("SO"));
+    mockTx.deliveryTransferLine.findMany.mockResolvedValue([
+      { status: "APPROVED", serialNumberId: "s1" },
+      { status: "REMOVED", serialNumberId: "s2" },
+    ]);
+
+    await deliveryTransferService.release(approver, "tr1");
+
+    expect(mockTx.inventoryApproval.createMany.mock.calls[0][0].data).toEqual([
+      expect.objectContaining({
+        sourceType: "DELIVERY_TRANSFER",
+        sourceId: "tr1",
+        sourceNo: "UTR-1",
+        step: "RECEIVING",
+        serialNumberId: "s1",
+        status: "PENDING",
+      }),
+    ]);
+  });
+
   it("posts nothing to SAP for an outright (SO) delivery", async () => {
     mockPrisma.deliveryTransfer.findFirst
       .mockResolvedValueOnce(scopedTransfer("SO"))
@@ -232,6 +254,10 @@ describe("deliveryTransferService.receiveLine", () => {
     });
     expect(finalizeDeliveryIfSettled).toHaveBeenCalledWith(mockTx, "t1", "del1");
     expect(result).toEqual({ transferId: "tr1", status: "COMPLETED" });
+    expect(mockTx.inventoryApproval.updateMany.mock.calls[0][0]).toMatchObject({
+      where: { sourceType: "DELIVERY_TRANSFER", step: "RECEIVING", serialNumberId: { in: ["s1"] } },
+      data: { status: "APPROVED", decidedById: "u1" },
+    });
   });
 
   it("moves the branch row to the receiving branch as STK", async () => {
@@ -341,6 +367,16 @@ describe("deliveryTransferService.create", () => {
       lines: { create: [{ serialNumberId: "s1", modelId: "m1", remarks: "cracked screen" }] },
     });
     expect(data.transferNo).toMatch(/^UTR-/);
+    expect(mockTx.inventoryApproval.createMany.mock.calls[0][0].data).toEqual([
+      expect.objectContaining({
+        sourceType: "DELIVERY_TRANSFER",
+        sourceNo: "UTR-X",
+        step: "APPROVAL",
+        serialNumberId: "s1",
+        status: "PENDING",
+        remarks: "cracked screen",
+      }),
+    ]);
   });
 
   it("needs a location when receive is a warehouse", async () => {
@@ -414,6 +450,10 @@ describe("deliveryTransferService.decideLine", () => {
       where: { id: "tr1", status: "PENDING_APPROVAL" },
       data: { status: "CANCELLED" },
     });
+    expect(mockTx.inventoryApproval.updateMany.mock.calls[0][0]).toMatchObject({
+      where: { step: "APPROVAL", serialNumberId: { in: ["s1"] } },
+      data: { status: "REJECTED", decidedById: "u1" },
+    });
   });
 });
 
@@ -478,7 +518,10 @@ describe("deliveryTransferService.cancelInTransit", () => {
   beforeEach(() => {
     mockPrisma.deliveryTransfer.findFirst.mockResolvedValue(scopedTransfer("ITR", "IN_TRANSIT"));
     mockTx.deliveryTransfer.findFirst.mockResolvedValue({ status: "IN_TRANSIT", sapDocEntry: null });
-    mockTx.deliveryTransferLine.findMany.mockResolvedValue([{ status: "APPROVED" }, { status: "REMOVED" }]);
+    mockTx.deliveryTransferLine.findMany.mockResolvedValue([
+      { status: "APPROVED", serialNumberId: "s1" },
+      { status: "REMOVED", serialNumberId: "s2" },
+    ]);
     mockTx.deliveryTransferLine.updateMany.mockResolvedValue({ count: 1 });
     jobsRepo.countInFlight.mockResolvedValue(0);
   });
@@ -505,6 +548,10 @@ describe("deliveryTransferService.cancelInTransit", () => {
     expect(mockTx.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ action: "delivery_transfer.cancelled_in_transit" }) }),
     );
+    expect(mockTx.inventoryApproval.updateMany.mock.calls[0][0]).toMatchObject({
+      where: { step: "RECEIVING", serialNumberId: { in: ["s1"] } },
+      data: { status: "CANCELLED", decidedById: "u1" },
+    });
   });
 
   it("refuses once SAP has the IT or a unit was received", async () => {

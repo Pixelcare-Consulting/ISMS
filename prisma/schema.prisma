@@ -222,6 +222,32 @@ enum BranchDefectReportStatus {
   rejected
 }
 
+enum InventoryApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum InventoryApprovalSource {
+  DEFECT_REPORT
+  TRANSFER
+  PULLOUT
+  SALES_RETURN
+  DELIVERY_RETURN
+  DELIVERY_TRANSFER
+  SC_PULLOUT
+  SC_RETURN
+}
+
+enum InventoryApprovalStep {
+  INSPECTION
+  CS_EVALUATION
+  TL_APPROVAL
+  APPROVAL
+  RECEIVING
+}
+
 model Tenant {
   id         String    @id @default(cuid())
   name       String
@@ -300,6 +326,7 @@ model Tenant {
   salesReplacements           SalesReplacement[]
   warehouseInventories        WarehouseInventory[]
   serialNumberHistories       SerialNumberHistory[]
+  inventoryApprovals          InventoryApproval[]
   serviceCenterInventories    ServiceCenterInventory[]
   serviceCenterOrders         ServiceCenterOrder[]
   serviceCenterOrderingSettings ServiceCenterOrderingSettings?
@@ -381,6 +408,8 @@ model User {
   branchInventoriesUpdated           BranchInventory[]             @relation("BranchInventoryUpdatedBy")
   branchDefectReportsReported        BranchDefectReport[]          @relation("BranchDefectReportReporter")
   branchDefectReportsDecided         BranchDefectReport[]          @relation("BranchDefectReportDecider")
+  inventoryApprovalsRequested        InventoryApproval[]           @relation("InventoryApprovalRequestedBy")
+  inventoryApprovalsDecided          InventoryApproval[]           @relation("InventoryApprovalDecidedBy")
   branchDefectReportPhotosUploaded   BranchDefectReportPhoto[]     @relation("BranchDefectReportPhotoUploadedBy")
   branchPulloutLinesDecided          BranchPulloutLine[]           @relation("BranchPulloutLineDecidedBy")
   branchPulloutLinesReceived         BranchPulloutLine[]           @relation("BranchPulloutLineReceivedBy")
@@ -1770,6 +1799,7 @@ model SerialNumber {
   deliveryReturnLines          DeliveryReturnLine[]
   deliveryTransferLines        DeliveryTransferLine[]
   history                      SerialNumberHistory[]
+  inventoryApprovals           InventoryApproval[]
   serviceCenterInventories     ServiceCenterInventory[]
   serviceCenterSales           ServiceCenterSalesTransaction[]
   serviceCenterPulloutDetails  ServiceCenterPulloutDetail[]
@@ -3302,6 +3332,42 @@ model SerialNumberHistory {
 
   @@index([tenantId, serialNumberId, createdAt])
   @@map("serial_number_histories")
+}
+
+/// One unit at one approval step of one document: pending when requested, then decided.
+/// Read-only for traceability. No workflow reads it, so it never drives a decision.
+/// sourceId has no foreign key because it points at one of several document tables, and the
+/// row has to outlive a document line that a workflow deletes.
+model InventoryApproval {
+  id                 String                  @id @default(cuid())
+  tenantId           String                  @map("tenant_id")
+  serialNumberId     String                  @map("serial_number_id")
+  sourceType         InventoryApprovalSource @map("source_type")
+  sourceId           String                  @map("source_id")
+  /// Document number at the time. Null for defect reports, which have none.
+  sourceNo           String?                 @map("source_no")
+  step               InventoryApprovalStep
+  status             InventoryApprovalStatus @default(PENDING)
+  requestedById      String?                 @map("requested_by_id")
+  decidedById        String?                 @map("decided_by_id")
+  decidedAt          DateTime?               @map("decided_at")
+  remarks            String?
+  problemDescription String?                 @map("problem_description")
+  createdAt          DateTime                @default(now()) @map("created_at")
+  updatedAt          DateTime                @updatedAt @map("updated_at")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  serialNumber SerialNumber @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
+  requestedBy  User?        @relation("InventoryApprovalRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  decidedBy    User?        @relation("InventoryApprovalDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, sourceType, sourceId, step, serialNumberId], map: "inventory_approvals_document_unit_key")
+  @@index([tenantId, updatedAt])
+  @@index([tenantId, status, updatedAt])
+  @@index([serialNumberId])
+  @@index([requestedById])
+  @@index([decidedById])
+  @@map("inventory_approvals")
 }
 
 model BranchQuota {

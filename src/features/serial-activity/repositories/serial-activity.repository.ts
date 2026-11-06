@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/database/client";
+import { buildDateFilter } from "@/lib/shared/date-filter";
 import { resolvePagination, toPaginatedResult } from "@/lib/shared/pagination";
 import { STOCK_COUNT_SESSION_LABELS } from "@/features/stock-audit/constants/stock-count-workflow";
 import { formatPeso } from "@/utils/format-currency";
@@ -56,26 +57,6 @@ interface SourceOptions {
   q?: string;
   dateFilter?: Prisma.DateTimeFilter;
   dir: SerialActivitySortDir;
-}
-
-/** Local-day boundary: start → 00:00:00.000, end → 23:59:59.999. */
-function parseDateBoundary(value: string, boundary: "start" | "end"): Date {
-  const [year, month, day] = value.split("-").map(Number);
-  if (boundary === "start") {
-    return new Date(year, month - 1, day, 0, 0, 0, 0);
-  }
-  return new Date(year, month - 1, day, 23, 59, 59, 999);
-}
-
-function buildDateFilter(
-  dateFrom?: string,
-  dateTo?: string,
-): Prisma.DateTimeFilter | undefined {
-  if (!dateFrom && !dateTo) return undefined;
-  return {
-    ...(dateFrom ? { gte: parseDateBoundary(dateFrom, "start") } : {}),
-    ...(dateTo ? { lte: parseDateBoundary(dateTo, "end") } : {}),
-  };
 }
 
 const modelSelect = {

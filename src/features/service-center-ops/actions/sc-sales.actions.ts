@@ -4,6 +4,13 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { auditService } from "@/features/audit/services/audit.service";
+import {
+  recordReturnApproved,
+  recordReturnEvaluated,
+  recordReturnRejected,
+  recordReturnRequested,
+  type ReturnApprovalRef,
+} from "@/features/inventory-approvals/services/return-approvals";
 import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
 import { placeServiceCenterUnit } from "@/features/service-center-ops/services/service-center-placement";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
@@ -44,6 +51,19 @@ function revalidateScSales() {
   revalidatePath("/service-centers/sales/new");
   revalidatePath("/service-centers/inventory");
   revalidatePath("/returns");
+}
+
+function scReturnApproval(
+  tenantId: string,
+  request: { id: string; sale: { transactionNo: string; serialNumberId: string | null } },
+): ReturnApprovalRef {
+  return {
+    tenantId,
+    sourceType: "SC_RETURN",
+    sourceId: request.id,
+    sourceNo: request.sale.transactionNo,
+    serialNumberId: request.sale.serialNumberId,
+  };
 }
 
 function nextTxnNo() {
@@ -259,6 +279,7 @@ export async function requestScReturnAction(saleId: string, notes?: string) {
     select: {
       id: true,
       transactionNo: true,
+      serialNumberId: true,
       atrStatus: true,
       notes: true,
       returnRequest: { select: { id: true } },
@@ -270,16 +291,17 @@ export async function requestScReturnAction(saleId: string, notes?: string) {
     return { error: "Sale is not eligible for return" as const };
   }
 
-  await prisma.$transaction([
-    prisma.serviceCenterReturnRequest.create({
+  await prisma.$transaction(async (tx) => {
+    const request = await tx.serviceCenterReturnRequest.create({
       data: {
         tenantId: session.user.tenantId,
         saleId,
         requestedById: session.user.id,
         requestNotes: reason,
       },
-    }),
-    prisma.serviceCenterSalesTransaction.update({
+      select: { id: true },
+    });
+    await tx.serviceCenterSalesTransaction.update({
       where: { id: saleId },
       data: {
         atrStatus: "reserve",
@@ -287,8 +309,12 @@ export async function requestScReturnAction(saleId: string, notes?: string) {
           .filter(Boolean)
           .join("\n"),
       },
-    }),
-  ]);
+    });
+    await recordReturnRequested(tx, scReturnApproval(session.user.tenantId, { id: request.id, sale }), {
+      requestedById: session.user.id,
+      remarks: reason,
+    });
+  });
 
   await auditService.log({
     tenantId: session.user.tenantId,
@@ -313,19 +339,27 @@ export async function evaluateScReturnAction(
   ]);
   const row = await prisma.serviceCenterReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
+    include: { sale: { select: { transactionNo: true, serialNumberId: true } } },
   });
   if (!row || row.status !== "pending_cs") {
     return { error: "Return request not found or not pending CS evaluation" as const };
   }
 
-  await prisma.serviceCenterReturnRequest.update({
-    where: { id: returnRequestId },
-    data: {
-      status: "pending_tl",
-      evaluatedById: session.user.id,
-      evaluatedAt: new Date(),
-      evaluationNotes: notes,
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.serviceCenterReturnRequest.update({
+      where: { id: returnRequestId },
+      data: {
+        status: "pending_tl",
+        evaluatedById: session.user.id,
+        evaluatedAt: new Date(),
+        evaluationNotes: notes,
+      },
+    });
+    await recordReturnEvaluated(tx, scReturnApproval(session.user.tenantId, row), {
+      decidedById: session.user.id,
+      remarks: notes,
+      needsTl: true,
+    });
   });
 
   await auditService.log({
@@ -348,18 +382,22 @@ export async function approveScReturnAction(returnRequestId: string) {
   ]);
   const row = await prisma.serviceCenterReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
+    include: { sale: { select: { transactionNo: true, serialNumberId: true } } },
   });
   if (!row || row.status !== "pending_tl") {
     return { error: "Return request not found or not pending TL approval" as const };
   }
 
-  await prisma.serviceCenterReturnRequest.update({
-    where: { id: returnRequestId },
-    data: {
-      status: "approved",
-      approvedById: session.user.id,
-      approvedAt: new Date(),
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.serviceCenterReturnRequest.update({
+      where: { id: returnRequestId },
+      data: {
+        status: "approved",
+        approvedById: session.user.id,
+        approvedAt: new Date(),
+      },
+    });
+    await recordReturnApproved(tx, scReturnApproval(session.user.tenantId, row), session.user.id);
   });
 
   await auditService.log({
@@ -399,16 +437,21 @@ export async function rejectScReturnAction(
     return { error: "You do not have permission to reject this return" as const };
   }
 
-  await prisma.$transaction([
-    prisma.serviceCenterReturnRequest.update({
+  await prisma.$transaction(async (tx) => {
+    await tx.serviceCenterReturnRequest.update({
       where: { id: returnRequestId },
       data: { status: "rejected", evaluationNotes: notes ?? row.evaluationNotes },
-    }),
-    prisma.serviceCenterSalesTransaction.update({
+    });
+    await tx.serviceCenterSalesTransaction.update({
       where: { id: row.saleId },
       data: { atrStatus: "open" },
-    }),
-  ]);
+    });
+    await recordReturnRejected(tx, scReturnApproval(session.user.tenantId, row), {
+      fromStatus: row.status,
+      decidedById: session.user.id,
+      remarks: notes,
+    });
+  });
 
   await auditService.log({
     tenantId: session.user.tenantId,
