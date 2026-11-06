@@ -3,22 +3,26 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import {
+  BRANCH_QUOTA_ACCESS,
+  BRANCH_QUOTA_MANAGE,
+} from "@/features/branch-quotas/constants/branch-quota-permissions";
 import { branchQuotaFormSchema } from "@/features/branch-quotas/schemas/branch-quota.schema";
 import { branchQuotaService } from "@/features/branch-quotas/services/branch-quota.service";
-import { requirePermission } from "@/lib/auth/permissions";
+import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
 
 export async function listBranchQuotasAction() {
-  const session = await requirePermission("branches.manage");
+  const session = await requireAnyPermission(BRANCH_QUOTA_ACCESS);
   return branchQuotaService.list(session.user.tenantId);
 }
 
 export async function listBranchQuotaFormOptionsAction() {
-  const session = await requirePermission("branches.manage");
+  const session = await requirePermission(BRANCH_QUOTA_MANAGE);
   return branchQuotaService.listFormOptions(session.user.tenantId);
 }
 
 export async function createBranchQuotaAction(input: unknown) {
-  const session = await requirePermission("branches.manage");
+  const session = await requirePermission(BRANCH_QUOTA_MANAGE);
   const parsed = branchQuotaFormSchema.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   try {
@@ -35,7 +39,7 @@ export async function createBranchQuotaAction(input: unknown) {
 }
 
 export async function updateBranchQuotaAction(input: unknown) {
-  const session = await requirePermission("branches.manage");
+  const session = await requirePermission(BRANCH_QUOTA_MANAGE);
   const parsed = branchQuotaFormSchema
     .extend({ id: z.string().min(1) })
     .safeParse(input);
@@ -54,7 +58,7 @@ export async function updateBranchQuotaAction(input: unknown) {
 }
 
 export async function deleteBranchQuotaAction(id: string) {
-  const session = await requirePermission("branches.manage");
+  const session = await requirePermission(BRANCH_QUOTA_MANAGE);
   try {
     await branchQuotaService.delete({
       tenantId: session.user.tenantId,

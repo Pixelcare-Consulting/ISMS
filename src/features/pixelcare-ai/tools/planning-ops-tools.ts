@@ -24,6 +24,7 @@ import {
   DEMAND_PLANNING_COVERAGE_PERMISSIONS,
 } from "@/features/demand-planning/services/coverage.service";
 import { demandPlanningRunService } from "@/features/demand-planning/services/demand-planning-run.service";
+import { BRANCH_QUOTA_ACCESS } from "@/features/branch-quotas/constants/branch-quota-permissions";
 import { branchQuotaService } from "@/features/branch-quotas/services/branch-quota.service";
 import { forecastRepository } from "@/features/forecast/repositories/forecast.repository";
 import { suggestedOrderService } from "@/features/forecast/services/suggested-order.service";
@@ -114,7 +115,7 @@ function canManageForecastOrPlanogram(permissions: string[] | undefined): boolea
 
 function canReadBranchQuotas(permissions: string[] | undefined): boolean {
   return (
-    hasPermission(permissions, "branches.manage") ||
+    BRANCH_QUOTA_ACCESS.some((slug) => hasPermission(permissions, slug)) ||
     hasPermission(permissions, "inventory.view") ||
     hasAnyOrderPermission(permissions, "view")
   );
@@ -554,7 +555,7 @@ export function buildPlanningOpsTools(session: AppSession) {
         if (!canQuotas) {
           return {
             error:
-              "Branch quotas are outside your access (needs branches.manage, inventory.view, or order view).",
+              "Branch quotas are outside your access (needs branch_quotas.view, inventory.view, or order view).",
           };
         }
 

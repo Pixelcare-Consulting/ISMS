@@ -125,6 +125,15 @@ export const appModules: AppModule[] = [
     actions: permissionActions("view", "manage"),
   },
   {
+    id: "branch_quotas",
+    name: "Branch Quotas",
+    route: "/settings/branch-quotas",
+    slugPrefix: "branch_quotas",
+    navPermission: "branch_quotas.view",
+    description: "Monthly order limits and Target DII by branch and brand",
+    actions: permissionActions("view", "manage"),
+  },
+  {
     id: "dealers",
     name: "Dealers",
     route: "/settings/dealers",

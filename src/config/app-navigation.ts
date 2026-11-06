@@ -31,6 +31,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { getModuleNavPermission } from "@/config/app-modules";
+import { BRANCH_QUOTA_ACCESS } from "@/features/branch-quotas/constants/branch-quota-permissions";
 import { CUSTOM_DASHBOARD_ACCESS } from "@/features/custom-dashboards/constants/custom-dashboard-permissions";
 
 export type NavCountBadgeKey =
@@ -631,7 +632,7 @@ export const appNavigation: NavEntry[] = [
             href: "/settings/branch-quotas",
             label: "Branch quotas",
             icon: ChartColumn,
-            anyPermissions: ["branches.view", "branches.manage"],
+            anyPermissions: BRANCH_QUOTA_ACCESS,
           },
           {
             href: "/settings/planning",
