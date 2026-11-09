@@ -4,8 +4,6 @@ import {
   listInventoryAction,
   listInventoryGroupsAction,
 } from "@/features/inventory/actions/inventory.actions";
-import { InventoryKpisStrip } from "@/features/inventory/components/inventory-kpis";
-import { InventorySeriesSummaryPanel } from "@/features/inventory/components/inventory-series-summary";
 import {
   STOCK_UNITS_DEFAULT_SORT,
   STOCK_UNITS_DEFAULT_SORT_DIR,
@@ -21,6 +19,12 @@ import { canSyncFromSap } from "@/features/sap/constants/sap-permissions";
 import { requirePermission } from "@/lib/auth/permissions";
 import { InventoryGroupedTable } from "@/app/(app)/inventory/_components/inventory-grouped-table";
 import { InventoryTable } from "@/app/(app)/inventory/_components/inventory-table";
+import {
+  InventoryInsightsKpis,
+  InventoryInsightsProvider,
+  InventoryInsightsSeriesSummary,
+  type InventoryInsightBaseFilters,
+} from "@/app/(app)/inventory/_components/inventory-insights";
 
 interface InventoryPageProps {
   searchParams: Promise<{
@@ -58,8 +62,14 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
 
   const [seriesSummary, kpis] = await Promise.all([
     getInventorySeriesSummaryAction(summaryFilters),
-    getInventoryKpisAction(),
+    getInventoryKpisAction(summaryFilters),
   ]);
+  const insightBaseFilters: InventoryInsightBaseFilters = {
+    branchId: params.branch || undefined,
+    sku: params.sku || undefined,
+    offPlanogram,
+  };
+  const initialInsights = { kpis, seriesSummary };
 
   if (view === "all") {
     const listFilters = {
@@ -74,25 +84,27 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
     const result = await listInventoryAction(listFilters);
 
     return (
-      <div className="space-y-4">
-        <ModuleGuide
-          title={INVENTORY_MODULE_GUIDE.title}
-          description={INVENTORY_MODULE_GUIDE.description}
-          storageKey={INVENTORY_MODULE_GUIDE.storageKey}
-          defaultOpen
-        >
-          <InventoryKpisStrip kpis={kpis} />
-        </ModuleGuide>
-        <InventorySeriesSummaryPanel summary={seriesSummary} />
-        <InventoryTable
-          result={result}
-          initialOffPlanogram={offPlanogram}
-          initialSort={sort}
-          initialSortDir={sortDir}
-          hideBranch={hideBranch}
-          canSync={canSync}
-        />
-      </div>
+      <InventoryInsightsProvider initial={initialInsights} baseFilters={insightBaseFilters}>
+        <div className="space-y-4">
+          <ModuleGuide
+            title={INVENTORY_MODULE_GUIDE.title}
+            description={INVENTORY_MODULE_GUIDE.description}
+            storageKey={INVENTORY_MODULE_GUIDE.storageKey}
+            defaultOpen
+          >
+            <InventoryInsightsKpis />
+          </ModuleGuide>
+          <InventoryInsightsSeriesSummary />
+          <InventoryTable
+            result={result}
+            initialOffPlanogram={offPlanogram}
+            initialSort={sort}
+            initialSortDir={sortDir}
+            hideBranch={hideBranch}
+            canSync={canSync}
+          />
+        </div>
+      </InventoryInsightsProvider>
     );
   }
 
@@ -106,25 +118,27 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
   });
 
   return (
-    <div className="space-y-4">
-      <ModuleGuide
-        title={INVENTORY_MODULE_GUIDE.title}
-        description={INVENTORY_MODULE_GUIDE.description}
-        storageKey={INVENTORY_MODULE_GUIDE.storageKey}
-        defaultOpen
-      >
-        <InventoryKpisStrip kpis={kpis} />
-      </ModuleGuide>
-      <InventorySeriesSummaryPanel summary={seriesSummary} />
-      <InventoryGroupedTable
-        key={`${groupBy}:${params.branch ?? ""}:${params.sku ?? ""}:${offPlanogram ? "1" : "0"}`}
-        groupBy={groupBy}
-        result={groupResult}
-        initialOffPlanogram={offPlanogram}
-        initialSearch={searchQuery}
-        hideBranch={hideBranch}
-        canSync={canSync}
-      />
-    </div>
+    <InventoryInsightsProvider initial={initialInsights} baseFilters={insightBaseFilters}>
+      <div className="space-y-4">
+        <ModuleGuide
+          title={INVENTORY_MODULE_GUIDE.title}
+          description={INVENTORY_MODULE_GUIDE.description}
+          storageKey={INVENTORY_MODULE_GUIDE.storageKey}
+          defaultOpen
+        >
+          <InventoryInsightsKpis />
+        </ModuleGuide>
+        <InventoryInsightsSeriesSummary />
+        <InventoryGroupedTable
+          key={`${groupBy}:${params.branch ?? ""}:${params.sku ?? ""}:${offPlanogram ? "1" : "0"}`}
+          groupBy={groupBy}
+          result={groupResult}
+          initialOffPlanogram={offPlanogram}
+          initialSearch={searchQuery}
+          hideBranch={hideBranch}
+          canSync={canSync}
+        />
+      </div>
+    </InventoryInsightsProvider>
   );
 }

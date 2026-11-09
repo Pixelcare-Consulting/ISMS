@@ -34,6 +34,11 @@ import {
 import { isToFollowSerial } from "@/features/sales/constants/to-follow-serial";
 import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
 import { SALE_PROOF_MAX_FILES } from "@/features/sales/utils/sale-proof";
+import {
+  describeTransactionDateWindow,
+  salesTransactionDateWindow,
+  transactionDateWindowError,
+} from "@/features/sales/utils/transaction-date-window";
 import { formatPeso } from "@/utils/format-currency";
 
 interface SalesBranchOption {
@@ -59,14 +64,8 @@ interface NewSalesTransactionFormProps {
   deliveryMethods: LookupOption[];
   promoTypes: LookupOption[];
   brands: LookupOption[];
-}
-
-function todayInputValue(): string {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
+  /** Settings → Ordering policy: days before today a sale may be dated. */
+  salesBackdateDays: number;
 }
 
 export function NewSalesTransactionForm({
@@ -77,6 +76,7 @@ export function NewSalesTransactionForm({
   deliveryMethods,
   promoTypes,
   brands,
+  salesBackdateDays,
 }: NewSalesTransactionFormProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -98,7 +98,9 @@ export function NewSalesTransactionForm({
   const [customerDeliveryMethodId, setCustomerDeliveryMethodId] = useState("");
   const [proofs, setProofs] = useState<ProofAttachment[]>([]);
   const [proofUploading, setProofUploading] = useState(false);
-  const [transactionDate, setTransactionDate] = useState(todayInputValue);
+  // Left blank on purpose: the user picks the date inside the allowed window.
+  const [transactionDate, setTransactionDate] = useState("");
+  const dateWindow = salesTransactionDateWindow(salesBackdateDays);
   const [reserved, setReserved] = useState(false);
   const [details, setDetails] = useState<DraftSaleDetail[]>([]);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -299,6 +301,11 @@ export function NewSalesTransactionForm({
       toast.error("Select a stock source branch");
       return;
     }
+    const dateError = transactionDateWindowError(transactionDate, dateWindow);
+    if (dateError) {
+      toast.error(dateError);
+      return;
+    }
     if (!customerName.trim()) {
       toast.error("Customer name is required");
       return;
@@ -420,13 +427,20 @@ export function NewSalesTransactionForm({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sale-date">Transaction date</Label>
+            <Label htmlFor="sale-date">Transaction date *</Label>
             <Input
               id="sale-date"
               type="date"
+              required
+              min={dateWindow.min}
+              max={dateWindow.max}
               value={transactionDate}
+              aria-describedby="sale-date-help"
               onChange={(e) => setTransactionDate(e.target.value)}
             />
+            <p id="sale-date-help" className="text-xs text-muted-foreground">
+              {describeTransactionDateWindow(dateWindow)}
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="sale-customer">Customer name *</Label>

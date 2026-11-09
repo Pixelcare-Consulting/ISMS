@@ -44,6 +44,7 @@ import {
 } from "@/lib/data-table";
 import type { PaginatedResult } from "@/lib/shared/pagination";
 import { matchesTableSearch } from "@/utils/match-table-search";
+import { usePublishInventoryNarrowing } from "@/app/(app)/inventory/_components/inventory-insights";
 import { cn } from "@/utils/cn";
 
 type GroupTopItem = InventoryGroupBranchItemDto | InventoryGroupModelItemDto;
@@ -205,6 +206,14 @@ export function InventoryGroupedTable({
       ),
     [groupBy, result.items],
   );
+
+  // Cards and Series summary follow the groups the search matched.
+  const searchNarrowing = useMemo(() => {
+    if (!query.trim()) return null;
+    const ids = filtered.map((row) => topIdOf(groupBy, row));
+    return groupBy === "by-model" ? { modelIds: ids } : { branchIds: ids };
+  }, [filtered, groupBy, query]);
+  usePublishInventoryNarrowing(searchNarrowing);
 
   const {
     page,

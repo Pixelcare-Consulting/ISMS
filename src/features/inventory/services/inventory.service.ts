@@ -66,6 +66,29 @@ export type InventoryListOptions = {
   sortDir?: InventoryListSortDir;
 };
 
+/**
+ * What the Stock units table search currently shows, so the cards and Series
+ * summary can match it. Grouped views send the matched branch or model ids;
+ * the All serials view sends its search text.
+ */
+export type InventorySearchNarrowing = {
+  branchIds?: string[];
+  modelIds?: string[];
+  q?: string;
+};
+
+/** Filters shared by the dashboard cards and the Series summary. */
+export type InventoryInsightFilters = Pick<
+  InventoryListOptions,
+  "branchId" | "skuCode" | "statusCodeId" | "offPlanogramOnly"
+> &
+  InventorySearchNarrowing;
+
+export interface InventoryInsights {
+  kpis: InventoryKpis;
+  seriesSummary: InventorySeriesSummary;
+}
+
 export type InventoryGroupListOptions = {
   branchId?: string;
   skuCode?: string;
@@ -137,6 +160,15 @@ function toListFilters(filters?: InventoryListOptions): InventoryListFilters {
     skuCode: filters?.skuCode,
     statusCodeId: filters?.statusCodeId,
     offPlanogramOnly: filters?.offPlanogramOnly,
+  };
+}
+
+function toInsightFilters(filters?: InventoryInsightFilters): InventoryListFilters {
+  return {
+    ...toListFilters(filters),
+    branchIdsIn: filters?.branchIds,
+    modelIdsIn: filters?.modelIds,
+    q: filters?.q,
   };
 }
 
@@ -504,9 +536,17 @@ export const inventoryService = {
     tenantId: string,
     userId: string,
     isUnrestricted: boolean,
-    filters?: InventoryListOptions,
+    filters?: InventoryInsightFilters,
   ): Promise<InventorySeriesSummary> {
     const branchIds = await resolveBranchIds(tenantId, userId, isUnrestricted);
+    return this.seriesSummaryForBranches(tenantId, branchIds, filters);
+  },
+
+  async seriesSummaryForBranches(
+    tenantId: string,
+    branchIds: string[],
+    filters?: InventoryInsightFilters,
+  ): Promise<InventorySeriesSummary> {
     if (branchIds.length === 0) {
       return { rows: [], totalQty: 0, totalValue: 0 };
     }
@@ -515,7 +555,7 @@ export const inventoryService = {
     const skuRows = await inventoryRepository.aggregateSeriesBySku(
       tenantId,
       branchIds,
-      toListFilters(filters),
+      toInsightFilters(filters),
     );
 
     return groupStockByModelSeries(
@@ -541,9 +581,32 @@ export const inventoryService = {
     tenantId: string,
     userId: string,
     isUnrestricted: boolean,
+    filters?: InventoryInsightFilters,
   ): Promise<InventoryKpis> {
     const branchIds = await resolveBranchIds(tenantId, userId, isUnrestricted);
+    return this.kpisForBranches(tenantId, branchIds, filters);
+  },
 
+  /** Cards and Series summary from one scope lookup (Stock units search). */
+  async getInsights(
+    tenantId: string,
+    userId: string,
+    isUnrestricted: boolean,
+    filters?: InventoryInsightFilters,
+  ): Promise<InventoryInsights> {
+    const branchIds = await resolveBranchIds(tenantId, userId, isUnrestricted);
+    const [kpis, seriesSummary] = await Promise.all([
+      this.kpisForBranches(tenantId, branchIds, filters),
+      this.seriesSummaryForBranches(tenantId, branchIds, filters),
+    ]);
+    return { kpis, seriesSummary };
+  },
+
+  async kpisForBranches(
+    tenantId: string,
+    branchIds: string[],
+    filters?: InventoryInsightFilters,
+  ): Promise<InventoryKpis> {
     const codes = (await reasonStatusRepository.listActiveCodesByCategory(
       tenantId,
       "inventory_system",
@@ -561,9 +624,10 @@ export const inventoryService = {
       };
     }
 
+    const listFilters = toInsightFilters(filters);
     const [statusGroups, totalUnits] = await Promise.all([
-      inventoryRepository.countByStatus(tenantId, branchIds),
-      inventoryRepository.countAll(tenantId, branchIds),
+      inventoryRepository.countByStatus(tenantId, branchIds, listFilters),
+      inventoryRepository.countAll(tenantId, branchIds, listFilters),
     ]);
 
     const countByCodeId = new Map(

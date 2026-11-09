@@ -3,10 +3,13 @@
 import { useMemo, useState, useTransition } from "react";
 import { createColumnHelper } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
+import { Download, Plus } from "lucide-react";
 import { toast } from "sonner";
 
-import { deleteCompetitorObservationAction } from "@/features/competitors/actions/competitor.actions";
+import {
+  deleteCompetitorObservationAction,
+  exportCompetitorReportCsvAction,
+} from "@/features/competitors/actions/competitor.actions";
 import {
   CompetitorFormDialog,
   type CompetitorFormOption,
@@ -25,7 +28,11 @@ import {
   type DataTableFeatures,
 } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { manilaTodayIso } from "@/features/orders/utils/manila-calendar";
+import { downloadCsvFile } from "@/lib/shared/download-csv";
 import { formatPeso } from "@/utils/format-currency";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
@@ -44,6 +51,11 @@ function formatObservedDate(iso: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleDateString();
+}
+
+/** Observed calendar day in Manila, YYYY-MM-DD, for From/To filtering. */
+function observedDay(row: CompetitorObservationDto): string {
+  return manilaTodayIso(new Date(row.observedAt));
 }
 
 function brandDisplay(row: CompetitorObservationDto) {
@@ -66,7 +78,11 @@ export function CompetitorsTable({
   const [query, setQuery] = useState("");
   const [branchFilter, setBranchFilter] = useState("");
   const [brandFilter, setBrandFilter] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [pending, startTransition] = useTransition();
+  const [exporting, startExport] = useTransition();
+  const dateRangeInvalid = Boolean(fromDate && toDate && fromDate > toDate);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<CompetitorObservationDto | null>(null);
   const [deleting, setDeleting] = useState<CompetitorObservationDto | null>(null);
@@ -75,6 +91,8 @@ export function CompetitorsTable({
     return observations.filter((row) => {
       if (branchFilter && row.branchId !== branchFilter) return false;
       if (brandFilter && row.competitorBrandId !== brandFilter) return false;
+      if (fromDate && observedDay(row) < fromDate) return false;
+      if (toDate && observedDay(row) > toDate) return false;
       return matchesTableSearch(query, [
         row.competitorName,
         row.promotion ?? "",
@@ -87,7 +105,7 @@ export function CompetitorsTable({
         row.createdBy.email,
       ]);
     });
-  }, [observations, query, branchFilter, brandFilter]);
+  }, [observations, query, branchFilter, brandFilter, fromDate, toDate]);
 
   const sort = useClientTableSort(filtered, {
     competitor: (row) => row.competitorName,
@@ -113,6 +131,29 @@ export function CompetitorsTable({
       ),
     [observations],
   );
+
+  function generateReport() {
+    if (dateRangeInvalid) {
+      toast.error("From date must be on or before To date");
+      return;
+    }
+    startExport(async () => {
+      const result = await exportCompetitorReportCsvAction({
+        from: fromDate || null,
+        to: toDate || null,
+        branchId: branchFilter || null,
+        competitorBrandId: brandFilter || null,
+      });
+      if ("error" in result) {
+        toast.error(String(result.error));
+        return;
+      }
+      downloadCsvFile(result.csv, result.filename);
+      toast.success(
+        fromDate || toDate ? "Report downloaded for the selected dates" : "Report downloaded (all dates)",
+      );
+    });
+  }
 
   function openCreate() {
     setEditing(null);
@@ -252,11 +293,23 @@ export function CompetitorsTable({
           suggestions,
         }}
         toolbarActions={
-          canManage ? (
-            <Button size="sm" onClick={openCreate} className="shrink-0">
-              <Plus className="size-4" /> Add observation
+          <>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={generateReport}
+              disabled={exporting || dateRangeInvalid}
+              className="shrink-0"
+            >
+              <Download className="size-4" />
+              {exporting ? "Generating…" : "Generate report"}
             </Button>
-          ) : null
+            {canManage ? (
+              <Button size="sm" onClick={openCreate} className="shrink-0">
+                <Plus className="size-4" /> Add observation
+              </Button>
+            ) : null}
+          </>
         }
         banner={
           <div className="flex flex-wrap gap-3 px-4 pb-3">
@@ -282,6 +335,33 @@ export function CompetitorsTable({
               placeholder="All brands"
               searchPlaceholder="Search brands…"
             />
+            <div className="space-y-1.5">
+              <Label htmlFor="filter-observed-from">Observed from</Label>
+              <Input
+                id="filter-observed-from"
+                type="date"
+                className="w-40"
+                value={fromDate}
+                max={toDate || undefined}
+                onChange={(e) => setFromDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="filter-observed-to">Observed to</Label>
+              <Input
+                id="filter-observed-to"
+                type="date"
+                className="w-40"
+                value={toDate}
+                min={fromDate || undefined}
+                aria-invalid={dateRangeInvalid}
+                onChange={(e) => setToDate(e.target.value)}
+              />
+            </div>
+            <p className="basis-full text-xs text-muted-foreground">
+              Generate report downloads every observation in your area, or only the observed dates,
+              branch and brand selected here.
+            </p>
           </div>
         }
         empty={sort.sorted.length === 0}

@@ -12,6 +12,7 @@ import {
 } from "@/features/service-center-ops/constants/sc-permissions";
 import { resolveScIdsForUser } from "@/features/service-center-ops/services/sc-scope";
 import { SALES_RETURN_VIEW } from "@/features/sales/constants/sales-permissions";
+import { resolveSoldBranchScope } from "@/features/sales/services/sales-branch-scope";
 import { requireAnyPermission } from "@/lib/auth/permissions";
 
 export async function getReturnsKpisAction() {
@@ -28,14 +29,22 @@ export async function getReturnsKpisAction() {
     "service_centers.return.complete",
   ]);
 
-  const scopedIds = await resolveScIdsForUser(
-    session.user.tenantId,
-    session.user.id,
-    session.user.permissions,
-  );
+  const [scopedIds, soldBranchIds] = await Promise.all([
+    resolveScIdsForUser(
+      session.user.tenantId,
+      session.user.id,
+      session.user.permissions,
+    ),
+    resolveSoldBranchScope(
+      session.user.tenantId,
+      session.user.id,
+      session.user.permissions,
+    ),
+  ]);
 
   return returnsKpiService.getAllTabsKpis(
     session.user.tenantId,
     scopedIds,
+    soldBranchIds,
   );
 }

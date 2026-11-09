@@ -8,6 +8,10 @@ import { formatSapDocNo } from "@/features/logistics/lib/sap-doc-number";
 import type { OrderSapDocType } from "@/features/orders/constants/order-sap-doc-type";
 import { inventoryGroupRepository } from "@/features/inventory/repositories/inventory-group.repository";
 import {
+  normalizeStockUnitsGroupSearch,
+  stockUnitsGroupSearchPattern,
+} from "@/features/inventory/utils/stock-units-group-search";
+import {
   inventoryListInclude,
   type InventoryListRow,
 } from "@/features/inventory/repositories/inventory-list.include";
@@ -66,7 +70,16 @@ export type InventoryListFilters = {
   skuCode?: string;
   statusCodeId?: string;
   offPlanogramOnly?: boolean;
+  /** Narrow to these branches (already inside the caller's scope). Empty = none. */
+  branchIdsIn?: string[];
+  /** Narrow to these models. Empty = none. */
+  modelIdsIn?: string[];
+  /** Unit-level search: serial, SKU, model name or branch name. */
+  q?: string;
 };
+
+/** Which statuses a where clause covers: Stock units (STK) or every status (dashboard cards). */
+type InventoryStatusScope = "stock_units" | "all";
 
 /**
  * Stock units lists on-hand stock only (STK). Sold / reserved / in-transit
@@ -123,39 +136,49 @@ async function buildOffPlanogramBranchOr(
   });
 }
 
+function unitSearchWhere(q: string | undefined): Prisma.BranchInventoryWhereInput | null {
+  const term = normalizeStockUnitsGroupSearch(q);
+  if (!term) return null;
+  return {
+    OR: [
+      { serialNumber: { serialNo: { contains: term, mode: "insensitive" } } },
+      { serialNumber: { model: { skuCode: { contains: term, mode: "insensitive" } } } },
+      { serialNumber: { model: { name: { contains: term, mode: "insensitive" } } } },
+      { branch: { name: { contains: term, mode: "insensitive" } } },
+    ],
+  };
+}
+
 async function buildInventoryWhere(
   tenantId: string,
   branchIds: string[],
   filters?: InventoryListFilters,
+  statusScope: InventoryStatusScope = "stock_units",
 ): Promise<Prisma.BranchInventoryWhereInput | null> {
-  const effectiveBranchIds = filters?.branchId
-    ? branchIds.filter((id) => id === filters.branchId)
-    : branchIds;
+  const effectiveBranchIds = resolveEffectiveBranchIds(branchIds, filters);
+  if (effectiveBranchIds.length === 0) return null;
+  if (filters?.modelIdsIn && filters.modelIdsIn.length === 0) return null;
 
-  if (effectiveBranchIds.length === 0) {
-    return null;
+  const and: Prisma.BranchInventoryWhereInput[] = [
+    filters?.offPlanogramOnly
+      ? { OR: await buildOffPlanogramBranchOr(tenantId, effectiveBranchIds) }
+      : { branchId: { in: effectiveBranchIds } },
+  ];
+  if (filters?.skuCode) {
+    and.push({ serialNumber: { model: { skuCode: filters.skuCode } } });
   }
-
-  const base: Prisma.BranchInventoryWhereInput = {
-    tenantId,
-    ...(filters?.skuCode
-      ? { serialNumber: { model: { skuCode: filters.skuCode } } }
-      : {}),
-    statusCode: {
-      code: { in: [...STOCK_UNITS_LIST_STATUS_CODES] },
-    },
-  };
-
-  if (filters?.offPlanogramOnly) {
-    return {
-      ...base,
-      OR: await buildOffPlanogramBranchOr(tenantId, effectiveBranchIds),
-    };
+  if (filters?.modelIdsIn) {
+    and.push({ serialNumber: { modelId: { in: filters.modelIdsIn } } });
   }
+  const search = unitSearchWhere(filters?.q);
+  if (search) and.push(search);
 
   return {
-    ...base,
-    branchId: { in: effectiveBranchIds },
+    tenantId,
+    ...(statusScope === "stock_units"
+      ? { statusCode: { code: { in: [...STOCK_UNITS_LIST_STATUS_CODES] } } }
+      : {}),
+    AND: and,
   };
 }
 
@@ -163,9 +186,14 @@ function resolveEffectiveBranchIds(
   branchIds: string[],
   filters?: InventoryListFilters,
 ): string[] {
-  return filters?.branchId
+  let ids = filters?.branchId
     ? branchIds.filter((id) => id === filters.branchId)
     : branchIds;
+  if (filters?.branchIdsIn) {
+    const narrow = new Set(filters.branchIdsIn);
+    ids = ids.filter((id) => narrow.has(id));
+  }
+  return ids;
 }
 
 export type LatestDeliveryReceipt = {
@@ -492,6 +520,19 @@ export const inventoryRepository = {
     if (filters?.skuCode) {
       conditions.push(Prisma.sql`pm.sku_code = ${filters.skuCode}`);
     }
+    if (filters?.modelIdsIn) {
+      if (filters.modelIdsIn.length === 0) return [];
+      conditions.push(Prisma.sql`sn.model_id IN (${Prisma.join(filters.modelIdsIn)})`);
+    }
+    const searchPattern = stockUnitsGroupSearchPattern(filters?.q);
+    if (searchPattern) {
+      conditions.push(Prisma.sql`(
+        sn.serial_no ILIKE ${searchPattern}
+        OR pm.sku_code ILIKE ${searchPattern}
+        OR pm.name ILIKE ${searchPattern}
+        OR b.name ILIKE ${searchPattern}
+      )`);
+    }
     conditions.push(
       Prisma.sql`rsc.code IN (${Prisma.join([
         ...STOCK_UNITS_LIST_STATUS_CODES,
@@ -516,6 +557,7 @@ export const inventoryRepository = {
       FROM branch_inventories bi
       INNER JOIN serial_numbers sn ON sn.id = bi.serial_number_id
       INNER JOIN product_models pm ON pm.id = sn.model_id
+      INNER JOIN branches b ON b.id = bi.branch_id
       LEFT JOIN series s ON s.id = pm.series_id
       INNER JOIN reason_status_codes rsc ON rsc.id = bi.status_code_id
       WHERE ${Prisma.join(conditions, " AND ")}
@@ -530,11 +572,11 @@ export const inventoryRepository = {
     }));
   },
 
-  countAll(tenantId: string, branchIds: string[]) {
-    if (branchIds.length === 0) return Promise.resolve(0);
-    return prisma.branchInventory.count({
-      where: { tenantId, branchId: { in: branchIds } },
-    });
+  /** Every status (dashboard cards), honouring the same filters as Stock units. */
+  async countAll(tenantId: string, branchIds: string[], filters?: InventoryListFilters) {
+    const where = await buildInventoryWhere(tenantId, branchIds, filters, "all");
+    if (!where) return 0;
+    return prisma.branchInventory.count({ where });
   },
 
   /** Live STK units in scope — same status filter as the Stock units list. */
@@ -549,11 +591,13 @@ export const inventoryRepository = {
     });
   },
 
-  countByStatus(tenantId: string, branchIds: string[]) {
-    if (branchIds.length === 0) return Promise.resolve([]);
+  /** Unit count per status (dashboard cards), honouring the same filters as Stock units. */
+  async countByStatus(tenantId: string, branchIds: string[], filters?: InventoryListFilters) {
+    const where = await buildInventoryWhere(tenantId, branchIds, filters, "all");
+    if (!where) return [];
     return prisma.branchInventory.groupBy({
       by: ["statusCodeId"],
-      where: { tenantId, branchId: { in: branchIds } },
+      where,
       _count: { id: true },
     });
   },

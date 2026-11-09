@@ -1473,6 +1473,8 @@ model OrderingPolicy {
   /// Sales Orders made directly in SAP on or after this date are imported as orders.
   /// Null turns the import off.
   sapSoImportSince        DateTime?         @db.Date @map("sap_so_import_since")
+  /// Days before today (Manila) a new sales transaction may be dated. 0 = today only.
+  salesBackdateDays       Int               @default(7) @map("sales_backdate_days")
   createdAt               DateTime          @default(now()) @map("created_at")
   updatedAt               DateTime          @updatedAt @map("updated_at")
 

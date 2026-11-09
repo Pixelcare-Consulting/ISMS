@@ -7,16 +7,19 @@ import { OrderingPolicyForm } from "@/app/(app)/settings/ordering/_components/or
 import { FrequencyCodesPanel } from "@/app/(app)/settings/ordering/_components/frequency-codes-panel";
 import { ServiceCenterOrderingPanel } from "@/app/(app)/settings/ordering/_components/service-center-ordering-panel";
 import { SapSalesOrderImportForm } from "@/app/(app)/settings/ordering/_components/sap-sales-order-import-form";
+import { SalesBackdateForm } from "@/app/(app)/settings/ordering/_components/sales-backdate-form";
 import { scOrderingSettingsService } from "@/features/service-center-ordering/services/sc-ordering-settings.service";
 
 export default async function OrderingSettingsPage() {
   const session = await requirePermission("ordering_settings.manage");
-  const [policy, frequencyCodes, scOrdering, sapSoImportSince] = await Promise.all([
-    orderingPolicyService.getPolicy(session.user.tenantId),
-    frequencyCodeService.list(session.user.tenantId),
-    scOrderingSettingsService.get(session.user.tenantId),
-    orderingPolicyService.getSapSoImportSince(session.user.tenantId),
-  ]);
+  const [policy, frequencyCodes, scOrdering, sapSoImportSince, salesBackdateDays] =
+    await Promise.all([
+      orderingPolicyService.getPolicy(session.user.tenantId),
+      frequencyCodeService.list(session.user.tenantId),
+      scOrderingSettingsService.get(session.user.tenantId),
+      orderingPolicyService.getSapSoImportSince(session.user.tenantId),
+      orderingPolicyService.getSalesBackdateDays(session.user.tenantId),
+    ]);
   const canEdit = hasPermission(session.user.permissions, "ordering_settings.manage");
 
   return (
@@ -68,6 +71,12 @@ export default async function OrderingSettingsPage() {
         description="SOs created directly in SAP for an ISMS branch, shipping from an ISMS warehouse, come in as approved orders marked SAP. Their DRs then reach the branch like any other."
       >
         <SapSalesOrderImportForm initialSince={sapSoImportSince} canEdit={canEdit} />
+      </SettingsSection>
+      <SettingsSection
+        title="Sales transaction date"
+        description="How far back a new sales transaction may be dated. The New transaction form only offers days in this range, and saving checks it again."
+      >
+        <SalesBackdateForm initialDays={salesBackdateDays} canEdit={canEdit} />
       </SettingsSection>
     </div>
   );

@@ -124,9 +124,9 @@ export const competitorRepository = {
       price?: number | null;
       promotion?: string | null;
       notes?: string | null;
-      observedAt: Date;
     },
   ) {
+    // observedAt is fixed at creation and never updated.
     return prisma.competitorObservation.update({
       where: { id },
       data: {
@@ -140,7 +140,6 @@ export const competitorRepository = {
         price: data.price ?? null,
         promotion: data.promotion ?? null,
         notes: data.notes ?? null,
-        observedAt: data.observedAt,
       },
       include: observationInclude,
     });

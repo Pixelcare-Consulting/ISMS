@@ -435,7 +435,6 @@ export function SalesTable({
               View details
             </Button>
             {capabilities.canUpdateSaleHeader &&
-            saleSerialLabel(row.original) === TO_FOLLOW_SERIAL_LABEL &&
             !isOfficialSoldStatusCode(row.original.statusCode?.code) ? (
               <Button
                 size="sm"
@@ -443,7 +442,7 @@ export function SalesTable({
                 disabled={pending}
                 onClick={() => openHeaderEdit(row.original.saleId)}
               >
-                Edit
+                Edit header
               </Button>
             ) : null}
           </div>

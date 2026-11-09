@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import type {
   StockUnitsGroupBy,
@@ -355,14 +356,59 @@ export async function getInventorySeriesSummaryAction(input?: {
   );
 }
 
-export async function getInventoryKpisAction() {
+export async function getInventoryKpisAction(input?: {
+  branchId?: string;
+  sku?: string;
+  offPlanogram?: boolean;
+}) {
   const session = await requirePermission("inventory.view");
   const unrestricted = isUnrestricted(session.user.permissions);
   return inventoryService.getKpis(
     session.user.tenantId,
     session.user.id,
     unrestricted,
+    {
+      branchId: input?.branchId,
+      skuCode: input?.sku,
+      offPlanogramOnly: input?.offPlanogram === true,
+    },
   );
+}
+
+const MAX_NARROWING_IDS = 10_000;
+
+const inventoryInsightsSchema = z.object({
+  branchId: z.string().trim().min(1).optional(),
+  sku: z.string().trim().min(1).max(100).optional(),
+  offPlanogram: z.boolean().optional(),
+  // Ids the table search matched; an empty list means nothing matched.
+  branchIds: z.array(z.string().min(1).max(64)).max(MAX_NARROWING_IDS).optional(),
+  modelIds: z.array(z.string().min(1).max(64)).max(MAX_NARROWING_IDS).optional(),
+  q: z.string().trim().max(200).optional(),
+});
+
+/** Dashboard cards + Series summary for what the Stock units search shows. */
+export async function getInventoryInsightsAction(input: unknown) {
+  const session = await requirePermission("inventory.view");
+  const parsed = inventoryInsightsSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid filters" } as const;
+  }
+  const data = parsed.data;
+  const insights = await inventoryService.getInsights(
+    session.user.tenantId,
+    session.user.id,
+    isUnrestricted(session.user.permissions),
+    {
+      branchId: data.branchId,
+      skuCode: data.sku,
+      offPlanogramOnly: data.offPlanogram === true,
+      branchIds: data.branchIds,
+      modelIds: data.modelIds,
+      q: data.q || undefined,
+    },
+  );
+  return { insights } as const;
 }
 
 /** Sidebar badge: live STK qty in the caller's Stock units scope (0 when unauthorized). */

@@ -84,6 +84,15 @@ import {
   resolveModelPriceForSales,
   type ResolvedModelPrice,
 } from "@/features/sales/services/model-price";
+import { orderingPolicyService } from "@/features/ordering/services/ordering-policy.service";
+import {
+  salesTransactionDateWindow,
+  transactionDateWindowError,
+} from "@/features/sales/utils/transaction-date-window";
+import {
+  hasSalesFullBranchAccess,
+  resolveSoldBranchScope,
+} from "@/features/sales/services/sales-branch-scope";
 import {
   parseSaleProofPaths,
   serializeSaleProofPaths,
@@ -329,10 +338,7 @@ async function assertBranchInAor(
   branchId: string,
   permissions: string[] | undefined,
 ) {
-  const unrestricted =
-    hasPermission(permissions, "branches.manage") ||
-    hasPermission(permissions, "master_data.manage");
-  if (unrestricted) return;
+  if (hasSalesFullBranchAccess(permissions)) return;
 
   const branchIds = await aorService.getBranchIdsForUser(tenantId, userId);
   if (!branchIds?.includes(branchId)) {
@@ -348,10 +354,7 @@ async function assertStockLocationReadable(
   stockBranchId: string,
   permissions: string[] | undefined,
 ) {
-  const unrestricted =
-    hasPermission(permissions, "branches.manage") ||
-    hasPermission(permissions, "master_data.manage");
-  if (unrestricted) return;
+  if (hasSalesFullBranchAccess(permissions)) return;
 
   const branchIds = await aorService.getBranchIdsForUser(tenantId, userId);
   if (branchIds?.includes(stockBranchId)) return;
@@ -437,7 +440,12 @@ function parseSalesSortDir(value?: string): SalesListSortDir | undefined {
 
 export async function getSalesKpisAction() {
   const session = await requireAnyPermission([...SALES_LIST_PERMISSIONS]);
-  return salesKpiService.getKpis(session.user.tenantId);
+  const soldBranchIds = await resolveSoldBranchScope(
+    session.user.tenantId,
+    session.user.id,
+    session.user.permissions,
+  );
+  return salesKpiService.getKpis(session.user.tenantId, soldBranchIds);
 }
 
 export async function listSalesAction(input?: {
@@ -447,6 +455,11 @@ export async function listSalesAction(input?: {
   sortDir?: string;
 }) {
   const session = await requireAnyPermission([...SALES_LIST_PERMISSIONS]);
+  const soldBranchIds = await resolveSoldBranchScope(
+    session.user.tenantId,
+    session.user.id,
+    session.user.permissions,
+  );
   const [result, toFollowStatus, salesAtrCodes] = await Promise.all([
     salesRepository.listDetailsForTenant(
       session.user.tenantId,
@@ -455,6 +468,7 @@ export async function listSalesAction(input?: {
         limit: parseTablePageSize(input?.limit),
       },
       { field: parseSalesSort(input?.sort), dir: parseSalesSortDir(input?.sortDir) },
+      soldBranchIds,
     ),
     resolveToFollowStatusCode(session.user.tenantId),
     loadSalesAtrCodesByCode(session.user.tenantId),
@@ -532,6 +546,15 @@ export async function listSalesReturnsAction(input?: {
       ? [...RETURNS_SERVICE_VIEW_PERMISSIONS]
       : [...RETURNS_BRANCH_VIEW_PERMISSIONS];
   const session = await requireAnyPermission(listPermissions);
+  // Branch Returns tab only: rows whose sold branch is in the viewer's AOR.
+  const soldBranchIds =
+    documentTypeScope === "branch"
+      ? await resolveSoldBranchScope(
+          session.user.tenantId,
+          session.user.id,
+          session.user.permissions,
+        )
+      : null;
   const [result, salesAtrCodes] = await Promise.all([
     salesRepository.listReturnRequestsForTenant(
       session.user.tenantId,
@@ -546,6 +569,7 @@ export async function listSalesReturnsAction(input?: {
       {
         statusIn: input?.statusIn,
         documentTypeScope,
+        soldBranchIds,
       },
     ),
     loadSalesAtrCodesByCode(session.user.tenantId),
@@ -775,11 +799,7 @@ export async function listBrandsForSalesAction() {
 /** AOR-scoped sold branches for encode / header edit. */
 export async function listBranchesForSalesAction() {
   const session = await requireAnyPermission([...SALES_LOOKUP_PERMISSIONS]);
-  const unrestricted =
-    hasPermission(session.user.permissions, "branches.manage") ||
-    hasPermission(session.user.permissions, "master_data.manage");
-
-  if (unrestricted) {
+  if (hasSalesFullBranchAccess(session.user.permissions)) {
     return prisma.branch.findMany({
       where: {
         tenantId: session.user.tenantId,
@@ -1021,14 +1041,14 @@ export async function createSaleAction(input: unknown) {
     return { error: e instanceof Error ? e.message : "Access denied" };
   }
 
-  let transactionDate: Date | null = null;
-  if (parsed.data.transactionDate) {
-    const d = new Date(parsed.data.transactionDate);
-    if (Number.isNaN(d.getTime())) {
-      return { error: "Invalid transaction date" };
-    }
-    transactionDate = d;
-  }
+  // Required, and only within the backdate window set in Settings → Ordering policy.
+  const dateWindow = salesTransactionDateWindow(
+    await orderingPolicyService.getSalesBackdateDays(session.user.tenantId),
+  );
+  const rawTransactionDate = parsed.data.transactionDate?.trim() ?? "";
+  const dateError = transactionDateWindowError(rawTransactionDate, dateWindow);
+  if (dateError) return { error: dateError };
+  const transactionDate = new Date(rawTransactionDate);
 
   // Re-resolve model prices from master lists so clients cannot override.
   const details = await Promise.all(
@@ -1037,7 +1057,7 @@ export async function createSaleAction(input: unknown) {
         session.user.tenantId,
         detail.modelId,
         detail.packageTypeId,
-        transactionDate ?? undefined,
+        transactionDate,
       );
       return {
         ...detail,

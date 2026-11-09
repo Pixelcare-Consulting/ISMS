@@ -24,6 +24,15 @@ export const orderingPolicyRepository = {
     });
   },
 
+  /** Only the sales backdate window; the other policy fields keep their values. */
+  setSalesBackdateDays(tenantId: string, salesBackdateDays: number) {
+    return prisma.orderingPolicy.upsert({
+      where: { tenantId },
+      create: { tenantId, salesBackdateDays },
+      update: { salesBackdateDays },
+    });
+  },
+
   upsert(tenantId: string, data: OrderingPolicyUpsertInput) {
     return prisma.orderingPolicy.upsert({
       where: { tenantId },

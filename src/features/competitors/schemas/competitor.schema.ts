@@ -43,13 +43,34 @@ export const createCompetitorObservationSchema = z.object({
     .optional()
     .nullable()
     .transform((v) => (v && v.length > 0 ? v : null)),
-  observedAt: z.coerce.date(),
+  // No observedAt: the server stamps it on create and never changes it.
 });
 
 export const updateCompetitorObservationSchema = createCompetitorObservationSchema.extend({
   id: z.string().min(1),
 });
 
+const reportDay = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Use a YYYY-MM-DD date")
+  .optional()
+  .nullable()
+  .transform((v) => v || null);
+
+/** Query string of the Competitors report export. Every field is optional. */
+export const competitorReportQuerySchema = z
+  .object({
+    from: reportDay,
+    to: reportDay,
+    branchId: optionalId,
+    competitorBrandId: optionalId,
+  })
+  .refine((q) => !q.from || !q.to || q.from <= q.to, {
+    message: "From date must be on or before To date",
+    path: ["to"],
+  });
+
 export type CreateCompetitorObservationInput = z.infer<typeof createCompetitorObservationSchema>;
 export type UpdateCompetitorObservationInput = z.infer<typeof updateCompetitorObservationSchema>;
 export type CompetitorListFilterInput = z.infer<typeof competitorListFilterSchema>;
+export type CompetitorReportQuery = z.infer<typeof competitorReportQuerySchema>;

@@ -27,6 +27,7 @@ import { Label } from "@/components/ui/label";
 import { DataTable, nextTableSort } from "@/lib/data-table";
 import type { PaginatedResult } from "@/lib/shared/pagination";
 import { matchesTableSearch } from "@/utils/match-table-search";
+import { usePublishInventoryNarrowing } from "@/app/(app)/inventory/_components/inventory-insights";
 
 type InventorySortDir = "asc" | "desc";
 
@@ -106,6 +107,14 @@ export function InventoryTable({
       ),
     [result.items, query, hideBranch],
   );
+
+  // Cards and Series summary follow the search across every page of serials.
+  const trimmedQuery = query.trim();
+  const searchNarrowing = useMemo(
+    () => (trimmedQuery ? { q: trimmedQuery } : null),
+    [trimmedQuery],
+  );
+  usePublishInventoryNarrowing(searchNarrowing);
 
   const suggestions = useMemo(
     () =>

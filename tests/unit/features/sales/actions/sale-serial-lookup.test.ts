@@ -81,9 +81,16 @@ jest.mock("@/features/sales/services/sales-kpi.service", () => ({
   salesKpiService: {},
 }));
 
+jest.mock("@/features/ordering/services/ordering-policy.service", () => ({
+  orderingPolicyService: {
+    getSalesBackdateDays: jest.fn(async () => 7),
+  },
+}));
+
 import { aorService } from "@/features/aors/services/aor.service";
 import { SERIAL_SOLD_OR_RESERVED_AFTER_LOOKUP } from "@/features/inventory/services/inventory-serial-moves";
 import { TO_FOLLOW_SERIAL_ID } from "@/features/sales/constants/to-follow-serial";
+import { manilaTodayIso } from "@/features/orders/utils/manila-calendar";
 import {
   completeReplacementSameInvoiceAction,
   createSaleAction,
@@ -132,6 +139,7 @@ function saleInput(
     paymentTypeId: "pay-1",
     saleTypeId: "type-1",
     customerDeliveryMethodId: "cdm-1",
+    transactionDate: manilaTodayIso(),
     details,
   };
 }
@@ -302,6 +310,30 @@ describe("listSaleableSerialsAction", () => {
     expect(result.items).toEqual([
       expect.objectContaining({ id: "sn-late", serialNo: "ZZZ-99999" }),
     ]);
+  });
+});
+
+describe("createSaleAction transaction date", () => {
+  it("requires a transaction date", async () => {
+    const result = await createSaleAction({
+      ...saleInput([line("sn-1")]),
+      transactionDate: undefined,
+    });
+
+    expect(result).toEqual({ error: "Transaction date is required" });
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects a date before the allowed backdate window", async () => {
+    const result = await createSaleAction({
+      ...saleInput([line("sn-1")]),
+      transactionDate: "2000-01-01",
+    });
+
+    expect(result).toEqual({
+      error: expect.stringMatching(/outside the allowed range/),
+    });
+    expect(transaction).not.toHaveBeenCalled();
   });
 });
 

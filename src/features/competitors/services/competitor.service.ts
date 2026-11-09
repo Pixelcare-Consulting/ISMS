@@ -9,8 +9,11 @@ import {
   updateCompetitorObservationSchema,
 } from "@/features/competitors/schemas/competitor.schema";
 import { branchRepository } from "@/features/branches/repositories/branch.repository";
+import { manilaDayWindow, manilaTodayIso } from "@/features/orders/utils/manila-calendar";
+import type { CompetitorReportQuery } from "@/features/competitors/schemas/competitor.schema";
 import { getUserBranchIds } from "@/lib/aor/scope";
 import { prisma } from "@/lib/database/client";
+import { buildCsvContent } from "@/lib/shared/csv";
 
 export interface CompetitorObservationDto {
   id: string;
@@ -38,6 +41,19 @@ export interface CompetitorKpis {
   distinctCompetitors: number;
   avgPrice: number | null;
 }
+
+export const COMPETITOR_REPORT_HEADERS = [
+  "OBSERVED DATE",
+  "COMPETITOR",
+  "BRANCH",
+  "BRANCH SAP CODE",
+  "BRAND",
+  "MODEL",
+  "PRICE",
+  "PROMOTION",
+  "NOTES",
+  "LOGGED BY",
+] as const;
 
 const WRITE_BRANCH_AOR_ERROR =
   "Competitor observations require exactly one branch assigned in your AOR";
@@ -173,6 +189,39 @@ export const competitorService = {
     return rows.map(toDto);
   },
 
+  /**
+   * CSV of observations in the viewer's AOR. Days are Manila calendar days;
+   * no From/To exports everything.
+   */
+  async generateReportCsv(
+    tenantId: string,
+    userId: string,
+    hasFullAccess: boolean,
+    query: CompetitorReportQuery,
+  ): Promise<string> {
+    const rows = await this.list(tenantId, userId, hasFullAccess, {
+      branchId: query.branchId,
+      competitorBrandId: query.competitorBrandId,
+      from: query.from ? (manilaDayWindow(query.from)?.start ?? null) : null,
+      to: query.to ? (manilaDayWindow(query.to)?.end ?? null) : null,
+    });
+    return buildCsvContent(
+      [...COMPETITOR_REPORT_HEADERS],
+      rows.map((row) => [
+        manilaTodayIso(new Date(row.observedAt)),
+        row.competitorName,
+        row.branch?.name ?? "",
+        row.branch?.sapCode ?? "",
+        row.competitorBrand?.name ?? row.brandName ?? "",
+        row.competitorModel?.name ?? row.modelName ?? "",
+        row.price ?? "",
+        row.promotion ?? "",
+        row.notes ?? "",
+        row.createdBy.name ?? row.createdBy.email,
+      ]),
+    );
+  },
+
   async getKpis(tenantId: string, userId: string, hasFullAccess: boolean): Promise<CompetitorKpis> {
     const scopedBranchIds = await resolveScopedBranchIds(tenantId, userId, hasFullAccess);
     return competitorRepository.getKpis(tenantId, scopedBranchIds);
@@ -239,7 +288,6 @@ export const competitorService = {
     price?: number | null;
     promotion?: string | null;
     notes?: string | null;
-    observedAt: Date;
   }) {
     const parsed = createCompetitorObservationSchema.safeParse(input);
     if (!parsed.success) {
@@ -265,7 +313,7 @@ export const competitorService = {
       price: parsed.data.price,
       promotion: parsed.data.promotion,
       notes: parsed.data.notes,
-      observedAt: parsed.data.observedAt,
+      observedAt: new Date(),
       createdById: input.actorUserId,
     });
 
@@ -291,7 +339,6 @@ export const competitorService = {
     price?: number | null;
     promotion?: string | null;
     notes?: string | null;
-    observedAt: Date;
   }) {
     const parsed = updateCompetitorObservationSchema.safeParse(input);
     if (!parsed.success) {
@@ -324,7 +371,6 @@ export const competitorService = {
       price: parsed.data.price,
       promotion: parsed.data.promotion,
       notes: parsed.data.notes,
-      observedAt: parsed.data.observedAt,
     });
 
     await auditService.log({

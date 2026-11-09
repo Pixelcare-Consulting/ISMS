@@ -72,9 +72,14 @@ function mergeStatusGroups(
 }
 
 export const returnsKpiService = {
-  async getBranchKpis(tenantId: string): Promise<ReturnsKpis> {
+  /** `soldBranchIds` matches the Branch Returns list scope; `null` = every branch. */
+  async getBranchKpis(
+    tenantId: string,
+    soldBranchIds: string[] | null = null,
+  ): Promise<ReturnsKpis> {
     const where = {
       tenantId,
+      ...(soldBranchIds ? { sale: { branchId: { in: soldBranchIds } } } : {}),
       ...branchReturnDocumentTypeScopeWhere("branch"),
     };
 
@@ -182,9 +187,10 @@ export const returnsKpiService = {
   async getAllTabsKpis(
     tenantId: string,
     serviceCenterIds: string[] | null,
+    soldBranchIds: string[] | null = null,
   ): Promise<ReturnsKpisByTab> {
     const [branch, service, approvals] = await Promise.all([
-      this.getBranchKpis(tenantId),
+      this.getBranchKpis(tenantId, soldBranchIds),
       this.getServiceKpis(tenantId, serviceCenterIds),
       this.getApprovalsKpis(tenantId, serviceCenterIds),
     ]);

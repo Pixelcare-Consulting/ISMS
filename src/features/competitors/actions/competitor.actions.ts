@@ -4,20 +4,15 @@ import { revalidatePath } from "next/cache";
 
 import { competitorService } from "@/features/competitors/services/competitor.service";
 import {
+  competitorReportQuerySchema,
   createCompetitorObservationSchema,
   updateCompetitorObservationSchema,
 } from "@/features/competitors/schemas/competitor.schema";
-import { hasPermission, requirePermission } from "@/lib/auth/permissions";
+import { hasCompetitorFullAccess } from "@/features/competitors/constants/competitor-access";
+import { requirePermission } from "@/lib/auth/permissions";
 
 function revalidateCompetitors() {
   revalidatePath("/competitors");
-}
-
-function hasFullAccess(permissions: string[] | undefined) {
-  return (
-    hasPermission(permissions, "competitors.manage") ||
-    hasPermission(permissions, "branches.manage")
-  );
 }
 
 export async function listCompetitorObservationsAction(filter?: {
@@ -29,7 +24,7 @@ export async function listCompetitorObservationsAction(filter?: {
   return competitorService.list(
     session.user.tenantId,
     session.user.id,
-    hasFullAccess(session.user.permissions),
+    hasCompetitorFullAccess(session.user.permissions),
     {
       branchId: filter?.branchId ?? null,
       competitorBrandId: filter?.competitorBrandId ?? null,
@@ -38,12 +33,39 @@ export async function listCompetitorObservationsAction(filter?: {
   );
 }
 
+/** CSV of observations: everything, or only the From/To days and filters given. */
+export async function exportCompetitorReportCsvAction(input: unknown) {
+  const session = await requirePermission("competitors.view");
+  const parsed = competitorReportQuerySchema.safeParse(input ?? {});
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid report filters" };
+  }
+
+  try {
+    const csv = await competitorService.generateReportCsv(
+      session.user.tenantId,
+      session.user.id,
+      hasCompetitorFullAccess(session.user.permissions),
+      parsed.data,
+    );
+    const { from, to } = parsed.data;
+    const range = from || to ? `${from ?? "start"}-to-${to ?? "today"}` : "all";
+    return {
+      success: true as const,
+      csv,
+      filename: `competitors-report-${range}.csv`,
+    };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Could not generate the report" };
+  }
+}
+
 export async function getCompetitorKpisAction() {
   const session = await requirePermission("competitors.view");
   return competitorService.getKpis(
     session.user.tenantId,
     session.user.id,
-    hasFullAccess(session.user.permissions),
+    hasCompetitorFullAccess(session.user.permissions),
   );
 }
 
@@ -52,7 +74,7 @@ export async function listCompetitorFormOptionsAction() {
   return competitorService.listFormOptions(
     session.user.tenantId,
     session.user.id,
-    hasFullAccess(session.user.permissions),
+    hasCompetitorFullAccess(session.user.permissions),
   );
 }
 

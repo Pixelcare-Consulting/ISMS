@@ -2,6 +2,7 @@ import { PageHeader } from "@/app/(app)/_components/page-header";
 import { NewSalesTransactionForm } from "@/app/(app)/sales/_components/new-sales-transaction-form";
 import { aorService } from "@/features/aors/services/aor.service";
 import { branchService } from "@/features/branches/services/branch.service";
+import { orderingPolicyService } from "@/features/ordering/services/ordering-policy.service";
 import {
   listBrandsForSalesAction,
   listCustomerDeliveryMethodsForSalesAction,
@@ -43,13 +44,14 @@ export default async function NewSalesTransactionPage() {
     branches = [...byId.entries()].map(([id, name]) => ({ id, name }));
   }
 
-  const [paymentTypes, saleTypes, deliveryMethods, promoTypes, brands] =
+  const [paymentTypes, saleTypes, deliveryMethods, promoTypes, brands, salesBackdateDays] =
     await Promise.all([
       listPaymentTypesForSalesAction(),
       listSaleTypesForSalesAction(),
       listCustomerDeliveryMethodsForSalesAction(),
       listPromoTypesForSalesAction(),
       listBrandsForSalesAction(),
+      orderingPolicyService.getSalesBackdateDays(session.user.tenantId),
     ]);
 
   const autoResolveBranch = roleSlugs.includes("ps") && branches.length === 1;
@@ -69,6 +71,7 @@ export default async function NewSalesTransactionPage() {
         deliveryMethods={deliveryMethods}
         promoTypes={promoTypes}
         brands={brands}
+        salesBackdateDays={salesBackdateDays}
       />
     </div>
   );

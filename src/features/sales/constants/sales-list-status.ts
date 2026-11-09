@@ -12,12 +12,15 @@ export const SALES_LIST_STATUS_CODES = ["SLD", "OFS", "FW"] as const;
  */
 export function salesListDetailWhere(
   tenantId: string,
+  /** Sold-branch AOR scope; `null` / omitted = every branch. */
+  soldBranchIds?: string[] | null,
 ): Prisma.BranchSalesTransactionDetailWhereInput {
   return {
     AND: [
       {
         sale: {
           tenantId,
+          ...(soldBranchIds ? { branchId: { in: soldBranchIds } } : {}),
           atrStatus: { not: "closed" },
           OR: [
             { returnRequest: { is: null } },

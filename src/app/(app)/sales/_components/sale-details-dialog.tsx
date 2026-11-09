@@ -359,6 +359,12 @@ export function SaleDetailsDialog({
               <dt className="text-muted-foreground">Customer</dt>
               <dd className="text-right">{sale.customerName?.trim() || "—"}</dd>
             </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted-foreground">Contact no.</dt>
+              <dd className="text-right font-mono text-xs tabular-nums">
+                {sale.contactNo?.trim() || "—"}
+              </dd>
+            </div>
             {sale.siTrans ? (
               <div className="flex justify-between gap-3">
                 <dt className="text-muted-foreground">SI / Trans</dt>

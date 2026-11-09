@@ -8,6 +8,10 @@ import {
   DEFAULT_LOCKED_WEEKDAYS,
   type OrderingPolicyConfig,
 } from "@/features/orders/utils/order-window";
+import {
+  DEFAULT_SALES_BACKDATE_DAYS,
+  MAX_SALES_BACKDATE_DAYS,
+} from "@/features/sales/utils/transaction-date-window";
 
 function sanitizeWeekdays(days: number[]): number[] {
   return [...new Set(days)].filter((d) => Number.isInteger(d) && d >= 0 && d <= 6).sort((a, b) => a - b);
@@ -120,6 +124,28 @@ export const orderingPolicyService = {
   async getSapSoImportSince(tenantId: string): Promise<string | null> {
     const row = await orderingPolicyRepository.findByTenant(tenantId);
     return row?.sapSoImportSince ? row.sapSoImportSince.toISOString().slice(0, 10) : null;
+  },
+
+  /** Days before today a new sales transaction may be dated. */
+  async getSalesBackdateDays(tenantId: string): Promise<number> {
+    const row = await orderingPolicyRepository.findByTenant(tenantId);
+    return row?.salesBackdateDays ?? DEFAULT_SALES_BACKDATE_DAYS;
+  },
+
+  async setSalesBackdateDays(input: { tenantId: string; actorUserId: string; days: number }) {
+    if (!Number.isInteger(input.days) || input.days < 0 || input.days > MAX_SALES_BACKDATE_DAYS) {
+      throw new Error(`Enter whole days from 0 to ${MAX_SALES_BACKDATE_DAYS}.`);
+    }
+    const policy = await orderingPolicyRepository.setSalesBackdateDays(input.tenantId, input.days);
+    await auditService.log({
+      tenantId: input.tenantId,
+      userId: input.actorUserId,
+      action: "ordering_policy.sales_backdate_updated",
+      entityType: "OrderingPolicy",
+      entityId: policy.id,
+      metadata: { salesBackdateDays: input.days },
+    });
+    return policy;
   },
 
   async setSapSoImportSince(input: { tenantId: string; actorUserId: string; since: string | null }) {

@@ -133,9 +133,11 @@ export const salesRepository = {
     tenantId: string,
     pagination?: { page?: number; limit?: number },
     sort?: { field?: SalesListSort; dir?: SalesListSortDir },
+    /** Sold-branch AOR scope; `null` = every branch. */
+    soldBranchIds: string[] | null = null,
   ) {
     const { limit, page, skip } = resolvePagination(pagination);
-    const where = salesListDetailWhere(tenantId);
+    const where = salesListDetailWhere(tenantId, soldBranchIds);
     const orderBy = sort?.field
       ? [
           salesDetailPrismaOrderBy(sort.field, sort.dir ?? "desc"),
@@ -193,6 +195,8 @@ export const salesRepository = {
     options?: {
       statusIn?: ReturnRequestStatus[];
       documentTypeScope?: BranchReturnDocumentTypeScope;
+      /** Sold-branch AOR scope; `null` / omitted = every branch. */
+      soldBranchIds?: string[] | null;
     },
   ) {
     const { limit, page, skip } = resolvePagination(pagination);
@@ -200,6 +204,9 @@ export const salesRepository = {
       tenantId,
       ...(options?.statusIn?.length
         ? { status: { in: options.statusIn } }
+        : {}),
+      ...(options?.soldBranchIds
+        ? { sale: { branchId: { in: options.soldBranchIds } } }
         : {}),
       ...branchReturnDocumentTypeScopeWhere(options?.documentTypeScope),
     };

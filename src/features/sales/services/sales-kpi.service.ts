@@ -18,7 +18,11 @@ export interface SalesKpis {
 }
 
 export const salesKpiService = {
-  async getKpis(tenantId: string): Promise<SalesKpis> {
+  /** `soldBranchIds` matches the Sales list scope; `null` = every branch. */
+  async getKpis(
+    tenantId: string,
+    soldBranchIds: string[] | null = null,
+  ): Promise<SalesKpis> {
     const inventoryCodes =
       await reasonStatusRepository.listActiveCodesByCategory(
         tenantId,
@@ -37,7 +41,7 @@ export const salesKpiService = {
       inventoryCodes.map((row) => [row.id, row] as const),
     );
 
-    const listWhere = salesListDetailWhere(tenantId);
+    const listWhere = salesListDetailWhere(tenantId, soldBranchIds);
 
     const [statusGroups, totalLines] = await Promise.all([
       saleStatusCodeIds.length > 0

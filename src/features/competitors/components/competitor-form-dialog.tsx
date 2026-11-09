@@ -41,13 +41,13 @@ interface CompetitorFormDialogProps {
   models: CompetitorModelOption[];
 }
 
-function toDateInputValue(iso: string) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
+function formatObservedDay(date: Date) {
+  return date.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "Asia/Manila",
+  });
 }
 
 export function CompetitorFormDialog({
@@ -74,10 +74,9 @@ export function CompetitorFormDialog({
   );
   const [promotion, setPromotion] = useState(observation?.promotion ?? "");
   const [notes, setNotes] = useState(observation?.notes ?? "");
-  const [observedAt, setObservedAt] = useState(
-    observation
-      ? toDateInputValue(observation.observedAt)
-      : toDateInputValue(new Date().toISOString()),
+  // Set by the server when the observation is saved; never edited afterwards.
+  const observedLabel = formatObservedDay(
+    observation ? new Date(observation.observedAt) : new Date(),
   );
 
   const filteredModels = useMemo(() => {
@@ -131,10 +130,6 @@ export function CompetitorFormDialog({
       toast.error("Competitor is required");
       return;
     }
-    if (!observedAt) {
-      toast.error("Observed date is required");
-      return;
-    }
 
     const payload = {
       competitorId,
@@ -143,7 +138,6 @@ export function CompetitorFormDialog({
       price: price === "" ? null : price,
       promotion: promotion.trim() || null,
       notes: notes.trim() || null,
-      observedAt: new Date(`${observedAt}T12:00:00`),
     };
 
     startTransition(async () => {
@@ -184,11 +178,16 @@ export function CompetitorFormDialog({
             <Label htmlFor="observedAt">Observed date</Label>
             <Input
               id="observedAt"
-              type="date"
-              value={observedAt}
-              onChange={(e) => setObservedAt(e.target.value)}
-              required
+              value={observedLabel}
+              readOnly
+              disabled
+              aria-describedby="observedAt-help"
             />
+            <p id="observedAt-help" className="text-xs text-muted-foreground">
+              {isEdit
+                ? "Set when the observation was logged. It cannot be changed."
+                : "Set to today when you save. It cannot be changed later."}
+            </p>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
