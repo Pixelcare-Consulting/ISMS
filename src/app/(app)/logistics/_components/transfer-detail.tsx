@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { DocumentDetailBand } from "@/app/(app)/logistics/_components/logistics-detail-ui";
-import { ShipmentPrintButton } from "@/app/(app)/logistics/_components/logistics-shipment-section";
+import { ShipmentPrintButton } from "@/app/(app)/logistics/_components/shipment-print-button";
 import {
   hasTransferDocumentAction,
   TransferDocumentActionButtons,

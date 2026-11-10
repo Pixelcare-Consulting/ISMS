@@ -16,7 +16,7 @@ import {
   DocumentDetailBand,
   LogisticsHistoryBody,
 } from "@/app/(app)/logistics/_components/logistics-detail-ui";
-import { ShipmentPrintButton } from "@/app/(app)/logistics/_components/logistics-shipment-section";
+import { ShipmentPrintButton } from "@/app/(app)/logistics/_components/shipment-print-button";
 import {
   EMPTY_CHECKLIST_OPTIONS,
   PULLOUT_LINE_FIELDS,

@@ -5,7 +5,6 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useState, useT
 import { toast } from "sonner";
 
 import { LogisticsHistoryBody } from "@/app/(app)/logistics/_components/logistics-detail-ui";
-import { LogisticsShipmentSection } from "@/app/(app)/logistics/_components/logistics-shipment-section";
 import { transferAuditLabel, TransferTracker } from "@/app/(app)/logistics/_components/transfer-tracker";
 import {
   CompactLineTable,
@@ -17,7 +16,6 @@ import { RecordFieldGrid, RecordReadout, RecordSection, RecordSheet } from "@/co
 import {
   approveTransferAction,
   executeTransferAction,
-  saveTransferShipmentAction,
   listBranchesForLogisticsAction,
   listTransferModelsAction,
   listTransferSerialsAction,
@@ -42,7 +40,6 @@ import {
 } from "@/features/logistics/lib/transfer-line-remarks";
 import { canApproveTransferAt } from "@/features/logistics/lib/transfer-approver";
 import { nextTransferNo } from "@/features/logistics/lib/transfer-number";
-import { shipmentIsReady } from "@/features/logistics/lib/shipment";
 import { printTransferSlips } from "@/features/logistics/lib/transfer-slip-print";
 import type { TransferDetail } from "@/features/logistics/services/transfer-posting.service";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
@@ -144,8 +141,6 @@ const APPROVE_NOTE =
 const REJECT_NOTE = "Rejected requests release only the units reserved on this transfer.";
 const RELEASE_NOTE =
   "Release sends these units in transit. Stock at the receiving branch does not increase until they are accepted.";
-const SAVE_SHIPMENT_TO_RELEASE =
-  "Save the waybill, courier and schedule date to release these units.";
 const RECEIVE_NOTE =
   "This serial moves to the receiving branch as stock. Its delivery receipt number updates. The original delivery date stays the same.";
 const REJECT_SERIAL_NOTE =
@@ -526,25 +521,19 @@ function onTheWayLine(count: number): string {
 function TransferPageWorkspace({
   detail,
   canReceive,
-  canEditShipment,
-  needsShipmentToRelease,
   pending,
   workflowStatuses,
   onAccept,
   onReject,
   onPrintSlips,
-  onShipmentSaved,
 }: {
   detail: TransferDetail;
   canReceive: boolean;
-  canEditShipment: boolean;
-  needsShipmentToRelease: boolean;
   pending: boolean;
   workflowStatuses: readonly WorkflowStatusOption[];
   onAccept: (line: TransferLineRow) => void;
   onReject: (line: TransferLineRow) => void;
   onPrintSlips: (() => void) | null;
-  onShipmentSaved: () => void;
 }) {
   const kind = transferWorkspaceKind(detail.status.code);
   const remarks = detail.notes?.trim() ?? "";
@@ -578,18 +567,7 @@ function TransferPageWorkspace({
         {showsOnTheWay(kind) ? (
           <p className="text-sm">{onTheWayLine(serialsStillOnTheWay(detail))}</p>
         ) : null}
-        {needsShipmentToRelease ? <p className="text-sm">{SAVE_SHIPMENT_TO_RELEASE}</p> : null}
       </RecordSection>
-      <LogisticsShipmentSection
-        key={`${detail.shipment.waybillNo ?? ""}|${detail.shipment.courierName ?? ""}|${detail.shipment.scheduledAt ?? ""}`}
-        shipment={detail.shipment}
-        canEdit={canEditShipment}
-        onSave={async (input) => {
-          const result = await saveTransferShipmentAction(detail.id, input);
-          if ("success" in result && result.success) onShipmentSaved();
-          return result;
-        }}
-      />
       <RecordSection title="Units" description="Serials on this transfer." divided>
         {onPrintSlips ? (
           <div className="mb-3 flex justify-end">
@@ -755,15 +733,13 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
       capabilities?.canRejectTransfer &&
       canApproveTransferAt(approvalBranchIds, detail.fromBranch.id),
   );
-  const mayRelease = Boolean(
+  const canRelease = Boolean(
     hasLines &&
       detail &&
       releasable &&
       capabilities?.canExecuteTransfer &&
       inScope(branchScope, detail.fromBranch.id),
   );
-  const shipmentSaved = Boolean(detail && shipmentIsReady(detail.shipment));
-  const canRelease = mayRelease && shipmentSaved;
   const receivable = detail?.status.code === TRANSFER_WORKFLOW_CODE.in_transit;
   const canReceive = Boolean(
     hasLines &&
@@ -776,10 +752,6 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
     branches.find((branch) => branch.id === fromBranchId)?.dealerId,
     branches.find((branch) => branch.id === toBranchId)?.dealerId,
   );
-  const shipmentClosed =
-    detail?.status.code === TRANSFER_WORKFLOW_CODE.rejected ||
-    detail?.status.code === TRANSFER_WORKFLOW_CODE.cancelled;
-  const canEditShipment = Boolean(detail && capabilities?.canManage && !shipmentClosed);
   const documentActions: TransferDocumentActions = {
     canApprove,
     canReject,
@@ -1089,11 +1061,8 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
         <TransferPageWorkspace
           detail={detail}
           canReceive={canReceive}
-          canEditShipment={canEditShipment}
-          needsShipmentToRelease={mayRelease && !shipmentSaved}
           pending={pending}
           workflowStatuses={workflowStatuses}
-          onShipmentSaved={() => onUpdated?.()}
           onPrintSlips={detail.rsNo && detail.drNo ? () => printCurrentSlips(detail) : null}
           onAccept={(line) =>
             setPendingConfirm({

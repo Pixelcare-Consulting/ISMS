@@ -240,8 +240,6 @@ export function headerAfterLineDecisions(
 
 export function planTransferRelease(input: {
   status: TransferStatus;
-  /** Waybill, courier and schedule date are all saved. */
-  shipmentReady: boolean;
   lines: readonly Pick<TransferLineView, "serialNumberId" | "priorCode" | "inventoryCode" | "decision">[];
 }): TransferReleasePlan | PlanFailure {
   if (input.lines.length === 0) {
@@ -263,9 +261,6 @@ export function planTransferRelease(input: {
 
   if (!RELEASABLE.includes(input.status)) {
     return { ok: false, error: "Release the transfer only after Team Lead approval" };
-  }
-  if (!input.shipmentReady) {
-    return { ok: false, error: "Save the waybill, courier and schedule date before release" };
   }
 
   const moves: TransferReleasePlan["moves"] = [];

@@ -209,7 +209,7 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
       {
         id: "logistics",
         role: "Logistics",
-        nodeIds: ["sched", "dispatch"],
+        nodeIds: ["dispatch"],
       },
       {
         id: "branch",
@@ -218,13 +218,11 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
       },
     ],
     nodes: [
-      { id: "sched", label: "Set schedule & waybill" },
       { id: "dispatch", label: "Copy To IT / DR in SAP" },
       { id: "receive", label: "Accept in Operations" },
       { id: "resolve", label: "Resolve shortage / damage" },
     ],
     edges: [
-      { from: "sched", to: "dispatch" },
       { from: "dispatch", to: "receive" },
       { from: "receive", to: "resolve" },
     ],

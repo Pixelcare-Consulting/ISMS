@@ -84,9 +84,6 @@ function transfer(code: string, decision = "pending") {
     statusCode: { code },
     rsNo: "RS-1",
     drNo: "DR-1",
-    waybillNo: "WB-1",
-    courierName: "LBC",
-    scheduledAt: new Date("2026-11-06T00:00:00.000Z"),
     lines: ["s1", "s2"].map((serialNumberId) => ({
       serialNumberId,
       decision,

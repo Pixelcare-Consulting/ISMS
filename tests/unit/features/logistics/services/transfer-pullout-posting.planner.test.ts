@@ -104,7 +104,6 @@ describe("transfer posting planner", () => {
     expect(approved.holds).toEqual([]);
 
     const released = planTransferRelease({
-      shipmentReady: true,
       status: "for_transfer",
       lines: [transferLine({ inventoryCode: "RSV" })],
     });
@@ -225,24 +224,8 @@ describe("transfer posting planner", () => {
     expect(plan.nextStatus).toBe("in_transit");
   });
 
-  it.each(["for_transfer", "approved"] as const)(
-    "refuses to release until the waybill, courier and schedule are saved (%s)",
-    (status) => {
-      const plan = planTransferRelease({
-        shipmentReady: false,
-        status,
-        lines: [transferLine({ inventoryCode: "RSV" })],
-      });
-      expect(plan).toEqual({
-        ok: false,
-        error: "Save the waybill, courier and schedule date before release",
-      });
-    },
-  );
-
-  it("treats a repeated release as done, whatever the shipment details now say", () => {
+  it("treats a repeated release as done", () => {
     const plan = planTransferRelease({
-      shipmentReady: false,
       status: "in_transit",
       lines: [transferLine({ inventoryCode: "DIT" })],
     });

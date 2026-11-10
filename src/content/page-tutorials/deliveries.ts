@@ -17,7 +17,6 @@ export const DELIVERIES_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "How to use it",
       bullets: [
-        "Save the waybill, courier, and schedule date on the delivery.",
         "In SAP, use Copy To on the ITR (to an Inventory Transfer) or the SO (to a Delivery) and pick the serials.",
         "ISMS checks SAP about every 10 minutes. The serials then appear on the delivery as in transit, and the SAP section shows the IT or DR number.",
         "If the SAP section says a document needs review or was not applied yet, it names the reason (for example a serial ISMS already has elsewhere).",

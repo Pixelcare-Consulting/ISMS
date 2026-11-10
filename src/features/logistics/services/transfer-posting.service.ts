@@ -7,7 +7,6 @@ import { aorRepository } from "@/features/aors/repositories/aor.repository";
 import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
 import { notificationService } from "@/features/notifications/services/notification.service";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
-import { shipmentIsReady, type LogisticsShipment } from "@/features/logistics/lib/shipment";
 import {
   DIFFERENT_DEALER_GROUP_MESSAGE,
   sameDealerGroup,
@@ -82,7 +81,6 @@ export interface TransferDetail {
   id: string;
   transferNo: string;
   notes: string | null;
-  shipment: LogisticsShipment;
   createdAt: string;
   createdBy: string | null;
   status: { code: string; name: string; color: string | null };
@@ -339,7 +337,6 @@ async function loadLines(
   statusCodeId: string;
   rsNo: string | null;
   drNo: string | null;
-  shipmentReady: boolean;
   lines: (TransferLineView & { priorStatusCodeId: string | null })[];
 } | null> {
   const transfer = await db.branchTransfer.findFirst({
@@ -353,9 +350,6 @@ async function loadLines(
       statusCode: { select: { code: true } },
       rsNo: true,
       drNo: true,
-      waybillNo: true,
-      courierName: true,
-      scheduledAt: true,
       lines: {
         select: {
           serialNumberId: true,
@@ -390,11 +384,6 @@ async function loadLines(
     statusCodeId: transfer.statusCodeId,
     rsNo: transfer.rsNo,
     drNo: transfer.drNo,
-    shipmentReady: shipmentIsReady({
-      waybillNo: transfer.waybillNo,
-      courierName: transfer.courierName,
-      scheduledAt: transfer.scheduledAt?.toISOString() ?? null,
-    }),
     lines: transfer.lines.map((line) => {
       const row = inventoryBySerial.get(line.serialNumberId);
       const onSource = row?.branchId === transfer.fromBranchId;
@@ -724,10 +713,6 @@ export const transferPostingService = {
         id: true,
         transferNo: true,
         notes: true,
-        waybillNo: true,
-        courierName: true,
-        scheduledAt: true,
-        scheduledBy: { select: { name: true } },
         createdAt: true,
         createdBy: { select: { name: true, email: true } },
         rsNo: true,
@@ -784,12 +769,6 @@ export const transferPostingService = {
       id: transfer.id,
       transferNo: transfer.transferNo,
       notes: transfer.notes,
-      shipment: {
-        waybillNo: transfer.waybillNo,
-        courierName: transfer.courierName,
-        scheduledAt: transfer.scheduledAt ? transfer.scheduledAt.toISOString() : null,
-        scheduledByName: transfer.scheduledBy?.name.trim() || null,
-      },
       createdAt: transfer.createdAt.toISOString(),
       createdBy: creatorName(transfer.createdBy),
       status: transfer.statusCode,
@@ -822,55 +801,6 @@ export const transferPostingService = {
         userName: row.user?.name || null,
       })),
     };
-  },
-
-  /** Saves waybill, courier, and schedule date. Does not move stock or change approval. */
-  async saveShipment(
-    actor: PostingActor,
-    transferId: string,
-    input: { waybillNo: string; courierName: string; scheduledAt: Date },
-  ) {
-    const transfer = await prisma.branchTransfer.findFirst({
-      where: { id: transferId, tenantId: actor.tenantId },
-      select: {
-        id: true,
-        transferNo: true,
-        fromBranchId: true,
-        statusCode: { select: { code: true } },
-      },
-    });
-    if (!transfer) throw new Error("Transfer not found");
-    await authorizePosting(actor, "transfer.saveShipment", transfer.fromBranchId);
-    const closed =
-      transfer.statusCode.code === TRANSFER_WORKFLOW_CODE.rejected ||
-      transfer.statusCode.code === TRANSFER_WORKFLOW_CODE.cancelled;
-    if (closed) throw new Error("This transfer is closed");
-
-    await prisma.branchTransfer.update({
-      where: { id: transfer.id },
-      data: {
-        waybillNo: input.waybillNo,
-        courierName: input.courierName,
-        scheduledAt: input.scheduledAt,
-        scheduledById: actor.userId,
-      },
-    });
-    await prisma.auditLog.create({
-      data: {
-        tenantId: actor.tenantId,
-        userId: actor.userId,
-        action: "transfer.shipment_saved",
-        entityType: "BranchTransfer",
-        entityId: transfer.id,
-        metadata: {
-          transferNo: transfer.transferNo,
-          waybillNo: input.waybillNo,
-          courierName: input.courierName,
-          scheduledAt: input.scheduledAt.toISOString().slice(0, 10),
-        },
-      },
-    });
-    return { id: transfer.id };
   },
 
   async create(

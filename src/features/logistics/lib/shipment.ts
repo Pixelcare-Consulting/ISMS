@@ -1,4 +1,4 @@
-/** Waybill and schedule saved by Logistics. Print uses the saved values only. */
+/** Pull-out waybill and schedule saved by Logistics. Print uses the saved values only. */
 export interface LogisticsShipment {
   waybillNo: string | null;
   courierName: string | null;
@@ -6,13 +6,6 @@ export interface LogisticsShipment {
   scheduledAt: string | null;
   scheduledByName: string | null;
 }
-
-export const EMPTY_SHIPMENT: LogisticsShipment = {
-  waybillNo: null,
-  courierName: null,
-  scheduledAt: null,
-  scheduledByName: null,
-};
 
 const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
 
