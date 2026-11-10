@@ -68,6 +68,13 @@ import { logger } from "@/lib/shared/logger";
 
 const CLAIM_LOST = "One or more serials changed before this transfer could be saved";
 
+/** An inventory_system code with its Settings → Status label and color. */
+export interface TransferInventoryStatus {
+  code: string;
+  name: string;
+  color: string | null;
+}
+
 export interface TransferSerialOption {
   serialNumberId: string;
   serialNo: string;
@@ -75,6 +82,7 @@ export interface TransferSerialOption {
   skuCode: string;
   modelName: string;
   inventoryCode: "STK" | "DEF";
+  inventoryStatus: TransferInventoryStatus;
 }
 
 export interface TransferDetail {
@@ -97,6 +105,8 @@ export interface TransferDetail {
     quantity: number;
     priorCode: string | null;
     inventoryCode: string | null;
+    /** Null when the unit is no longer at the releasing or receiving branch. */
+    inventoryStatus: TransferInventoryStatus | null;
     branchId: string | null;
     branchName: string | null;
     decision: "pending" | "accepted" | "rejected";
@@ -261,13 +271,14 @@ function freshTransferNo(previous?: string): string {
 }
 
 async function inventoryIds(tenantId: string) {
-  const [stk, def, rsv, dit] = await Promise.all([
+  const [stk, def, rsv, dit, ftr] = await Promise.all([
     reasonStatusService.requireCodeId(tenantId, "inventory_system", "STK"),
     reasonStatusService.requireCodeId(tenantId, "inventory_system", "DEF"),
     reasonStatusService.requireCodeId(tenantId, "inventory_system", "RSV"),
     reasonStatusService.requireCodeId(tenantId, "inventory_system", "DIT"),
+    reasonStatusService.requireCodeId(tenantId, "inventory_system", "FTR"),
   ]);
-  return { STK: stk, DEF: def, RSV: rsv, DIT: dit };
+  return { STK: stk, DEF: def, RSV: rsv, DIT: dit, FTR: ftr };
 }
 
 async function workflowId(tenantId: string, code: TransferWorkflowCodeKey) {
@@ -677,7 +688,7 @@ export const transferPostingService = {
       },
       select: {
         serialNumberId: true,
-        statusCode: { select: { code: true } },
+        statusCode: { select: { code: true, name: true, color: true } },
         serialNumber: {
           select: { serialNo: true, modelId: true, model: { select: { skuCode: true, name: true } } },
         },
@@ -701,6 +712,7 @@ export const transferPostingService = {
           skuCode: row.serialNumber.model.skuCode,
           modelName: row.serialNumber.model.name,
           inventoryCode: code,
+          inventoryStatus: row.statusCode,
         },
       ];
     });
@@ -752,7 +764,7 @@ export const transferPostingService = {
           select: {
             serialNumberId: true,
             branchId: true,
-            statusCode: { select: { code: true } },
+            statusCode: { select: { code: true, name: true, color: true } },
             branch: { select: { name: true } },
           },
         })
@@ -787,6 +799,7 @@ export const transferPostingService = {
           quantity: line.quantity,
           priorCode: line.priorStatusCode?.code ?? null,
           inventoryCode: row?.statusCode.code ?? null,
+          inventoryStatus: row?.statusCode ?? null,
           branchId: row?.branchId ?? null,
           branchName: row?.branch.name ?? null,
           decision: asLineDecision(line.decision),
@@ -961,25 +974,29 @@ export const transferPostingService = {
 
         await lockSerialNumbers(
           tx,
-          plan.holds.map((hold) => hold.serialNumberId),
+          plan.moves.map((move) => move.serialNumberId),
         );
-        for (const prior of ["STK", "DEF"] as const) {
-          const ids = plan.holds.filter((hold) => hold.priorCode === prior).map((hold) => hold.serialNumberId);
+        for (const from of ["RSV", "STK", "DEF"] as const) {
           await claimInventory(tx, {
             tenantId: actor.tenantId,
             branchId: fresh.fromBranchId,
-            serialNumberIds: ids,
-            fromStatusCodeId: codes[prior],
-            toStatusCodeId: codes.RSV,
+            serialNumberIds: plan.moves.filter((move) => move.fromCode === from).map((move) => move.serialNumberId),
+            fromStatusCodeId: codes[from],
+            toStatusCodeId: codes.FTR,
             userId: actor.userId,
             message: CLAIM_LOST,
           });
-          if (ids.length > 0) {
-            await tx.branchTransferLine.updateMany({
-              where: { transferId, serialNumberId: { in: ids }, priorStatusCodeId: null },
-              data: { priorStatusCodeId: codes[prior] },
-            });
-          }
+        }
+        // Legacy rows that were never reserved also never recorded their prior code.
+        for (const prior of ["STK", "DEF"] as const) {
+          const ids = plan.moves
+            .filter((move) => move.fromCode !== "RSV" && move.priorCode === prior)
+            .map((move) => move.serialNumberId);
+          if (ids.length === 0) continue;
+          await tx.branchTransferLine.updateMany({
+            where: { transferId, serialNumberId: { in: ids }, priorStatusCodeId: null },
+            data: { priorStatusCodeId: codes[prior] },
+          });
         }
 
         await claimHeader(tx, "branchTransfer", {
@@ -1004,9 +1021,9 @@ export const transferPostingService = {
           tenantId: actor.tenantId,
           userId: actor.userId,
           transferNo: fresh.transferNo,
-          serialNumberIds: plan.holds.map((hold) => hold.serialNumberId),
-          status: "RSV",
-          details: `Reserved on ${fresh.transferNo}`,
+          serialNumberIds: plan.moves.map((move) => move.serialNumberId),
+          status: "FTR",
+          details: `Approved for transfer on ${fresh.transferNo}`,
         });
         await tx.auditLog.create({
           data: {
@@ -1149,15 +1166,17 @@ export const transferPostingService = {
           actor.tenantId,
           plan.moves.map((move) => move.serialNumberId),
         );
-        await claimInventory(tx, {
-          tenantId: actor.tenantId,
-          branchId: fresh.fromBranchId,
-          serialNumberIds: plan.moves.map((move) => move.serialNumberId),
-          fromStatusCodeId: codes.RSV,
-          toStatusCodeId: codes.DIT,
-          userId: actor.userId,
-          message: "Some serials are not reserved for release",
-        });
+        for (const from of ["FTR", "RSV"] as const) {
+          await claimInventory(tx, {
+            tenantId: actor.tenantId,
+            branchId: fresh.fromBranchId,
+            serialNumberIds: plan.moves.filter((move) => move.fromCode === from).map((move) => move.serialNumberId),
+            fromStatusCodeId: codes[from],
+            toStatusCodeId: codes.DIT,
+            userId: actor.userId,
+            message: "Some serials are not approved for transfer",
+          });
+        }
         await claimHeader(tx, "branchTransfer", {
           id: transferId,
           tenantId: actor.tenantId,

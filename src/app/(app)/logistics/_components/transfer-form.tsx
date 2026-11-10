@@ -41,7 +41,10 @@ import {
 import { canApproveTransferAt } from "@/features/logistics/lib/transfer-approver";
 import { nextTransferNo } from "@/features/logistics/lib/transfer-number";
 import { printTransferSlips } from "@/features/logistics/lib/transfer-slip-print";
-import type { TransferDetail } from "@/features/logistics/services/transfer-posting.service";
+import type {
+  TransferDetail,
+  TransferInventoryStatus,
+} from "@/features/logistics/services/transfer-posting.service";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -127,6 +130,7 @@ interface FreeSerial {
   serialNumberId: string;
   serialNo: string;
   inventoryCode: string;
+  inventoryStatus: TransferInventoryStatus;
 }
 
 type PendingConfirm =
@@ -137,7 +141,7 @@ type PendingConfirm =
   | { type: "reject-serial"; serialNumberId: string; serialNo: string };
 
 const APPROVE_NOTE =
-  "Team Lead approval keeps the units reserved and sends the request to the releasing branch. Stock at the receiving branch does not increase.";
+  "Team Lead approval sets the units to For transfer and sends the request to the releasing branch. Stock at the receiving branch does not increase.";
 const REJECT_NOTE = "Rejected requests release only the units reserved on this transfer.";
 const RELEASE_NOTE =
   "Release sends these units in transit. Stock at the receiving branch does not increase until they are accepted.";
@@ -241,6 +245,11 @@ function modelLabel(model: { skuCode: string; name: string } | null | undefined)
 
 type TransferLineRow = TransferDetail["lines"][number];
 
+function InventoryStatusCell({ status }: { status: TransferInventoryStatus | null | undefined }) {
+  if (!status) return <span className="text-muted-foreground">—</span>;
+  return <StatusCodeBadge code={status.code} name={status.name} color={status.color} />;
+}
+
 function lineCanBeDecided(line: TransferLineRow, fromBranchId: string | null): boolean {
   if (line.decision !== "pending") return false;
   const held = line.inventoryCode === "RSV" || line.inventoryCode === "DIT";
@@ -265,6 +274,12 @@ function transferLineColumns(
       header: "Serial number",
       className: "w-48 font-mono",
       cell: (line) => line.serialNo,
+    },
+    {
+      id: "status",
+      header: "Status",
+      className: "w-36",
+      cell: (line) => <InventoryStatusCell status={line.inventoryStatus} />,
     },
     {
       id: "remarks",
@@ -1110,7 +1125,7 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
           />
         ) : (
         <div className="min-w-0 overflow-x-auto rounded-md border">
-          <table className="w-full min-w-[42rem] table-fixed text-sm">
+          <table className="w-full min-w-[50rem] table-fixed text-sm">
             <thead className="bg-muted/40 text-left">
               <tr>
                 <th
@@ -1132,6 +1147,12 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
                 </th>
                 <th className="px-2 py-2 align-middle font-medium text-muted-foreground" scope="col">
                   Serial number
+                </th>
+                <th
+                  className="w-32 px-2 py-2 align-middle font-medium text-muted-foreground"
+                  scope="col"
+                >
+                  Status
                 </th>
                 <th className="px-2 py-2 align-middle font-medium text-muted-foreground" scope="col">
                   Remarks
@@ -1188,7 +1209,7 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
                     .map((serial) => ({
                       id: serial.serialNumberId,
                       label: serial.serialNo,
-                      description: serial.inventoryCode,
+                      description: serial.inventoryStatus.name,
                     }));
                   return (
                     <tr key={row.key} className="border-t">
@@ -1236,6 +1257,14 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
                           emptyMessage="No stock or defective serials are free for this model."
                           disabled={pending || !lockedModelId || serialsLoading || serials.length === 0}
                           popoverClassName={SERIAL_POPOVER_CLASS}
+                        />
+                      </td>
+                      <td className="px-2 py-2 align-middle">
+                        <InventoryStatusCell
+                          status={
+                            serials.find((serial) => serial.serialNumberId === row.serialNumberId)
+                              ?.inventoryStatus
+                          }
                         />
                       </td>
                       <td className="min-w-0 px-2 py-2 align-middle">

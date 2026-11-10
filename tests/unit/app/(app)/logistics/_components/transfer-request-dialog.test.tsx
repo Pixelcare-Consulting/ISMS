@@ -35,6 +35,8 @@ const listModels = jest.mocked(listTransferModelsAction);
 const listSerials = jest.mocked(listTransferSerialsAction);
 const getDetail = jest.mocked(getTransferDetailAction);
 
+const STOCK = { code: "STK", name: "Stock", color: "emerald" };
+
 function renderCreate() {
   const onSubmit = jest.fn(async () => ({ transferNo: "XFR-1" }));
   render(
@@ -83,6 +85,7 @@ function detail(overrides: Partial<TransferDetail> = {}): TransferDetail {
         quantity: 1,
         priorCode: "STK",
         inventoryCode: "RSV",
+        inventoryStatus: { code: "RSV", name: "Reserved", color: "orange" },
         branchId: "branch-a",
         branchName: "Branch A",
         decision: "pending",
@@ -124,21 +127,21 @@ beforeEach(() => {
   listSerials.mockResolvedValue({
     success: true,
     serials: [
-      { serialNumberId: "s1", serialNo: "SN-1", inventoryCode: "STK" },
-      { serialNumberId: "s2", serialNo: "SN-2", inventoryCode: "STK" },
+      { serialNumberId: "s1", serialNo: "SN-1", inventoryCode: "STK", inventoryStatus: STOCK },
+      { serialNumberId: "s2", serialNo: "SN-2", inventoryCode: "STK", inventoryStatus: STOCK },
     ],
   } as Awaited<ReturnType<typeof listTransferSerialsAction>>);
   getDetail.mockReset();
 });
 
 describe("new transfer request form", () => {
-  it("lays out Transfer details as Model, Serial number, Remarks, Action", async () => {
+  it("lays out Transfer details as Model, Serial number, Status, Remarks, Action", async () => {
     renderCreate();
     const table = await screen.findByRole("table");
     const headers = within(table)
       .getAllByRole("columnheader")
       .map((cell) => cell.textContent);
-    expect(headers).toEqual(["#", "", "Model", "Serial number", "Remarks", "Action"]);
+    expect(headers).toEqual(["#", "", "Model", "Serial number", "Status", "Remarks", "Action"]);
   });
 
   it("takes remarks per serial instead of one remark for the whole request", async () => {
@@ -240,6 +243,30 @@ describe("branch transfer dialog", () => {
     );
     await screen.findByText("SN-1");
     expect(screen.getAllByText("Remarks")).toHaveLength(1);
+  });
+
+  it("shows each serial's current status on the line items", async () => {
+    const lines = detail().lines.map((line) => ({
+      ...line,
+      inventoryCode: "FTR",
+      inventoryStatus: { code: "FTR", name: "For transfer", color: "violet" },
+    }));
+    getDetail.mockResolvedValue({
+      success: true,
+      detail: detail({ status: { code: "for_transfer", name: "For transfer", color: null }, lines }),
+    } as Awaited<ReturnType<typeof getTransferDetailAction>>);
+    render(
+      <TransferRequestDialog
+        open
+        onOpenChange={jest.fn()}
+        onSubmit={jest.fn()}
+        onCreated={jest.fn()}
+        transferId="transfer-1"
+      />,
+    );
+    const row = (await screen.findByText("SN-1")).closest("tr");
+    expect(row).not.toBeNull();
+    expect(within(row as HTMLElement).getByText("For transfer")).toBeInTheDocument();
   });
 
   it.each([

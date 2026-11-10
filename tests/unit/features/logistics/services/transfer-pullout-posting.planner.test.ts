@@ -101,15 +101,16 @@ describe("transfer posting planner", () => {
     if (!approved.ok) return;
     expect(approved.nextStatus).toBe("for_transfer");
     expect(approved.destinationStockAdded).toBe(false);
-    expect(approved.holds).toEqual([]);
+    expect(approved.moves).toEqual([{ serialNumberId: "s1", fromCode: "RSV", priorCode: "STK" }]);
 
     const released = planTransferRelease({
       status: "for_transfer",
-      lines: [transferLine({ inventoryCode: "RSV" })],
+      lines: [transferLine({ inventoryCode: "FTR" })],
     });
     expect(released.ok).toBe(true);
     if (!released.ok) return;
     expect(released.nextStatus).toBe("in_transit");
+    expect(released.moves).toEqual([{ serialNumberId: "s1", fromCode: "FTR" }]);
 
     const received = planTransferReceive({
       status: "in_transit",
@@ -124,6 +125,49 @@ describe("transfer posting planner", () => {
     expect(received.moves).toEqual([
       { serialNumberId: "s1", restoreCode: "STK", fromCode: "DIT" },
     ]);
+  });
+
+  it("moves a legacy unit that was never reserved to For transfer on approval", () => {
+    const plan = planTransferApprove({
+      status: "pending_tl",
+      lines: [transferLine({ priorCode: null, inventoryCode: "DEF" })],
+    });
+    expect(plan).toMatchObject({
+      ok: true,
+      moves: [{ serialNumberId: "s1", fromCode: "DEF", priorCode: "DEF" }],
+    });
+  });
+
+  it("refuses to approve a request whose unit is no longer reserved", () => {
+    const plan = planTransferApprove({
+      status: "pending_tl",
+      lines: [transferLine({ inventoryCode: "SLD" })],
+    });
+    expect(plan).toEqual({ ok: false, error: "A serial on this transfer is no longer reserved" });
+  });
+
+  it("treats a repeated approval as done once every unit is For transfer", () => {
+    const plan = planTransferApprove({
+      status: "for_transfer",
+      lines: [transferLine({ inventoryCode: "FTR" })],
+    });
+    expect(plan).toMatchObject({ ok: true, idempotent: true, moves: [] });
+  });
+
+  it("releases a transfer approved before For transfer existed", () => {
+    const plan = planTransferRelease({
+      status: "for_transfer",
+      lines: [transferLine({ inventoryCode: "RSV" })],
+    });
+    expect(plan).toMatchObject({ ok: true, moves: [{ serialNumberId: "s1", fromCode: "RSV" }] });
+  });
+
+  it("refuses to release a unit that is not approved for transfer", () => {
+    const plan = planTransferRelease({
+      status: "for_transfer",
+      lines: [transferLine({ inventoryCode: "STK" })],
+    });
+    expect(plan).toEqual({ ok: false, error: "Some serials are not approved for transfer" });
   });
 
   it("rejects only the serials on this request", () => {

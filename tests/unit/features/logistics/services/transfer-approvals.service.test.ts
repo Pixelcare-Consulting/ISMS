@@ -55,6 +55,7 @@ jest.mock("@/features/reason-status/services/reason-status.service", () => ({
 }));
 
 import * as dbClient from "@/lib/database/client";
+import { claimInventory } from "@/features/logistics/services/posting-support";
 import { aorRepository } from "@/features/aors/repositories/aor.repository";
 import { transferPostingService } from "@/features/logistics/services/transfer-posting.service";
 import { notificationService } from "@/features/notifications/services/notification.service";
@@ -299,5 +300,56 @@ describe("transfer approvals", () => {
     await transferPostingService.receive(actor, "x1", ["s1"]);
 
     expect(mockTx.inventoryApproval.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("serial status through the transfer", () => {
+  const claim = claimInventory as jest.Mock;
+
+  it("reserves the units when the request is created", async () => {
+    await requestTransfer();
+
+    expect(claim).toHaveBeenCalledWith(
+      mockTx,
+      expect.objectContaining({
+        serialNumberIds: ["s1", "s2"],
+        fromStatusCodeId: "inventory_system-STK",
+        toStatusCodeId: "inventory_system-RSV",
+      }),
+    );
+  });
+
+  it("moves reserved units to For transfer on approval", async () => {
+    setUp("pending_tl", "RSV");
+
+    await transferPostingService.approve(actor, "x1");
+
+    expect(claim).toHaveBeenCalledWith(
+      mockTx,
+      expect.objectContaining({
+        serialNumberIds: ["s1", "s2"],
+        fromStatusCodeId: "inventory_system-RSV",
+        toStatusCodeId: "inventory_system-FTR",
+      }),
+    );
+    expect(mockTx.serialNumberHistory.createMany.mock.calls[0]?.[0].data).toEqual([
+      expect.objectContaining({ serialNumberId: "s1", status: "FTR", details: "Approved for transfer on XFR-1" }),
+      expect.objectContaining({ serialNumberId: "s2", status: "FTR" }),
+    ]);
+  });
+
+  it("moves For transfer units in transit on release", async () => {
+    setUp("for_transfer", "FTR");
+
+    await transferPostingService.release(actor, "x1");
+
+    expect(claim).toHaveBeenCalledWith(
+      mockTx,
+      expect.objectContaining({
+        serialNumberIds: ["s1", "s2"],
+        fromStatusCodeId: "inventory_system-FTR",
+        toStatusCodeId: "inventory_system-DIT",
+      }),
+    );
   });
 });

@@ -27,7 +27,7 @@ export interface PostingActor {
 
 export type PostingDb = Prisma.TransactionClient;
 
-const INVENTORY_CODES = ["DIT", "STK", "SLD", "OFS", "RSV", "DEF", "FPO", "FW"] as const;
+const INVENTORY_CODES = ["DIT", "STK", "SLD", "OFS", "RSV", "DEF", "FPO", "FTR", "FW"] as const;
 
 export function postingError(error: unknown, fallback: string): Error {
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
@@ -66,6 +66,7 @@ export function asInventoryCode(code: string | null | undefined): InventoryCode 
     case "RSV":
     case "DEF":
     case "FPO":
+    case "FTR":
     case "FW":
       return code;
     default:
