@@ -4,7 +4,10 @@ import {
   listInventoryAction,
   listInventoryGroupsAction,
 } from "@/features/inventory/actions/inventory.actions";
+import { InventoryListRefreshProvider } from "@/features/inventory/components/inventory-list-refresh";
+import { InventoryApprovalBranchIdsProvider } from "@/features/inventory/components/inventory-unit-status-cell";
 import { InventoryKpisStrip } from "@/features/inventory/components/inventory-kpis";
+import { defectApprovalBranchIds } from "@/features/inventory/lib/defect-approver";
 import { InventorySeriesSummaryPanel } from "@/features/inventory/components/inventory-series-summary";
 import {
   STOCK_UNITS_DEFAULT_SORT,
@@ -55,6 +58,11 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
 
   const hideBranch = (session.user.roleSlugs ?? []).includes("ps");
   const canSync = canSyncFromSap(session.user.permissions);
+  const approvalBranchIds = await defectApprovalBranchIds(
+    session.user.tenantId,
+    session.user.id,
+    session.user.roleSlugs,
+  );
 
   const [seriesSummary, kpis] = await Promise.all([
     getInventorySeriesSummaryAction(summaryFilters),
@@ -84,14 +92,18 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
           <InventoryKpisStrip kpis={kpis} />
         </ModuleGuide>
         <InventorySeriesSummaryPanel summary={seriesSummary} />
-        <InventoryTable
-          result={result}
-          initialOffPlanogram={offPlanogram}
-          initialSort={sort}
-          initialSortDir={sortDir}
-          hideBranch={hideBranch}
-          canSync={canSync}
-        />
+        <InventoryApprovalBranchIdsProvider approvalBranchIds={approvalBranchIds}>
+          <InventoryListRefreshProvider>
+            <InventoryTable
+              result={result}
+              initialOffPlanogram={offPlanogram}
+              initialSort={sort}
+              initialSortDir={sortDir}
+              hideBranch={hideBranch}
+              canSync={canSync}
+            />
+          </InventoryListRefreshProvider>
+        </InventoryApprovalBranchIdsProvider>
       </div>
     );
   }
@@ -116,15 +128,19 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
         <InventoryKpisStrip kpis={kpis} />
       </ModuleGuide>
       <InventorySeriesSummaryPanel summary={seriesSummary} />
-      <InventoryGroupedTable
-        key={`${groupBy}:${params.branch ?? ""}:${params.sku ?? ""}:${offPlanogram ? "1" : "0"}`}
-        groupBy={groupBy}
-        result={groupResult}
-        initialOffPlanogram={offPlanogram}
-        initialSearch={searchQuery}
-        hideBranch={hideBranch}
-        canSync={canSync}
-      />
+      <InventoryApprovalBranchIdsProvider approvalBranchIds={approvalBranchIds}>
+        <InventoryListRefreshProvider>
+          <InventoryGroupedTable
+            key={`${groupBy}:${params.branch ?? ""}:${params.sku ?? ""}:${offPlanogram ? "1" : "0"}`}
+            groupBy={groupBy}
+            result={groupResult}
+            initialOffPlanogram={offPlanogram}
+            initialSearch={searchQuery}
+            hideBranch={hideBranch}
+            canSync={canSync}
+          />
+        </InventoryListRefreshProvider>
+      </InventoryApprovalBranchIdsProvider>
     </div>
   );
 }

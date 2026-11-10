@@ -69,10 +69,16 @@ export type InventoryListFilters = {
 };
 
 /**
- * Stock units lists on-hand stock only (STK). Sold / reserved / in-transit
- * units belong in Sales, Logistics, or other modules.
+ * Sellable on-hand stock. Sidebar count, series summary, and orders stay on STK.
+ * Display units and defective units are not sellable.
  */
-export const STOCK_UNITS_LIST_STATUS_CODES = ["STK"] as const;
+export const SELLABLE_STOCK_STATUS_CODES = ["STK"] as const;
+
+/**
+ * All serials keeps a unit on the list after it becomes a display unit or defective.
+ * Reserved, sold, in transit, and pull-out statuses stay out of this list.
+ */
+export const ALL_SERIALS_STATUS_CODES = ["STK", "DU", "DEF"] as const;
 
 export type InventorySeriesSkuAgg = {
   skuCode: string;
@@ -142,7 +148,7 @@ async function buildInventoryWhere(
       ? { serialNumber: { model: { skuCode: filters.skuCode } } }
       : {}),
     statusCode: {
-      code: { in: [...STOCK_UNITS_LIST_STATUS_CODES] },
+      code: { in: [...ALL_SERIALS_STATUS_CODES] },
     },
   };
 
@@ -494,7 +500,7 @@ export const inventoryRepository = {
     }
     conditions.push(
       Prisma.sql`rsc.code IN (${Prisma.join([
-        ...STOCK_UNITS_LIST_STATUS_CODES,
+        ...SELLABLE_STOCK_STATUS_CODES,
       ])})`,
     );
     if (filters?.offPlanogramOnly) {
@@ -537,14 +543,14 @@ export const inventoryRepository = {
     });
   },
 
-  /** Live STK units in scope — same status filter as the Stock units list. */
+  /** Live sellable STK units in scope. Display units and defective units are excluded. */
   countStockUnits(tenantId: string, branchIds: string[]) {
     if (branchIds.length === 0) return Promise.resolve(0);
     return prisma.branchInventory.count({
       where: {
         tenantId,
         branchId: { in: branchIds },
-        statusCode: { code: { in: [...STOCK_UNITS_LIST_STATUS_CODES] } },
+        statusCode: { code: { in: [...SELLABLE_STOCK_STATUS_CODES] } },
       },
     });
   },
@@ -567,15 +573,34 @@ export const inventoryRepository = {
     });
   },
 
-  updateStatus(
-    tenantId: string,
-    id: string,
-    statusCodeId: string,
-    updatedById: string,
-  ) {
-    return prisma.branchInventory.update({
-      where: { id, tenantId },
-      data: { statusCodeId, updatedById },
+  updateStatus(input: {
+    tenantId: string;
+    id: string;
+    statusCodeId: string;
+    updatedById: string;
+    serialNumberId: string;
+    historyDetails: string;
+    historyStatus: string;
+  }) {
+    return prisma.$transaction(async (tx) => {
+      const item = await tx.branchInventory.update({
+        where: { id: input.id, tenantId: input.tenantId },
+        data: {
+          statusCodeId: input.statusCodeId,
+          updatedById: input.updatedById,
+        },
+      });
+      await tx.serialNumberHistory.create({
+        data: {
+          tenantId: input.tenantId,
+          serialNumberId: input.serialNumberId,
+          txnType: "inv_status_update",
+          details: input.historyDetails,
+          status: input.historyStatus,
+          createdById: input.updatedById,
+        },
+      });
+      return item;
     });
   },
 

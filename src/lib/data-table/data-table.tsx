@@ -778,7 +778,13 @@ function DataTableBodyRows<TData extends RowData>({
       {expandedContent ? (
         <TableRow className="hover:bg-transparent">
           <TableCell colSpan={colSpan} className="p-0">
-            <div className="w-0 min-w-full">{expandedContent}</div>
+            <div
+              className="w-0 min-w-full"
+              onClick={(event) => event.stopPropagation()}
+              onPointerDown={(event) => event.stopPropagation()}
+            >
+              {expandedContent}
+            </div>
           </TableCell>
         </TableRow>
       ) : null}

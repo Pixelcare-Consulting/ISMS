@@ -124,6 +124,19 @@ describe("worksheet suggestion and DII", () => {
     expect(payload.lines[0]?.outstandingOrderQty).toBe(3);
   });
 
+  it("does not count a display unit as on-hand stock", () => {
+    const payload = assemble({
+      models: [model({ modelId: "m1", skuCode: "SKU-1", shelfMax: 10 })],
+      serials: [
+        { serialNumberId: "stk", modelId: "m1", statusCode: "STK", pendingDefectInspection: false },
+        { serialNumberId: "du", modelId: "m1", statusCode: "DU", pendingDefectInspection: false },
+      ],
+    });
+
+    expect(payload.lines[0]?.inventory.onHandQty).toBe(1);
+    expect(payload.lines[0]?.inventory.availableToSellQty).toBe(1);
+  });
+
   it("marks off-planogram suggestions unavailable", () => {
     const suggestion = worksheetSuggestion({
       onPlanogram: false,

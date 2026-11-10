@@ -66,6 +66,33 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.86.0",
+    date: "2026-11-10",
+    releasedAt: "2026-11-10T10:00:00+08:00",
+    title: "Display units and defect approval",
+    highlights: [
+      "Staff can mark a unit as display stock, send a defect for the branch team leader to approve, or put a display unit back to stock.",
+      "A defective unit stays defective. Display units are not counted as stock you can sell.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "On stock and display units, mark the unit as a display unit or return it to stock right away. Sending it as defective asks for the problem and waits for that branch’s team leader. Until they approve, the unit stays as it is. Rejecting the report leaves it unchanged. A unit that is already defective cannot be changed here.",
+      },
+      {
+        type: "improvement",
+        description:
+          "All serials keeps display units and defective units on the list. The stock count, series summary, and order on-hand still count stock only.",
+      },
+      {
+        type: "fix",
+        description:
+          "Stock and Display unit update that serial and the branch and model counts right away. Defective opens the problem description so it can be sent to the team leader; the unit stays as it is until they approve.",
+      },
+    ],
+  },
+  {
     version: "0.85.0",
     date: "2026-11-03",
     releasedAt: "2026-11-03T15:44:00+08:00",

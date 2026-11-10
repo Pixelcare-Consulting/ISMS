@@ -35,6 +35,7 @@ export type InventoryListItem = {
   deliveryDate: string | null;
   agingDays: number;
   pendingDefectInspection: boolean;
+  pendingDefectReportId: string | null;
   statusCode: { id: string; code: string; name: string; color: string | null };
   branch: { id: string; name: string; sapCode: string };
   serialNumber: {
@@ -130,6 +131,7 @@ function mapEnrichedToListItem(
     deliveryDate: r.deliveryDate ? r.deliveryDate.toISOString() : null,
     agingDays: r.agingDays,
     pendingDefectInspection: r.pendingDefectInspection,
+    pendingDefectReportId: r.pendingDefectReportId,
     statusCode: {
       id: r.statusCode.id,
       code: r.statusCode.code,
@@ -381,17 +383,34 @@ export async function countStockUnitsStkAction(): Promise<number> {
 
 export async function updateInventoryStatusAction(
   inventoryId: string,
-  statusCodeId: string,
+  targetCode: "STK" | "DU",
 ) {
   const session = await requirePermission("inventory.view");
+  switch (targetCode) {
+    case "STK":
+    case "DU":
+      break;
+    default: {
+      const unexpected: never = targetCode;
+      return { error: `This status cannot be set from here (${unexpected})` };
+    }
+  }
+
   try {
+    const statusCodeId = await reasonStatusService.requireCodeId(
+      session.user.tenantId,
+      "inventory_system",
+      targetCode,
+    );
     await inventoryService.updateStatus({
       tenantId: session.user.tenantId,
       actorUserId: session.user.id,
+      permissions: session.user.permissions,
       inventoryId,
       statusCodeId,
     });
     revalidatePath("/inventory");
+    revalidatePath("/inventory/serial-numbers");
     return { success: true as const };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to update status" };

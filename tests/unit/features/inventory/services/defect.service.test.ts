@@ -9,6 +9,18 @@ jest.mock("@/lib/auth/permissions", () => ({
   hasPermission: (permissions: string[] | undefined, slug: string) =>
     Boolean(permissions?.includes(slug)),
 }));
+jest.mock("@/lib/aor/scope", () => ({
+  getUserBranchIds: jest.fn(),
+}));
+jest.mock("@/features/aors/repositories/aor.repository", () => ({
+  aorRepository: { listUserIdsForBranchByRole: jest.fn() },
+}));
+jest.mock("@/features/notifications/services/notification.service", () => ({
+  notificationService: { createNotification: jest.fn() },
+}));
+jest.mock("@/lib/shared/logger", () => ({
+  logger: { warn: jest.fn() },
+}));
 
 jest.mock("@/lib/database/client", () => ({
   prisma: {
@@ -36,17 +48,22 @@ jest.mock("@/features/reason-status/services/reason-status.service", () => ({
   reasonStatusService: { requireCodeId: jest.fn() },
 }));
 
+import { aorRepository } from "@/features/aors/repositories/aor.repository";
 import { aorService } from "@/features/aors/services/aor.service";
 import { auditService } from "@/features/audit/services/audit.service";
 import { defectRepository } from "@/features/inventory/repositories/defect.repository";
 import { defectService } from "@/features/inventory/services/defect.service";
+import { notificationService } from "@/features/notifications/services/notification.service";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
+import { getUserBranchIds } from "@/lib/aor/scope";
 import { prisma } from "@/lib/database/client";
 
 const findInventory = prisma.branchInventory.findFirst as jest.Mock;
 const transaction = prisma.$transaction as jest.Mock;
 const approvalRows = prisma.inventoryApproval as unknown as { createMany: jest.Mock; updateMany: jest.Mock };
 const getBranchIds = aorService.getBranchIdsForUser as jest.Mock;
+const approvalBranchIds = getUserBranchIds as jest.Mock;
+const notifyLeaders = aorRepository.listUserIdsForBranchByRole as jest.Mock;
 
 const baseInventory = {
   id: "inv-1",
@@ -64,11 +81,17 @@ const pendingReport = {
   branchInventoryId: "inv-1",
   serialNumberId: "sn-1",
   serialNumber: { serialNo: "SN-100" },
+  branchInventory: {
+    statusCode: { code: "STK", name: "Stock" },
+  },
 };
 
 beforeEach(() => {
   jest.clearAllMocks();
   getBranchIds.mockResolvedValue(["branch-1"]);
+  approvalBranchIds.mockResolvedValue(["branch-1"]);
+  notifyLeaders.mockResolvedValue([]);
+  (notificationService.createNotification as jest.Mock).mockResolvedValue(undefined);
   (auditService.log as jest.Mock).mockResolvedValue(undefined);
   (defectRepository.writeDefectHistory as jest.Mock).mockResolvedValue(undefined);
 });
@@ -108,7 +131,7 @@ describe("defectService.reportDefect", () => {
         sourceType: "DEFECT_REPORT",
         sourceId: "report-1",
         sourceNo: null,
-        step: "INSPECTION",
+        step: "TL_APPROVAL",
         serialNumberId: "sn-1",
         status: "PENDING",
         requestedById: "user-1",
@@ -120,7 +143,53 @@ describe("defectService.reportDefect", () => {
     );
   });
 
-  it("rejects when unit is not STK", async () => {
+  it("accepts a display unit without changing its status", async () => {
+    findInventory.mockResolvedValue({
+      ...baseInventory,
+      statusCode: { code: "DU" },
+    });
+    (defectRepository.findOpenPendingByBranchInventoryId as jest.Mock).mockResolvedValue(null);
+    (defectRepository.createReportWithPhotos as jest.Mock).mockResolvedValue({ id: "report-1" });
+
+    await defectService.reportDefect({
+      tenantId: "t1",
+      actorUserId: "user-1",
+      permissions: ["inventory.view"],
+      branchInventoryId: "inv-1",
+      reason: "Flicker on the floor model",
+    });
+
+    expect(transaction).not.toHaveBeenCalled();
+    expect(defectRepository.createReportWithPhotos).toHaveBeenCalled();
+  });
+
+  it("notifies that branch's team leaders with a link to the serial", async () => {
+    findInventory.mockResolvedValue(baseInventory);
+    (defectRepository.findOpenPendingByBranchInventoryId as jest.Mock).mockResolvedValue(null);
+    (defectRepository.createReportWithPhotos as jest.Mock).mockResolvedValue({ id: "report-1" });
+    notifyLeaders.mockResolvedValue(["tl-1", "user-1"]);
+
+    await defectService.reportDefect({
+      tenantId: "t1",
+      actorUserId: "user-1",
+      permissions: ["inventory.view"],
+      branchInventoryId: "inv-1",
+      reason: "Screen crack",
+    });
+
+    expect(notifyLeaders).toHaveBeenCalledWith("t1", "branch-1", "tl");
+    expect(notificationService.createNotification).toHaveBeenCalledTimes(1);
+    expect(notificationService.createNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          userId: "tl-1",
+          href: "/inventory/serial-numbers/sn-1",
+        }),
+      }),
+    );
+  });
+
+  it("rejects when unit is not stock or a display unit", async () => {
     findInventory.mockResolvedValue({
       ...baseInventory,
       statusCode: { code: "DEF" },
@@ -134,7 +203,7 @@ describe("defectService.reportDefect", () => {
         branchInventoryId: "inv-1",
         reason: "Already defective",
       }),
-    ).rejects.toThrow(/Only stock \(STK\)/);
+    ).rejects.toThrow(/Only stock or display units/);
 
     expect(defectRepository.createReportWithPhotos).not.toHaveBeenCalled();
   });
@@ -195,7 +264,7 @@ describe("defectService.approveDefect", () => {
     const result = await defectService.approveDefect({
       tenantId: "t1",
       actorUserId: "mgr-1",
-      permissions: ["inventory.manage"],
+      roleSlugs: ["tl"],
       reportId: "report-1",
       decisionRemarks: "Confirmed damage",
     });
@@ -210,13 +279,71 @@ describe("defectService.approveDefect", () => {
       expect.objectContaining({ status: "DEF" }),
     );
     expect(approvalRows.updateMany.mock.calls[0][0]).toMatchObject({
-      where: { sourceType: "DEFECT_REPORT", sourceId: "report-1", step: "INSPECTION" },
+      where: { sourceType: "DEFECT_REPORT", sourceId: "report-1", step: "TL_APPROVAL" },
       data: { status: "APPROVED", decidedById: "mgr-1", remarks: "Confirmed damage" },
     });
     expect(auditService.log).toHaveBeenCalledWith(
       expect.objectContaining({ action: "inventory.defect_approved" }),
     );
     expect(result?.status).toBe("approved");
+  });
+
+  it("refuses a product specialist and a manager who is not the team leader", async () => {
+    (defectRepository.findById as jest.Mock).mockReset();
+    (defectRepository.findById as jest.Mock).mockResolvedValue(pendingReport);
+
+    await expect(
+      defectService.approveDefect({
+        tenantId: "t1",
+        actorUserId: "ps-1",
+        roleSlugs: ["ps"],
+        reportId: "report-1",
+      }),
+    ).rejects.toThrow(/team leader for this branch/);
+
+    await expect(
+      defectService.approveDefect({
+        tenantId: "t1",
+        actorUserId: "mgr-1",
+        roleSlugs: ["manager"],
+        reportId: "report-1",
+      }),
+    ).rejects.toThrow(/team leader for this branch/);
+
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it("refuses a team leader from another branch", async () => {
+    (defectRepository.findById as jest.Mock).mockReset();
+    (defectRepository.findById as jest.Mock).mockResolvedValue(pendingReport);
+    approvalBranchIds.mockResolvedValue(["other-branch"]);
+
+    await expect(
+      defectService.approveDefect({
+        tenantId: "t1",
+        actorUserId: "tl-2",
+        roleSlugs: ["tl"],
+        reportId: "report-1",
+      }),
+    ).rejects.toThrow(/team leader for this branch/);
+  });
+
+  it("lets a super admin decide any branch", async () => {
+    (defectRepository.findById as jest.Mock).mockReset();
+    (defectRepository.findById as jest.Mock)
+      .mockResolvedValueOnce(pendingReport)
+      .mockResolvedValueOnce({ ...pendingReport, status: "approved" });
+    approvalBranchIds.mockResolvedValue([]);
+
+    const result = await defectService.approveDefect({
+      tenantId: "t1",
+      actorUserId: "admin-1",
+      roleSlugs: ["super_admin"],
+      reportId: "report-1",
+    });
+
+    expect(result?.status).toBe("approved");
+    expect(transaction).toHaveBeenCalled();
   });
 });
 
@@ -230,7 +357,7 @@ describe("defectService.rejectDefect", () => {
     const result = await defectService.rejectDefect({
       tenantId: "t1",
       actorUserId: "mgr-1",
-      permissions: ["inventory.manage"],
+      roleSlugs: ["tl"],
       reportId: "report-1",
     });
 
@@ -239,15 +366,44 @@ describe("defectService.rejectDefect", () => {
       expect.objectContaining({ status: "rejected", reportId: "report-1" }),
     );
     expect(defectRepository.writeDefectHistory).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "STK" }),
+      expect.objectContaining({
+        status: "STK",
+        details: expect.stringContaining("unit remains Stock (STK)"),
+      }),
     );
     expect(approvalRows.updateMany.mock.calls[0][0]).toMatchObject({
-      where: { sourceType: "DEFECT_REPORT", sourceId: "report-1", step: "INSPECTION" },
+      where: { sourceType: "DEFECT_REPORT", sourceId: "report-1", step: "TL_APPROVAL" },
       data: { status: "REJECTED", decidedById: "mgr-1" },
     });
     expect(auditService.log).toHaveBeenCalledWith(
       expect.objectContaining({ action: "inventory.defect_rejected" }),
     );
     expect(result?.status).toBe("rejected");
+  });
+
+  it("leaves a display unit on display when the report is rejected", async () => {
+    const displayReport = {
+      ...pendingReport,
+      branchInventory: { statusCode: { code: "DU", name: "Display unit" } },
+    };
+    (defectRepository.findById as jest.Mock)
+      .mockResolvedValueOnce(displayReport)
+      .mockResolvedValueOnce({ ...displayReport, status: "rejected" });
+    (defectRepository.closeReport as jest.Mock).mockResolvedValue(undefined);
+
+    await defectService.rejectDefect({
+      tenantId: "t1",
+      actorUserId: "tl-1",
+      roleSlugs: ["tl"],
+      reportId: "report-1",
+    });
+
+    expect(defectRepository.writeDefectHistory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "DU",
+        details: expect.stringContaining("unit remains Display unit (DU)"),
+      }),
+    );
+    expect(transaction).not.toHaveBeenCalled();
   });
 });

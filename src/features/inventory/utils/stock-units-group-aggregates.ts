@@ -57,6 +57,50 @@ export function readGroupStatusCounts(value: unknown): Record<string, number> {
   return counts;
 }
 
+const KNOWN_STATUS_LABELS: Record<string, { name: string; color: string }> = {
+  STK: { name: "Stock", color: "emerald" },
+  DU: { name: "Display unit", color: "amber" },
+  DEF: { name: "Defective", color: "rose" },
+};
+
+/**
+ * Move one unit between two status chips. Used so an open branch or model row
+ * updates as soon as Stock or Display unit succeeds, before the refetch lands.
+ */
+export function shiftGroupStatusCounts(
+  counts: InventoryGroupAggregates,
+  fromCode: string,
+  toCode: string,
+): InventoryGroupAggregates {
+  if (fromCode === toCode) return counts;
+
+  const statuses = counts.statuses.map((status) => ({ ...status }));
+  const apply = (code: string, delta: number) => {
+    const existing = statuses.find((status) => status.code === code);
+    if (existing) {
+      existing.count = Math.max(0, existing.count + delta);
+      return;
+    }
+    if (delta <= 0) return;
+    const known = KNOWN_STATUS_LABELS[code];
+    statuses.push({
+      code,
+      name: known?.name ?? code,
+      color: known?.color ?? null,
+      count: delta,
+    });
+  };
+
+  apply(fromCode, -1);
+  apply(toCode, 1);
+
+  const statusCounts = { ...counts.statusCounts };
+  statusCounts[fromCode] = Math.max(0, (statusCounts[fromCode] ?? 0) - 1);
+  statusCounts[toCode] = (statusCounts[toCode] ?? 0) + 1;
+
+  return { ...counts, statuses, statusCounts };
+}
+
 /** Row chips: only statuses that currently have units. Summary cards still show zeros. */
 export function visibleInventoryGroupStatuses(
   statuses: readonly InventoryGroupStatusCount[],

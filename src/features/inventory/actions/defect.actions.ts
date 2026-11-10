@@ -98,7 +98,7 @@ export async function reportInventoryDefectAction(input: unknown) {
 }
 
 export async function approveInventoryDefectAction(input: unknown) {
-  const session = await requirePermission("inventory.manage");
+  const session = await requirePermission("inventory.view");
   const parsed = decideDefectSchema.safeParse(input);
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -108,7 +108,7 @@ export async function approveInventoryDefectAction(input: unknown) {
     await defectService.approveDefect({
       tenantId: session.user.tenantId,
       actorUserId: session.user.id,
-      permissions: session.user.permissions,
+      roleSlugs: session.user.roleSlugs,
       reportId: parsed.data.reportId,
       decisionRemarks: parsed.data.decisionRemarks,
     });
@@ -122,7 +122,7 @@ export async function approveInventoryDefectAction(input: unknown) {
 }
 
 export async function rejectInventoryDefectAction(input: unknown) {
-  const session = await requirePermission("inventory.manage");
+  const session = await requirePermission("inventory.view");
   const parsed = decideDefectSchema.safeParse(input);
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -132,7 +132,7 @@ export async function rejectInventoryDefectAction(input: unknown) {
     await defectService.rejectDefect({
       tenantId: session.user.tenantId,
       actorUserId: session.user.id,
-      permissions: session.user.permissions,
+      roleSlugs: session.user.roleSlugs,
       reportId: parsed.data.reportId,
       decisionRemarks: parsed.data.decisionRemarks,
     });

@@ -27,6 +27,11 @@ import {
   type InventoryListItem,
 } from "@/features/inventory/actions/inventory.actions";
 import {
+  useInventoryListRefreshSubscription,
+  type InventoryRowMutation,
+} from "@/features/inventory/components/inventory-list-refresh";
+import { shiftGroupStatusCounts } from "@/features/inventory/utils/stock-units-group-aggregates";
+import {
   STOCK_UNITS_WAREHOUSE_ROLE_LABELS,
   type StockUnitsGroupBy,
 } from "@/features/inventory/constants/stock-units-group";
@@ -70,6 +75,8 @@ type PaginatedSlice<T> = {
   loading: boolean;
   error: string | null;
 };
+
+const EMPTY_STATUS_SHIFTS: Array<{ from: string; to: string }> = [];
 
 const groupHelper = createColumnHelper<DataTableFeatures, GroupTopItem>();
 
@@ -144,7 +151,18 @@ function useSliceCache<T>(pageSize: number) {
     [pageSize],
   );
 
-  return [cache, load] as const;
+  const updateSlices = useCallback((update: (slice: PaginatedSlice<T>) => PaginatedSlice<T>) => {
+    setCache((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Map(prev);
+      for (const [key, slice] of prev) {
+        next.set(key, update(slice));
+      }
+      return next;
+    });
+  }, []);
+
+  return [cache, load, updateSlices] as const;
 }
 
 function topIdOf(groupBy: StockUnitsGroupBy, row: GroupTopItem): string {
@@ -231,8 +249,27 @@ export function InventoryGroupedTable({
   const [midPageByTop, setMidPageByTop] = useState<Record<string, number>>({});
   const [serialPageByPair, setSerialPageByPair] = useState<Record<string, number>>({});
 
-  const [midCache, loadMidSlice] = useSliceCache<GroupMidItem>(pageSize);
-  const [serialCache, loadSerialSlice] = useSliceCache<InventoryListItem>(pageSize);
+  const [midCache, loadMidSlice, updateMidSlices] = useSliceCache<GroupMidItem>(pageSize);
+  const [serialCache, loadSerialSlice, updateSerialSlices] = useSliceCache<InventoryListItem>(
+    pageSize,
+  );
+  const [shiftTrack, setShiftTrack] = useState<{
+    result: PaginatedResult<GroupTopItem>;
+    shifts: Array<{ from: string; to: string }>;
+  }>({ result, shifts: [] });
+  if (shiftTrack.result !== result) {
+    setShiftTrack({ result, shifts: [] });
+  }
+  const statusShifts = useMemo(
+    () => (shiftTrack.result === result ? shiftTrack.shifts : EMPTY_STATUS_SHIFTS),
+    [result, shiftTrack],
+  );
+  const recordStatusShift = useCallback((from: string, to: string) => {
+    setShiftTrack((current) => ({
+      result,
+      shifts: [...(current.result === result ? current.shifts : []), { from, to }],
+    }));
+  }, [result]);
 
   const currentView: StockUnitsView = groupBy;
 
@@ -306,6 +343,46 @@ export function InventoryGroupedTable({
     [filterSuffix, groupBy, listFilters, loadSerialSlice, pageSize],
   );
 
+  useInventoryListRefreshSubscription((mutation) => {
+    updateSerialSlices((slice) => ({
+      ...slice,
+      items: slice.items.map((item) => applySerialMutation(item, mutation)),
+    }));
+
+    if (mutation.kind === "status") {
+      recordStatusShift(mutation.fromCode, mutation.toCode);
+      if (expandedMidId && (groupBy === "by-branch" || groupBy === "by-model")) {
+        const midId = expandedMidId;
+        const view = groupBy;
+        updateMidSlices((slice) => ({
+          ...slice,
+          items: slice.items.map((item) =>
+            openMidKey(view, item) === midId
+              ? {
+                  ...item,
+                  counts: shiftGroupStatusCounts(
+                    item.counts,
+                    mutation.fromCode,
+                    mutation.toCode,
+                  ),
+                }
+              : item,
+          ),
+        }));
+      }
+    }
+
+    if (expandedTopId) {
+      void loadMidLevel(expandedTopId, midPageByTop[expandedTopId] ?? 1);
+    }
+    if (expandedTopId && expandedMidId && (groupBy === "by-branch" || groupBy === "by-model")) {
+      const branchId = groupBy === "by-branch" ? expandedTopId : expandedMidId;
+      const modelId = groupBy === "by-branch" ? expandedMidId : expandedTopId;
+      const page = serialPageByPair[cacheKey([branchId, modelId])] ?? 1;
+      void loadSerials(branchId, modelId, page);
+    }
+  });
+
   function resolveBranchModelIds(
     topId: string,
     midItem: GroupMidItem,
@@ -345,6 +422,18 @@ export function InventoryGroupedTable({
     [groupBy, indexOffset, topLabel],
   );
 
+  const tableRows = useMemo(() => {
+    if (statusShifts.length === 0 || !expandedTopId) return pageItems;
+    return pageItems.map((row) => {
+      if (topIdOf(groupBy, row) !== expandedTopId) return row;
+      const counts = statusShifts.reduce(
+        (current, shift) => shiftGroupStatusCounts(current, shift.from, shift.to),
+        row.counts,
+      );
+      return { ...row, counts };
+    });
+  }, [expandedTopId, groupBy, pageItems, statusShifts]);
+
   const getExpandLabel = useCallback((row: GroupTopItem, open: boolean) => {
     const name = groupTitleText(groupBy, row);
     return open ? `Collapse ${name}` : `Expand ${name}`;
@@ -381,7 +470,7 @@ export function InventoryGroupedTable({
 
   return (
     <DataTable
-      data={pageItems}
+      data={tableRows}
       columns={columns}
       getRowId={(row) => topIdOf(groupBy, row)}
       manualSorting
@@ -777,8 +866,10 @@ function WarehouseMidPanel({
   const [expandedModelId, setExpandedModelId] = useState<string | null>(null);
   const [modelPageByBranch, setModelPageByBranch] = useState<Record<string, number>>({});
   const [serialPageByPair, setSerialPageByPair] = useState<Record<string, number>>({});
-  const [modelCache, loadModelSlice] = useSliceCache<GroupMidItem>(pageSize);
-  const [serialCache, loadSerialSlice] = useSliceCache<InventoryListItem>(pageSize);
+  const [modelCache, loadModelSlice, updateModelSlices] = useSliceCache<GroupMidItem>(pageSize);
+  const [serialCache, loadSerialSlice, updateSerialSlices] = useSliceCache<InventoryListItem>(
+    pageSize,
+  );
 
   const modelKey = (branchId: string, page: number) =>
     cacheKey(["wh-models", branchId, page, pageSize, filterSuffix]);
@@ -817,6 +908,36 @@ function WarehouseMidPanel({
       }),
     );
   }
+
+  useInventoryListRefreshSubscription((mutation) => {
+    updateSerialSlices((current) => ({
+      ...current,
+      items: current.items.map((item) => applySerialMutation(item, mutation)),
+    }));
+
+    if (mutation.kind === "status" && expandedModelId) {
+      const modelId = expandedModelId;
+      updateModelSlices((current) => ({
+        ...current,
+        items: current.items.map((item) => {
+          if (!isModelMidItem(item) || item.model.id !== modelId) return item;
+          return {
+            ...item,
+            counts: shiftGroupStatusCounts(item.counts, mutation.fromCode, mutation.toCode),
+          };
+        }),
+      }));
+    }
+
+    if (!expandedKey) return;
+    const node = slice.items.find((item) => item.key === expandedKey);
+    if (!node) return;
+    const branchId = node.stockBranch.id;
+    loadModels(branchId, modelPageByBranch[branchId] ?? 1);
+    if (!expandedModelId) return;
+    const page = serialPageByPair[cacheKey([branchId, expandedModelId])] ?? 1;
+    loadSerials(branchId, expandedModelId, page);
+  });
 
   function toggleWarehouse(node: InventoryGroupWarehouseItemDto) {
     setExpandedModelId(null);
@@ -1014,6 +1135,48 @@ function GroupedSerialTable({
       }
     />
   );
+}
+
+function applySerialMutation(
+  item: InventoryListItem,
+  mutation: InventoryRowMutation,
+): InventoryListItem {
+  if (item.id !== mutation.inventoryId) return item;
+  switch (mutation.kind) {
+    case "status":
+      return {
+        ...item,
+        statusCode: {
+          ...item.statusCode,
+          code: mutation.statusCode.code,
+          name: mutation.statusCode.name,
+          color: mutation.statusCode.color,
+        },
+      };
+    case "defect-pending":
+      return { ...item, pendingDefectInspection: true };
+    default: {
+      const exhaustive: never = mutation;
+      return exhaustive;
+    }
+  }
+}
+
+function openMidKey(groupBy: SerialMidGroupBy, item: GroupMidItem): string {
+  switch (groupBy) {
+    case "by-branch":
+      return (item as InventoryGroupModelItemDto).model.id;
+    case "by-model":
+      return (item as InventoryGroupBranchInModelItemDto).branch.id;
+    default: {
+      const exhaustive: never = groupBy;
+      return exhaustive;
+    }
+  }
+}
+
+function isModelMidItem(item: GroupMidItem): item is InventoryGroupModelItemDto {
+  return "model" in item;
 }
 
 function InlineLoadError({
