@@ -116,14 +116,14 @@ describe("transfer posting planner", () => {
       status: "in_transit",
       fromBranchId: "branch-a",
       toBranchId: "branch-b",
-      lines: [transferLine({ inventoryCode: "DIT", branchId: "branch-a" })],
+      lines: [transferLine({ inventoryCode: "DIT", branchId: "branch-b" })],
       requestedSerialIds: ["s1"],
     });
     expect(received.ok).toBe(true);
     if (!received.ok) return;
     expect(received.nextStatus).toBe("accepted");
     expect(received.moves).toEqual([
-      { serialNumberId: "s1", restoreCode: "STK", fromCode: "DIT" },
+      { serialNumberId: "s1", restoreCode: "STK", fromCode: "DIT", atBranchId: "branch-b" },
     ]);
   });
 
@@ -218,14 +218,40 @@ describe("transfer posting planner", () => {
       status: "in_transit",
       fromBranchId: "branch-a",
       toBranchId: "branch-b",
-      lines: [transferLine({ priorCode: "DEF", inventoryCode: "DIT", branchId: "branch-a" })],
+      lines: [transferLine({ priorCode: "DEF", inventoryCode: "DIT", branchId: "branch-b" })],
       requestedSerialIds: ["s1"],
     });
     expect(received.ok).toBe(true);
     if (!received.ok) return;
     expect(received.moves).toEqual([
-      { serialNumberId: "s1", restoreCode: "STK", fromCode: "DIT" },
+      { serialNumberId: "s1", restoreCode: "STK", fromCode: "DIT", atBranchId: "branch-b" },
     ]);
+  });
+
+  it("still accepts a serial released before the row moved to the receiving branch", () => {
+    const plan = planTransferReceive({
+      status: "in_transit",
+      fromBranchId: "branch-a",
+      toBranchId: "branch-b",
+      lines: [transferLine({ inventoryCode: "DIT", branchId: "branch-a" })],
+      requestedSerialIds: ["s1"],
+    });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.moves).toEqual([
+      { serialNumberId: "s1", restoreCode: "STK", fromCode: "DIT", atBranchId: "branch-a" },
+    ]);
+  });
+
+  it("refuses a serial whose row sits at a branch outside this transfer", () => {
+    const plan = planTransferReceive({
+      status: "in_transit",
+      fromBranchId: "branch-a",
+      toBranchId: "branch-b",
+      lines: [transferLine({ inventoryCode: "DIT", branchId: "branch-c" })],
+      requestedSerialIds: ["s1"],
+    });
+    expect(plan).toEqual({ ok: false, error: "A selected serial is not in transit on this transfer" });
   });
 
   it("leaves unconfirmed serials in transit and the header in transit", () => {
@@ -234,8 +260,8 @@ describe("transfer posting planner", () => {
       fromBranchId: "branch-a",
       toBranchId: "branch-b",
       lines: [
-        transferLine({ serialNumberId: "s1", inventoryCode: "DIT", branchId: "branch-a" }),
-        transferLine({ serialNumberId: "s2", inventoryCode: "DIT", branchId: "branch-a" }),
+        transferLine({ serialNumberId: "s1", inventoryCode: "DIT", branchId: "branch-b" }),
+        transferLine({ serialNumberId: "s2", inventoryCode: "DIT", branchId: "branch-b" }),
       ],
       requestedSerialIds: ["s1"],
     });
@@ -301,6 +327,7 @@ describe("transfer posting planner", () => {
       const plan = planTransferSerialReject({
         status,
         fromBranchId: "branch-a",
+        toBranchId: "branch-b",
         lines: [transferLine({ inventoryCode: "RSV", branchId: "branch-a" })],
         serialNumberId: "s1",
         remarks: "Damaged carton",
@@ -323,7 +350,7 @@ describe("transfer posting planner", () => {
     expect(plan.ok).toBe(true);
     if (!plan.ok) return;
     expect(plan.moves).toEqual([
-      { serialNumberId: "s1", restoreCode: "STK", fromCode: "RSV" },
+      { serialNumberId: "s1", restoreCode: "STK", fromCode: "RSV", atBranchId: "branch-a" },
     ]);
     expect(plan.nextStatus).toBe("accepted");
   });
@@ -332,8 +359,9 @@ describe("transfer posting planner", () => {
     const rejected = planTransferSerialReject({
       status: "in_transit",
       fromBranchId: "branch-a",
+      toBranchId: "branch-b",
       lines: [
-        transferLine({ serialNumberId: "s1", inventoryCode: "DIT", branchId: "branch-a" }),
+        transferLine({ serialNumberId: "s1", inventoryCode: "DIT", branchId: "branch-b" }),
         transferLine({
           serialNumberId: "s2",
           decision: "accepted",
@@ -347,7 +375,7 @@ describe("transfer posting planner", () => {
     expect(rejected.ok).toBe(true);
     if (!rejected.ok) return;
     expect(rejected.moves).toEqual([
-      { serialNumberId: "s1", restoreCode: "STK", fromCode: "DIT" },
+      { serialNumberId: "s1", restoreCode: "STK", fromCode: "DIT", atBranchId: "branch-b" },
     ]);
     expect(rejected.nextStatus).toBe("completed");
     expect(

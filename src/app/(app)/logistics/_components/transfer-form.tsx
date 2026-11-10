@@ -250,14 +250,7 @@ function InventoryStatusCell({ status }: { status: TransferInventoryStatus | nul
   return <StatusCodeBadge code={status.code} name={status.name} color={status.color} />;
 }
 
-function lineCanBeDecided(line: TransferLineRow, fromBranchId: string | null): boolean {
-  if (line.decision !== "pending") return false;
-  const held = line.inventoryCode === "RSV" || line.inventoryCode === "DIT";
-  return held && line.branchId === fromBranchId;
-}
-
 function transferLineColumns(
-  fromBranchId: string | null,
   canReceive: boolean,
   pending: boolean,
   onAccept: (line: TransferLineRow) => void,
@@ -305,7 +298,7 @@ function transferLineColumns(
           </span>
         );
       }
-      if (!lineCanBeDecided(line, fromBranchId)) return null;
+      if (!line.awaitingReceipt) return null;
       return (
         <div className="flex justify-end gap-2">
           <Button
@@ -335,7 +328,6 @@ function transferLineColumns(
 
 function TransferLinesTable({
   lines,
-  fromBranchId,
   canReceive,
   pending,
   onAccept,
@@ -343,7 +335,6 @@ function TransferLinesTable({
   showHeading = true,
 }: {
   lines: TransferLineRow[];
-  fromBranchId: string | null;
   canReceive: boolean;
   pending: boolean;
   onAccept: (line: TransferLineRow) => void;
@@ -363,7 +354,7 @@ function TransferLinesTable({
       <CompactLineTable
         rows={lines}
         getRowId={(line) => line.serialNumberId}
-        columns={transferLineColumns(fromBranchId, canReceive, pending, onAccept, onReject)}
+        columns={transferLineColumns(canReceive, pending, onAccept, onReject)}
         searchText={(line) => [line.skuCode, line.modelName, line.serialNo, line.requestRemarks]}
         searchPlaceholder="Search serials…"
         itemLabel="serial"
@@ -523,9 +514,7 @@ function showsOnTheWay(kind: TransferWorkspaceKind): boolean {
 }
 
 function serialsStillOnTheWay(detail: TransferDetail): number {
-  return detail.lines.filter(
-    (line) => line.inventoryCode === "DIT" && line.branchId === detail.fromBranch.id,
-  ).length;
+  return detail.lines.filter((line) => line.awaitingReceipt && line.inventoryCode === "DIT").length;
 }
 
 function onTheWayLine(count: number): string {
@@ -593,7 +582,6 @@ function TransferPageWorkspace({
         ) : null}
         <TransferLinesTable
           lines={detail.lines}
-          fromBranchId={detail.fromBranch.id}
           canReceive={canReceive}
           pending={pending}
           onAccept={onAccept}
@@ -1104,7 +1092,6 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
         {mode === "view" ? (
           <TransferLinesTable
             lines={detail?.lines ?? []}
-            fromBranchId={detail?.fromBranch.id ?? null}
             canReceive={canReceive}
             pending={pending}
             onAccept={(line) =>

@@ -49,6 +49,7 @@ import {
   type PostingDb,
 } from "@/features/logistics/services/posting-support";
 import {
+  lineAwaitsReceipt,
   planTransferApprove,
   planTransferCreate,
   planTransferReceive,
@@ -57,6 +58,7 @@ import {
   planTransferSerialReject,
   type TransferHeaderAfterLines,
   type TransferLineView,
+  type TransferReceivePlan,
   type TransferStatus,
 } from "@/features/logistics/services/transfer-posting.planner";
 import { TEAM_LEADER_ROLE_SLUG } from "@/features/orders/constants/order-workflow";
@@ -110,6 +112,8 @@ export interface TransferDetail {
     branchId: string | null;
     branchName: string | null;
     decision: "pending" | "accepted" | "rejected";
+    /** Released and waiting for the receiving branch to accept or reject it. */
+    awaitingReceipt: boolean;
     remarks: string | null;
     requestRemarks: string | null;
   }[];
@@ -486,6 +490,21 @@ async function workflowForHeader(tenantId: string, status: TransferHeaderAfterLi
   }
 }
 
+type DecisionMove = TransferReceivePlan["moves"][number];
+type DecisionGroup = Pick<DecisionMove, "fromCode" | "atBranchId"> & { serialNumberIds: string[] };
+
+/** One claim per hold and current branch, since claimInventory filters on both. */
+function groupMovesByHold(moves: readonly DecisionMove[]): DecisionGroup[] {
+  const groups = new Map<string, DecisionGroup>();
+  for (const move of moves) {
+    const key = `${move.fromCode}:${move.atBranchId}`;
+    const group = groups.get(key) ?? { fromCode: move.fromCode, atBranchId: move.atBranchId, serialNumberIds: [] };
+    group.serialNumberIds.push(move.serialNumberId);
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+}
+
 async function decideSerials(actor: PostingActor, transferId: string, input: SerialDecision) {
   const current = await loadLines(prisma, actor.tenantId, transferId);
   if (!current) throw new Error("Transfer not found");
@@ -507,6 +526,7 @@ async function decideSerials(actor: PostingActor, transferId: string, input: Ser
       : planTransferSerialReject({
           status: current.status,
           fromBranchId: current.fromBranchId,
+          toBranchId: current.toBranchId,
           lines: current.lines,
           serialNumberId: input.serialNumberId,
           remarks: input.remarks,
@@ -532,6 +552,7 @@ async function decideSerials(actor: PostingActor, transferId: string, input: Ser
           : planTransferSerialReject({
               status: fresh.status,
               fromBranchId: fresh.fromBranchId,
+              toBranchId: fresh.toBranchId,
               lines: fresh.lines,
               serialNumberId: input.serialNumberId,
               remarks: input.remarks,
@@ -549,17 +570,18 @@ async function decideSerials(actor: PostingActor, transferId: string, input: Ser
       if (movedIds.length > 0) {
         await lockSerialNumbers(tx, movedIds);
         await assertMovable(actor.tenantId, movedIds);
-        for (const fromCode of ["RSV", "DIT"] as const) {
-          const ids = plan.moves.filter((move) => move.fromCode === fromCode).map((move) => move.serialNumberId);
+        // Accepted units land at the receiving branch; rejected ones go back to the releasing branch.
+        const landBranchId = input.kind === "accept" ? fresh.toBranchId : fresh.fromBranchId;
+        for (const group of groupMovesByHold(plan.moves)) {
           await claimInventory(tx, {
             tenantId: actor.tenantId,
-            branchId: fresh.fromBranchId,
-            serialNumberIds: ids,
-            fromStatusCodeId: codes[fromCode],
+            branchId: group.atBranchId,
+            serialNumberIds: group.serialNumberIds,
+            fromStatusCodeId: codes[group.fromCode],
             toStatusCodeId: codes.STK,
             userId: actor.userId,
-            message: "A selected serial is not waiting at the releasing branch",
-            ...(input.kind === "accept" ? { toBranchId: fresh.toBranchId } : {}),
+            message: "A selected serial is not in transit on this transfer",
+            toBranchId: landBranchId,
           });
         }
         const marked = await tx.branchTransferLine.updateMany({
@@ -770,6 +792,7 @@ export const transferPostingService = {
         })
       : [];
     const inventoryBySerial = new Map(inventory.map((row) => [row.serialNumberId, row]));
+    const status = asTransferStatus(transfer.statusCode.code);
     const history = await prisma.auditLog.findMany({
       where: { tenantId: actor.tenantId, entityType: "BranchTransfer", entityId: transfer.id },
       orderBy: { createdAt: "desc" },
@@ -803,6 +826,16 @@ export const transferPostingService = {
           branchId: row?.branchId ?? null,
           branchName: row?.branch.name ?? null,
           decision: asLineDecision(line.decision),
+          awaitingReceipt: status !== null && lineAwaitsReceipt({
+            status,
+            fromBranchId: transfer.fromBranch.id,
+            toBranchId: transfer.toBranch.id,
+            line: {
+              inventoryCode: asInventoryCode(row?.statusCode.code),
+              branchId: row?.branchId ?? null,
+              decision: asLineDecision(line.decision),
+            },
+          }),
           remarks: line.remarks,
           requestRemarks: line.requestRemarks,
         };
@@ -1166,6 +1199,8 @@ export const transferPostingService = {
           actor.tenantId,
           plan.moves.map((move) => move.serialNumberId),
         );
+        // The row moves to the receiving branch, so the unit shows there as incoming
+        // and no longer counts at the releasing branch.
         for (const from of ["FTR", "RSV"] as const) {
           await claimInventory(tx, {
             tenantId: actor.tenantId,
@@ -1175,6 +1210,7 @@ export const transferPostingService = {
             toStatusCodeId: codes.DIT,
             userId: actor.userId,
             message: "Some serials are not approved for transfer",
+            toBranchId: fresh.toBranchId,
           });
         }
         await claimHeader(tx, "branchTransfer", {

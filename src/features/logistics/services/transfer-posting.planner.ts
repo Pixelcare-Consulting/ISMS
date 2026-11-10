@@ -1,10 +1,13 @@
 /**
  * Branch transfer rules. A request reserves the units (RSV). Team leader approval
  * moves them to For transfer (FTR) on the same branch row and does not add
- * destination stock. Release puts them in transit, and the receiving branch then
- * accepts or rejects each serial into stock (STK). The releasing team leader's
- * whole-request reject still restores the code the line stored. Transfers
- * approved before FTR existed still hold RSV, so release takes RSV too.
+ * destination stock. Release puts them in transit (DIT) and moves the row to the
+ * receiving branch, so the unit leaves the releasing branch's inventory and shows
+ * as incoming at the receiver. The receiving branch then accepts each serial into
+ * its stock (STK) or rejects it back to the releasing branch as STK. The releasing
+ * team leader's whole-request reject still restores the code the line stored.
+ * Transfers approved before FTR existed still hold RSV, so release takes RSV too,
+ * and transfers released before the row moved keep DIT on the releasing branch.
  */
 
 import type { TransferWorkflowCodeKey } from "@/features/logistics/constants/workflow-codes";
@@ -69,8 +72,11 @@ export interface TransferReleasePlan {
 export interface TransferReceivePlan {
   ok: true;
   nextStatus: "for_transfer" | "in_transit" | "accepted" | "rejected" | "completed";
-  /** Destination stock is always STK. fromCode is the hold being released. */
-  moves: { serialNumberId: string; restoreCode: "STK"; fromCode: "RSV" | "DIT" }[];
+  /**
+   * Every decided unit becomes STK. fromCode is the hold being cleared and
+   * atBranchId the branch that holds the row now (releasing or receiving).
+   */
+  moves: { serialNumberId: string; restoreCode: "STK"; fromCode: "RSV" | "DIT"; atBranchId: string }[];
   idempotent: boolean;
 }
 
@@ -302,9 +308,37 @@ function lineIsAccepted(line: TransferLineView, toBranchId: string): boolean {
   );
 }
 
-function holdCode(line: TransferLineView): "RSV" | "DIT" | null {
-  if (line.inventoryCode === "RSV" || line.inventoryCode === "DIT") return line.inventoryCode;
+/**
+ * The hold a pending line clears when the receiving branch decides it, with the
+ * branch holding the row. DIT sits at the receiving branch, or at the releasing
+ * branch on transfers released before the row moved. RSV only remains at the
+ * releasing branch, from transfers part-decided before release was required.
+ */
+function awaitingDecision(
+  line: Pick<TransferLineView, "inventoryCode" | "branchId">,
+  fromBranchId: string,
+  toBranchId: string,
+): { fromCode: "RSV" | "DIT"; atBranchId: string } | null {
+  if (!line.branchId) return null;
+  if (line.inventoryCode === "DIT" && (line.branchId === fromBranchId || line.branchId === toBranchId)) {
+    return { fromCode: "DIT", atBranchId: line.branchId };
+  }
+  if (line.inventoryCode === "RSV" && line.branchId === fromBranchId) {
+    return { fromCode: "RSV", atBranchId: line.branchId };
+  }
   return null;
+}
+
+/** True when the receiving branch can accept or reject this line now. */
+export function lineAwaitsReceipt(input: {
+  status: TransferStatus;
+  fromBranchId: string;
+  toBranchId: string;
+  line: Pick<TransferLineView, "inventoryCode" | "branchId" | "decision">;
+}): boolean {
+  if (!RECEIVABLE.includes(input.status)) return false;
+  if ((input.line.decision ?? "pending") !== "pending") return false;
+  return awaitingDecision(input.line, input.fromBranchId, input.toBranchId) !== null;
 }
 
 export function planTransferReceive(input: {
@@ -360,13 +394,13 @@ export function planTransferReceive(input: {
       acceptedIds.add(serialNumberId);
       continue;
     }
-    const fromCode = holdCode(line);
-    if (line.branchId === input.fromBranchId && fromCode) {
-      moves.push({ serialNumberId, restoreCode: "STK", fromCode });
+    const hold = awaitingDecision(line, input.fromBranchId, input.toBranchId);
+    if (hold) {
+      moves.push({ serialNumberId, restoreCode: "STK", ...hold });
       acceptedIds.add(serialNumberId);
       continue;
     }
-    return { ok: false, error: "A selected serial is not waiting at the releasing branch" };
+    return { ok: false, error: "A selected serial is not in transit on this transfer" };
   }
 
   const projected = input.lines.map((line) =>
@@ -384,6 +418,7 @@ export function planTransferReceive(input: {
 export function planTransferSerialReject(input: {
   status: TransferStatus;
   fromBranchId: string;
+  toBranchId: string;
   lines: readonly TransferLineView[];
   serialNumberId: string;
   remarks: string;
@@ -403,9 +438,9 @@ export function planTransferSerialReject(input: {
     return { ok: true, nextStatus: headerAfterLineDecisions(input.lines), moves: [], idempotent: true };
   }
   if (line.priorCode !== "STK" && line.priorCode !== "DEF") return missingPrior(line.serialNumberId);
-  const fromCode = holdCode(line);
-  if (line.branchId !== input.fromBranchId || !fromCode) {
-    return { ok: false, error: "This serial is not waiting at the releasing branch" };
+  const hold = awaitingDecision(line, input.fromBranchId, input.toBranchId);
+  if (!hold) {
+    return { ok: false, error: "This serial is not in transit on this transfer" };
   }
   const projected = input.lines.map((row) =>
     row.serialNumberId === line.serialNumberId ? { ...row, decision: "rejected" as const } : row,
@@ -413,7 +448,7 @@ export function planTransferSerialReject(input: {
   return {
     ok: true,
     nextStatus: headerAfterLineDecisions(projected),
-    moves: [{ serialNumberId: line.serialNumberId, restoreCode: "STK", fromCode }],
+    moves: [{ serialNumberId: line.serialNumberId, restoreCode: "STK", ...hold }],
     idempotent: false,
   };
 }

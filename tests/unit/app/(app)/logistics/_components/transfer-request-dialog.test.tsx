@@ -89,6 +89,7 @@ function detail(overrides: Partial<TransferDetail> = {}): TransferDetail {
         branchId: "branch-a",
         branchName: "Branch A",
         decision: "pending",
+        awaitingReceipt: false,
         remarks: null,
         requestRemarks: "For the mall display",
       },
@@ -273,7 +274,13 @@ describe("branch transfer dialog", () => {
     ["for_transfer", false],
     ["in_transit", true],
   ])("offers the receiving branch Accept and Reject on %s: %s", async (code, offered) => {
-    const lines = detail().lines.map((line) => ({ ...line, inventoryCode: "DIT" }));
+    // The service sets awaitingReceipt only once the transfer is in transit.
+    const lines = detail().lines.map((line) => ({
+      ...line,
+      inventoryCode: "DIT",
+      branchId: "branch-b",
+      awaitingReceipt: offered,
+    }));
     getDetail.mockResolvedValue({
       success: true,
       detail: detail({ status: { code, name: code, color: null }, lines }),

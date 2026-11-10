@@ -152,7 +152,10 @@ export async function claimInventory(
     data: {
       statusCodeId: input.toStatusCodeId,
       updatedById: input.userId,
-      ...(input.toBranchId ? { branchId: input.toBranchId } : {}),
+      // A shelf location belongs to the old branch's warehouse, so it cannot travel.
+      ...(input.toBranchId && input.toBranchId !== input.branchId
+        ? { branchId: input.toBranchId, warehouseLocationId: null }
+        : {}),
     },
   });
   assertExclusiveClaim(moved.count, input.serialNumberIds.length, input.message);
