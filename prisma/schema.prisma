@@ -406,6 +406,8 @@ model User {
   branchOrderApprovals               BranchOrderApprovalLevel[]    @relation("BranchOrderApprovalLevelApprovedBy")
   branchOrderRejections              BranchOrderApprovalLevel[]    @relation("BranchOrderApprovalLevelRejectedBy")
   branchInventoriesUpdated           BranchInventory[]             @relation("BranchInventoryUpdatedBy")
+  branchInventorySeenCursor          BranchInventorySeenCursor?
+  branchInventoryReads               BranchInventoryRead[]
   branchDefectReportsReported        BranchDefectReport[]          @relation("BranchDefectReportReporter")
   branchDefectReportsDecided         BranchDefectReport[]          @relation("BranchDefectReportDecider")
   inventoryApprovalsRequested        InventoryApproval[]           @relation("InventoryApprovalRequestedBy")
@@ -1823,6 +1825,8 @@ model BranchInventory {
   /// stock. ISMS no longer sets a first location (stock comes from SAP); existing ones can
   /// still be moved.
   warehouseLocationId String? @map("warehouse_location_id")
+  /// Last time this row's status code changed. Null until a status change is recorded.
+  statusUpdatedAt DateTime? @map("status_updated_at")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
@@ -1834,12 +1838,41 @@ model BranchInventory {
   updatedBy       User?                @relation("BranchInventoryUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
   stockCountLines StockCountLine[]
   defectReports   BranchDefectReport[]
+  statusReads     BranchInventoryRead[]
 
   @@unique([serialNumberId])
   @@index([branchId, serialNumberId])
   @@index([tenantId, branchId, statusCodeId])
+  @@index([tenantId, branchId, statusUpdatedAt])
   @@index([warehouseLocationId])
   @@map("branch_inventories")
+}
+
+/// Set to now() the first time this user asks for new-status counts. Units changed at or before this instant start as already seen.
+model BranchInventorySeenCursor {
+  userId        String   @id @map("user_id")
+  seenThroughAt DateTime @map("seen_through_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("branch_inventory_seen_cursors")
+}
+
+/// When this user last opened a unit. A later BranchInventory.statusUpdatedAt makes that unit new again.
+model BranchInventoryRead {
+  id                String   @id @default(cuid())
+  userId            String   @map("user_id")
+  branchInventoryId String   @map("branch_inventory_id")
+  readAt            DateTime @default(now()) @map("read_at")
+
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branchInventory BranchInventory @relation(fields: [branchInventoryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, branchInventoryId])
+  @@index([userId])
+  @@index([branchInventoryId])
+  @@map("branch_inventory_reads")
 }
 
 model BranchDefectReport {

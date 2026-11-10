@@ -10,6 +10,7 @@ import {
   assertDefectApprover,
   defectApprovalBranchIds,
 } from "@/features/inventory/lib/defect-approver";
+import { statusUpdatedStamp } from "@/features/inventory/lib/status-updated-stamp";
 import { defectRepository } from "@/features/inventory/repositories/defect.repository";
 import { TEAM_LEADER_ROLE_SLUG } from "@/features/orders/constants/order-workflow";
 import { notificationService } from "@/features/notifications/services/notification.service";
@@ -257,7 +258,11 @@ export const defectService = {
       await lockSerialNumbers(tx, [report.serialNumberId]);
       await tx.branchInventory.update({
         where: { id: report.branchInventoryId, tenantId: input.tenantId },
-        data: { statusCodeId: defCodeId, updatedById: input.actorUserId },
+        data: {
+          statusCodeId: defCodeId,
+          updatedById: input.actorUserId,
+          ...statusUpdatedStamp(report.branchInventory.statusCode.id, defCodeId),
+        },
       });
       await tx.branchDefectReport.update({
         where: { id: report.id, tenantId: input.tenantId },

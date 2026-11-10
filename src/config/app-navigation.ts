@@ -38,6 +38,7 @@ import { CUSTOM_DASHBOARD_ACCESS } from "@/features/custom-dashboards/constants/
 export type NavCountBadgeKey =
   | "unreadAnnouncements"
   | "stockUnitsStk"
+  | "branchInventoryV2Updates"
   | "monthlySirPending"
   | "ordersManualQueue"
   | "ordersSpecialQueue"
@@ -352,6 +353,7 @@ export const appNavigation: NavEntry[] = [
             label: "Branch Inventory v2",
             icon: ClipboardCheck,
             permission: "inventory.view",
+            countBadgeKey: "branchInventoryV2Updates",
           },
           {
             href: "/inventory/monthly-sir",

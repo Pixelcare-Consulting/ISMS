@@ -1,9 +1,12 @@
 import {
+  branchInventoryChangeableHint,
   branchInventoryUnitTotal,
   branchSerialLabel,
   branchSerialSelectionBlock,
+  branchStatusTargets,
   deriveBranchAttentionQueue,
   projectDisplayUnitMove,
+  projectReturnToStockMove,
   type BranchAttentionSource,
 } from "@/features/inventory/utils/branch-inventory-v2";
 
@@ -70,7 +73,7 @@ describe("deriveBranchAttentionQueue", () => {
 });
 
 describe("branch serial selection", () => {
-  it("selects only in-stock units that have a serial and are not waiting", () => {
+  it("selects in-stock and display units that have a serial and are not waiting", () => {
     expect(
       branchSerialSelectionBlock({
         serialNo: "SN-1",
@@ -78,10 +81,17 @@ describe("branch serial selection", () => {
         pendingDefectInspection: false,
       }),
     ).toBeNull();
+    expect(
+      branchSerialSelectionBlock({
+        serialNo: "SN-DU",
+        statusCode: "DU",
+        pendingDefectInspection: false,
+      }),
+    ).toBeNull();
     expect(branchSerialLabel("SN-1")).toBe("SN-1");
   });
 
-  it("blocks an empty serial, a pending defect, and any status other than stock", () => {
+  it("blocks an empty serial, a pending defect, a defective unit, and other statuses", () => {
     expect(
       branchSerialSelectionBlock({
         serialNo: "  ",
@@ -99,11 +109,98 @@ describe("branch serial selection", () => {
     ).toBe("pending-defect");
     expect(
       branchSerialSelectionBlock({
+        serialNo: "SN-DEF",
+        statusCode: "DEF",
+        pendingDefectInspection: false,
+      }),
+    ).toBe("defective");
+    expect(
+      branchSerialSelectionBlock({
         serialNo: "SN-3",
-        statusCode: "DU",
+        statusCode: "DIT",
         pendingDefectInspection: false,
       }),
     ).toBe("not-stock");
+    expect(
+      branchSerialSelectionBlock({
+        serialNo: "SN-4",
+        statusCode: "SLD",
+        pendingDefectInspection: false,
+      }),
+    ).toBe("not-stock");
+    expect(
+      branchSerialSelectionBlock({
+        serialNo: "SN-5",
+        statusCode: "RSV",
+        pendingDefectInspection: false,
+      }),
+    ).toBe("not-stock");
+  });
+
+  it("keeps a selection on one current status", () => {
+    expect(
+      branchSerialSelectionBlock(
+        { serialNo: "SN-DU", statusCode: "DU", pendingDefectInspection: false },
+        "STK",
+      ),
+    ).toBe("other-status");
+    expect(
+      branchSerialSelectionBlock(
+        { serialNo: "SN-STK", statusCode: "STK", pendingDefectInspection: false },
+        "DU",
+      ),
+    ).toBe("other-status");
+    expect(
+      branchSerialSelectionBlock(
+        { serialNo: "SN-STK", statusCode: "STK", pendingDefectInspection: false },
+        "STK",
+      ),
+    ).toBeNull();
+  });
+
+  it("offers display and defect from stock, and stock and defect from display", () => {
+    expect(branchStatusTargets("STK")).toEqual(["DU", "DEF"]);
+    expect(branchStatusTargets("DU")).toEqual(["STK", "DEF"]);
+  });
+});
+
+describe("branchInventoryChangeableHint", () => {
+  it("stays quiet when a display unit is in the result", () => {
+    expect(
+      branchInventoryChangeableHint({
+        items: [{ statusCode: "DU" }],
+        total: 1,
+        selectedStatusCode: "DU",
+      }),
+    ).toBe(false);
+  });
+
+  it("shows when the full result has no in-stock or display unit", () => {
+    expect(
+      branchInventoryChangeableHint({
+        items: [{ statusCode: "DEF" }, { statusCode: "DIT" }],
+        total: 2,
+      }),
+    ).toBe(true);
+  });
+
+  it("shows when the filter is a status that cannot change", () => {
+    expect(
+      branchInventoryChangeableHint({
+        items: [{ statusCode: "SLD" }],
+        total: 10,
+        selectedStatusCode: "SLD",
+      }),
+    ).toBe(true);
+  });
+
+  it("stays quiet on a partial page that may hold a changeable unit later", () => {
+    expect(
+      branchInventoryChangeableHint({
+        items: [{ statusCode: "DEF" }],
+        total: 40,
+      }),
+    ).toBe(false);
   });
 });
 
@@ -116,5 +213,17 @@ describe("projectDisplayUnitMove", () => {
     ]);
     expect(move.stock).toEqual({ code: "STK", name: "In stock", count: 8, after: 6 });
     expect(move.display).toEqual({ code: "DU", name: "Display", count: 1, after: 3 });
+  });
+});
+
+describe("projectReturnToStockMove", () => {
+  it("moves the selected count from display back to stock", () => {
+    const move = projectReturnToStockMove(1, [
+      { code: "STK", name: "In stock", count: 8 },
+      { code: "DU", name: "Display", count: 2 },
+      { code: "DEF", name: "Defective", count: 4 },
+    ]);
+    expect(move.stock).toEqual({ code: "STK", name: "In stock", count: 8, after: 9 });
+    expect(move.display).toEqual({ code: "DU", name: "Display", count: 2, after: 1 });
   });
 });

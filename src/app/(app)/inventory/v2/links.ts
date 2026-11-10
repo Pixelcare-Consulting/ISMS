@@ -1,4 +1,4 @@
-export const BRANCH_INVENTORY_V2_PAGE_SIZE = 200;
+export const BRANCH_INVENTORY_V2_PAGE_SIZE = 10;
 
 export function branchInventoryV2Href(input?: {
   view?: "all";

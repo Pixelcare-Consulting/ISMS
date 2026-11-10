@@ -18,6 +18,7 @@ import {
   assertSerialsSellableForSale,
   sellableStkDefectReportsFilter,
 } from "@/features/inventory/services/inventory-sellable-guards";
+import { statusUpdatedStamp } from "@/features/inventory/lib/status-updated-stamp";
 import {
   markSerialSoldFromStockSource,
   restoreSerialToStockSource,
@@ -1789,6 +1790,7 @@ async function restoreOriginalSerialsAtBranchSold(
             branchId: input.soldBranchId,
             statusCodeId: input.restoreStatusCodeId,
             updatedById: input.userId,
+            ...statusUpdatedStamp(existing.statusCode, input.restoreStatusCode),
           },
         });
       } else {
@@ -2899,6 +2901,7 @@ export async function updateSaleHeaderAction(input: unknown) {
             data: {
               statusCodeId: toCodeId,
               updatedById: session.user.id,
+              ...statusUpdatedStamp(fromCodeId, toCodeId),
             },
           });
         }

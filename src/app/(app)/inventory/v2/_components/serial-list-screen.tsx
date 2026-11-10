@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { toast } from "sonner";
 
 import { createInventorySerialColumns } from "@/app/(app)/inventory/_components/inventory-serial-columns";
-import { BRANCH_INVENTORY_V2_PAGE_SIZE, branchInventoryV2Href } from "@/app/(app)/inventory/v2/links";
+import { branchInventoryV2Href } from "@/app/(app)/inventory/v2/links";
 import { BranchInventoryUnitDrawer } from "@/app/(app)/inventory/v2/_components/unit-drawer";
 import {
   StatusConfirmDialog,
@@ -15,6 +15,7 @@ import {
 import { V2Chrome } from "@/app/(app)/inventory/v2/_components/v2-chrome";
 import { V2StatStrip } from "@/app/(app)/inventory/v2/_components/v2-stat-strip";
 import { V2TealLink } from "@/app/(app)/inventory/v2/_components/v2-teal-link";
+import type { TablePageSize } from "@/components/data-table/table-page-size";
 import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -37,9 +38,12 @@ import { InventoryListRefreshProvider } from "@/features/inventory/components/in
 import { InventoryApprovalBranchIdsProvider } from "@/features/inventory/components/inventory-unit-status-cell";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import {
+  branchChangeableStatus,
+  branchInventoryChangeableHint,
   branchInventoryUnitTotal,
   branchSerialLabel,
   branchSerialSelectionBlock,
+  type BranchChangeableStatus,
   type BranchSerialSelectionBlock,
 } from "@/features/inventory/utils/branch-inventory-v2";
 import { DataTable, type DataTableColumn, type DataTableFeatures } from "@/lib/data-table";
@@ -60,10 +64,18 @@ interface SerialListScreenProps {
   approvalBranchIds: string[] | null;
   singleBranch?: boolean;
   offPlanogramCount: number;
+  /** Unread units per status code for this branch. */
+  unreadByCode?: Record<string, number>;
+  /** Units on this page whose status changed since they were last opened. */
+  unreadIds?: readonly string[];
   seriesSummary?: ReactNode;
 }
 
-type SelectedSerial = { id: string; serialNo: string };
+type SelectedSerial = {
+  id: string;
+  serialNo: string;
+  statusCode: BranchChangeableStatus;
+};
 
 const serialV2Column = createColumnHelper<DataTableFeatures, InventoryListItem>();
 const SEARCH_DEBOUNCE_MS = 300;
@@ -75,28 +87,75 @@ const SELECT_COLUMN_CLASS = "w-0 whitespace-nowrap pl-4 pr-0";
 const INDEX_COLUMN_CLASS =
   "w-0 whitespace-nowrap pl-4 pr-3 text-left tabular-nums text-muted-foreground";
 
-function showNoStockBanner(input: {
-  items: readonly { statusCode: { code: string } }[];
-  total: number;
-  selectedStatusCode?: string;
-}): boolean {
-  if (input.items.length === 0) return false;
-  if (input.items.some((item) => item.statusCode.code === "STK")) return false;
-  if (input.selectedStatusCode === "STK") return false;
-  if (input.selectedStatusCode && input.selectedStatusCode !== "STK") return true;
-  return input.total <= input.items.length;
-}
-
 function selectionBlockLabel(block: BranchSerialSelectionBlock): string {
   switch (block) {
     case "missing-serial":
       return "Not eligible — serial number was not provided";
     case "pending-defect":
       return "Not eligible — waiting for the team leader";
+    case "defective":
+      return "Not eligible — a defective unit cannot be changed";
     case "not-stock":
-      return "Not eligible — only in-stock units can be selected";
+      return "Not eligible — only in-stock and display units can be selected";
+    case "other-status":
+      return "Not eligible — select one status at a time";
     default: {
       const unexpected: never = block;
+      return unexpected;
+    }
+  }
+}
+
+function toSelected(item: InventoryListItem): SelectedSerial | null {
+  const statusCode = branchChangeableStatus(item.statusCode.code);
+  if (!statusCode) return null;
+  return {
+    id: item.id,
+    serialNo: item.serialNumber.serialNo.trim(),
+    statusCode,
+  };
+}
+
+function selectedUnits(items: readonly InventoryListItem[]): SelectedSerial[] {
+  return items.flatMap((item) => {
+    const next = toSelected(item);
+    return next ? [next] : [];
+  });
+}
+
+function selectAllAriaLabel(input: {
+  status: BranchChangeableStatus | null;
+  targetCount: number;
+  eligibleCount: number;
+}): string {
+  if (input.eligibleCount === 0) return "No units can be selected";
+  if (!input.status || input.targetCount === 0) return "Select one status at a time";
+  return `Select ${input.status} units on this page`;
+}
+
+function confirmedMessage(kind: StatusConfirmKind, done: number): string {
+  switch (kind) {
+    case "display":
+      return done === 1 ? "Marked as a display unit" : `Marked ${done} display units`;
+    case "stock":
+      return done === 1 ? "Returned to stock" : `Returned ${done} units to stock`;
+    case "defect":
+      return done === 1 ? "Sent to the team leader" : `Sent ${done} reports to the team leader`;
+    default: {
+      const unexpected: never = kind;
+      return unexpected;
+    }
+  }
+}
+
+function confirmKindFor(source: BranchChangeableStatus): StatusConfirmKind {
+  switch (source) {
+    case "STK":
+      return "display";
+    case "DU":
+      return "stock";
+    default: {
+      const unexpected: never = source;
       return unexpected;
     }
   }
@@ -129,6 +188,8 @@ function SerialListBody({
   limit,
   singleBranch = false,
   offPlanogramCount,
+  unreadByCode = {},
+  unreadIds = [],
   seriesSummary,
 }: SerialListScreenProps) {
   const router = useRouter();
@@ -144,20 +205,40 @@ function SerialListBody({
   const branchName = branch?.branch.name ?? result.items[0]?.branch.name ?? "Branch";
   const sapCode = branch?.branch.sapCode ?? result.items[0]?.branch.sapCode ?? "";
   const statuses = branch?.counts.statuses ?? [];
-  const eligible = result.items.filter(
-    (item) =>
-      branchSerialSelectionBlock({
-        serialNo: item.serialNumber.serialNo,
-        statusCode: item.statusCode.code,
-        pendingDefectInspection: item.pendingDefectInspection,
-      }) === null,
-  );
   const selectedIds = useMemo(
     () => new Set(selected.map((unit) => unit.id)),
     [selected],
   );
-  const allEligibleSelected =
-    eligible.length > 0 && eligible.every((item) => selectedIds.has(item.id));
+  const unreadIdSet = useMemo(() => new Set(unreadIds), [unreadIds]);
+  const lockedStatus = selected[0]?.statusCode ?? null;
+  const { eligible, selectAllStatus, selectAllTargets, pageHasBothStatuses } = useMemo(() => {
+    const nextEligible = result.items.filter(
+      (item) =>
+        branchSerialSelectionBlock({
+          serialNo: item.serialNumber.serialNo,
+          statusCode: item.statusCode.code,
+          pendingDefectInspection: item.pendingDefectInspection,
+        }) === null,
+    );
+    const eligibleStatuses = new Set<BranchChangeableStatus>();
+    for (const item of nextEligible) {
+      const status = branchChangeableStatus(item.statusCode.code);
+      if (status) eligibleStatuses.add(status);
+    }
+    const nextSelectAllStatus: BranchChangeableStatus | null =
+      lockedStatus ?? (eligibleStatuses.size === 1 ? ([...eligibleStatuses][0] ?? null) : null);
+    const nextTargets = nextSelectAllStatus
+      ? nextEligible.filter((item) => item.statusCode.code === nextSelectAllStatus)
+      : [];
+    return {
+      eligible: nextEligible,
+      selectAllStatus: nextSelectAllStatus,
+      selectAllTargets: nextTargets,
+      pageHasBothStatuses: eligibleStatuses.has("STK") && eligibleStatuses.has("DU"),
+    };
+  }, [lockedStatus, result.items]);
+  const allSelectAllSelected =
+    selectAllTargets.length > 0 && selectAllTargets.every((item) => selectedIds.has(item.id));
   const modelMenu = useMemo(() => {
     if (!sku || modelOptions.some((model) => model.sku === sku)) return modelOptions;
     return [...modelOptions, { sku, name: sku }].sort((a, b) =>
@@ -186,8 +267,8 @@ function SerialListBody({
     return [...byId.values()];
   }, [result.items, statusOptions]);
   const selectedStatusCode = statusMenu.find((option) => option.id === statusCodeId)?.code;
-  const noStockBanner = showNoStockBanner({
-    items: result.items,
+  const noChangeableHint = branchInventoryChangeableHint({
+    items: result.items.map((item) => ({ statusCode: item.statusCode.code })),
     total: result.total,
     selectedStatusCode,
   });
@@ -201,6 +282,7 @@ function SerialListBody({
       statusCodeId?: string;
       sku?: string;
       page?: number;
+      limit?: number;
       offPlanogram?: boolean;
     }) =>
       branchInventoryV2Href({
@@ -209,7 +291,7 @@ function SerialListBody({
         statusCodeId: next.statusCodeId,
         sku: next.sku,
         page: next.page,
-        limit: limit === BRANCH_INVENTORY_V2_PAGE_SIZE ? undefined : limit,
+        limit: next.limit ?? limit,
         offPlanogram: next.offPlanogram ?? offPlanogramOnly,
       }),
     [branchId, limit, offPlanogramOnly],
@@ -239,19 +321,26 @@ function SerialListBody({
   }, [hrefFor, q, query, router, sku, statusCodeId]);
 
   const toggle = useCallback((item: InventoryListItem) => {
+    const next = toSelected(item);
+    if (!next) return;
     setSelected((current) => {
       if (current.some((unit) => unit.id === item.id)) {
         return current.filter((unit) => unit.id !== item.id);
       }
-      return [
-        ...current,
-        { id: item.id, serialNo: item.serialNumber.serialNo.trim() },
-      ];
+      const locked = current[0]?.statusCode;
+      if (locked && locked !== next.statusCode) return current;
+      return [...current, next];
     });
   }, []);
 
-  function openChangeStatus(kind: StatusConfirmKind = "display") {
-    setConfirmKind(kind);
+  function openChangeStatus() {
+    const source = selected[0]?.statusCode;
+    if (!source) return;
+    if (selected.some((unit) => unit.statusCode !== source)) {
+      toast.error("Select units that share the same status.");
+      return;
+    }
+    setConfirmKind(confirmKindFor(source));
     setConfirmOpen(true);
   }
 
@@ -269,14 +358,50 @@ function SerialListBody({
     );
   }
 
+  function handlePageSizeChange(nextLimit: TablePageSize) {
+    router.push(
+      hrefFor({
+        q: query.trim(),
+        statusCodeId,
+        sku,
+        page: 1,
+        limit: nextLimit,
+      }),
+      { scroll: false },
+    );
+  }
+
   async function applyConfirmed(kind: StatusConfirmKind, reason: string) {
     if (selected.length === 0) return;
+    const source = selected[0]?.statusCode;
+    if (!source || selected.some((unit) => unit.statusCode !== source)) {
+      toast.error("Select units that share the same status.");
+      return;
+    }
+    if (kind === "display" && source !== "STK") {
+      toast.error("In-stock units can be marked as display units.");
+      return;
+    }
+    if (kind === "stock" && source !== "DU") {
+      toast.error("Display units can be returned to stock.");
+      return;
+    }
+    if (kind === "defect" && reason.trim().length === 0) {
+      toast.error("Describe the problem before sending");
+      return;
+    }
     setBusy(true);
     const failures: string[] = [];
     for (const unit of selected) {
       switch (kind) {
         case "display": {
           const updated = await updateInventoryStatusAction(unit.id, "DU");
+          const error = actionError(updated);
+          if (error) failures.push(error);
+          break;
+        }
+        case "stock": {
+          const updated = await updateInventoryStatusAction(unit.id, "STK");
           const error = actionError(updated);
           if (error) failures.push(error);
           break;
@@ -304,12 +429,8 @@ function SerialListBody({
     }
     if (failures.length > 0) {
       toast.error(`${done} updated. ${failures.length} could not be updated.`);
-    } else if (kind === "display") {
-      toast.success(done === 1 ? "Marked as a display unit" : `Marked ${done} display units`);
     } else {
-      toast.success(
-        done === 1 ? "Sent to the team leader" : `Sent ${done} reports to the team leader`,
-      );
+      toast.success(confirmedMessage(kind, done));
     }
     setSelected([]);
     setConfirmOpen(false);
@@ -352,14 +473,26 @@ function SerialListBody({
         if (column.id !== "status") return column;
         return {
           ...column,
-          cell: ({ row }) => (
-            <StatusCodeBadge
-              code={row.original.statusCode.code}
-              name={row.original.statusCode.name}
-              color={row.original.statusCode.color}
-              codeOnly
-            />
-          ),
+          cell: ({ row }) => {
+            const unread = unreadIdSet.has(row.original.id);
+            return (
+              <span className="inline-flex items-center gap-1.5">
+                {unread ? (
+                  <span
+                    className="inline-block size-2 shrink-0 rounded-full bg-red-600"
+                    role="img"
+                    aria-label="Status changed since you last opened this unit"
+                  />
+                ) : null}
+                <StatusCodeBadge
+                  code={row.original.statusCode.code}
+                  name={row.original.statusCode.name}
+                  color={row.original.statusCode.color}
+                  codeOnly
+                />
+              </span>
+            );
+          },
         } satisfies DataTableColumn<InventoryListItem>;
       });
 
@@ -399,17 +532,16 @@ function SerialListBody({
       id: "select",
       header: () => (
         <Checkbox
-          checked={allEligibleSelected}
-          disabled={eligible.length === 0}
-          aria-label="Select in-stock units on this page"
+          checked={allSelectAllSelected}
+          disabled={selectAllTargets.length === 0}
+          aria-label={selectAllAriaLabel({
+            status: selectAllStatus,
+            targetCount: selectAllTargets.length,
+            eligibleCount: eligible.length,
+          })}
           onCheckedChange={(checked) => {
             if (checked === true) {
-              setEligibleSelection(
-                eligible.map((item) => ({
-                  id: item.id,
-                  serialNo: item.serialNumber.serialNo.trim(),
-                })),
-              );
+              setEligibleSelection(selectedUnits(selectAllTargets));
               return;
             }
             setEligibleSelection([]);
@@ -418,20 +550,23 @@ function SerialListBody({
       ),
       enableSorting: false,
       cell: ({ row }) => {
-        const block = branchSerialSelectionBlock({
-          serialNo: row.original.serialNumber.serialNo,
-          statusCode: row.original.statusCode.code,
-          pendingDefectInspection: row.original.pendingDefectInspection,
-        });
+        const block = branchSerialSelectionBlock(
+          {
+            serialNo: row.original.serialNumber.serialNo,
+            statusCode: row.original.statusCode.code,
+            pendingDefectInspection: row.original.pendingDefectInspection,
+          },
+          lockedStatus,
+        );
         const isSelected = selectedIds.has(row.original.id);
+        const blockedLabel = block ? selectionBlockLabel(block) : null;
         return (
           <Checkbox
             checked={isSelected}
             disabled={block !== null}
+            title={blockedLabel ?? undefined}
             aria-label={
-              block
-                ? selectionBlockLabel(block)
-                : `Select ${branchSerialLabel(row.original.serialNumber.serialNo)}`
+              blockedLabel ?? `Select ${branchSerialLabel(row.original.serialNumber.serialNo)}`
             }
             onCheckedChange={() => {
               if (block) return;
@@ -452,19 +587,29 @@ function SerialListBody({
       exceptionColumn,
     ];
   }, [
-    allEligibleSelected,
+    allSelectAllSelected,
     eligible,
     indexOffset,
+    lockedStatus,
+    selectAllStatus,
+    selectAllTargets,
     selectedIds,
     setEligibleSelection,
     toggle,
+    unreadIdSet,
   ]);
 
   const openDrawerChangeStatus = useCallback((item: InventoryListItem) => {
-    setSelected([{ id: item.id, serialNo: item.serialNumber.serialNo.trim() }]);
-    setConfirmKind("display");
+    const next = toSelected(item);
+    if (!next) return;
+    setSelected([next]);
+    setConfirmKind(confirmKindFor(next.statusCode));
     setConfirmOpen(true);
   }, []);
+
+  const handleMarkedRead = useCallback(() => {
+    router.refresh();
+  }, [router]);
 
   const renderRowActions = useCallback(
     (row: InventoryListItem) => {
@@ -510,6 +655,7 @@ function SerialListBody({
         statuses={statuses}
         totalUnits={totalUnits}
         offPlanogramCount={offPlanogramCount}
+        unreadByCode={unreadByCode}
       />
 
       {seriesSummary ? <div className="motion-reduce:transition-none">{seriesSummary}</div> : null}
@@ -526,23 +672,21 @@ function SerialListBody({
         >
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
             <span className="text-sm font-medium text-teal-900 dark:text-teal-100">
-              {selected.length} STK {selected.length === 1 ? "unit" : "units"} selected
+              {selected.length} {lockedStatus} {selected.length === 1 ? "unit" : "units"} selected
             </span>
-            {eligible.length > 0 && !allEligibleSelected ? (
+            {lockedStatus && selectAllTargets.length > 0 && !allSelectAllSelected ? (
               <button
                 type="button"
                 className="text-sm font-medium text-teal-800 underline-offset-4 hover:underline dark:text-teal-300"
-                onClick={() =>
-                  setSelected(
-                    eligible.map((item) => ({
-                      id: item.id,
-                      serialNo: item.serialNumber.serialNo.trim(),
-                    })),
-                  )
-                }
+                onClick={() => setSelected(selectedUnits(selectAllTargets))}
               >
-                Select all {eligible.length} STK units
+                Select all {selectAllTargets.length} {lockedStatus} units
               </button>
+            ) : null}
+            {pageHasBothStatuses ? (
+              <p className="w-full text-xs text-teal-900/80 dark:text-teal-100/80">
+                In-stock and display units are changed separately.
+              </p>
             ) : null}
           </div>
           <div className="flex w-full gap-2 sm:ml-auto sm:w-auto">
@@ -553,7 +697,7 @@ function SerialListBody({
               type="button"
               size="sm"
               className="bg-teal-600 hover:bg-teal-700 dark:bg-teal-500"
-              onClick={() => openChangeStatus("display")}
+              onClick={() => openChangeStatus()}
             >
               Change status
             </Button>
@@ -578,6 +722,7 @@ function SerialListBody({
           placeholder: "Search serial number or model…",
           suggestions,
         }}
+        pageSize={{ value: limit, onChange: handlePageSizeChange }}
         toolbarActions={
           <>
             <Select
@@ -594,7 +739,7 @@ function SerialListBody({
                 );
               }}
             >
-              <SelectTrigger aria-label="Filter by status" className="w-[11rem]">
+              <SelectTrigger aria-label="Filter by status" className="w-11rem">
                 <SelectValue placeholder="All statuses" />
               </SelectTrigger>
               <SelectContent>
@@ -660,26 +805,27 @@ function SerialListBody({
             <div className="space-y-1 border-t px-4 py-3 text-xs text-muted-foreground">
               <p>
                 Showing all {result.total.toLocaleString()}{" "}
-                {result.total === 1 ? "unit" : "units"} · {eligible.length.toLocaleString()}{" "}
-                eligible STK units
+                {result.total === 1 ? "unit" : "units"} · {eligible.length.toLocaleString()} can
+                change status
               </p>
-              <p>Only STK units can be selected.</p>
+              <p>Select in-stock (STK) or display (DU) units. One status at a time.</p>
             </div>
           ) : null
         }
         banner={
-          noStockBanner ? (
+          noChangeableHint ? (
             <p className="border-b px-4 py-3 text-sm text-muted-foreground" role="status">
-              No STK units available. Only in-stock (STK) units can be changed to DU or DEF.
+              No in-stock or display units in this list. Only those units can change status.
             </p>
           ) : null
         }
       />
 
       <StatusConfirmDialog
-        key={confirmOpen ? `open-${confirmKind}` : "closed"}
+        key={confirmOpen ? `open-${confirmKind}-${lockedStatus ?? "none"}` : "closed"}
         open={confirmOpen}
         initialKind={confirmKind}
+        sourceStatus={lockedStatus ?? "STK"}
         units={selected}
         statuses={statuses}
         busy={busy}
@@ -698,6 +844,7 @@ function SerialListBody({
         onRequestChangeStatus={() => {
           if (openUnit) openDrawerChangeStatus(openUnit);
         }}
+        onMarkedRead={handleMarkedRead}
       />
     </div>
   );

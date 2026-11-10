@@ -1,6 +1,7 @@
 import type { DeliveryReturnStatus, SapOrderDocType } from "@prisma/client";
 import { Prisma } from "@/lib/database/generated/prisma/client";
 
+import { statusUpdatedStamp } from "@/features/inventory/lib/status-updated-stamp";
 import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
 import { prisma } from "@/lib/database/client";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
@@ -582,7 +583,11 @@ export const deliveryPostingService = {
             statusCodeId: ditCodeId,
             serialNumberId: { in: plan.moveSerialIds },
           },
-          data: { statusCodeId: stkCodeId, updatedById: input.userId },
+          data: {
+            statusCodeId: stkCodeId,
+            updatedById: input.userId,
+            ...statusUpdatedStamp(ditCodeId, stkCodeId),
+          },
         });
         assertExclusiveClaim(
           moved.count,

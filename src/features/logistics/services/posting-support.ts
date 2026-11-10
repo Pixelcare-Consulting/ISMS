@@ -1,5 +1,6 @@
 import { Prisma } from "@/lib/database/generated/prisma/client";
 
+import { statusUpdatedStamp } from "@/features/inventory/lib/status-updated-stamp";
 import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
 import { assertExclusiveClaim } from "@/features/logistics/services/delivery-posting.planner";
 import {
@@ -152,6 +153,7 @@ export async function claimInventory(
       statusCodeId: input.toStatusCodeId,
       updatedById: input.userId,
       ...(input.toBranchId ? { branchId: input.toBranchId } : {}),
+      ...statusUpdatedStamp(input.fromStatusCodeId, input.toStatusCodeId),
     },
   });
   assertExclusiveClaim(moved.count, input.serialNumberIds.length, input.message);

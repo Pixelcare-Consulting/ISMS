@@ -14,6 +14,8 @@ import { V2Chrome } from "@/app/(app)/inventory/v2/_components/v2-chrome";
 import { V2MetricCard } from "@/app/(app)/inventory/v2/_components/v2-metric-card";
 import { V2TealLink } from "@/app/(app)/inventory/v2/_components/v2-teal-link";
 import { branchInventoryV2Href } from "@/app/(app)/inventory/v2/links";
+import { SidebarNavCountBadge } from "@/app/(app)/_components/sidebar-nav-count-badge";
+import { useClientTablePagination } from "@/components/data-table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import type { InventoryGroupBranchItemDto } from "@/features/inventory/actions/inventory.actions";
@@ -26,6 +28,8 @@ interface AllBranchesScreenProps {
   branches: InventoryGroupBranchItemDto[];
   offPlanogramBranches: InventoryGroupBranchItemDto[];
   initialOffPlanogram?: boolean;
+  /** Unread units per status code. Hidden when a status has none. */
+  unreadByCode?: Record<string, number>;
   seriesSummary?: ReactNode;
 }
 
@@ -47,6 +51,7 @@ export function BranchInventoryAllBranchesScreen({
   branches,
   offPlanogramBranches,
   initialOffPlanogram = false,
+  unreadByCode = {},
   seriesSummary,
 }: AllBranchesScreenProps) {
   const router = useRouter();
@@ -89,6 +94,19 @@ export function BranchInventoryAllBranchesScreen({
     });
   }, [branches, query, offPlanogramOnly, offPlanogramCounts]);
 
+  const {
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
+    total,
+    totalPages,
+    pageItems,
+    indexOffset,
+  } = useClientTablePagination(filtered, {
+    resetKey: `${query}:${offPlanogramOnly ? "off" : "all"}`,
+  });
+
   const filteredGrandTotal = filtered.reduce(
     (sum, row) => sum + branchInventoryUnitTotal(row.counts),
     0,
@@ -101,7 +119,7 @@ export function BranchInventoryAllBranchesScreen({
         header: "#",
         enableSorting: false,
         enableHiding: false,
-        cell: ({ row }) => row.index + 1,
+        cell: ({ row }) => indexOffset + row.index + 1,
         meta: {
           mobile: "detail",
           className: "w-12 pl-4 text-center tabular-nums text-muted-foreground",
@@ -147,13 +165,19 @@ export function BranchInventoryAllBranchesScreen({
         branchColumn.display({
           id: `status-${status.code}`,
           header: () => (
-            <StatusCodeBadge
-              code={status.code}
-              name={status.name}
-              color={status.color}
-              codeOnly
-              className="normal-case tracking-normal"
-            />
+            <span className="inline-flex items-center justify-end">
+              <StatusCodeBadge
+                code={status.code}
+                name={status.name}
+                color={status.color}
+                codeOnly
+                className="normal-case tracking-normal"
+              />
+              <SidebarNavCountBadge
+                count={unreadByCode[status.code] ?? 0}
+                className="mt-0"
+              />
+            </span>
           ),
           enableSorting: false,
           cell: ({ row }) => countForStatus(row.original, status.code).toLocaleString(),
@@ -188,7 +212,7 @@ export function BranchInventoryAllBranchesScreen({
     );
 
     return cols;
-  }, [statusCols, offPlanogramCounts]);
+  }, [indexOffset, offPlanogramCounts, statusCols, unreadByCode]);
 
   function toggleOffPlanogram(checked: boolean) {
     setOffPlanogramOnly(checked);
@@ -242,7 +266,7 @@ export function BranchInventoryAllBranchesScreen({
       {seriesSummary ? <div className="motion-reduce:transition-none">{seriesSummary}</div> : null}
 
       <DataTable
-        data={filtered}
+        data={pageItems}
         columns={columns}
         getRowId={(row) => row.branch.id}
         stickyHeader
@@ -253,6 +277,14 @@ export function BranchInventoryAllBranchesScreen({
           value: query,
           onChange: setQuery,
           placeholder: "Search branch, model or serial number…",
+        }}
+        pageSize={{ value: pageSize, onChange: setPageSize }}
+        pagination={{
+          total,
+          page,
+          totalPages,
+          itemLabel: "branch",
+          onPageChange: setPage,
         }}
         toolbarActions={
           <div className="flex items-center gap-2">

@@ -268,7 +268,12 @@ describe("deliveryTransferService.receiveLine", () => {
 
     expect(mockTx.branchInventory.updateMany).toHaveBeenCalledWith({
       where: { id: "bi1", statusCodeId: "id-DIT" },
-      data: { branchId: "b2", statusCodeId: "id-STK", updatedById: "u1" },
+      data: {
+        branchId: "b2",
+        statusCodeId: "id-STK",
+        updatedById: "u1",
+        statusUpdatedAt: expect.any(Date),
+      },
     });
     expect(mockTx.warehouseInventory.create).not.toHaveBeenCalled();
   });

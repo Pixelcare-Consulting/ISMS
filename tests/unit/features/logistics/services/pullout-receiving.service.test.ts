@@ -294,7 +294,7 @@ describe("pulloutPostingService.rejectLine", () => {
         serialNumberId: { in: ["s1"] },
         statusCodeId: "id-DIT",
       },
-      data: { statusCodeId: "id-DEF", updatedById: "u1" },
+      data: { statusCodeId: "id-DEF", updatedById: "u1", statusUpdatedAt: expect.any(Date) },
     });
     expect(mockTx.warehouseInventory.createMany).not.toHaveBeenCalled();
   });

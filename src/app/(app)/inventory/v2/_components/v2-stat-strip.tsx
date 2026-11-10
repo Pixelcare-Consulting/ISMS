@@ -1,3 +1,4 @@
+import { SidebarNavCountBadge } from "@/app/(app)/_components/sidebar-nav-count-badge";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { cn } from "@/utils/cn";
 
@@ -5,6 +6,8 @@ interface V2StatStripProps {
   statuses: readonly { code: string; name: string; count: number; color?: string | null }[];
   totalUnits?: number;
   offPlanogramCount?: number;
+  /** Unread units per status code for this branch. Hidden when a status has none. */
+  unreadByCode?: Record<string, number>;
   className?: string;
   /** Show at most this many status cards (branch mockup uses ~6). */
   maxStatusCards?: number;
@@ -14,6 +17,7 @@ export function V2StatStrip({
   statuses,
   totalUnits,
   offPlanogramCount = 0,
+  unreadByCode = {},
   className,
   maxStatusCards = 6,
 }: V2StatStripProps) {
@@ -39,13 +43,17 @@ export function V2StatStrip({
           key={status.code}
           className="rounded-xl border border-border/80 bg-card px-3 py-3 shadow-sm"
         >
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center">
             <StatusCodeBadge
               code={status.code}
               name={status.name}
               color={status.color ?? undefined}
               showCode
               className="scale-90"
+            />
+            <SidebarNavCountBadge
+              count={unreadByCode[status.code] ?? 0}
+              className="mt-0"
             />
           </div>
           <p className="mt-2 text-xl font-semibold tabular-nums">{status.count.toLocaleString()}</p>

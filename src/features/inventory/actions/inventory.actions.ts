@@ -36,6 +36,8 @@ export type InventoryListItem = {
   agingDays: number;
   pendingDefectInspection: boolean;
   pendingDefectReportId: string | null;
+  /** When this unit's status last changed. Null until a status change is recorded. */
+  statusUpdatedAt: string | null;
   statusCode: { id: string; code: string; name: string; color: string | null };
   branch: { id: string; name: string; sapCode: string };
   serialNumber: {
@@ -132,6 +134,7 @@ function mapEnrichedToListItem(
     agingDays: r.agingDays,
     pendingDefectInspection: r.pendingDefectInspection,
     pendingDefectReportId: r.pendingDefectReportId,
+    statusUpdatedAt: r.statusUpdatedAt ? r.statusUpdatedAt.toISOString() : null,
     statusCode: {
       id: r.statusCode.id,
       code: r.statusCode.code,
@@ -387,6 +390,74 @@ export async function countStockUnitsStkAction(): Promise<number> {
     session.user.tenantId,
     session.user.id,
     unrestricted,
+  );
+}
+
+export type BranchInventoryUnreadSummary = {
+  total: number;
+  byCode: Record<string, number>;
+};
+
+/** Sidebar badge: units whose status changed after this user last opened them. */
+export async function countBranchInventoryV2UpdatesAction(): Promise<number> {
+  const session = await requireAuth();
+  if (!hasPermission(session.user.permissions, "inventory.view")) {
+    return 0;
+  }
+  const summary = await unreadSummaryForSession(session.user, undefined);
+  return summary.total;
+}
+
+/** Unread counts for Branch Inventory v2. Pass a branch to limit the stat strip. */
+export async function getBranchInventoryUnreadAction(input?: {
+  branchId?: string;
+}): Promise<BranchInventoryUnreadSummary> {
+  const session = await requirePermission("inventory.view");
+  return unreadSummaryForSession(session.user, input?.branchId);
+}
+
+/** Which of these units are still unread for the signed-in user. */
+export async function listUnreadBranchInventoryIdsAction(
+  branchInventoryIds: string[],
+): Promise<string[]> {
+  const session = await requirePermission("inventory.view");
+  const ids = [...new Set(branchInventoryIds.filter((id) => id.trim().length > 0))];
+  return inventoryService.unreadInventoryIds(
+    session.user.tenantId,
+    session.user.id,
+    isUnrestricted(session.user.permissions),
+    ids,
+  );
+}
+
+/** Opening unit details marks that status change as seen. */
+export async function markBranchInventoryStatusReadAction(
+  branchInventoryId: string,
+): Promise<{ success: true } | { error: string }> {
+  const session = await requirePermission("inventory.view");
+  try {
+    await inventoryService.markStatusSeen({
+      tenantId: session.user.tenantId,
+      userId: session.user.id,
+      permissions: session.user.permissions,
+      inventoryId: branchInventoryId,
+    });
+    revalidatePath("/inventory/v2");
+    return { success: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Could not update what you have seen" };
+  }
+}
+
+function unreadSummaryForSession(
+  user: { tenantId: string; id: string; permissions: string[] },
+  branchId: string | undefined,
+): Promise<BranchInventoryUnreadSummary> {
+  return inventoryService.unreadStatusSummary(
+    user.tenantId,
+    user.id,
+    isUnrestricted(user.permissions),
+    branchId,
   );
 }
 

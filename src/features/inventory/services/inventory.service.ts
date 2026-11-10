@@ -2,6 +2,7 @@ import { auditService } from "@/features/audit/services/audit.service";
 import { aorService } from "@/features/aors/services/aor.service";
 import { branchRepository } from "@/features/branches/repositories/branch.repository";
 import { defectRepository } from "@/features/inventory/repositories/defect.repository";
+import { inventoryStatusSeenService } from "@/features/inventory/services/inventory-status-seen.service";
 import type {
   StockUnitsGroupBy,
   StockUnitsGroupChildLevel,
@@ -29,6 +30,7 @@ import { wholeDaysBetween } from "@/features/inventory/utils/sku-series";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import { hasPermission } from "@/lib/auth/permissions";
 import { decimalToNumber } from "@/lib/database/decimal";
+import { logger } from "@/lib/shared/logger";
 import {
   resolvePagination,
   type PaginatedResult,
@@ -168,6 +170,18 @@ async function resolveBranchIds(
     return branches.map((b) => b.id);
   }
   return aorService.getBranchIdsForUser(tenantId, userId);
+}
+
+/** Same branch list as the inventory screens, optionally one branch inside that list. */
+async function scopedBranchIds(
+  tenantId: string,
+  userId: string,
+  isUnrestricted: boolean,
+  branchId?: string,
+): Promise<string[]> {
+  const branchIds = await resolveBranchIds(tenantId, userId, isUnrestricted);
+  if (!branchId) return branchIds;
+  return branchIds.filter((id) => id === branchId);
 }
 
 function toListFilters(filters?: InventoryListOptions): InventoryListFilters {
@@ -690,5 +704,71 @@ export const inventoryService = {
       },
     });
     return item;
+  },
+
+  /** Unread status changes in the same branch scope as the inventory list. */
+  async unreadStatusSummary(
+    tenantId: string,
+    userId: string,
+    isUnrestricted: boolean,
+    branchId?: string,
+  ): Promise<{ total: number; byCode: Record<string, number> }> {
+    try {
+      const branchIds = await scopedBranchIds(tenantId, userId, isUnrestricted, branchId);
+      const counts = await inventoryStatusSeenService.unreadCounts({
+        tenantId,
+        userId,
+        branchIds,
+      });
+      return { total: counts.total, byCode: counts.byCode };
+    } catch (error) {
+      logger.warn({ err: error }, "branch inventory unread summary failed");
+      return { total: 0, byCode: {} };
+    }
+  },
+
+  async unreadInventoryIds(
+    tenantId: string,
+    userId: string,
+    isUnrestricted: boolean,
+    branchInventoryIds: string[],
+  ): Promise<string[]> {
+    if (branchInventoryIds.length === 0) return [];
+    try {
+      const branchIds = await resolveBranchIds(tenantId, userId, isUnrestricted);
+      const cursor = await inventoryStatusSeenService.ensureSeenThrough(userId);
+      return await inventoryStatusSeenService.unreadIds({
+        tenantId,
+        userId,
+        seenThroughAt: cursor.seenThroughAt,
+        branchIds,
+        branchInventoryIds,
+      });
+    } catch (error) {
+      logger.warn({ err: error }, "branch inventory unread ids failed");
+      return [];
+    }
+  },
+
+  async markStatusSeen(input: {
+    tenantId: string;
+    userId: string;
+    permissions: string[] | undefined;
+    inventoryId: string;
+  }) {
+    const current = await inventoryRepository.findByIdWithStatus(
+      input.tenantId,
+      input.inventoryId,
+    );
+    if (!current) {
+      throw new Error("Inventory unit not found");
+    }
+    await assertBranchInAor(
+      input.tenantId,
+      input.userId,
+      current.branchId,
+      input.permissions,
+    );
+    await inventoryStatusSeenService.markRead(input.userId, input.inventoryId);
   },
 };

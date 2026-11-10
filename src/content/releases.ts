@@ -66,6 +66,35 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.88.0",
+    date: "2026-11-10",
+    releasedAt: "2026-11-10T19:20:00+08:00",
+    title: "Branch Inventory v2 — see what changed",
+    highlights: [
+      "The sidebar and status codes show how many units changed since you last opened them.",
+      "Unit details shows when the status last changed.",
+      "The unit list shows 10 rows at a time, with the rows control beside search.",
+      "The all-branches list can show 10 rows at a time.",
+      "Branch Inventory still opens when the changed-unit count cannot be loaded.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Branch Inventory v2 shows a count in the menu and beside each status when units have changed since you last opened them. Opening a unit clears that one. Unit details shows the date and time of the last status change, or that it was not recorded. The unit list shows 10 rows at a time, and the rows control sits beside search.",
+      },
+      {
+        type: "improvement",
+        description: "The all-branches list can show 10 rows at a time.",
+      },
+      {
+        type: "fix",
+        description:
+          "Opening Branch Inventory no longer stops the page when the changed-unit count cannot be read. Those counts show as zero until the next successful load.",
+      },
+    ],
+  },
+  {
     version: "0.87.4",
     date: "2026-11-10",
     releasedAt: "2026-11-10T18:45:00+08:00",
@@ -80,6 +109,7 @@ export const RELEASES: ReleaseNote[] = [
       "Status and model filters list every option for the branch, and All shows the full list again.",
       "The no-stock note appears only when the list truly has no in-stock units.",
       "The eligibility note is in unit details instead of on the row.",
+      "A display unit can go back to stock, or be sent as defective for approval.",
     ],
     changes: [
       {
@@ -101,6 +131,11 @@ export const RELEASES: ReleaseNote[] = [
         type: "fix",
         description:
           "Search runs as you type and offers suggestions, without a Search button. Status and model menus list every option for the branch, and All clears that filter. The note about no in-stock units shows only when none are in stock, with space above the column headers. The checkbox and row number sit closer together.",
+      },
+      {
+        type: "fix",
+        description:
+          "A display unit can be selected and changed. Return it to stock right away, or describe the problem and wait for the team leader. In-stock units can still become display units or defects. A defective unit cannot be changed, and you change one status at a time.",
       },
     ],
   },

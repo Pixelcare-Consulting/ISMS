@@ -627,6 +627,7 @@ export const inventoryRepository = {
         data: {
           statusCodeId: input.statusCodeId,
           updatedById: input.updatedById,
+          statusUpdatedAt: new Date(),
         },
       });
       await tx.serialNumberHistory.create({

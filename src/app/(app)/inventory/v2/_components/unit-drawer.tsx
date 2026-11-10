@@ -1,6 +1,11 @@
 "use client";
 
-import { formatInventoryDrDate } from "@/app/(app)/inventory/_components/inventory-list-format";
+import { useEffect } from "react";
+
+import {
+  formatInventoryDrDate,
+  formatInventoryStatusUpdated,
+} from "@/app/(app)/inventory/_components/inventory-list-format";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -11,7 +16,10 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import type { InventoryListItem } from "@/features/inventory/actions/inventory.actions";
+import {
+  markBranchInventoryStatusReadAction,
+  type InventoryListItem,
+} from "@/features/inventory/actions/inventory.actions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import {
   branchSerialLabel,
@@ -24,6 +32,7 @@ interface UnitDrawerProps {
   unit: InventoryListItem | null;
   onOpenChange: (open: boolean) => void;
   onRequestChangeStatus?: () => void;
+  onMarkedRead?: () => void;
 }
 
 function Detail({ label, value }: { label: string; value: string }) {
@@ -43,8 +52,12 @@ function recordOrMissing(value: string | null | undefined): string {
 
 function statusChangeReason(block: BranchSerialSelectionBlock): string {
   switch (block) {
+    case "defective":
+      return "A defective unit cannot be changed.";
     case "not-stock":
-      return "Only in-stock (STK) units can be changed.";
+      return "Only in-stock (STK) and display (DU) units can be changed.";
+    case "other-status":
+      return "Select one status at a time.";
     case "pending-defect":
       return "Waiting for the team leader.";
     case "missing-serial":
@@ -60,7 +73,23 @@ export function BranchInventoryUnitDrawer({
   unit,
   onOpenChange,
   onRequestChangeStatus,
+  onMarkedRead,
 }: UnitDrawerProps) {
+  const inventoryId = unit?.id ?? null;
+  const statusCode = unit?.statusCode.code ?? null;
+
+  useEffect(() => {
+    if (!inventoryId || !statusCode) return;
+    let active = true;
+    void markBranchInventoryStatusReadAction(inventoryId).then((result) => {
+      if (!active || "error" in result) return;
+      onMarkedRead?.();
+    });
+    return () => {
+      active = false;
+    };
+  }, [inventoryId, onMarkedRead, statusCode]);
+
   const serial = unit ? branchSerialLabel(unit.serialNumber.serialNo) : "";
   const changeBlock = unit
     ? branchSerialSelectionBlock({
@@ -83,21 +112,29 @@ export function BranchInventoryUnitDrawer({
               <SheetDescription>
                 {unit.serialNumber.model.sku} · {unit.serialNumber.model.name}
               </SheetDescription>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <StatusCodeBadge
-                  code={unit.statusCode.code}
-                  name={unit.statusCode.name}
-                  color={unit.statusCode.color ?? undefined}
-                  showCode
-                />
-                {!unit.onPlanogram ? (
-                  <Badge
-                    variant="outline"
-                    className="border-amber-600 text-amber-800 dark:text-amber-200"
-                  >
-                    Off-planogram
-                  </Badge>
-                ) : null}
+              <div className="mt-3 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusCodeBadge
+                    code={unit.statusCode.code}
+                    name={unit.statusCode.name}
+                    color={unit.statusCode.color ?? undefined}
+                    showCode
+                  />
+                  {!unit.onPlanogram ? (
+                    <Badge
+                      variant="outline"
+                      className="border-amber-600 text-amber-800 dark:text-amber-200"
+                    >
+                      Off-planogram
+                    </Badge>
+                  ) : null}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Status updated{" "}
+                  <span className="font-medium text-foreground">
+                    {formatInventoryStatusUpdated(unit.statusUpdatedAt)}
+                  </span>
+                </p>
               </div>
             </SheetHeader>
 
@@ -110,8 +147,10 @@ export function BranchInventoryUnitDrawer({
                   )}
                   role="status"
                 >
-                  Not on the branch planogram. Its stock status stays {unit.statusCode.code} until
-                  you change it.
+                  Not on the branch planogram.{" "}
+                  {unit.statusCode.code === "DEF"
+                    ? "A defective unit stays defective."
+                    : `Its stock status stays ${unit.statusCode.code} until you change it.`}
                 </div>
               ) : null}
               <dl className="grid gap-4 sm:grid-cols-2">

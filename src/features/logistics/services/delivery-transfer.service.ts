@@ -6,6 +6,7 @@ import {
   inventoryApprovalLedger,
   type InventoryApprovalDocument,
 } from "@/features/inventory-approvals/services/inventory-approval-ledger";
+import { statusUpdatedStamp } from "@/features/inventory/lib/status-updated-stamp";
 import {
   assertExclusivePlacement,
   loadCurrentPlacements,
@@ -853,7 +854,12 @@ export const deliveryTransferService = {
         if (header.receiveBranchId) {
           const moved = await tx.branchInventory.updateMany({
             where: { id: shelf.id, statusCodeId: ditCodeId },
-            data: { branchId: header.receiveBranchId, statusCodeId: stkCodeId, updatedById: actor.userId },
+            data: {
+              branchId: header.receiveBranchId,
+              statusCodeId: stkCodeId,
+              updatedById: actor.userId,
+              ...statusUpdatedStamp(ditCodeId, stkCodeId),
+            },
           });
           assertExclusiveClaim(moved.count, 1, "This unit is no longer in transit at the delivery branch");
           historyStatus = "STK";

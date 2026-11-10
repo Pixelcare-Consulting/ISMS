@@ -5,11 +5,13 @@ import { BranchInventorySerialScreen } from "@/app/(app)/inventory/v2/_component
 import { BRANCH_INVENTORY_V2_PAGE_SIZE } from "@/app/(app)/inventory/v2/links";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import {
+  getBranchInventoryUnreadAction,
   getInventoryKpisAction,
   getInventorySeriesSummaryAction,
   listInventoryAction,
   listInventoryGroupsAction,
   listInventoryStatusOptionsAction,
+  listUnreadBranchInventoryIdsAction,
   type InventoryGroupBranchItemDto,
   type InventoryGroupModelItemDto,
   type InventoryStatusOption,
@@ -103,7 +105,7 @@ export default async function BranchInventoryV2Page({
   const offPlanogram = params.offPlanogram === "1";
   const sku = params.sku?.trim() || undefined;
 
-  const [kpis, seriesSummary, groupResult, offPlanogramResult, approvalBranchIds] =
+  const [kpis, seriesSummary, groupResult, offPlanogramResult, approvalBranchIds, unread] =
     await Promise.all([
       getInventoryKpisAction(),
       getInventorySeriesSummaryAction(
@@ -115,6 +117,9 @@ export default async function BranchInventoryV2Page({
         session.user.tenantId,
         session.user.id,
         session.user.roleSlugs,
+      ),
+      getBranchInventoryUnreadAction(
+        screen.kind === "branch" ? { branchId: screen.branchId } : undefined,
       ),
     ]);
 
@@ -139,6 +144,7 @@ export default async function BranchInventoryV2Page({
         sku,
         singleBranch,
         approvalBranchIds,
+        unreadByCode: unread.byCode,
         seriesSummary: seriesPanel,
       })}
     </div>
@@ -159,6 +165,7 @@ async function renderScreen(input: {
   sku?: string;
   singleBranch: boolean;
   approvalBranchIds: string[] | null;
+  unreadByCode: Record<string, number>;
   seriesSummary?: ReactNode;
 }) {
   const screen = input.screen;
@@ -169,6 +176,7 @@ async function renderScreen(input: {
           branches={input.branches}
           offPlanogramBranches={input.offPlanogramBranches}
           initialOffPlanogram={input.offPlanogram}
+          unreadByCode={input.unreadByCode}
           seriesSummary={input.seriesSummary}
         />
       );
@@ -198,6 +206,9 @@ async function renderScreen(input: {
       const offPlanogramCount = offPlanogramRow
         ? branchInventoryUnitTotal(offPlanogramRow.counts)
         : 0;
+      const unreadIds = await listUnreadBranchInventoryIdsAction(
+        result.items.map((item) => item.id),
+      );
       return (
         <BranchInventorySerialScreen
           key={`${branchId}:${input.statusCodeId ?? ""}:${input.sku ?? ""}:${input.offPlanogram ? "1" : "0"}`}
@@ -214,6 +225,8 @@ async function renderScreen(input: {
           approvalBranchIds={input.approvalBranchIds}
           singleBranch={input.singleBranch}
           offPlanogramCount={offPlanogramCount}
+          unreadByCode={input.unreadByCode}
+          unreadIds={unreadIds}
           seriesSummary={input.seriesSummary}
         />
       );
