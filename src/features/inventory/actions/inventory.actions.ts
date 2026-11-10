@@ -193,17 +193,24 @@ export async function listInventoryAction(input?: {
   sku?: string;
   statusCodeId?: string;
   offPlanogram?: boolean;
+  /** Omit to keep All serials on STK, DU, and DEF. */
+  statusCodes?: readonly string[];
+  /** Serial number or model. */
+  q?: string;
   sort?: string;
   sortDir?: string;
 }): Promise<PaginatedResult<InventoryListItem>> {
   const session = await requirePermission("inventory.view");
   const unrestricted = isUnrestricted(session.user.permissions);
   const limit = parseTablePageSize(input?.limit);
+  const q = input?.q?.trim();
   const filters: InventoryListOptions = {
     branchId: input?.branchId,
     skuCode: input?.sku,
     statusCodeId: input?.statusCodeId,
     offPlanogramOnly: input?.offPlanogram === true,
+    ...(input?.statusCodes !== undefined ? { statusCodes: input.statusCodes } : {}),
+    ...(q ? { q } : {}),
     sort: parseSort(input?.sort),
     sortDir: parseSortDir(input?.sortDir),
   };
@@ -319,21 +326,23 @@ export async function listInventoryGroupChildrenAction(input: {
   >;
 }
 
-export async function listInventoryStatusOptionsAction(): Promise<
-  InventoryStatusOption[]
-> {
+export async function listInventoryStatusOptionsAction(input?: {
+  /** Stock units dropdown hides DEF. Branch Inventory v2 lists every inventory status. */
+  includeDefective?: boolean;
+}): Promise<InventoryStatusOption[]> {
   const session = await requirePermission("inventory.view");
-  const codes = await reasonStatusService.listActiveCodes(
+  const codes = (await reasonStatusService.listActiveCodes(
     session.user.tenantId,
     "inventory_system",
-  );
-  return filterStatusCodesForStockUnitsDropdown(
-    codes as Array<{ id: string; code: string; name: string }>,
-  ).map((c) => ({
-      id: c.id,
-      code: c.code,
-      name: c.name,
-    }));
+  )) as Array<{ id: string; code: string; name: string }>;
+  const visible = input?.includeDefective
+    ? codes
+    : filterStatusCodesForStockUnitsDropdown(codes);
+  return visible.map((c) => ({
+    id: c.id,
+    code: c.code,
+    name: c.name,
+  }));
 }
 
 export async function getInventorySeriesSummaryAction(input?: {
@@ -410,6 +419,7 @@ export async function updateInventoryStatusAction(
       statusCodeId,
     });
     revalidatePath("/inventory");
+    revalidatePath("/inventory/v2");
     revalidatePath("/inventory/serial-numbers");
     return { success: true as const };
   } catch (e) {

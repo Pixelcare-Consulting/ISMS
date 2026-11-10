@@ -64,6 +64,8 @@ export type InventoryListOptions = {
   skuCode?: string;
   statusCodeId?: string;
   offPlanogramOnly?: boolean;
+  statusCodes?: readonly string[];
+  q?: string;
   sort?: InventoryListSort;
   sortDir?: InventoryListSortDir;
 };
@@ -174,6 +176,8 @@ function toListFilters(filters?: InventoryListOptions): InventoryListFilters {
     skuCode: filters?.skuCode,
     statusCodeId: filters?.statusCodeId,
     offPlanogramOnly: filters?.offPlanogramOnly,
+    statusCodes: filters?.statusCodes,
+    q: filters?.q,
   };
 }
 

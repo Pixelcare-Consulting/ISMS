@@ -66,6 +66,14 @@ export type InventoryListFilters = {
   skuCode?: string;
   statusCodeId?: string;
   offPlanogramOnly?: boolean;
+  /**
+   * When omitted, the list stays on STK, DU, and DEF.
+   * Branch Inventory v2 passes the live inventory status codes.
+   * An empty array matches nothing.
+   */
+  statusCodes?: readonly string[];
+  /** Serial number or model (SKU or name). */
+  q?: string;
 };
 
 /**
@@ -129,6 +137,17 @@ async function buildOffPlanogramBranchOr(
   });
 }
 
+function resolveListStatusCodes(
+  filters?: InventoryListFilters,
+): readonly string[] {
+  if (filters?.statusCodes === undefined) return ALL_SERIALS_STATUS_CODES;
+  return [
+    ...new Set(
+      filters.statusCodes.map((code) => code.trim()).filter((code) => code.length > 0),
+    ),
+  ];
+}
+
 async function buildInventoryWhere(
   tenantId: string,
   branchIds: string[],
@@ -142,27 +161,47 @@ async function buildInventoryWhere(
     return null;
   }
 
-  const base: Prisma.BranchInventoryWhereInput = {
-    tenantId,
-    ...(filters?.skuCode
-      ? { serialNumber: { model: { skuCode: filters.skuCode } } }
-      : {}),
-    statusCode: {
-      code: { in: [...ALL_SERIALS_STATUS_CODES] },
-    },
-  };
+  const statusCodes = resolveListStatusCodes(filters);
+  if (statusCodes.length === 0) return null;
 
-  if (filters?.offPlanogramOnly) {
-    return {
-      ...base,
-      OR: await buildOffPlanogramBranchOr(tenantId, effectiveBranchIds),
-    };
+  const and: Prisma.BranchInventoryWhereInput[] = [
+    {
+      tenantId,
+      statusCode: { code: { in: [...statusCodes] } },
+      ...(filters?.statusCodeId ? { statusCodeId: filters.statusCodeId } : {}),
+    },
+  ];
+
+  if (filters?.skuCode) {
+    and.push({ serialNumber: { model: { skuCode: filters.skuCode } } });
   }
 
-  return {
-    ...base,
-    branchId: { in: effectiveBranchIds },
-  };
+  const q = filters?.q?.trim();
+  if (q) {
+    and.push({
+      OR: [
+        { serialNumber: { serialNo: { contains: q, mode: "insensitive" } } },
+        {
+          serialNumber: {
+            model: {
+              OR: [
+                { skuCode: { contains: q, mode: "insensitive" } },
+                { name: { contains: q, mode: "insensitive" } },
+              ],
+            },
+          },
+        },
+      ],
+    });
+  }
+
+  if (filters?.offPlanogramOnly) {
+    and.push({ OR: await buildOffPlanogramBranchOr(tenantId, effectiveBranchIds) });
+  } else {
+    and.push({ branchId: { in: effectiveBranchIds } });
+  }
+
+  return { AND: and };
 }
 
 function resolveEffectiveBranchIds(

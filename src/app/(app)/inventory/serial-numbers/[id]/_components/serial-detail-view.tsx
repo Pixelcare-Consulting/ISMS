@@ -317,7 +317,10 @@ function DetailHeader({
       ? {
           id: current.branchInventoryId,
           branchId: current.branchId,
-          statusCode: current.status,
+          statusCode: {
+            ...current.status,
+            color: current.status.color ?? null,
+          },
           pendingDefectInspection: pendingDefectReportId != null,
           pendingDefectReportId,
         }

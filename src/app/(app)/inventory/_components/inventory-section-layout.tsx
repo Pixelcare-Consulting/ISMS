@@ -36,6 +36,9 @@ function resolveInventoryDescription(pathname: string): string {
   if (pathname.startsWith("/inventory/serial-numbers")) {
     return "Every serial on its own row — search, filter, and open one to trace its lifecycle. Use By model for the older quantity-by-SKU view.";
   }
+  if (pathname.startsWith("/inventory/v2")) {
+    return "Start with branches that need attention, open a branch, then mark display units or send defects for approval. Branch Inventory stays as it is.";
+  }
   return "Serialized units by branch.";
 }
 

@@ -15,6 +15,7 @@ import {
 
 function revalidateInventoryPaths() {
   revalidatePath("/inventory");
+  revalidatePath("/inventory/v2");
   revalidatePath("/inventory/serial-numbers");
 }
 

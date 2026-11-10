@@ -66,6 +66,104 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.87.4",
+    date: "2026-11-10",
+    releasedAt: "2026-11-10T18:45:00+08:00",
+    title: "Branch Inventory v2 — filters sit with the table",
+    highlights: [
+      "Search and filters now live with the inventory table.",
+      "A branch opens with its name as the title, and the series summary sits under the status cards.",
+      "Change status is in one place, and the status column no longer shows extra action buttons.",
+      "The all-branches list shows a row number and status badges on the status columns.",
+      "Status badges show the short code, and the checkbox and row number have a little space.",
+      "Search updates as you type and suggests serials and models.",
+      "Status and model filters list every option for the branch, and All shows the full list again.",
+      "The no-stock note appears only when the list truly has no in-stock units.",
+      "The eligibility note is in unit details instead of on the row.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "On Branch Inventory v2, search, status, model, and off-planogram filters are inside the table. The branch name is the page title. Series totals sit under the status cards. You change status from the selection bar or unit details, and each row shows only its status badge.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The all-branches list shows a row number and status badges on the status columns.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Status badges show the short code, and the checkbox and row number have a little space.",
+      },
+      {
+        type: "fix",
+        description:
+          "Search runs as you type and offers suggestions, without a Search button. Status and model menus list every option for the branch, and All clears that filter. The note about no in-stock units shows only when none are in stock, with space above the column headers. The checkbox and row number sit closer together.",
+      },
+    ],
+  },
+  {
+    version: "0.87.3",
+    date: "2026-11-10",
+    releasedAt: "2026-11-10T18:00:00+08:00",
+    title: "Branch Inventory v2 — clearer browse and status changes",
+    highlights: [
+      "The all-branches home shows clearer summaries, exception hints, and the same helpful labels you expect.",
+      "Inside a branch, see models and off-planogram exceptions in the table, with total and off-planogram counts up top.",
+      "Change status from the toolbar, bulk bar, or unit details drawer for in-stock units.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Branch Inventory v2 matches the updated layouts: metric subtexts and branch exception hints on the home list, a model column and exception column on branch units, a stat strip with totals and off-planogram counts, and clearer STK selection and bulk actions.",
+      },
+      {
+        type: "fix",
+        description:
+          "The unit details drawer shows planogram and status guidance, empty delivery fields as not recorded, and a Change status action when the unit is in stock.",
+      },
+    ],
+  },
+  {
+    version: "0.87.2",
+    date: "2026-11-10",
+    releasedAt: "2026-11-10T16:30:00+08:00",
+    title: "Branch Inventory v2 — full branch overview",
+    highlights: [
+      "Branch Inventory v2 opens on the full branch table with the same solid tables as the rest of the app.",
+      "Off-planogram filter is back on the branch list and on each branch’s units.",
+      "Branch unit lists show aging, delivery details, and planogram status like the classic inventory table.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Opening Branch Inventory v2 lands on all branches with summary metrics, series totals, search, and the branch status table. Tables use the standard in-app layout. You can filter to off-planogram units on the home list and inside a branch. The selection bar no longer duplicates clear actions, and branch unit rows match the familiar serial, delivery, aging, and status columns.",
+      },
+    ],
+  },
+  {
+    version: "0.87.0",
+    date: "2026-11-10",
+    releasedAt: "2026-11-10T13:40:00+08:00",
+    title: "Branch Inventory that starts with what needs attention",
+    highlights: [
+      "Branch Inventory v2 opens on defective units and models that are off the planogram.",
+      "Open a branch to mark stock as display units, or send defects for the branch team leader to approve.",
+      "The current Branch Inventory page stays as it is.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Start from what needs attention, then open a branch and its serials. In-stock units can be marked as display units, and the stock and display counts update together. Sending a defect asks for the problem and leaves the unit in stock until that branch’s team leader approves. Other statuses can be reviewed, and the current Branch Inventory page is still there.",
+      },
+    ],
+  },
+  {
     version: "0.86.0",
     date: "2026-11-10",
     releasedAt: "2026-11-10T10:00:00+08:00",
