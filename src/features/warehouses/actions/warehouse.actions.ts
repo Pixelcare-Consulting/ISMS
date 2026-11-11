@@ -21,6 +21,12 @@ const locationSchema = z.object({
   name: z.string().trim().min(1).max(120),
 });
 
+const defaultLocationSchema = z.object({
+  warehouseId: z.string().min(1),
+  locationId: z.string().min(1),
+  isDefault: z.boolean(),
+});
+
 export async function listWarehousesAction() {
   const session = await requirePermission("warehouses.manage");
   return warehouseRepository.listByTenant(session.user.tenantId);
@@ -96,6 +102,24 @@ export async function addWarehouseLocationAction(input: unknown) {
     return { success: true as const, location };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to add location" };
+  }
+}
+
+export async function setWarehouseDefaultLocationAction(input: unknown) {
+  const session = await requirePermission("warehouses.manage");
+  const parsed = defaultLocationSchema.safeParse(input);
+  if (!parsed.success) return { error: "Invalid input" };
+
+  try {
+    await warehouseService.setDefaultLocation({
+      tenantId: session.user.tenantId,
+      actorUserId: session.user.id,
+      ...parsed.data,
+    });
+    revalidatePath("/settings/warehouses");
+    return { success: true as const };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to set the default location" };
   }
 }
 

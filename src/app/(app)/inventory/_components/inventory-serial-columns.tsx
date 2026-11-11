@@ -127,7 +127,17 @@ export function createInventorySerialColumns({
       id: "status",
       header: "Status",
       enableSorting: sortable,
-      cell: ({ row }) => <InventoryUnitStatusCell row={row.original} />,
+      cell: ({ row }) => (
+        <InventoryUnitStatusCell
+          unit={{
+            id: row.original.id,
+            branchId: row.original.branch.id,
+            statusCode: row.original.statusCode,
+            pendingDefectInspection: row.original.pendingDefectInspection,
+            pendingDefectReportId: row.original.pendingDefectReportId,
+          }}
+        />
+      ),
       meta: { mobile: "primary", className: "min-w-0" },
     }),
   );

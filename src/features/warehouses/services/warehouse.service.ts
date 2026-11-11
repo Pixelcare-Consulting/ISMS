@@ -101,6 +101,47 @@ export const warehouseService = {
     return location;
   },
 
+  async setDefaultLocation(input: {
+    tenantId: string;
+    actorUserId: string;
+    warehouseId: string;
+    locationId: string;
+    isDefault: boolean;
+  }) {
+    const warehouse = await warehouseRepository.findById(input.tenantId, input.warehouseId);
+    if (!warehouse) throw new Error("Warehouse not found");
+
+    const location = warehouse.locations.find((l) => l.id === input.locationId);
+    if (!location) throw new Error("Location not found");
+    if (location.isDefault === input.isDefault) return;
+
+    try {
+      await warehouseRepository.setDefaultLocation(
+        input.warehouseId,
+        input.isDefault ? input.locationId : null,
+      );
+    } catch (e) {
+      // Someone moved the default a moment ago: warehouse_locations_default_uq caught it.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+        throw new Error("The default location just changed. Reload and try again.");
+      }
+      throw e;
+    }
+
+    await auditService.log({
+      tenantId: input.tenantId,
+      userId: input.actorUserId,
+      action: "warehouse.location_default_changed",
+      entityType: "WarehouseLocation",
+      entityId: input.locationId,
+      metadata: {
+        warehouseCode: warehouse.code,
+        locationCode: location.code,
+        isDefault: input.isDefault,
+      },
+    });
+  },
+
   async deleteLocation(input: {
     tenantId: string;
     actorUserId: string;

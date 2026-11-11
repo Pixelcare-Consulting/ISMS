@@ -223,6 +223,33 @@ describe("planning-ops tools gates", () => {
     expect(result.quotas[0]?.branchId).toBe("clbranchabp00000000000001");
   });
 
+  it("lets a branch quota viewer read quotas within their area", async () => {
+    const tools = buildPlanningOpsTools(
+      sessionWithPermissions(["branch_quotas.view"]),
+    );
+    const result = (await tools.listBranchQuotas.execute!(
+      {},
+      toolOpts("t-quota-view"),
+    )) as { quotas: Array<{ branchId: string }> };
+
+    expect(result.quotas.map((row) => row.branchId)).toEqual([
+      "clbranchabp00000000000001",
+    ]);
+  });
+
+  it("refuses quotas to a user holding only branch permissions", async () => {
+    const tools = buildPlanningOpsTools(
+      sessionWithPermissions(["branches.manage"]),
+    );
+    const result = (await tools.listBranchQuotas.execute!(
+      {},
+      toolOpts("t-quota-denied"),
+    )) as { error?: string };
+
+    expect(result.error).toContain("branch_quotas.view");
+    expect(branchQuotaService.list).not.toHaveBeenCalled();
+  });
+
   it("drops demand-planning branches outside the user area", async () => {
     (demandPlanningRunService.getRun as jest.Mock).mockResolvedValue({
       id: "run-1",

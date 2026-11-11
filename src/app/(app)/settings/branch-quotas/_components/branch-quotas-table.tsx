@@ -74,7 +74,13 @@ function formatMonth(value: Date | string) {
   });
 }
 
-export function BranchQuotasTable({ quotas }: { quotas: QuotaRow[] }) {
+export function BranchQuotasTable({
+  quotas,
+  canManage,
+}: {
+  quotas: QuotaRow[];
+  canManage: boolean;
+}) {
   const router = useRouter();
   const rows = quotas;
   const [query, setQuery] = useState("");
@@ -253,24 +259,28 @@ export function BranchQuotasTable({ quotas }: { quotas: QuotaRow[] }) {
           row.original.targetDii == null ? "—" : `${Number(row.original.targetDii)} days`,
         meta: { align: "end", className: "tabular-nums" },
       }),
-      quotaColumn.display({
-        id: "actions",
-        header: "",
-        enableSorting: false,
-        cell: ({ row }) => (
-          <TableRowActions
-            asCell={false}
-            onEdit={() => openEdit(row.original)}
-            editDisabled={pending}
-            onDelete={() => setDeleting(row.original)}
-            deleteDisabled={pending}
-          />
-        ),
-        meta: { align: "end" },
-      }),
     ];
+    if (canManage) {
+      cols.push(
+        quotaColumn.display({
+          id: "actions",
+          header: "",
+          enableSorting: false,
+          cell: ({ row }) => (
+            <TableRowActions
+              asCell={false}
+              onEdit={() => openEdit(row.original)}
+              editDisabled={pending}
+              onDelete={() => setDeleting(row.original)}
+              deleteDisabled={pending}
+            />
+          ),
+          meta: { align: "end" },
+        }),
+      );
+    }
     return cols;
-  }, [indexOffset, pending]);
+  }, [canManage, indexOffset, pending]);
 
   return (
     <div className="space-y-4">
@@ -294,16 +304,18 @@ export function BranchQuotasTable({ quotas }: { quotas: QuotaRow[] }) {
           suggestions,
         }}
         toolbarActions={
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setImporting(true)}>
-              <Upload className="size-4" />
-              Import
-            </Button>
-            <Button onClick={openCreate}>
-              <Plus className="size-4" />
-              Add quota
-            </Button>
-          </div>
+          canManage ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setImporting(true)}>
+                <Upload className="size-4" />
+                Import
+              </Button>
+              <Button onClick={openCreate}>
+                <Plus className="size-4" />
+                Add quota
+              </Button>
+            </div>
+          ) : undefined
         }
         empty={pageItems.length === 0}
         emptyMessage={

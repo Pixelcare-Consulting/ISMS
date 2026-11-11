@@ -22,13 +22,6 @@ async function completeStub(
   const refId = job.referenceId ?? job.id;
   const sapDocRef = mockSapDocRef(job.jobType, refId);
 
-  if (job.referenceType === SAP_REFERENCE_TYPES.BranchPullout && job.referenceId) {
-    await prisma.branchPullout.update({
-      where: { id: job.referenceId, tenantId },
-      data: { sapDocRef },
-    });
-  }
-
   if (
     job.referenceType === SAP_REFERENCE_TYPES.BranchDelivery &&
     job.referenceId &&
@@ -139,10 +132,6 @@ export const mockSapOutbound: SapOutboundPort = {
     });
 
     return sapDocRef;
-  },
-
-  async createPulloutItr({ tenantId, userId, job }) {
-    return completeStub(tenantId, userId, job, SAP_REFERENCE_TYPES.BranchPullout);
   },
 
   async createPartialDeliveryInventoryTransfer({ tenantId, userId, job }) {

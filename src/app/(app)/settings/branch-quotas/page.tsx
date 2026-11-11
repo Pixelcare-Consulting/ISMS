@@ -1,10 +1,14 @@
 import { listBranchQuotasAction } from "@/features/branch-quotas/actions/branch-quota.actions";
-import { requirePermission } from "@/lib/auth/permissions";
+import {
+  BRANCH_QUOTA_ACCESS,
+  canManageBranchQuotas,
+} from "@/features/branch-quotas/constants/branch-quota-permissions";
+import { requireAnyPermission } from "@/lib/auth/permissions";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import { BranchQuotasTable } from "@/app/(app)/settings/branch-quotas/_components/branch-quotas-table";
 
 export default async function BranchQuotasPage() {
-  await requirePermission("branches.manage");
+  const session = await requireAnyPermission(BRANCH_QUOTA_ACCESS);
   const quotas = await listBranchQuotasAction();
 
   return (
@@ -15,6 +19,7 @@ export default async function BranchQuotasPage() {
         sticky={false}
       />
       <BranchQuotasTable
+        canManage={canManageBranchQuotas(session.user.permissions)}
         quotas={quotas.map((q) => ({
           ...q,
           quotaAmount: q.quotaAmount.toString(),

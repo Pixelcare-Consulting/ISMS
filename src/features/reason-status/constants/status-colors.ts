@@ -96,6 +96,7 @@ const CODE_FALLBACK_COLOR: Record<string, StatusColorKey> = {
   completed: "emerald",
   pulled_out: "emerald",
   STK: "emerald",
+  DU: "amber",
   rejected: "rose",
   cancelled: "rose",
   DEF: "rose",

@@ -12,8 +12,10 @@ import {
 } from "@/features/logistics/lib/transfer-visibility";
 import {
   canAccessLogistics,
+  canViewPullouts,
   resolveLogisticsCapabilities,
 } from "@/features/logistics/constants/logistics-permissions";
+import { transferApprovalBranchIds } from "@/features/logistics/lib/transfer-approver";
 import { logisticsRepository } from "@/features/logistics/repositories/logistics.repository";
 import { monthlySirService } from "@/features/monthly-sir/services/monthly-sir.service";
 import {
@@ -29,6 +31,7 @@ import {
 } from "@/features/returns/constants/returns-permissions";
 import { returnsKpiService } from "@/features/returns/services/returns-kpi.service";
 import { resolveScIdsForUser } from "@/features/service-center-ops/services/sc-scope";
+import { getUserBranchIds } from "@/lib/aor/scope";
 import { hasPermission, requireAuth } from "@/lib/auth/permissions";
 
 export type WorkflowNavCountBadges = {
@@ -150,15 +153,20 @@ export async function getWorkflowNavCountBadgesAction(): Promise<WorkflowNavCoun
       (async () => {
         if (!canAccessLogistics(permissions)) return 0;
         const caps = resolveLogisticsCapabilities(permissions);
+        const [scope, assignedBranchIds] = await Promise.all([
+          resolveLogisticsBranchScope({ tenantId, userId, permissions }),
+          getUserBranchIds(tenantId, userId),
+        ]);
         const where = transferActionableWhere(
-          await resolveLogisticsBranchScope({ tenantId, userId, permissions }),
+          scope,
           caps,
+          transferApprovalBranchIds(roleSlugs, assignedBranchIds),
         );
         if (!where) return 0;
         return logisticsRepository.countAllTransfers(tenantId, where);
       })(),
       (async () => {
-        if (!canAccessLogistics(permissions)) return 0;
+        if (!canViewPullouts(permissions)) return 0;
         const caps = resolveLogisticsCapabilities(permissions);
         const codes = getPulloutActionableStatusCodes(caps);
         return logisticsRepository.countPulloutsByStatusCodes(tenantId, codes);

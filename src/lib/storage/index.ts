@@ -5,6 +5,7 @@ import type { ObjectStorage } from "@/lib/storage/types";
 export const POLICY_DOCUMENTS_PREFIX = "policy-documents";
 export const AUDIT_ARCHIVES_PREFIX = "audit-archives";
 export const DEFECT_REPORT_PHOTOS_PREFIX = "defect-report-photos";
+export const PULLOUT_ATTACHMENTS_PREFIX = "pullout-attachments";
 
 /**
  * Resolve object storage for the current runtime.
@@ -50,6 +51,16 @@ export function buildDefectReportPhotoPath(input: {
 }) {
   const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
   return `${DEFECT_REPORT_PHOTOS_PREFIX}/tenants/${input.tenantId}/reports/${input.reportId}/${input.fileId}-${safeName}`;
+}
+
+export function buildPulloutAttachmentPath(input: {
+  tenantId: string;
+  pulloutId: string;
+  fileId: string;
+  fileName: string;
+}) {
+  const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+  return `${PULLOUT_ATTACHMENTS_PREFIX}/tenants/${input.tenantId}/pullouts/${input.pulloutId}/${input.fileId}-${safeName}`;
 }
 
 export type { ObjectStorage, StorageDownloadResult, StorageUploadInput } from "@/lib/storage/types";

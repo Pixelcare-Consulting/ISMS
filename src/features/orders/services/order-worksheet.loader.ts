@@ -338,6 +338,8 @@ async function loadWorksheetFacts(
       prisma.branchPulloutLine.findMany({
         where: {
           pullout: { tenantId, branchId },
+          receivedAt: null,
+          rejectedAt: null,
           serialNumber: { modelId: { in: modelIds } },
         },
         select: {

@@ -9,6 +9,11 @@ interface StatusCodeBadgeProps {
   color?: string | null;
   /** Show technical code suffix (e.g. pending_tl). Off by default in operational views. */
   showCode?: boolean;
+  /**
+   * Visible label is the short code only. The full name stays on the title
+   * for hover and assistive tech. Takes precedence over `showCode`.
+   */
+  codeOnly?: boolean;
   className?: string;
 }
 
@@ -17,14 +22,20 @@ export function StatusCodeBadge({
   name,
   color,
   showCode = false,
+  codeOnly = false,
   className,
 }: StatusCodeBadgeProps) {
   const variant = statusColorClassName(color, code);
 
   return (
-    <Badge variant="outline" className={cn("font-normal", variant, className)}>
-      {name}
-      {showCode ? (
+    <Badge
+      variant="outline"
+      title={codeOnly ? name : undefined}
+      aria-label={codeOnly ? name : undefined}
+      className={cn("font-normal", codeOnly && "font-mono tracking-normal", variant, className)}
+    >
+      {codeOnly ? code : name}
+      {!codeOnly && showCode ? (
         <span className="ml-1.5 font-mono text-[10px] opacity-70">{code}</span>
       ) : null}
     </Badge>

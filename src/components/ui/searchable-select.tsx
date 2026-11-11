@@ -41,6 +41,8 @@ type SearchableSelectProps = {
   disabled?: boolean;
   name?: string;
   id?: string;
+  /** Names the field for assistive tech where no visible `label` fits, such as a table cell. */
+  ariaLabel?: string;
   className?: string;
   /** Extra classes for the options popover (e.g. raise z-index above a dialog). */
   popoverClassName?: string;
@@ -74,6 +76,7 @@ export function SearchableSelect({
   disabled = false,
   name,
   id,
+  ariaLabel,
   className,
   popoverClassName,
   side,
@@ -175,6 +178,7 @@ export function SearchableSelect({
             variant="outline"
             role="combobox"
             aria-expanded={open}
+            aria-label={ariaLabel}
             disabled={disabled}
             title={selected?.label}
             className={cn(

@@ -1,3 +1,4 @@
+import { statusUpdatedStamp } from "@/features/inventory/lib/status-updated-stamp";
 import { assertSerialSellableAtStockSource } from "@/features/inventory/services/inventory-sellable-guards";
 import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
 import { assertSerialsNotFrozenInStockCount } from "@/features/stock-audit/services/stock-count-freeze";
@@ -50,6 +51,7 @@ export async function markSerialSoldFromStockSource(
       statusCodeId: input.targetStatusCodeId,
       updatedById: input.updatedById,
       ...(relocate ? { branchId: input.soldBranchId } : {}),
+      ...statusUpdatedStamp(input.stkCodeId, input.targetStatusCodeId),
     },
   });
   if (updated.count === 0) {
@@ -110,6 +112,7 @@ export async function restoreSerialToStockSource(
       ...(oldInv.branchId !== landBranchId
         ? { branchId: landBranchId }
         : {}),
+      ...statusUpdatedStamp(oldInv.statusCodeId, input.stkCodeId),
     },
   });
   return oldInv.statusCodeId;

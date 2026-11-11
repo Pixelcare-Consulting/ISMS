@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import type { NavEntry } from "@/config/app-navigation";
+import { BRANCH_QUOTA_ACCESS } from "@/features/branch-quotas/constants/branch-quota-permissions";
 import { CUSTOM_DASHBOARD_ACCESS } from "@/features/custom-dashboards/constants/custom-dashboard-permissions";
 
 /**
@@ -172,7 +173,7 @@ export const setupNavigation: NavEntry[] = [
         href: "/settings/branch-quotas",
         label: "Branch quotas",
         icon: ChartColumn,
-        anyPermissions: ["branches.view", "branches.manage"],
+        anyPermissions: BRANCH_QUOTA_ACCESS,
       },
       {
         href: "/settings/ordering",

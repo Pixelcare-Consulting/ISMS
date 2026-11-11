@@ -36,12 +36,19 @@ import {
   DIFFERENT_DEALER_GROUP_MESSAGE,
   sameDealerGroup,
 } from "@/features/logistics/lib/transfer-dealer-group";
+import {
+  TRANSFER_LINE_REMARKS_MAX,
+  type TransferLineRemarks,
+} from "@/features/logistics/lib/transfer-line-remarks";
+import { canApproveTransferAt } from "@/features/logistics/lib/transfer-approver";
 import { nextTransferNo } from "@/features/logistics/lib/transfer-number";
+import { shipmentIsReady } from "@/features/logistics/lib/shipment";
 import { printTransferSlips } from "@/features/logistics/lib/transfer-slip-print";
 import type { TransferDetail } from "@/features/logistics/services/transfer-posting.service";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -61,7 +68,7 @@ export interface TransferCreateInput {
   modelId: string;
   quantity: number;
   serialNumberIds: string[];
-  notes?: string;
+  lineRemarks?: TransferLineRemarks;
   transferNo?: string;
 }
 
@@ -90,6 +97,8 @@ interface TransferFormProps {
   currentUserName?: string;
   capabilities?: LogisticsActionCapabilities;
   branchScope?: string[] | null;
+  /** From `transferApprovalBranchIds`: the branches this person approves for, `null` for all. */
+  approvalBranchIds?: string[] | null;
   detail?: TransferDetail | null;
   onSubmit?: (
     input: TransferCreateInput,
@@ -108,6 +117,7 @@ interface DraftRow {
   key: string;
   modelId: string;
   serialNumberId: string;
+  remarks: string;
 }
 
 interface ModelOption {
@@ -134,6 +144,8 @@ const APPROVE_NOTE =
 const REJECT_NOTE = "Rejected requests release only the units reserved on this transfer.";
 const RELEASE_NOTE =
   "Release sends these units in transit. Stock at the receiving branch does not increase until they are accepted.";
+const SAVE_SHIPMENT_TO_RELEASE =
+  "Save the waybill, courier and schedule date to release these units.";
 const RECEIVE_NOTE =
   "This serial moves to the receiving branch as stock. Its delivery receipt number updates. The original delivery date stays the same.";
 const REJECT_SERIAL_NOTE =
@@ -157,7 +169,7 @@ function nextDraftKey(): string {
 }
 
 function emptyDraftRow(modelId = ""): DraftRow {
-  return { key: nextDraftKey(), modelId, serialNumberId: "" };
+  return { key: nextDraftKey(), modelId, serialNumberId: "", remarks: "" };
 }
 
 function formatTransferDate(value: Date | string): string {
@@ -259,6 +271,12 @@ function transferLineColumns(
       className: "w-48 font-mono",
       cell: (line) => line.serialNo,
     },
+    {
+      id: "remarks",
+      header: "Remarks",
+      className: "w-56 break-words",
+      cell: (line) => line.requestRemarks ?? "—",
+    },
   ];
   if (!canReceive) return columns;
   columns.push({
@@ -336,7 +354,7 @@ function TransferLinesTable({
         rows={lines}
         getRowId={(line) => line.serialNumberId}
         columns={transferLineColumns(fromBranchId, canReceive, pending, onAccept, onReject)}
-        searchText={(line) => [line.skuCode, line.modelName, line.serialNo]}
+        searchText={(line) => [line.skuCode, line.modelName, line.serialNo, line.requestRemarks]}
         searchPlaceholder="Search serials…"
         itemLabel="serial"
         emptyMessage="No serials on this transfer."
@@ -509,6 +527,7 @@ function TransferPageWorkspace({
   detail,
   canReceive,
   canEditShipment,
+  needsShipmentToRelease,
   pending,
   workflowStatuses,
   onAccept,
@@ -519,6 +538,7 @@ function TransferPageWorkspace({
   detail: TransferDetail;
   canReceive: boolean;
   canEditShipment: boolean;
+  needsShipmentToRelease: boolean;
   pending: boolean;
   workflowStatuses: readonly WorkflowStatusOption[];
   onAccept: (line: TransferLineRow) => void;
@@ -558,6 +578,7 @@ function TransferPageWorkspace({
         {showsOnTheWay(kind) ? (
           <p className="text-sm">{onTheWayLine(serialsStillOnTheWay(detail))}</p>
         ) : null}
+        {needsShipmentToRelease ? <p className="text-sm">{SAVE_SHIPMENT_TO_RELEASE}</p> : null}
       </RecordSection>
       <LogisticsShipmentSection
         key={`${detail.shipment.waybillNo ?? ""}|${detail.shipment.courierName ?? ""}|${detail.shipment.scheduledAt ?? ""}`}
@@ -608,6 +629,7 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
       currentUserName = "",
       capabilities,
       branchScope = null,
+      approvalBranchIds = [],
       detail = null,
       onSubmit,
       onCreated,
@@ -635,7 +657,6 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
   const [toBranchId, setToBranchId] = useState("");
   const [rows, setRows] = useState<DraftRow[]>(() => [emptyDraftRow()]);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
-  const [notes, setNotes] = useState("");
   const [createdOn] = useState(() => formatTransferDate(new Date()));
   const [draftTransferNo] = useState(() => (mode === "create" ? nextTransferNo() : ""));
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
@@ -726,25 +747,24 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
       waiting &&
       detail &&
       capabilities?.canApproveTl &&
-      inScope(branchScope, detail.fromBranch.id),
+      canApproveTransferAt(approvalBranchIds, detail.fromBranch.id),
   );
   const canReject = Boolean(
     waiting &&
       detail &&
       capabilities?.canRejectTransfer &&
-      inScope(branchScope, detail.fromBranch.id),
+      canApproveTransferAt(approvalBranchIds, detail.fromBranch.id),
   );
-  const canRelease = Boolean(
+  const mayRelease = Boolean(
     hasLines &&
       detail &&
       releasable &&
       capabilities?.canExecuteTransfer &&
       inScope(branchScope, detail.fromBranch.id),
   );
-  const receivable =
-    detail?.status.code === TRANSFER_WORKFLOW_CODE.for_transfer ||
-    detail?.status.code === TRANSFER_WORKFLOW_CODE.approved ||
-    detail?.status.code === TRANSFER_WORKFLOW_CODE.in_transit;
+  const shipmentSaved = Boolean(detail && shipmentIsReady(detail.shipment));
+  const canRelease = mayRelease && shipmentSaved;
+  const receivable = detail?.status.code === TRANSFER_WORKFLOW_CODE.in_transit;
   const canReceive = Boolean(
     hasLines &&
       detail &&
@@ -821,6 +841,10 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
     );
   }
 
+  function setRowRemarks(key: string, remarks: string) {
+    setRows((current) => current.map((row) => (row.key === key ? { ...row, remarks } : row)));
+  }
+
   function addRow() {
     if (!canAddRow) return;
     setRows((current) => [...current, emptyDraftRow(current[0]?.modelId ?? "")]);
@@ -865,6 +889,9 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
   function submit() {
     if (!ready || !onSubmit) return;
     const serialNumberIds = rows.map((row) => row.serialNumberId);
+    const lineRemarks = Object.fromEntries(
+      rows.map((row) => [row.serialNumberId, row.remarks]),
+    );
     startTransition(async () => {
       const result = await onSubmit({
         fromBranchId,
@@ -872,7 +899,7 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
         modelId: lockedModelId,
         quantity: rows.length,
         serialNumberIds,
-        notes: notes.trim() || undefined,
+        lineRemarks,
         transferNo: draftTransferNo,
       });
       if (result.error) {
@@ -897,7 +924,7 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
       }
       const slip = action.type === "approve" ? approvedSlip(result) : null;
       if (slip) {
-        const opened = printTransferSlips({
+        printTransferSlips({
           transferNo: slip.transferNo || detail.transferNo,
           rsNo: slip.rsNo,
           drNo: slip.drNo,
@@ -908,9 +935,6 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
             model: modelLabel({ skuCode: line.skuCode, name: line.modelName }),
           })),
         });
-        if (!opened) {
-          toast.message("Release slip and delivery receipt are ready to print");
-        }
       }
       toast.success(successMessage(action));
       setPendingConfirm(null);
@@ -1066,6 +1090,7 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
           detail={detail}
           canReceive={canReceive}
           canEditShipment={canEditShipment}
+          needsShipmentToRelease={mayRelease && !shipmentSaved}
           pending={pending}
           workflowStatuses={workflowStatuses}
           onShipmentSaved={() => onUpdated?.()}
@@ -1115,8 +1140,8 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
             }}
           />
         ) : (
-        <div className="min-w-0 overflow-hidden rounded-md border">
-          <table className="w-full table-fixed text-sm">
+        <div className="min-w-0 overflow-x-auto rounded-md border">
+          <table className="w-full min-w-[42rem] table-fixed text-sm">
             <thead className="bg-muted/40 text-left">
               <tr>
                 <th
@@ -1139,8 +1164,11 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
                 <th className="px-2 py-2 align-middle font-medium text-muted-foreground" scope="col">
                   Serial number
                 </th>
+                <th className="px-2 py-2 align-middle font-medium text-muted-foreground" scope="col">
+                  Remarks
+                </th>
                 <th
-                  className="w-40 px-2 py-2 align-middle font-medium text-muted-foreground"
+                  className="w-32 px-2 py-2 align-middle font-medium text-muted-foreground"
                   scope="col"
                 >
                   <div className="flex items-center gap-1 whitespace-nowrap">
@@ -1212,6 +1240,7 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
                             id: model.id,
                             label: modelLabel(model),
                           }))}
+                          ariaLabel={`Model for row ${index + 1}`}
                           value={index === 0 ? row.modelId : lockedModelId}
                           onChange={index === 0 ? setFirstModel : () => undefined}
                           placeholder={modelsLoading ? "Loading models…" : "Select model…"}
@@ -1224,6 +1253,7 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
                       <td className="min-w-0 overflow-hidden px-2 py-2 align-middle">
                         <SearchableSelect
                           options={serialOptions}
+                          ariaLabel={`Serial for row ${index + 1}`}
                           value={row.serialNumberId}
                           onChange={(next) => setRowSerial(row.key, next)}
                           placeholder={
@@ -1237,6 +1267,15 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
                           emptyMessage="No stock or defective serials are free for this model."
                           disabled={pending || !lockedModelId || serialsLoading || serials.length === 0}
                           popoverClassName={SERIAL_POPOVER_CLASS}
+                        />
+                      </td>
+                      <td className="min-w-0 px-2 py-2 align-middle">
+                        <Input
+                          value={row.remarks}
+                          onChange={(event) => setRowRemarks(row.key, event.target.value)}
+                          disabled={pending}
+                          maxLength={TRANSFER_LINE_REMARKS_MAX}
+                          aria-label={`Remarks for row ${index + 1}`}
                         />
                       </td>
                       <td className="px-2 py-2 align-middle">
@@ -1288,32 +1327,12 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
             No stock or defective serials are free for this model.
           </p>
         ) : null}
-        {pageLayout ? null : (
-        <div className="space-y-1.5">
-          <label htmlFor="transfer-remarks" className="text-sm text-muted-foreground">
-            Remarks
-          </label>
-          {mode === "create" ? (
-            <Textarea
-              id="transfer-remarks"
-              value={notes}
-              disabled={pending}
-              onChange={(event) => setNotes(event.target.value)}
-              placeholder="Why these units are moving"
-              rows={1}
-              className="h-9 min-h-9 resize-none py-1.5"
-            />
-          ) : (
-            <p id="transfer-remarks" className="text-sm whitespace-pre-wrap">
-              {detail?.notes?.trim() ? (
-                detail.notes
-              ) : (
-                <span className="text-muted-foreground">—</span>
-              )}
-            </p>
-          )}
-        </div>
-        )}
+        {!pageLayout && detail?.notes?.trim() ? (
+          <div className="space-y-1.5">
+            <p className="text-sm text-muted-foreground">Remarks</p>
+            <p className="text-sm whitespace-pre-wrap">{detail.notes}</p>
+          </div>
+        ) : null}
       </section>
 
       {mode === "view" && detail ? (
@@ -1413,7 +1432,7 @@ function approvedSlip(result: object): { rsNo: string; drNo: string; transferNo:
 
 function printCurrentSlips(detail: TransferDetail) {
   if (!detail.rsNo || !detail.drNo) return;
-  const opened = printTransferSlips({
+  printTransferSlips({
     transferNo: detail.transferNo,
     rsNo: detail.rsNo,
     drNo: detail.drNo,
@@ -1424,7 +1443,6 @@ function printCurrentSlips(detail: TransferDetail) {
       model: modelLabel({ skuCode: line.skuCode, name: line.modelName }),
     })),
   });
-  if (!opened) toast.message("Release slip and delivery receipt are ready to print");
 }
 
 function runTransferAction(id: string, action: PendingConfirm, remarks: string) {

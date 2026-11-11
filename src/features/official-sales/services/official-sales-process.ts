@@ -1,4 +1,5 @@
 import { auditService } from "@/features/audit/services/audit.service";
+import { statusUpdatedStamp } from "@/features/inventory/lib/status-updated-stamp";
 import {
   assertExclusivePlacement,
   loadCurrentPlacements,
@@ -259,6 +260,9 @@ async function setInventoryOfficialSold(
       updatedById: input.updatedById,
       ...(input.currentBranchId !== input.soldBranchId
         ? { branchId: input.soldBranchId }
+        : {}),
+      ...(input.expectedStatusCodeId
+        ? statusUpdatedStamp(input.expectedStatusCodeId, input.ofsCodeId)
         : {}),
     },
   });
@@ -628,6 +632,7 @@ async function processWhseAdd(
           branchId: soldBranch.id,
           statusCodeId: codes.ofsCodeId,
           updatedById: userId,
+          ...statusUpdatedStamp(branchPlacement.statusCode, "OFS"),
         },
       });
     } else {

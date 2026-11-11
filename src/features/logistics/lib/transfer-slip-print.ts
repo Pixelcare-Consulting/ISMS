@@ -1,3 +1,5 @@
+import { printHtml } from "@/utils/print-html";
+
 export interface TransferSlipPrintInput {
   transferNo: string;
   rsNo: string;
@@ -36,10 +38,8 @@ function slipSection(title: string, numberLabel: string, number: string, input: 
 }
 
 /** Opens the browser print dialog for the release slip and delivery receipt. */
-export function printTransferSlips(input: TransferSlipPrintInput): boolean {
-  const popup = window.open("", "_blank", "noopener,noreferrer,width=800,height=900");
-  if (!popup) return false;
-  popup.document.write(`<!DOCTYPE html>
+export function printTransferSlips(input: TransferSlipPrintInput): void {
+  printHtml(`<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8" />
@@ -58,8 +58,4 @@ export function printTransferSlips(input: TransferSlipPrintInput): boolean {
   ${slipSection("Delivery receipt", "DR number", input.drNo, input)}
 </body>
 </html>`);
-  popup.document.close();
-  popup.focus();
-  popup.print();
-  return true;
 }

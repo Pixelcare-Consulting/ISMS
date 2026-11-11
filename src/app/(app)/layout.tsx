@@ -30,7 +30,10 @@ import { canUseAiAssist } from "@/features/ai/constants/ai-permissions";
 import { isAiConfigured } from "@/features/ai/lib/provider";
 import { readAiAssistantGate } from "@/features/ai/services/assistant-policy.service";
 import { countUnreadAnnouncementsAction } from "@/features/announcements/actions/announcement.actions";
-import { countStockUnitsStkAction } from "@/features/inventory/actions/inventory.actions";
+import {
+  countBranchInventoryV2UpdatesAction,
+  countStockUnitsStkAction,
+} from "@/features/inventory/actions/inventory.actions";
 import { getWorkflowNavCountBadgesAction } from "@/features/nav-badges/actions/nav-count-badges.actions";
 import { countUnreadNotificationsAction } from "@/features/notifications/actions/notification.actions";
 import { NotificationsHeaderAction } from "@/features/notifications/components/notifications-header-action";
@@ -86,6 +89,7 @@ export default async function AppLayout({
       : Promise.all([
           countUnreadAnnouncementsAction().catch(() => 0),
           countStockUnitsStkAction().catch(() => 0),
+          countBranchInventoryV2UpdatesAction().catch(() => 0),
           getWorkflowNavCountBadgesAction(),
         ]),
   ]);
@@ -94,7 +98,8 @@ export default async function AppLayout({
     ? {
         unreadAnnouncements: operationalBadges[0],
         stockUnitsStk: operationalBadges[1],
-        ...operationalBadges[2],
+        branchInventoryV2Updates: operationalBadges[2],
+        ...operationalBadges[3],
       }
     : {};
 

@@ -15,6 +15,7 @@ import {
   LOGISTICS_DELIVERY_TRANSFER_RECEIVE,
   LOGISTICS_MANAGE,
   LOGISTICS_PAGE_PERMISSIONS,
+  PULLOUTS_VIEW,
   SAP_CHECK_PERMISSIONS,
 } from "@/features/logistics/constants/logistics-permissions";
 import { logisticsRepository } from "@/features/logistics/repositories/logistics.repository";
@@ -33,6 +34,7 @@ import {
   deliveryTransferService,
   type DeliveryTransferDraft,
 } from "@/features/logistics/services/delivery-transfer.service";
+import { PULLOUT_DEFECTIVE_REASON_CODE } from "@/features/logistics/services/pullout-posting.planner";
 import { pulloutPostingService } from "@/features/logistics/services/pullout-posting.service";
 import { transferPostingService } from "@/features/logistics/services/transfer-posting.service";
 import type { PostingActor } from "@/features/logistics/services/posting-support";
@@ -47,7 +49,17 @@ import {
   resolveLogisticsBranchScope,
   transferListWhere,
 } from "@/features/logistics/lib/transfer-visibility";
-import { parseScheduleDate } from "@/features/logistics/lib/shipment";
+import { parseManilaDateTime, parseScheduleDate } from "@/features/logistics/lib/shipment";
+import {
+  PULLOUT_CREATE_INPUT_ERROR,
+  PULLOUT_RECEIVE_INPUT_ERROR,
+  PULLOUT_LINE_REJECT_INPUT_ERROR,
+  pulloutLineRejectSchema,
+  pulloutLineSchema,
+  pulloutReceiveSchema,
+  pulloutSchema,
+} from "@/features/logistics/schemas/pullout.schema";
+import { transferLineRemarksSchema } from "@/features/logistics/lib/transfer-line-remarks";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
@@ -120,7 +132,7 @@ const transferSchema = z.object({
   modelId: z.string().min(1),
   quantity: z.number().int().positive(),
   serialNumberIds: z.array(z.string().min(1)).min(1),
-  notes: z.string().optional(),
+  lineRemarks: transferLineRemarksSchema,
   transferNo: z
     .string()
     .trim()
@@ -128,25 +140,15 @@ const transferSchema = z.object({
     .optional()
     .transform((value) => value || undefined),
 });
-const checklistIdList = z.array(z.string().min(1)).min(1);
-const pulloutLineSchema = z.object({
-  serialNumberId: z.string().min(1),
-  pulloutClassificationIds: checklistIdList,
-  unitPackingConditionIds: checklistIdList,
-  accessoryCompletenessIds: checklistIdList,
-});
-const pulloutSchema = z.object({
-  branchId: z.string().min(1),
-  warehouseId: z.string().min(1),
-  reasonStatusCodeId: z.string().min(1),
-  lines: z.array(pulloutLineSchema).min(1),
-  notes: z.string().optional(),
-});
 const pulloutListSchema = z.object({
   warehouseId: z.string().min(1),
   waybillNo: z.string().optional(),
+  courierName: z.string().trim().max(120).optional(),
+  scheduledAt: z.string().optional(),
+  actualPulloutDate: z.string().optional(),
   notes: z.string().optional(),
   serialNumberIds: z.array(z.string().min(1)).min(1),
+  addedLines: z.array(pulloutLineSchema).optional(),
 });
 const shipmentSchema = z.object({
   waybillNo: z.string().trim().min(1).max(80),
@@ -192,12 +194,13 @@ function revalidateDelivery(id: string) {
 }
 
 function postingActor(session: {
-  user: { tenantId: string; id: string; permissions?: string[] };
+  user: { tenantId: string; id: string; permissions?: string[]; roleSlugs?: string[] };
 }): PostingActor {
   return {
     tenantId: session.user.tenantId,
     userId: session.user.id,
     permissions: session.user.permissions,
+    roleSlugs: session.user.roleSlugs,
   };
 }
 
@@ -267,7 +270,7 @@ export async function getTransferKpisAction(): Promise<LogisticsKpis> {
 }
 
 export async function getPulloutKpisAction(): Promise<LogisticsKpis> {
-  const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
+  const session = await requirePermission(PULLOUTS_VIEW);
   const tid = session.user.tenantId;
   return buildLogisticsKpis(
     tid,
@@ -620,7 +623,7 @@ export async function listPulloutsAction(input?: {
   sort?: string;
   sortDir?: string;
 }) {
-  const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
+  const session = await requirePermission(PULLOUTS_VIEW);
   return logisticsRepository.listPullouts(
     session.user.tenantId,
     {
@@ -632,7 +635,7 @@ export async function listPulloutsAction(input?: {
 }
 
 export async function getPulloutDetailAction(id: string) {
-  const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
+  const session = await requirePermission(PULLOUTS_VIEW);
   try {
     const detail = await pulloutPostingService.getDetail(postingActor(session), id);
     return { success: true as const, detail };
@@ -651,13 +654,28 @@ export async function listPulloutSerialsAction(branchId: string) {
   }
 }
 
+export async function getPulloutDestinationAction(branchId: string) {
+  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
+  try {
+    const warehouse = await pulloutPostingService.destination(postingActor(session), branchId);
+    return { success: true as const, warehouse };
+  } catch (error) {
+    return actionError(error, "Failed to load the destination warehouse");
+  }
+}
+
 export interface PulloutChecklistOptions {
   classifications: { id: string; name: string }[];
   unitPackingConditions: { id: string; name: string }[];
   accessoryCompleteness: { id: string; name: string }[];
+  /** Reasons a stock unit can pick. Defective units are always the DEF reason. */
+  reasons: { id: string; name: string }[];
+  problemDescriptions: { id: string; name: string }[];
 }
 
 const EMPTY_CHECKLIST_OPTIONS: PulloutChecklistOptions = {
+  reasons: [],
+  problemDescriptions: [],
   classifications: [],
   unitPackingConditions: [],
   accessoryCompleteness: [],
@@ -672,12 +690,23 @@ export async function listPulloutChecklistOptionsAction(): Promise<
   const orderBy = { name: "asc" as const };
   const select = { id: true, name: true };
   try {
-    const [classifications, unitPackingConditions, accessoryCompleteness] = await Promise.all([
-      prisma.pulloutClassification.findMany({ where, orderBy, select }),
-      prisma.unitPackingCondition.findMany({ where, orderBy, select }),
-      prisma.accessoryCompleteness.findMany({ where, orderBy, select }),
-    ]);
-    return { classifications, unitPackingConditions, accessoryCompleteness };
+    const [classifications, unitPackingConditions, accessoryCompleteness, problemDescriptions, reasons] =
+      await Promise.all([
+        prisma.pulloutClassification.findMany({ where, orderBy, select }),
+        prisma.unitPackingCondition.findMany({ where, orderBy, select }),
+        prisma.accessoryCompleteness.findMany({ where, orderBy, select }),
+        prisma.problemDescription.findMany({ where, orderBy, select }),
+        prisma.reasonStatusCode.findMany({
+          where: {
+            ...where,
+            code: { not: PULLOUT_DEFECTIVE_REASON_CODE },
+            reasonStatus: { category: "pullout_reason" },
+          },
+          orderBy: { sortOrder: "asc" },
+          select,
+        }),
+      ]);
+    return { classifications, unitPackingConditions, accessoryCompleteness, problemDescriptions, reasons };
   } catch (error) {
     return { ...EMPTY_CHECKLIST_OPTIONS, ...actionError(error, "Failed to load pull-out checklist options") };
   }
@@ -686,18 +715,50 @@ export async function listPulloutChecklistOptionsAction(): Promise<
 export async function createPulloutAction(input: unknown) {
   const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
   const parsed = pulloutSchema.safeParse(input);
-  if (!parsed.success) {
-    return {
-      error:
-        "Choose a branch, warehouse, reason, and classification, packing, and accessories for each serial",
-    };
-  }
+  if (!parsed.success) return { error: PULLOUT_CREATE_INPUT_ERROR };
   try {
     const row = await pulloutPostingService.create(postingActor(session), parsed.data);
     revalidatePullout(row.id);
     return { success: true as const, id: row.id, pulloutNo: row.pulloutNo };
   } catch (error) {
     return actionError(error, "Failed to create pull-out");
+  }
+}
+
+export async function uploadPulloutAttachmentAction(formData: FormData) {
+  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
+  const pulloutId = formData.get("pulloutId");
+  const file = formData.get("file");
+  if (typeof pulloutId !== "string" || !pulloutId) return { error: "Missing pull-out reference" };
+  if (!(file instanceof File)) return { error: "No file selected" };
+  try {
+    await pulloutPostingService.addAttachment(postingActor(session), pulloutId, file);
+    revalidatePullout(pulloutId);
+    return { success: true as const };
+  } catch (error) {
+    return actionError(error, "Failed to attach the file");
+  }
+}
+
+export async function approvePulloutLineAction(id: string, serialNumberId: string) {
+  const session = await requireAnyPermission([...TL_PERMISSIONS]);
+  try {
+    await pulloutPostingService.approveLine(postingActor(session), id, serialNumberId);
+    revalidatePullout(id);
+    return { success: true as const };
+  } catch (error) {
+    return actionError(error, "Failed to approve this unit");
+  }
+}
+
+export async function deletePulloutLineAction(id: string, serialNumberId: string) {
+  const session = await requireAnyPermission([...TL_PERMISSIONS]);
+  try {
+    await pulloutPostingService.deleteLine(postingActor(session), id, serialNumberId);
+    revalidatePullout(id);
+    return { success: true as const };
+  } catch (error) {
+    return actionError(error, "Failed to delete this unit");
   }
 }
 
@@ -734,17 +795,36 @@ export async function schedulePulloutAction(id: string) {
   }
 }
 
+/** Not sent: leave as is. Blank: clear it. */
+function optionalDate(
+  value: string | undefined,
+  parse: (raw: string) => Date | null,
+): Date | null | undefined | "invalid" {
+  if (value === undefined) return undefined;
+  if (!value.trim()) return null;
+  return parse(value) ?? "invalid";
+}
+
 export async function updatePulloutListAction(id: string, input: unknown) {
   const session = await requirePermission(LOGISTICS_MANAGE);
   const parsed = pulloutListSchema.safeParse(input);
   if (!parsed.success) return { error: "Choose the warehouse and the serials on this list" };
+  const scheduledAt = optionalDate(parsed.data.scheduledAt, parseManilaDateTime);
+  const actualScheduledDate = optionalDate(parsed.data.actualPulloutDate, parseScheduleDate);
+  if (scheduledAt === "invalid" || actualScheduledDate === "invalid") {
+    return { error: "Enter a valid schedule and actual pull-out date" };
+  }
   try {
     await pulloutPostingService.updateList(postingActor(session), {
       pulloutId: id,
       warehouseId: parsed.data.warehouseId,
       waybillNo: parsed.data.waybillNo,
+      courierName: parsed.data.courierName,
+      scheduledAt,
+      actualScheduledDate,
       notes: parsed.data.notes,
       serialNumberIds: parsed.data.serialNumberIds,
+      addedLines: parsed.data.addedLines,
     });
     revalidatePullout(id);
     return { success: true as const };
@@ -756,21 +836,38 @@ export async function updatePulloutListAction(id: string, input: unknown) {
 export async function releasePulloutAction(id: string) {
   const session = await requirePermission(LOGISTICS_MANAGE);
   try {
-    const result = await pulloutPostingService.finalize(postingActor(session), id);
+    await pulloutPostingService.finalize(postingActor(session), id);
     revalidatePullout(id);
-    return { success: true as const, sapJob: result.sapJob };
+    return { success: true as const };
   } catch (error) {
     return actionError(error, "Failed to send the pull-out");
   }
 }
 
-export async function completePulloutAction(id: string) {
+export async function completePulloutAction(id: string, input: unknown) {
   const session = await requirePermission(LOGISTICS_MANAGE);
+  const parsed = pulloutReceiveSchema.safeParse(input);
+  if (!parsed.success) return { error: PULLOUT_RECEIVE_INPUT_ERROR };
   try {
-    await pulloutPostingService.complete(postingActor(session), id);
+    const result = await pulloutPostingService.complete(postingActor(session), id, parsed.data);
+    revalidatePullout(id);
+    revalidatePath("/inventory/warehouse-stock");
+    return { success: true as const, completed: result.completed };
+  } catch (error) {
+    return actionError(error, "Failed to receive the units");
+  }
+}
+
+export async function rejectPulloutLineAction(id: string, serialNumberId: string, input: unknown) {
+  const session = await requirePermission(LOGISTICS_MANAGE);
+  const parsed = pulloutLineRejectSchema.safeParse(input);
+  if (!parsed.success) return { error: PULLOUT_LINE_REJECT_INPUT_ERROR };
+  try {
+    await pulloutPostingService.rejectLine(postingActor(session), id, serialNumberId, parsed.data);
+    revalidatePullout(id);
     return { success: true as const };
   } catch (error) {
-    return actionError(error, "Warehouse receipt is not available yet. Units stay in transit.");
+    return actionError(error, "Failed to reject this unit");
   }
 }
 

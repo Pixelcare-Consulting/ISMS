@@ -4,19 +4,19 @@ import { PulloutDetailView } from "@/app/(app)/logistics/_components/pullout-det
 import { getPulloutDetailAction } from "@/features/logistics/actions/logistics.actions";
 import { loadWorkflowCatalog } from "@/features/logistics/constants/workflow-catalog";
 import {
-  LOGISTICS_PAGE_PERMISSIONS,
+  PULLOUTS_VIEW,
   resolveLogisticsCapabilities,
 } from "@/features/logistics/constants/logistics-permissions";
 import { isBranchScopeUnrestricted } from "@/features/logistics/services/logistics-posting-access";
 import { getUserBranchIds } from "@/lib/aor/scope";
-import { requireAnyPermission } from "@/lib/auth/permissions";
+import { requirePermission } from "@/lib/auth/permissions";
 
 export default async function PulloutDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
+  const session = await requirePermission(PULLOUTS_VIEW);
   const { id } = await params;
   const [result, workflowStatuses] = await Promise.all([
     getPulloutDetailAction(id),

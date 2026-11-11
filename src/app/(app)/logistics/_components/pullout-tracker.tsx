@@ -23,9 +23,15 @@ import { buildCatalogProgress } from "@/features/logistics/constants/workflow-pr
 type PulloutAuditAction =
   | "pullout.created"
   | "pullout.approved"
+  | "pullout.line_approved"
+  | "pullout.line_deleted"
+  | "pullout.attachment_added"
   | "pullout.rejected"
   | "pullout.list_saved"
-  | "pullout.finalized";
+  | "pullout.finalized"
+  | "pullout.received"
+  | "pullout.line_rejected"
+  | "pullout.completed";
 
 const PULLOUT_ICONS: Readonly<Record<string, ProgressStageIcon>> = {
   [PULLOUT_WORKFLOW_CODE.requested]: "approval",
@@ -42,9 +48,15 @@ function asPulloutAuditAction(action: string): PulloutAuditAction | null {
   switch (action) {
     case "pullout.created":
     case "pullout.approved":
+    case "pullout.line_approved":
+    case "pullout.line_deleted":
+    case "pullout.attachment_added":
     case "pullout.rejected":
     case "pullout.list_saved":
     case "pullout.finalized":
+    case "pullout.received":
+    case "pullout.line_rejected":
+    case "pullout.completed":
       return action;
     default:
       return null;
@@ -59,12 +71,24 @@ export function pulloutAuditLabel(action: string): string {
       return "Request submitted";
     case "pullout.approved":
       return "Approved by Team Lead";
+    case "pullout.line_approved":
+      return "Unit approved";
+    case "pullout.line_deleted":
+      return "Unit deleted";
+    case "pullout.attachment_added":
+      return "File attached";
     case "pullout.rejected":
       return "Rejected";
     case "pullout.list_saved":
       return "Logistics list saved";
     case "pullout.finalized":
       return "Sent — in transit";
+    case "pullout.received":
+      return "Units received";
+    case "pullout.line_rejected":
+      return "Unit rejected";
+    case "pullout.completed":
+      return "Received — completed";
     default: {
       const unreachable: never = known;
       return unreachable;
@@ -86,8 +110,9 @@ function historyAction(code: string): string | null {
       return "pullout.list_saved";
     case PULLOUT_WORKFLOW_CODE.in_transit:
     case PULLOUT_WORKFLOW_CODE.pulled_out:
-    case PULLOUT_WORKFLOW_CODE.completed:
       return "pullout.finalized";
+    case PULLOUT_WORKFLOW_CODE.completed:
+      return "pullout.completed";
     default:
       return null;
   }

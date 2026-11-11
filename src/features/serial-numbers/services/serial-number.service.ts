@@ -19,6 +19,10 @@ import {
   loadWarehouseNames,
   warehouseCodesMissingNames,
 } from "@/features/serial-numbers/services/serial-location-names";
+import {
+  transferDecisionLedgerText,
+  transferReferenceLines,
+} from "@/features/serial-activity/lib/transfer-reference";
 import { prisma } from "@/lib/database/client";
 import { decimalToNumberOrNull } from "@/lib/database/decimal";
 
@@ -283,6 +287,26 @@ function buildTimeline(row: SerialTraceabilityRow): SerialTimelineEvent[] {
         .join(" · "),
       href: `/logistics/transfers?q=${encodeURIComponent(transfer.transferNo)}`,
     });
+    if (line.decidedAt && (line.decision === "accepted" || line.decision === "rejected")) {
+      events.push({
+        id: `transfer-decided-${line.id}`,
+        type: "transfer",
+        label: line.decision === "accepted" ? "Transfer accepted" : "Transfer rejected",
+        at: line.decidedAt,
+        branch: null,
+        status: null,
+        detail:
+          transferDecisionLedgerText(transfer.transferNo, line.decision, row.history) ??
+          transferReferenceLines({
+            rsNo: transfer.rsNo,
+            drNo: transfer.drNo,
+            decision: line.decision,
+            remarks: line.remarks,
+            requestRemarks: line.requestRemarks,
+          }).join(" · "),
+        href: `/logistics/transfers?q=${encodeURIComponent(transfer.transferNo)}`,
+      });
+    }
   }
 
   for (const line of row.pulloutLines) {
@@ -302,6 +326,40 @@ function buildTimeline(row: SerialTraceabilityRow): SerialTimelineEvent[] {
         .join(" · "),
       href: `/logistics/pickups?q=${encodeURIComponent(pullout.pulloutNo)}`,
     });
+    if (line.receivedAt) {
+      events.push({
+        id: `pullout-received-${line.id}`,
+        type: "pullout",
+        label: "Received at warehouse",
+        at: line.receivedAt,
+        branch: null,
+        status: null,
+        detail: [
+          line.receivedLocation
+            ? `${pullout.warehouse?.name ?? "—"} / ${line.receivedLocation.code}`
+            : pullout.warehouse?.name,
+          line.priorStatusCode?.code,
+          pullout.pulloutNo,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        href: `/logistics/pickups?q=${encodeURIComponent(pullout.pulloutNo)}`,
+      });
+    }
+    if (line.rejectedAt) {
+      events.push({
+        id: `pullout-rejected-${line.id}`,
+        type: "pullout",
+        label: "Rejected, back at branch",
+        at: line.rejectedAt,
+        branch: pullout.branch?.name ?? null,
+        status: null,
+        detail: [line.rejectionRemarks, line.priorStatusCode?.code, pullout.pulloutNo]
+          .filter(Boolean)
+          .join(" · "),
+        href: `/logistics/pickups?q=${encodeURIComponent(pullout.pulloutNo)}`,
+      });
+    }
   }
 
   for (const line of row.deliveryLines) {

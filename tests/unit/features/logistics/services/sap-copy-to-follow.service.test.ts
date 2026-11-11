@@ -181,7 +181,12 @@ it("applies only the IT that belongs to an open ISMS delivery and moves the curs
 
   expect(mockTx.branchInventory.updateMany).toHaveBeenCalledWith({
     where: { id: { in: ["bi1"] }, statusCodeId: "inv-STK" },
-    data: { branchId: "b1", statusCodeId: "inv-DIT", warehouseLocationId: null },
+    data: {
+      branchId: "b1",
+      statusCodeId: "inv-DIT",
+      warehouseLocationId: null,
+      statusUpdatedAt: expect.any(Date),
+    },
   });
   expect(mockTx.branchDeliveryLine.createMany).toHaveBeenCalledWith({
     data: [{ deliveryId: "del1", serialNumberId: "s1", warehouseLocationFromId: null }],

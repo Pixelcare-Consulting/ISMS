@@ -21,14 +21,7 @@ function textOrDash(value: string | null | undefined) {
 export function ShipmentPrintButton({ document }: { document: ShipmentPrintDocument | null }) {
   if (!document) return null;
   return (
-    <Button
-      type="button"
-      variant="outline"
-      onClick={() => {
-        const opened = printShipmentDocument(document);
-        if (!opened) toast.error("Allow pop-ups to print this document");
-      }}
-    >
+    <Button type="button" variant="outline" onClick={() => printShipmentDocument(document)}>
       Print
     </Button>
   );

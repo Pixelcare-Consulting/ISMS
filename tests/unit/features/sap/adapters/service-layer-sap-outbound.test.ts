@@ -269,15 +269,6 @@ describe("resolveSapOutboundPort", () => {
   });
 });
 
-describe("service layer pull-out", () => {
-  it("completes a pull-out job via the mock adapter", async () => {
-    const pullout = { id: "j9", jobType: "pullout_itr", referenceType: "Other", referenceId: "p1" } as SapIntegrationJob;
-    const ref = await serviceLayerSapOutbound.createPulloutItr({ tenantId: "t1", job: pullout });
-    expect(ref).toMatch(/^SAP-/);
-    expect(sapIntegrationRepository.markCompleted).toHaveBeenCalledWith("j9", ref);
-  });
-});
-
 describe("serviceLayerSapOutbound.createDeliveryTransferDocument", () => {
   const transferJob = { id: "j9", referenceId: "tr1" } as SapIntegrationJob;
   const transferPrisma = dbClient.prisma as unknown as {

@@ -1,6 +1,8 @@
 import { auditService } from "@/features/audit/services/audit.service";
 import { aorService } from "@/features/aors/services/aor.service";
 import { branchRepository } from "@/features/branches/repositories/branch.repository";
+import { defectRepository } from "@/features/inventory/repositories/defect.repository";
+import { inventoryStatusSeenService } from "@/features/inventory/services/inventory-status-seen.service";
 import type {
   StockUnitsGroupBy,
   StockUnitsGroupChildLevel,
@@ -26,7 +28,9 @@ import {
 } from "@/features/inventory/utils/stock-units-group-aggregates";
 import { wholeDaysBetween } from "@/features/inventory/utils/sku-series";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
+import { hasPermission } from "@/lib/auth/permissions";
 import { decimalToNumber } from "@/lib/database/decimal";
+import { logger } from "@/lib/shared/logger";
 import {
   resolvePagination,
   type PaginatedResult,
@@ -62,6 +66,8 @@ export type InventoryListOptions = {
   skuCode?: string;
   statusCodeId?: string;
   offPlanogramOnly?: boolean;
+  statusCodes?: readonly string[];
+  q?: string;
   sort?: InventoryListSort;
   sortDir?: InventoryListSortDir;
 };
@@ -110,6 +116,7 @@ export type InventoryListEnrichedItem = InventoryListRow & {
   deliveryDate: Date | null;
   agingDays: number;
   pendingDefectInspection: boolean;
+  pendingDefectReportId: string | null;
 };
 
 type InventoryStatusCodeRow = {
@@ -118,6 +125,40 @@ type InventoryStatusCodeRow = {
   name: string;
   color: string | null;
 };
+
+const IMMEDIATE_STATUS_MESSAGE =
+  "This unit can only move between Stock and Display unit";
+
+async function assertBranchInAor(
+  tenantId: string,
+  userId: string,
+  branchId: string,
+  permissions: string[] | undefined,
+) {
+  const unrestricted =
+    hasPermission(permissions, "branches.manage") ||
+    hasPermission(permissions, "master_data.manage");
+  if (unrestricted) return;
+
+  const branchIds = await aorService.getBranchIdsForUser(tenantId, userId);
+  if (!branchIds.includes(branchId)) {
+    throw new Error("Branch not in your area of responsibility");
+  }
+}
+
+function assertImmediateStatusChange(currentCode: string, targetCode: string) {
+  switch (currentCode) {
+    case "STK":
+      if (targetCode === "DU") return;
+      break;
+    case "DU":
+      if (targetCode === "STK") return;
+      break;
+    default:
+      break;
+  }
+  throw new Error(IMMEDIATE_STATUS_MESSAGE);
+}
 
 async function resolveBranchIds(
   tenantId: string,
@@ -131,12 +172,26 @@ async function resolveBranchIds(
   return aorService.getBranchIdsForUser(tenantId, userId);
 }
 
+/** Same branch list as the inventory screens, optionally one branch inside that list. */
+async function scopedBranchIds(
+  tenantId: string,
+  userId: string,
+  isUnrestricted: boolean,
+  branchId?: string,
+): Promise<string[]> {
+  const branchIds = await resolveBranchIds(tenantId, userId, isUnrestricted);
+  if (!branchId) return branchIds;
+  return branchIds.filter((id) => id === branchId);
+}
+
 function toListFilters(filters?: InventoryListOptions): InventoryListFilters {
   return {
     branchId: filters?.branchId,
     skuCode: filters?.skuCode,
     statusCodeId: filters?.statusCodeId,
     offPlanogramOnly: filters?.offPlanogramOnly,
+    statusCodes: filters?.statusCodes,
+    q: filters?.q,
   };
 }
 
@@ -483,10 +538,11 @@ export const inventoryService = {
   async enrichWithPendingDefectFlags<TItem extends { id: string }>(
     tenantId: string,
     result: PaginatedResult<TItem>,
-  ): Promise<PaginatedResult<TItem & { pendingDefectInspection: boolean }>> {
-    const { defectRepository } = await import(
-      "@/features/inventory/repositories/defect.repository"
-    );
+  ): Promise<
+    PaginatedResult<
+      TItem & { pendingDefectInspection: boolean; pendingDefectReportId: string | null }
+    >
+  > {
     const pendingIds = await defectRepository.findOpenPendingBranchInventoryIds(
       tenantId,
       result.items.map((item) => item.id),
@@ -496,6 +552,7 @@ export const inventoryService = {
       items: result.items.map((item) => ({
         ...item,
         pendingDefectInspection: pendingIds.has(item.id),
+        pendingDefectReportId: pendingIds.get(item.id) ?? null,
       })),
     };
   },
@@ -586,6 +643,7 @@ export const inventoryService = {
   async updateStatus(input: {
     tenantId: string;
     actorUserId: string;
+    permissions: string[] | undefined;
     inventoryId: string;
     statusCodeId: string;
   }) {
@@ -606,31 +664,111 @@ export const inventoryService = {
       throw new Error("Inventory unit not found");
     }
 
-    const currentCode = current.statusCode.code;
-    const targetCode = target.code;
-    if (
-      (currentCode === "STK" && targetCode === "DEF") ||
-      (currentCode === "DEF" && targetCode === "STK")
-    ) {
-      throw new Error(
-        "Use the defect inspection workflow to change between STK and DEF",
-      );
+    await assertBranchInAor(
+      input.tenantId,
+      input.actorUserId,
+      current.branchId,
+      input.permissions,
+    );
+    assertImmediateStatusChange(current.statusCode.code, target.code);
+
+    const pending = await defectRepository.findOpenPendingByBranchInventoryId(
+      input.tenantId,
+      current.id,
+    );
+    if (pending) {
+      throw new Error("This unit is waiting for the team leader");
     }
 
-    const item = await inventoryRepository.updateStatus(
-      input.tenantId,
-      input.inventoryId,
-      input.statusCodeId,
-      input.actorUserId,
-    );
+    const fromName = current.statusCode.name;
+    const toName = target.name;
+    const item = await inventoryRepository.updateStatus({
+      tenantId: input.tenantId,
+      id: input.inventoryId,
+      statusCodeId: input.statusCodeId,
+      updatedById: input.actorUserId,
+      serialNumberId: current.serialNumberId,
+      historyDetails: `Status changed from ${fromName} (${current.statusCode.code}) to ${toName} (${target.code})`,
+      historyStatus: target.code,
+    });
     await auditService.log({
       tenantId: input.tenantId,
       userId: input.actorUserId,
       action: "inventory.status_updated",
       entityType: "BranchInventory",
       entityId: item.id,
-      metadata: { statusCode: target.code, statusName: target.name },
+      metadata: {
+        fromStatusCode: current.statusCode.code,
+        statusCode: target.code,
+        statusName: target.name,
+      },
     });
     return item;
+  },
+
+  /** Unread status changes in the same branch scope as the inventory list. */
+  async unreadStatusSummary(
+    tenantId: string,
+    userId: string,
+    isUnrestricted: boolean,
+    branchId?: string,
+  ): Promise<{ total: number; byCode: Record<string, number> }> {
+    try {
+      const branchIds = await scopedBranchIds(tenantId, userId, isUnrestricted, branchId);
+      const counts = await inventoryStatusSeenService.unreadCounts({
+        tenantId,
+        userId,
+        branchIds,
+      });
+      return { total: counts.total, byCode: counts.byCode };
+    } catch (error) {
+      logger.warn({ err: error }, "branch inventory unread summary failed");
+      return { total: 0, byCode: {} };
+    }
+  },
+
+  async unreadInventoryIds(
+    tenantId: string,
+    userId: string,
+    isUnrestricted: boolean,
+    branchInventoryIds: string[],
+  ): Promise<string[]> {
+    if (branchInventoryIds.length === 0) return [];
+    try {
+      const branchIds = await resolveBranchIds(tenantId, userId, isUnrestricted);
+      const cursor = await inventoryStatusSeenService.ensureSeenThrough(userId);
+      return await inventoryStatusSeenService.unreadIds({
+        tenantId,
+        userId,
+        seenThroughAt: cursor.seenThroughAt,
+        branchIds,
+        branchInventoryIds,
+      });
+    } catch (error) {
+      logger.warn({ err: error }, "branch inventory unread ids failed");
+      return [];
+    }
+  },
+
+  async markStatusSeen(input: {
+    tenantId: string;
+    userId: string;
+    permissions: string[] | undefined;
+    inventoryId: string;
+  }) {
+    const current = await inventoryRepository.findByIdWithStatus(
+      input.tenantId,
+      input.inventoryId,
+    );
+    if (!current) {
+      throw new Error("Inventory unit not found");
+    }
+    await assertBranchInAor(
+      input.tenantId,
+      input.userId,
+      current.branchId,
+      input.permissions,
+    );
+    await inventoryStatusSeenService.markRead(input.userId, input.inventoryId);
   },
 };

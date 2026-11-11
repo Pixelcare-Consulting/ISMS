@@ -12,12 +12,19 @@ import {
  * Client-side page slicing for Settings-style tables that already hold the full list.
  * Pass `resetKey` (e.g. search query) so the page resets when filters change.
  */
+function resolveClientPageSize(explicit?: number): number {
+  if (explicit != null && Number.isFinite(explicit) && explicit > 0) {
+    return Math.floor(explicit);
+  }
+  return DEFAULT_TABLE_PAGE_SIZE;
+}
+
 export function useClientTablePagination<T>(
   items: T[],
   options?: { pageSize?: number; resetKey?: string | number },
 ) {
-  const [pageSize, setPageSizeState] = useState<TablePageSize>(() =>
-    parseTablePageSize(options?.pageSize ?? DEFAULT_TABLE_PAGE_SIZE),
+  const [pageSize, setPageSizeState] = useState<number>(() =>
+    resolveClientPageSize(options?.pageSize),
   );
   const resetKey = options?.resetKey ?? "";
   const [page, setPage] = useState(1);

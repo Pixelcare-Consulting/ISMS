@@ -1,10 +1,33 @@
 import { auditService } from "@/features/audit/services/audit.service";
+import { aorRepository } from "@/features/aors/repositories/aor.repository";
+import {
+  inventoryApprovalLedger,
+  type InventoryApprovalDocument,
+} from "@/features/inventory-approvals/services/inventory-approval-ledger";
 import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
 import { aorService } from "@/features/aors/services/aor.service";
+import {
+  assertDefectApprover,
+  defectApprovalBranchIds,
+} from "@/features/inventory/lib/defect-approver";
+import { statusUpdatedStamp } from "@/features/inventory/lib/status-updated-stamp";
 import { defectRepository } from "@/features/inventory/repositories/defect.repository";
+import { TEAM_LEADER_ROLE_SLUG } from "@/features/orders/constants/order-workflow";
+import { notificationService } from "@/features/notifications/services/notification.service";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { hasPermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
+import { logger } from "@/lib/shared/logger";
+
+function approvalDocument(tenantId: string, reportId: string): InventoryApprovalDocument {
+  return {
+    tenantId,
+    sourceType: "DEFECT_REPORT",
+    sourceId: reportId,
+    sourceNo: null,
+    step: "TL_APPROVAL",
+  };
+}
 
 async function assertBranchInAor(
   tenantId: string,
@@ -41,6 +64,58 @@ async function resolveBranchIds(
   return aorService.getBranchIdsForUser(tenantId, userId);
 }
 
+async function notifyBranchTeamLeaders(input: {
+  tenantId: string;
+  actorUserId: string;
+  branchId: string;
+  branchName: string;
+  serialNumberId: string;
+  serialNo: string;
+  reason: string;
+}) {
+  try {
+    const approverIds = await aorRepository.listUserIdsForBranchByRole(
+      input.tenantId,
+      input.branchId,
+      TEAM_LEADER_ROLE_SLUG,
+    );
+    const recipients = approverIds.filter((userId) => userId !== input.actorUserId);
+    if (recipients.length === 0) return;
+
+    await Promise.all(
+      recipients.map((userId) =>
+        notificationService.createNotification({
+          tenantId: input.tenantId,
+          actorUserId: input.actorUserId,
+          data: {
+            audience: "USER",
+            userId,
+            type: "defect_report",
+            title: `${input.serialNo} · ${input.branchName}`,
+            body: `A defect needs your approval: ${input.reason}`,
+            href: `/inventory/serial-numbers/${input.serialNumberId}`,
+            metadata: {
+              serialNumberId: input.serialNumberId,
+              branchId: input.branchId,
+            },
+          },
+        }),
+      ),
+    );
+  } catch (error) {
+    logger.warn(
+      {
+        tenantId: input.tenantId,
+        serialNumberId: input.serialNumberId,
+        err: error,
+      },
+      "defect approval notification failed",
+    );
+  }
+}
+
+const REPORTABLE_DEFECT_STATUSES = new Set(["STK", "DU"]);
+
 export const defectService = {
   async reportDefect(input: {
     tenantId: string;
@@ -75,8 +150,8 @@ export const defectService = {
       input.permissions,
     );
 
-    if (inventory.statusCode.code !== "STK") {
-      throw new Error("Only stock (STK) units can be reported as defective");
+    if (!REPORTABLE_DEFECT_STATUSES.has(inventory.statusCode.code)) {
+      throw new Error("Only stock or display units can be reported as defective");
     }
 
     const existing = await defectRepository.findOpenPendingByBranchInventoryId(
@@ -103,6 +178,17 @@ export const defectService = {
       })),
     });
 
+    await inventoryApprovalLedger.recordRequested(prisma, approvalDocument(input.tenantId, report.id), {
+      requestedById: input.actorUserId,
+      units: [
+        {
+          serialNumberId: inventory.serialNumberId,
+          remarks: input.remarks,
+          problemDescription: input.reason,
+        },
+      ],
+    });
+
     await defectRepository.writeDefectHistory({
       tenantId: input.tenantId,
       serialNumberId: inventory.serialNumberId,
@@ -125,13 +211,23 @@ export const defectService = {
       },
     });
 
+    await notifyBranchTeamLeaders({
+      tenantId: input.tenantId,
+      actorUserId: input.actorUserId,
+      branchId: inventory.branchId,
+      branchName: inventory.branch.name,
+      serialNumberId: inventory.serialNumberId,
+      serialNo: inventory.serialNumber.serialNo,
+      reason: input.reason,
+    });
+
     return report;
   },
 
   async approveDefect(input: {
     tenantId: string;
     actorUserId: string;
-    permissions: string[] | undefined;
+    roleSlugs: string[] | undefined;
     reportId: string;
     decisionRemarks?: string;
   }) {
@@ -143,12 +239,12 @@ export const defectService = {
       throw new Error("Defect report is no longer pending inspection");
     }
 
-    await assertBranchInAor(
+    const approvalBranchIds = await defectApprovalBranchIds(
       input.tenantId,
       input.actorUserId,
-      report.branchId,
-      input.permissions,
+      input.roleSlugs,
     );
+    assertDefectApprover(approvalBranchIds, report.branchId);
 
     const defCodeId = await reasonStatusService.requireCodeId(
       input.tenantId,
@@ -162,7 +258,11 @@ export const defectService = {
       await lockSerialNumbers(tx, [report.serialNumberId]);
       await tx.branchInventory.update({
         where: { id: report.branchInventoryId, tenantId: input.tenantId },
-        data: { statusCodeId: defCodeId, updatedById: input.actorUserId },
+        data: {
+          statusCodeId: defCodeId,
+          updatedById: input.actorUserId,
+          ...statusUpdatedStamp(report.branchInventory.statusCode.id, defCodeId),
+        },
       });
       await tx.branchDefectReport.update({
         where: { id: report.id, tenantId: input.tenantId },
@@ -172,6 +272,13 @@ export const defectService = {
           decidedAt,
           decisionRemarks: input.decisionRemarks,
         },
+      });
+      await inventoryApprovalLedger.recordDecision(tx, approvalDocument(input.tenantId, report.id), {
+        serialNumberIds: [report.serialNumberId],
+        status: "APPROVED",
+        decidedById: input.actorUserId,
+        decidedAt,
+        remarks: input.decisionRemarks,
       });
     });
 
@@ -201,7 +308,7 @@ export const defectService = {
   async rejectDefect(input: {
     tenantId: string;
     actorUserId: string;
-    permissions: string[] | undefined;
+    roleSlugs: string[] | undefined;
     reportId: string;
     decisionRemarks?: string;
   }) {
@@ -213,12 +320,12 @@ export const defectService = {
       throw new Error("Defect report is no longer pending inspection");
     }
 
-    await assertBranchInAor(
+    const approvalBranchIds = await defectApprovalBranchIds(
       input.tenantId,
       input.actorUserId,
-      report.branchId,
-      input.permissions,
+      input.roleSlugs,
     );
+    assertDefectApprover(approvalBranchIds, report.branchId);
 
     const decidedAt = new Date();
 
@@ -230,12 +337,21 @@ export const defectService = {
       decidedAt,
       decisionRemarks: input.decisionRemarks,
     });
+    await inventoryApprovalLedger.recordDecision(prisma, approvalDocument(input.tenantId, report.id), {
+      serialNumberIds: [report.serialNumberId],
+      status: "REJECTED",
+      decidedById: input.actorUserId,
+      decidedAt,
+      remarks: input.decisionRemarks,
+    });
 
+    const currentCode = report.branchInventory.statusCode.code;
+    const currentName = report.branchInventory.statusCode.name;
     await defectRepository.writeDefectHistory({
       tenantId: input.tenantId,
       serialNumberId: report.serialNumberId,
-      details: `Defect report rejected — unit remains STK${input.decisionRemarks ? `: ${input.decisionRemarks}` : ""}`,
-      status: "STK",
+      details: `Defect report rejected — unit remains ${currentName} (${currentCode})${input.decisionRemarks ? `: ${input.decisionRemarks}` : ""}`,
+      status: currentCode,
       createdById: input.actorUserId,
     });
 

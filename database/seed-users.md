@@ -27,6 +27,7 @@ Local demo still includes `superadmin@demo.local` on the **demo** tenant — a *
 | `pnpm run db:seed:brs` | BRS demo data only (includes warehouse demo SNs) | Refresh branches/planogram without resetting users |
 | `pnpm run db:seed:warehouse-inventory` | Demo WHSE serials only (`SN-WHSE-001`…`003`) | Official Sales WHSE_ADD UAT on an existing BRS DB |
 | `pnpm run db:seed:notifications` | Sample header-bell notifications (tenant / role / user) | Fill the notifications bell after core seed |
+| `pnpm run db:seed:test-accounts` | Branch AORs for `tl@`, `ps@` and `receiver@demo.local` on real branches | Transfer and pull-out testing. Only adds missing rows |
 | `pnpm run db:migrate:only` | migrate without seed | Faster schema-only migrations |
 
 Optional env: `SEED_BCRYPT_ROUNDS=8` (default) — lower for faster local re-seed.
@@ -50,6 +51,7 @@ Optional env: `SEED_BCRYPT_ROUNDS=8` (default) — lower for faster local re-see
 | TL | Team Leader | `tl@demo.local` | Approve orders/transfers |
 | SP | Sales Planner | `sp@demo.local` | Master data, order approval |
 | Logistics | Logistics Coordinator | `logistics@demo.local` | Deliveries, pull-outs |
+| Branch Receiver | Branch Receiver | `receiver@demo.local` | Accepts transfers. `db:seed:test-accounts` adds Alturas Bohol |
 | AE | Account Executive | `ae@demo.local` | Multi-branch dashboard view |
 | Accounting | Accounting | `accounting@demo.local` | Official Sales + sale header edit |
 

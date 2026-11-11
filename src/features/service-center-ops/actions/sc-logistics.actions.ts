@@ -4,6 +4,10 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { auditService } from "@/features/audit/services/audit.service";
+import {
+  inventoryApprovalLedger,
+  type InventoryApprovalDocument,
+} from "@/features/inventory-approvals/services/inventory-approval-ledger";
 import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
 import { placeServiceCenterUnit } from "@/features/service-center-ops/services/service-center-placement";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
@@ -27,6 +31,19 @@ function revalidateScLogistics() {
   revalidatePath("/service-centers/pullouts");
   revalidatePath("/service-centers/orders");
   revalidatePath("/service-centers/inventory");
+}
+
+function scPulloutApproval(
+  tenantId: string,
+  pullout: { id: string; pulloutNo: string },
+): InventoryApprovalDocument {
+  return {
+    tenantId,
+    sourceType: "SC_PULLOUT",
+    sourceId: pullout.id,
+    sourceNo: pullout.pulloutNo,
+    step: "TL_APPROVAL",
+  };
 }
 
 function nextNo(prefix: string) {
@@ -322,7 +339,7 @@ export async function createScPulloutAction(input: unknown) {
         throw new Error("Serial status changed; retry pull-out");
       }
 
-      return tx.serviceCenterPullout.create({
+      const created = await tx.serviceCenterPullout.create({
         data: {
           tenantId: session.user.tenantId,
           serviceCenterId: parsed.data.serviceCenterId,
@@ -340,6 +357,11 @@ export async function createScPulloutAction(input: unknown) {
           },
         },
       });
+      await inventoryApprovalLedger.recordRequested(tx, scPulloutApproval(session.user.tenantId, created), {
+        requestedById: session.user.id,
+        units: parsed.data.serialNumberIds.map((serialNumberId) => ({ serialNumberId })),
+      });
+      return created;
     });
 
     await auditService.log({
@@ -415,6 +437,11 @@ export async function approveScPulloutAction(pulloutId: string) {
     await tx.serviceCenterPulloutApprovalLevel.updateMany({
       where: { pulloutId, approvedAt: null, rejectedAt: null },
       data: { approvedAt: new Date(), approvedById: session.user.id },
+    });
+    await inventoryApprovalLedger.recordDecision(tx, scPulloutApproval(session.user.tenantId, pullout), {
+      serialNumberIds: serialIds,
+      status: "APPROVED",
+      decidedById: session.user.id,
     });
   });
 

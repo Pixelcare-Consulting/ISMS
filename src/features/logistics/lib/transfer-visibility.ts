@@ -15,11 +15,7 @@ const RELEASE_CODES = [
   TRANSFER_WORKFLOW_CODE.for_transfer,
 ] as const;
 
-const RECEIVE_CODES = [
-  TRANSFER_WORKFLOW_CODE.approved,
-  TRANSFER_WORKFLOW_CODE.for_transfer,
-  TRANSFER_WORKFLOW_CODE.in_transit,
-] as const;
+const RECEIVE_CODES = [TRANSFER_WORKFLOW_CODE.in_transit] as const;
 
 export interface TransferVisibility {
   fromBranchId: string;
@@ -64,7 +60,7 @@ export function transferListWhere(scope: string[] | null): Prisma.BranchTransfer
 
 /**
  * Sidebar count of transfers waiting on this person.
- * Approval is only the releasing branch. Accept or reject is only the receiving branch.
+ * Approval is only the branches in `approvalBranchIds`. Accept or reject is only the receiving branch.
  */
 export function transferActionableWhere(
   scope: string[] | null,
@@ -72,14 +68,18 @@ export function transferActionableWhere(
     LogisticsActionCapabilities,
     "canApproveTl" | "canRejectTransfer" | "canExecuteTransfer" | "canReceiveTransfer"
   >,
+  approvalBranchIds: string[] | null,
 ): Prisma.BranchTransferWhereInput | null {
   if (scope !== null && scope.length === 0) return { id: { in: [] } };
   const fromBranch = scope === null ? {} : { fromBranchId: { in: scope } };
   const toBranch = scope === null ? {} : { toBranchId: { in: scope } };
   const parts: Prisma.BranchTransferWhereInput[] = [];
-  if (capabilities.canApproveTl || capabilities.canRejectTransfer) {
+  if (
+    (capabilities.canApproveTl || capabilities.canRejectTransfer) &&
+    approvalBranchIds?.length !== 0
+  ) {
     parts.push({
-      ...fromBranch,
+      ...(approvalBranchIds ? { fromBranchId: { in: approvalBranchIds } } : {}),
       statusCode: { code: { in: [...APPROVAL_CODES] } },
     });
   }

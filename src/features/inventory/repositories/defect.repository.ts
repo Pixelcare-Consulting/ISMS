@@ -46,9 +46,9 @@ export const defectRepository = {
   async findOpenPendingBranchInventoryIds(
     tenantId: string,
     branchInventoryIds: string[],
-  ): Promise<Set<string>> {
+  ): Promise<Map<string, string>> {
     if (branchInventoryIds.length === 0) {
-      return new Set();
+      return new Map();
     }
     const rows = await prisma.branchDefectReport.findMany({
       where: {
@@ -56,9 +56,9 @@ export const defectRepository = {
         branchInventoryId: { in: branchInventoryIds },
         status: "pending_inspection",
       },
-      select: { branchInventoryId: true },
+      select: { id: true, branchInventoryId: true },
     });
-    return new Set(rows.map((row) => row.branchInventoryId));
+    return new Map(rows.map((row) => [row.branchInventoryId, row.id]));
   },
 
   findById(tenantId: string, reportId: string) {

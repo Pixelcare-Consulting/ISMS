@@ -66,13 +66,27 @@ export type InventoryListFilters = {
   skuCode?: string;
   statusCodeId?: string;
   offPlanogramOnly?: boolean;
+  /**
+   * When omitted, the list stays on STK, DU, and DEF.
+   * Branch Inventory v2 passes the live inventory status codes.
+   * An empty array matches nothing.
+   */
+  statusCodes?: readonly string[];
+  /** Serial number or model (SKU or name). */
+  q?: string;
 };
 
 /**
- * Stock units lists on-hand stock only (STK). Sold / reserved / in-transit
- * units belong in Sales, Logistics, or other modules.
+ * Sellable on-hand stock. Sidebar count, series summary, and orders stay on STK.
+ * Display units and defective units are not sellable.
  */
-export const STOCK_UNITS_LIST_STATUS_CODES = ["STK"] as const;
+export const SELLABLE_STOCK_STATUS_CODES = ["STK"] as const;
+
+/**
+ * All serials keeps a unit on the list after it becomes a display unit or defective.
+ * Reserved, sold, in transit, and pull-out statuses stay out of this list.
+ */
+export const ALL_SERIALS_STATUS_CODES = ["STK", "DU", "DEF"] as const;
 
 export type InventorySeriesSkuAgg = {
   skuCode: string;
@@ -123,6 +137,17 @@ async function buildOffPlanogramBranchOr(
   });
 }
 
+function resolveListStatusCodes(
+  filters?: InventoryListFilters,
+): readonly string[] {
+  if (filters?.statusCodes === undefined) return ALL_SERIALS_STATUS_CODES;
+  return [
+    ...new Set(
+      filters.statusCodes.map((code) => code.trim()).filter((code) => code.length > 0),
+    ),
+  ];
+}
+
 async function buildInventoryWhere(
   tenantId: string,
   branchIds: string[],
@@ -136,27 +161,47 @@ async function buildInventoryWhere(
     return null;
   }
 
-  const base: Prisma.BranchInventoryWhereInput = {
-    tenantId,
-    ...(filters?.skuCode
-      ? { serialNumber: { model: { skuCode: filters.skuCode } } }
-      : {}),
-    statusCode: {
-      code: { in: [...STOCK_UNITS_LIST_STATUS_CODES] },
-    },
-  };
+  const statusCodes = resolveListStatusCodes(filters);
+  if (statusCodes.length === 0) return null;
 
-  if (filters?.offPlanogramOnly) {
-    return {
-      ...base,
-      OR: await buildOffPlanogramBranchOr(tenantId, effectiveBranchIds),
-    };
+  const and: Prisma.BranchInventoryWhereInput[] = [
+    {
+      tenantId,
+      statusCode: { code: { in: [...statusCodes] } },
+      ...(filters?.statusCodeId ? { statusCodeId: filters.statusCodeId } : {}),
+    },
+  ];
+
+  if (filters?.skuCode) {
+    and.push({ serialNumber: { model: { skuCode: filters.skuCode } } });
   }
 
-  return {
-    ...base,
-    branchId: { in: effectiveBranchIds },
-  };
+  const q = filters?.q?.trim();
+  if (q) {
+    and.push({
+      OR: [
+        { serialNumber: { serialNo: { contains: q, mode: "insensitive" } } },
+        {
+          serialNumber: {
+            model: {
+              OR: [
+                { skuCode: { contains: q, mode: "insensitive" } },
+                { name: { contains: q, mode: "insensitive" } },
+              ],
+            },
+          },
+        },
+      ],
+    });
+  }
+
+  if (filters?.offPlanogramOnly) {
+    and.push({ OR: await buildOffPlanogramBranchOr(tenantId, effectiveBranchIds) });
+  } else {
+    and.push({ branchId: { in: effectiveBranchIds } });
+  }
+
+  return { AND: and };
 }
 
 function resolveEffectiveBranchIds(
@@ -418,32 +463,7 @@ export const inventoryRepository = {
       }
     }
 
-    const acceptedLines = await prisma.branchTransferLine.findMany({
-      where: {
-        serialNumberId: { in: serialNumberIds },
-        decision: "accepted",
-        transfer: { tenantId, drNo: { not: null } },
-      },
-      select: {
-        serialNumberId: true,
-        decidedAt: true,
-        transfer: { select: { drNo: true, transferNo: true } },
-      },
-    });
-    const newestTransfer = new Map<string, { drNo: string; transferNo: string; decidedAt: number }>();
-    for (const row of acceptedLines) {
-      const drNo = row.transfer.drNo;
-      if (!drNo) continue;
-      const decidedAt = row.decidedAt?.getTime() ?? 0;
-      const current = newestTransfer.get(row.serialNumberId);
-      if (!current || decidedAt >= current.decidedAt) {
-        newestTransfer.set(row.serialNumberId, {
-          drNo,
-          transferNo: row.transfer.transferNo,
-          decidedAt,
-        });
-      }
-    }
+    const newestTransfer = await this.findNewestTransferReceipts(tenantId, serialNumberIds);
     for (const [serialNumberId, slip] of newestTransfer) {
       const existing = latest.get(serialNumberId);
       if (existing) {
@@ -458,6 +478,43 @@ export const inventoryRepository = {
       });
     }
     return Array.from(latest.values());
+  },
+
+  /**
+   * The DR number from each serial's most recently accepted transfer. A transfer replaces the
+   * DR number only: the DR date stays the original delivery's, which ageing counts from.
+   */
+  async findNewestTransferReceipts(
+    tenantId: string,
+    serialNumberIds: string[],
+  ): Promise<Map<string, { drNo: string; transferNo: string }>> {
+    const acceptedLines = await prisma.branchTransferLine.findMany({
+      where: {
+        serialNumberId: { in: serialNumberIds },
+        decision: "accepted",
+        transfer: { tenantId, drNo: { not: null } },
+      },
+      select: {
+        serialNumberId: true,
+        decidedAt: true,
+        transfer: { select: { drNo: true, transferNo: true } },
+      },
+    });
+    const newest = new Map<string, { drNo: string; transferNo: string; decidedAt: number }>();
+    for (const row of acceptedLines) {
+      const drNo = row.transfer.drNo;
+      if (!drNo) continue;
+      const decidedAt = row.decidedAt?.getTime() ?? 0;
+      const current = newest.get(row.serialNumberId);
+      if (!current || decidedAt >= current.decidedAt) {
+        newest.set(row.serialNumberId, {
+          drNo,
+          transferNo: row.transfer.transferNo,
+          decidedAt,
+        });
+      }
+    }
+    return newest;
   },
 
   /**
@@ -482,7 +539,7 @@ export const inventoryRepository = {
     }
     conditions.push(
       Prisma.sql`rsc.code IN (${Prisma.join([
-        ...STOCK_UNITS_LIST_STATUS_CODES,
+        ...SELLABLE_STOCK_STATUS_CODES,
       ])})`,
     );
     if (filters?.offPlanogramOnly) {
@@ -525,14 +582,14 @@ export const inventoryRepository = {
     });
   },
 
-  /** Live STK units in scope — same status filter as the Stock units list. */
+  /** Live sellable STK units in scope. Display units and defective units are excluded. */
   countStockUnits(tenantId: string, branchIds: string[]) {
     if (branchIds.length === 0) return Promise.resolve(0);
     return prisma.branchInventory.count({
       where: {
         tenantId,
         branchId: { in: branchIds },
-        statusCode: { code: { in: [...STOCK_UNITS_LIST_STATUS_CODES] } },
+        statusCode: { code: { in: [...SELLABLE_STOCK_STATUS_CODES] } },
       },
     });
   },
@@ -555,15 +612,35 @@ export const inventoryRepository = {
     });
   },
 
-  updateStatus(
-    tenantId: string,
-    id: string,
-    statusCodeId: string,
-    updatedById: string,
-  ) {
-    return prisma.branchInventory.update({
-      where: { id, tenantId },
-      data: { statusCodeId, updatedById },
+  updateStatus(input: {
+    tenantId: string;
+    id: string;
+    statusCodeId: string;
+    updatedById: string;
+    serialNumberId: string;
+    historyDetails: string;
+    historyStatus: string;
+  }) {
+    return prisma.$transaction(async (tx) => {
+      const item = await tx.branchInventory.update({
+        where: { id: input.id, tenantId: input.tenantId },
+        data: {
+          statusCodeId: input.statusCodeId,
+          updatedById: input.updatedById,
+          statusUpdatedAt: new Date(),
+        },
+      });
+      await tx.serialNumberHistory.create({
+        data: {
+          tenantId: input.tenantId,
+          serialNumberId: input.serialNumberId,
+          txnType: "inv_status_update",
+          details: input.historyDetails,
+          status: input.historyStatus,
+          createdById: input.updatedById,
+        },
+      });
+      return item;
     });
   },
 

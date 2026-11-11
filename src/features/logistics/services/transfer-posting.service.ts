@@ -1,6 +1,13 @@
+
+import {
+  inventoryApprovalLedger,
+  type InventoryApprovalDocument,
+} from "@/features/inventory-approvals/services/inventory-approval-ledger";
+import { aorRepository } from "@/features/aors/repositories/aor.repository";
 import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
+import { notificationService } from "@/features/notifications/services/notification.service";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
-import type { LogisticsShipment } from "@/features/logistics/lib/shipment";
+import { shipmentIsReady, type LogisticsShipment } from "@/features/logistics/lib/shipment";
 import {
   DIFFERENT_DEALER_GROUP_MESSAGE,
   sameDealerGroup,
@@ -10,7 +17,17 @@ import {
   resolveLogisticsBranchScope,
   transferIsVisible,
 } from "@/features/logistics/lib/transfer-visibility";
+import {
+  transferLineRemark,
+  type TransferLineRemarks,
+} from "@/features/logistics/lib/transfer-line-remarks";
 import { nextTransferNo } from "@/features/logistics/lib/transfer-number";
+import {
+  canApproveTransferAt,
+  NOT_TRANSFER_APPROVER_MESSAGE,
+  transferApprovalBranchIds,
+} from "@/features/logistics/lib/transfer-approver";
+import { transferDecisionPrefix } from "@/features/serial-activity/lib/transfer-reference";
 import { resolveLogisticsCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import {
   asWorkflowCode,
@@ -43,9 +60,12 @@ import {
   type TransferLineView,
   type TransferStatus,
 } from "@/features/logistics/services/transfer-posting.planner";
+import { TEAM_LEADER_ROLE_SLUG } from "@/features/orders/constants/order-workflow";
 import { STOCK_COUNT_FREEZE_SESSION_STATUSES } from "@/features/stock-audit/constants/stock-count-workflow";
+import { getUserBranchIds } from "@/lib/aor/scope";
 import { prisma } from "@/lib/database/client";
 import { Prisma } from "@/lib/database/generated/prisma/client";
+import { logger } from "@/lib/shared/logger";
 
 const CLAIM_LOST = "One or more serials changed before this transfer could be saved";
 
@@ -83,6 +103,7 @@ export interface TransferDetail {
     branchName: string | null;
     decision: "pending" | "accepted" | "rejected";
     remarks: string | null;
+    requestRemarks: string | null;
   }[];
   history: { id: string; action: string; at: string; userName: string | null }[];
 }
@@ -143,6 +164,59 @@ async function assertTransferVisible(
   }
 }
 
+async function assertTransferApprover(actor: PostingActor, fromBranchId: string): Promise<void> {
+  const assignedBranchIds = await getUserBranchIds(actor.tenantId, actor.userId);
+  const approvalBranchIds = transferApprovalBranchIds(actor.roleSlugs, assignedBranchIds);
+  if (!canApproveTransferAt(approvalBranchIds, fromBranchId)) {
+    throw new Error(NOT_TRANSFER_APPROVER_MESSAGE);
+  }
+}
+
+/** Tells the releasing branch's team leaders. The transfer is already saved, so a failure only logs. */
+async function notifyTransferApprovers(
+  actor: PostingActor,
+  transfer: { id: string; transferNo: string; fromBranchId: string; toBranchId: string },
+): Promise<void> {
+  try {
+    const approverIds = await aorRepository.listUserIdsForBranchByRole(
+      actor.tenantId,
+      transfer.fromBranchId,
+      TEAM_LEADER_ROLE_SLUG,
+    );
+    const recipients = approverIds.filter((userId) => userId !== actor.userId);
+    if (recipients.length === 0) return;
+
+    const branches = await prisma.branch.findMany({
+      where: { tenantId: actor.tenantId, id: { in: [transfer.fromBranchId, transfer.toBranchId] } },
+      select: { id: true, name: true },
+    });
+    const branchName = (id: string) => branches.find((branch) => branch.id === id)?.name ?? "branch";
+
+    await Promise.all(
+      recipients.map((userId) =>
+        notificationService.createNotification({
+          tenantId: actor.tenantId,
+          actorUserId: actor.userId,
+          data: {
+            audience: "USER",
+            userId,
+            type: "transfer",
+            title: `${transfer.transferNo} · ${branchName(transfer.fromBranchId)}`,
+            body: `Transfer to ${branchName(transfer.toBranchId)} needs your approval.`,
+            href: `/logistics/transfers/${transfer.id}`,
+            metadata: { transferId: transfer.id },
+          },
+        }),
+      ),
+    );
+  } catch (error) {
+    logger.warn(
+      { tenantId: actor.tenantId, transferId: transfer.id, err: error },
+      "transfer approval notification failed",
+    );
+  }
+}
+
 function canDecideReceivingSerials(actor: PostingActor): boolean {
   const caps = resolveLogisticsCapabilities(actor.permissions);
   return caps.canReceiveTransfer || caps.canApproveTl;
@@ -156,7 +230,7 @@ const MOVEMENT_DATE = new Intl.DateTimeFormat("en-PH", {
 });
 
 function movementDetails(input: {
-  verb: "Accepted" | "Rejected";
+  decision: "accepted" | "rejected";
   transferNo: string;
   approvedAt: Date | null;
   approvedBy: string | null;
@@ -166,7 +240,7 @@ function movementDetails(input: {
 }): string {
   const when = input.approvedAt ? MOVEMENT_DATE.format(input.approvedAt) : "—";
   const remarks = input.remarks?.trim() || "—";
-  return `${input.verb} on ${input.transferNo}. Approval date ${when}. Approved by ${input.approvedBy ?? "—"}. Remarks: ${remarks}. RS ${input.rsNo}. DR ${input.drNo}.`;
+  return `${transferDecisionPrefix(input.decision, input.transferNo)} Approval date ${when}. Approved by ${input.approvedBy ?? "—"}. Remarks: ${remarks}. RS ${input.rsNo}. DR ${input.drNo}.`;
 }
 
 function isTransferNoConflict(error: unknown): boolean {
@@ -265,6 +339,7 @@ async function loadLines(
   statusCodeId: string;
   rsNo: string | null;
   drNo: string | null;
+  shipmentReady: boolean;
   lines: (TransferLineView & { priorStatusCodeId: string | null })[];
 } | null> {
   const transfer = await db.branchTransfer.findFirst({
@@ -278,6 +353,9 @@ async function loadLines(
       statusCode: { select: { code: true } },
       rsNo: true,
       drNo: true,
+      waybillNo: true,
+      courierName: true,
+      scheduledAt: true,
       lines: {
         select: {
           serialNumberId: true,
@@ -312,6 +390,11 @@ async function loadLines(
     statusCodeId: transfer.statusCodeId,
     rsNo: transfer.rsNo,
     drNo: transfer.drNo,
+    shipmentReady: shipmentIsReady({
+      waybillNo: transfer.waybillNo,
+      courierName: transfer.courierName,
+      scheduledAt: transfer.scheduledAt?.toISOString() ?? null,
+    }),
     lines: transfer.lines.map((line) => {
       const row = inventoryBySerial.get(line.serialNumberId);
       const onSource = row?.branchId === transfer.fromBranchId;
@@ -350,6 +433,14 @@ async function writeHistory(
       createdById: input.userId,
     })),
   });
+}
+
+function approvalDocument(
+  tenantId: string,
+  transfer: { id: string; transferNo: string },
+  step: "TL_APPROVAL" | "RECEIVING",
+): InventoryApprovalDocument {
+  return { tenantId, sourceType: "TRANSFER", sourceId: transfer.id, sourceNo: transfer.transferNo, step };
 }
 
 async function stampApproval(
@@ -512,7 +603,7 @@ async function decideSerials(actor: PostingActor, transferId: string, input: Ser
         serialNumberIds: movedIds,
         status: "STK",
         details: movementDetails({
-          verb: input.kind === "accept" ? "Accepted" : "Rejected",
+          decision: input.kind === "accept" ? "accepted" : "rejected",
           transferNo: fresh.transferNo,
           approvedAt: approval?.approvedAt ?? null,
           approvedBy: creatorName(approver),
@@ -520,6 +611,12 @@ async function decideSerials(actor: PostingActor, transferId: string, input: Ser
           rsNo,
           drNo,
         }),
+      });
+      await inventoryApprovalLedger.recordDecision(tx, approvalDocument(actor.tenantId, fresh, "RECEIVING"), {
+        serialNumberIds: movedIds,
+        status: input.kind === "accept" ? "APPROVED" : "REJECTED",
+        decidedById: actor.userId,
+        remarks,
       });
       if (!plan.idempotent) {
         await tx.auditLog.create({
@@ -644,6 +741,7 @@ export const transferPostingService = {
             serialNumberId: true,
             decision: true,
             remarks: true,
+            requestRemarks: true,
             priorStatusCode: { select: { code: true } },
             serialNumber: {
               select: { serialNo: true, model: { select: { id: true, skuCode: true, name: true } } },
@@ -714,6 +812,7 @@ export const transferPostingService = {
           branchName: row?.branch.name ?? null,
           decision: asLineDecision(line.decision),
           remarks: line.remarks,
+          requestRemarks: line.requestRemarks,
         };
       }),
       history: history.map((row) => ({
@@ -782,7 +881,7 @@ export const transferPostingService = {
       modelId: string;
       quantity: number;
       serialNumberIds: string[];
-      notes?: string;
+      lineRemarks?: TransferLineRemarks;
       transferNo?: string;
     },
   ) {
@@ -800,7 +899,6 @@ export const transferPostingService = {
 
     const codes = await inventoryIds(actor.tenantId);
     const statusCodeId = await workflowId(actor.tenantId, "pending_tl");
-    const notes = input.notes?.trim() || null;
     const requestedNo = input.transferNo?.trim() || "";
 
     const save = (transferNo: string) =>
@@ -832,13 +930,13 @@ export const transferPostingService = {
             toBranchId: input.toBranchId,
             transferNo,
             statusCodeId,
-            notes,
             createdById: actor.userId,
             lines: {
               create: plan.holds.map((hold) => ({
                 serialNumberId: hold.serialNumberId,
                 quantity: 1,
                 priorStatusCodeId: codes[hold.priorCode],
+                requestRemarks: transferLineRemark(input.lineRemarks, hold.serialNumberId),
               })),
             },
             approvalLevels: { create: [{ level: 1, roleSlug: "tl" }] },
@@ -854,6 +952,13 @@ export const transferPostingService = {
           status: "RSV",
           details: `Reserved on ${row.transferNo}`,
         });
+        await inventoryApprovalLedger.recordRequested(tx, approvalDocument(actor.tenantId, row, "TL_APPROVAL"), {
+          requestedById: actor.userId,
+          units: plan.holds.map((hold) => ({
+            serialNumberId: hold.serialNumberId,
+            remarks: transferLineRemark(input.lineRemarks, hold.serialNumberId),
+          })),
+        });
         await tx.auditLog.create({
           data: {
             tenantId: actor.tenantId,
@@ -867,17 +972,28 @@ export const transferPostingService = {
         return row;
       });
 
-    const transferNo = requestedNo || freshTransferNo();
-    try {
-      return await save(transferNo);
-    } catch (error) {
-      if (!isTransferNoConflict(error)) throw postingError(error, "Failed to create transfer");
+    const saveWithFreshNoOnConflict = async () => {
+      const transferNo = requestedNo || freshTransferNo();
       try {
-        return await save(freshTransferNo(transferNo));
-      } catch (retryError) {
-        throw postingError(retryError, "Failed to create transfer");
+        return await save(transferNo);
+      } catch (error) {
+        if (!isTransferNoConflict(error)) throw postingError(error, "Failed to create transfer");
+        try {
+          return await save(freshTransferNo(transferNo));
+        } catch (retryError) {
+          throw postingError(retryError, "Failed to create transfer");
+        }
       }
-    }
+    };
+
+    const row = await saveWithFreshNoOnConflict();
+    await notifyTransferApprovers(actor, {
+      id: row.id,
+      transferNo: row.transferNo,
+      fromBranchId: input.fromBranchId,
+      toBranchId: input.toBranchId,
+    });
+    return row;
   },
 
   async approve(actor: PostingActor, transferId: string) {
@@ -885,6 +1001,7 @@ export const transferPostingService = {
     if (!current) throw new Error("Transfer not found");
     await assertTransferVisible(actor, current);
     await authorizePosting(actor, "transfer.approve", current.fromBranchId);
+    await assertTransferApprover(actor, current.fromBranchId);
     const preview = planTransferApprove(current);
     if (!preview.ok) throw new Error(preview.error);
     if (preview.idempotent) {
@@ -943,6 +1060,11 @@ export const transferPostingService = {
           message: "This transfer was updated by someone else",
         });
         await stampApproval(tx, transferId, actor.userId, "approved");
+        await inventoryApprovalLedger.recordDecision(tx, approvalDocument(actor.tenantId, fresh, "TL_APPROVAL"), {
+          serialNumberIds: fresh.lines.map((line) => line.serialNumberId),
+          status: "APPROVED",
+          decidedById: actor.userId,
+        });
         const slips = transferSlipNumbers(fresh.transferNo);
         await tx.branchTransfer.update({
           where: { id: transferId },
@@ -986,6 +1108,7 @@ export const transferPostingService = {
     if (!current) throw new Error("Transfer not found");
     await assertTransferVisible(actor, current);
     await authorizePosting(actor, "transfer.reject", current.fromBranchId);
+    await assertTransferApprover(actor, current.fromBranchId);
     const preview = planTransferReject(current);
     if (!preview.ok) throw new Error(preview.error);
     if (preview.idempotent) return { id: current.id, idempotent: true };
@@ -1028,6 +1151,11 @@ export const transferPostingService = {
           message: "This transfer was updated by someone else",
         });
         await stampApproval(tx, transferId, actor.userId, "rejected");
+        await inventoryApprovalLedger.recordDecision(tx, approvalDocument(actor.tenantId, fresh, "TL_APPROVAL"), {
+          serialNumberIds: fresh.lines.map((line) => line.serialNumberId),
+          status: "REJECTED",
+          decidedById: actor.userId,
+        });
         for (const prior of ["STK", "DEF"] as const) {
           await writeHistory(tx, {
             tenantId: actor.tenantId,
@@ -1114,6 +1242,10 @@ export const transferPostingService = {
           serialNumberIds: plan.moves.map((move) => move.serialNumberId),
           status: "DIT",
           details: `Released on ${fresh.transferNo}`,
+        });
+        await inventoryApprovalLedger.recordRequested(tx, approvalDocument(actor.tenantId, fresh, "RECEIVING"), {
+          requestedById: actor.userId,
+          units: plan.moves.map((move) => ({ serialNumberId: move.serialNumberId })),
         });
         await tx.auditLog.create({
           data: {

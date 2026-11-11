@@ -289,21 +289,6 @@ export const sapService = {
     });
   },
 
-  /** Pull-out → Inventory Transfer Request (ITR / OWTQ). */
-  async emitPulloutItr(
-    tenantId: string,
-    pullout: { id: string; pulloutNo: string; branchId: string; warehouseId: string },
-  ) {
-    return enqueueJob({
-      tenantId,
-      jobType: "pullout_itr",
-      idempotencyKey: `pullout_itr:${pullout.id}`,
-      referenceType: SAP_REFERENCE_TYPES.BranchPullout,
-      referenceId: pullout.id,
-      payload: pullout,
-    });
-  },
-
   /** Released unit transfer on a consignment delivery → Inventory Transfer (OWTR). */
   async emitDeliveryTransfer(tenantId: string, transfer: { id: string; transferNo: string }) {
     return enqueueJob({
@@ -471,13 +456,9 @@ export const sapService = {
               job: updated,
             });
             break;
+          // Pull-outs are ISMS only now. The enum value stays for jobs queued before that.
           case "pullout_itr":
-            sapDocRef = await outbound.createPulloutItr({
-              tenantId,
-              userId,
-              job: updated,
-            });
-            break;
+            throw new Error("Pull-outs no longer post to SAP");
           case "delivery_partial_return":
             sapDocRef = await outbound.createPartialDeliveryInventoryTransfer({
               tenantId,

@@ -2,6 +2,7 @@ import {
   inventoryGroupAggregatesFromParts,
   inventoryGroupAggregatesFromSqlRow,
   inventoryGroupStatusesFromCounts,
+  shiftGroupStatusCounts,
   visibleInventoryGroupStatuses,
 } from "@/features/inventory/utils/stock-units-group-aggregates";
 
@@ -111,6 +112,29 @@ describe("stock units group aggregates", () => {
       { code: "DIT", name: "Delivery in transit", color: "sky", count: 1 },
       { code: "DEF", name: "Defective", color: "rose", count: 2 },
     ]);
+  });
+
+  it("moves one display unit onto the stock chip", () => {
+    const shifted = shiftGroupStatusCounts(
+      {
+        total: 1,
+        available: 0,
+        defective: 0,
+        reserved: 0,
+        pendingInspection: 0,
+        notStockedIn: 0,
+        statusCounts: { DU: 1 },
+        statuses: [{ code: "DU", name: "Display unit", color: "amber", count: 1 }],
+      },
+      "DU",
+      "STK",
+    );
+
+    expect(shifted.statuses).toEqual([
+      { code: "DU", name: "Display unit", color: "amber", count: 0 },
+      { code: "STK", name: "Stock", color: "emerald", count: 1 },
+    ]);
+    expect(shifted.statusCounts).toEqual({ DU: 0, STK: 1 });
   });
 
   it("shows no status chips when every count is zero", () => {

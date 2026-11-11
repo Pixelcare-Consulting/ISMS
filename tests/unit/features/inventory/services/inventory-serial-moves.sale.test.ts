@@ -65,6 +65,7 @@ describe("markSerialSoldFromStockSource", () => {
         statusCodeId: "sld-id",
         updatedById: "user-1",
         branchId: "sold-1",
+        statusUpdatedAt: expect.any(Date),
       },
     });
   });
