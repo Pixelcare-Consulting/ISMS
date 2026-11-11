@@ -30,13 +30,13 @@ export const OPEN_TRANSFER_STATUS_CODES = [
   TRANSFER_WORKFLOW_CODE.in_transit,
 ] as const;
 
+/** In transit is where a pull-out ends, so it no longer holds its serials. */
 export const OPEN_PULLOUT_STATUS_CODES = [
   PULLOUT_WORKFLOW_CODE.pending_tl,
   PULLOUT_WORKFLOW_CODE.requested,
   PULLOUT_WORKFLOW_CODE.approved,
   PULLOUT_WORKFLOW_CODE.for_pullout,
   PULLOUT_WORKFLOW_CODE.pending_logistics,
-  PULLOUT_WORKFLOW_CODE.in_transit,
 ] as const;
 
 export function isHoldCode(code: InventoryCode | null): code is HoldCode {

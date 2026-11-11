@@ -107,6 +107,50 @@ function openPendingDefectReportExistsSql(): Prisma.Sql {
   )`;
 }
 
+/**
+ * A unit sent on a pull-out (`bi` = branch_inventories). Sending ends the pull-out with
+ * the unit still DIT on its branch row, which stays so the SAP serial sync does not
+ * re-create it as branch stock, so Branch Inventory leaves it out. A row changed after
+ * the send (a later delivery of the same serial, say) is not the sent unit any more and
+ * shows again.
+ */
+export function sentOnPulloutSql(): Prisma.Sql {
+  return Prisma.sql`EXISTS (
+    SELECT 1
+    FROM branch_pullout_lines bpl
+    INNER JOIN branch_pullouts bp ON bp.id = bpl.pullout_id
+    INNER JOIN reason_status_codes psc ON psc.id = bp.status_code_id
+    INNER JOIN reason_status_codes isc ON isc.id = bi.status_code_id
+    WHERE bpl.serial_number_id = bi.serial_number_id
+      AND bp.tenant_id = bi.tenant_id
+      AND bp.branch_id = bi.branch_id
+      AND psc.code = 'in_transit'
+      AND isc.code = 'DIT'
+      AND bpl.received_at IS NULL
+      AND bpl.rejected_at IS NULL
+      AND bi.updated_at <= bp.updated_at
+  )`;
+}
+
+/** Branch inventory ids of the units sent on a pull-out, for Prisma-built queries. */
+export async function findSentOnPulloutInventoryIds(
+  tenantId: string,
+  branchId: string,
+  modelIds: readonly string[],
+): Promise<string[]> {
+  if (modelIds.length === 0) return [];
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT bi.id
+    FROM branch_inventories bi
+    INNER JOIN serial_numbers sn ON sn.id = bi.serial_number_id
+    WHERE bi.tenant_id = ${tenantId}
+      AND bi.branch_id = ${branchId}
+      AND sn.model_id IN (${Prisma.join(modelIds)})
+      AND ${sentOnPulloutSql()}
+  `;
+  return rows.map((row) => row.id);
+}
+
 function resolveEffectiveBranchIdsForGroups(
   branchIds: string[],
   filters?: InventoryGroupListFilters,
@@ -176,6 +220,7 @@ async function buildGroupInventoryConditions(
     Prisma.sql`bi.tenant_id = ${tenantId}`,
     Prisma.sql`bi.branch_id IN (${Prisma.join(effectiveBranchIds)})`,
     Prisma.sql`bi.status_code_id IN (${Prisma.join(statusCodes.map((status) => status.id))})`,
+    Prisma.sql`NOT ${sentOnPulloutSql()}`,
   ];
 
   if (filters?.modelId) {
@@ -571,9 +616,11 @@ export const inventoryGroupRepository = {
     }
 
     const q = filters.q?.trim();
+    const hiddenIds = await findSentOnPulloutInventoryIds(tenantId, filters.branchId, [filters.modelId]);
     const andParts: Prisma.BranchInventoryWhereInput[] = [
       {
         tenantId,
+        ...(hiddenIds.length > 0 ? { id: { notIn: hiddenIds } } : {}),
         branchId: filters.branchId,
         serialNumber: {
           modelId: filters.modelId,

@@ -27,7 +27,9 @@ export function pulloutPrintDocument(detail: PulloutDetail) {
     },
     fields: [
       { label: "Branch", value: detail.branch.name },
-      { label: "Destination warehouse", value: `${detail.warehouse.name} (${detail.warehouse.code})` },
+      ...(detail.warehouse
+        ? [{ label: "Destination warehouse", value: `${detail.warehouse.name} (${detail.warehouse.code})` }]
+        : []),
     ],
     lines: detail.lines
       .filter((line) => !line.rejectedAt)

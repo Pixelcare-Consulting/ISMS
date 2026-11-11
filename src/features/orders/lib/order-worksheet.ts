@@ -345,13 +345,13 @@ function quotaQuantity(
   return matched.reduce((sum, row) => sum + (Number.isFinite(row.quantity) ? row.quantity : 0), 0);
 }
 
+/** Units sent on a pull-out never reach here: they left the branch (see the loader). */
 export function resolveDitDirection(input: {
-  onInTransitPullout: boolean;
   transferLeaving: boolean;
   deliveryIntoBranch: boolean;
   transferEntering: boolean;
 }): WorksheetTransitDirection {
-  if (input.onInTransitPullout || input.transferLeaving) return "outgoing";
+  if (input.transferLeaving) return "outgoing";
   if (input.deliveryIntoBranch || input.transferEntering) return "incoming";
   return "unclassified";
 }
@@ -473,15 +473,9 @@ export function classifyWorksheetInventory(input: {
   const deliverySerials = new Set(
     input.deliveriesIntoBranch.map((row) => row.serialNumberId),
   );
-  const inTransitPullout = new Set<string>();
-  for (const line of input.pullouts) {
-    if (!modelIds.has(line.modelId)) continue;
-    if (line.workflowCode === "in_transit") inTransitPullout.add(line.serialNumberId);
-  }
   const awaitingByModel = new Map<string, Set<string>>();
   for (const line of input.pullouts) {
     if (!modelIds.has(line.modelId)) continue;
-    if (inTransitPullout.has(line.serialNumberId)) continue;
     if (!isAwaitingPulloutWorkflow(line.workflowCode)) continue;
     const serials = awaitingByModel.get(line.modelId) ?? new Set<string>();
     serials.add(line.serialNumberId);
@@ -541,7 +535,6 @@ export function classifyWorksheetInventory(input: {
       addTransit(
         bucket,
         resolveDitDirection({
-          onInTransitPullout: inTransitPullout.has(serial.serialNumberId),
           transferLeaving: leaving.has(serial.serialNumberId),
           deliveryIntoBranch: deliverySerials.has(serial.serialNumberId),
           transferEntering: entering.has(serial.serialNumberId),

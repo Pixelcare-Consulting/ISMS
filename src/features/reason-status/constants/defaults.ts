@@ -90,7 +90,7 @@ export const REASON_STATUS_DEFAULTS: ReasonStatusDefaultGroup[] = [
     name: "Pull-out workflow",
     code: "pullout_workflow",
     usedIn:
-      "Logistics → Pull-outs — progress of a pull-out request (reserve, schedule, logistics, in transit, pulled out).",
+      "Logistics → Pull-outs — progress of a pull-out request (reserve, for pull-out, logistics, in transit). In transit is the last step.",
     codes: [
       { code: "requested", name: "Requested", sortOrder: 1, color: "sky" },
       { code: "approved", name: "Approved", sortOrder: 2, color: "emerald" },

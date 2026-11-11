@@ -2,6 +2,7 @@ import type { BranchOrderStatus } from "@prisma/client";
 
 import { prisma } from "@/lib/database/client";
 import { decimalToNumber } from "@/lib/database/decimal";
+import { findSentOnPulloutInventoryIds } from "@/features/inventory/repositories/inventory-group.repository";
 import { sellableStkDefectReportsFilter } from "@/features/inventory/services/inventory-sellable-guards";
 import { planogramRepository } from "@/features/planogram/repositories/planogram.repository";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
@@ -316,7 +317,7 @@ async function loadWorksheetFacts(
   window: ReturnType<typeof manilaMonthWindow>,
 ) {
   const excludedStatuses: BranchOrderStatus[] = [...WORKSHEET_OUTSTANDING_EXCLUDED_STATUSES];
-  const [inventoryRows, pulloutRows, transferRows, deliveryRows, orderRows, sales] =
+  const [inventoryRows, sentOnPulloutIds, pulloutRows, transferRows, deliveryRows, orderRows, sales] =
     await Promise.all([
       prisma.branchInventory.findMany({
         where: {
@@ -325,6 +326,7 @@ async function loadWorksheetFacts(
           serialNumber: { modelId: { in: modelIds } },
         },
         select: {
+          id: true,
           serialNumberId: true,
           statusCode: { select: { code: true } },
           serialNumber: { select: { modelId: true } },
@@ -335,6 +337,7 @@ async function loadWorksheetFacts(
           },
         },
       }),
+      findSentOnPulloutInventoryIds(tenantId, branchId, modelIds),
       prisma.branchPulloutLine.findMany({
         where: {
           pullout: { tenantId, branchId },
@@ -415,12 +418,16 @@ async function loadWorksheetFacts(
       loadModelSales(tenantId, branchId, modelIds, window),
     ]);
 
-  const serials: WorksheetSerialFact[] = inventoryRows.map((row) => ({
-    serialNumberId: row.serialNumberId,
-    modelId: row.serialNumber.modelId,
-    statusCode: row.statusCode.code,
-    pendingDefectInspection: row.defectReports.length > 0,
-  }));
+  // Units sent on a pull-out have left the branch, as on Branch Inventory.
+  const sent = new Set(sentOnPulloutIds);
+  const serials: WorksheetSerialFact[] = inventoryRows
+    .filter((row) => !sent.has(row.id))
+    .map((row) => ({
+      serialNumberId: row.serialNumberId,
+      modelId: row.serialNumber.modelId,
+      statusCode: row.statusCode.code,
+      pendingDefectInspection: row.defectReports.length > 0,
+    }));
 
   const pullouts: WorksheetPulloutFact[] = pulloutRows.map((row) => ({
     serialNumberId: row.serialNumberId,

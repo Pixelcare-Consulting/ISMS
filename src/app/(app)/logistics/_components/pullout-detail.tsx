@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation";
 import {
   useEffect,
   useState,
-  useId,
   useTransition,
   type ChangeEvent,
   type FormEvent,
@@ -54,12 +53,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { SearchableSelect } from "@/components/ui/searchable-select";
-import { Textarea } from "@/components/ui/textarea";
 import {
   PULLOUT_ATTACHMENT_ACCEPT,
   PULLOUT_ATTACHMENT_MAX_FILES,
+  PULLOUT_ATTACHMENT_OPEN_CODES,
 } from "@/features/logistics/constants/pullout-attachments";
 import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import {
@@ -70,13 +67,10 @@ import {
 import {
   approvePulloutLineAction,
   approvePulloutTlAction,
-  completePulloutAction,
   deletePulloutLineAction,
   listPulloutChecklistOptionsAction,
   listPulloutSerialsAction,
-  listWarehousesForLogisticsAction,
   rejectPulloutAction,
-  rejectPulloutLineAction,
   releasePulloutAction,
   updatePulloutListAction,
   uploadPulloutAttachmentAction,
@@ -86,11 +80,7 @@ import {
   manilaDateTimeInputValue,
   scheduleDateInputValue,
 } from "@/features/logistics/lib/shipment";
-import {
-  PULLOUT_LINE_DECISION,
-  PULLOUT_REJECTION_REMARKS_MAX,
-  defaultReceiveLocation,
-} from "@/features/logistics/services/pullout-posting.planner";
+import { PULLOUT_LINE_DECISION } from "@/features/logistics/services/pullout-posting.planner";
 import type { PulloutDetail } from "@/features/logistics/services/pullout-posting.service";
 import { PulloutConditionBadge } from "@/features/logistics/components/pullout-condition-badge";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
@@ -115,13 +105,6 @@ interface ExtraSerialDetails {
   choices: Readonly<Record<string, PulloutLineChoice>>;
   onChange: (serialNumberId: string, patch: Partial<PulloutLineChoice>) => void;
 }
-
-const PULLOUT_ATTACHMENT_OPEN_CODES: readonly string[] = [
-  PULLOUT_WORKFLOW_CODE.pending_tl,
-  PULLOUT_WORKFLOW_CODE.for_pullout,
-  PULLOUT_WORKFLOW_CODE.pending_logistics,
-  PULLOUT_WORKFLOW_CODE.in_transit,
-];
 
 const MANILA_DATE = new Intl.DateTimeFormat("en-PH", {
   year: "numeric",
@@ -335,7 +318,7 @@ function stageDescription(code: string): string {
     case PULLOUT_WORKFLOW_CODE.pending_logistics:
       return "The list is saved. Send it when the units are ready to leave.";
     case PULLOUT_WORKFLOW_CODE.in_transit:
-      return "These units are in transit.";
+      return "These units left the branch. The pull-out ends here.";
     default:
       return "Who asked for this pull-out and what it covers.";
   }
@@ -436,13 +419,10 @@ function LogisticsSection({
   pending,
   waybillNo,
   courierName,
-  warehouseId,
   scheduledAt,
   actualDate,
-  warehouses,
   onWaybillNo,
   onCourierName,
-  onWarehouseId,
   onScheduledAt,
   onActualDate,
   note,
@@ -452,19 +432,21 @@ function LogisticsSection({
   pending: boolean;
   waybillNo: string;
   courierName: string;
-  warehouseId: string;
   scheduledAt: string;
   actualDate: string;
-  warehouses: { id: string; name: string; code: string }[];
   onWaybillNo: (value: string) => void;
   onCourierName: (value: string) => void;
-  onWarehouseId: (value: string) => void;
   onScheduledAt: (value: string) => void;
   onActualDate: (value: string) => void;
   note: ReactNode;
 }) {
-  const warehouseChoices = warehouses.length > 0 ? warehouses : [detail.warehouse];
-  const warehouseLabel = joinedLabel(detail.warehouse.name, detail.warehouse.code);
+  // Only pull-outs from before receiving was dropped name a warehouse.
+  const legacyWarehouse = detail.warehouse ? (
+    <RecordReadout
+      label="Destination warehouse"
+      value={textOrDash(joinedLabel(detail.warehouse.name, detail.warehouse.code))}
+    />
+  ) : null;
   const scheduledBy = <RecordReadout label="Scheduled by" value={textOrDash(detail.scheduledByName)} />;
   return (
     <RecordSection title="Logistics" divided>
@@ -507,20 +489,6 @@ function LogisticsSection({
                 onChange={(event) => onActualDate(event.target.value)}
               />
             </Field>
-            <Field label="Destination warehouse" htmlFor="pullout-warehouse">
-              <SearchableSelect
-                id="pullout-warehouse"
-                options={warehouseChoices.map((warehouse) => ({
-                  id: warehouse.id,
-                  label: joinedLabel(warehouse.name, warehouse.code) ?? warehouse.name,
-                }))}
-                value={warehouseId}
-                onChange={onWarehouseId}
-                placeholder="Select warehouse…"
-                searchPlaceholder="Search warehouses…"
-                disabled={pending}
-              />
-            </Field>
           </>
         ) : (
           <>
@@ -535,7 +503,7 @@ function LogisticsSection({
               label="Actual pull-out date"
               value={textOrDash(formatWhen(detail.actualScheduledDate, false))}
             />
-            <RecordReadout label="Destination warehouse" value={textOrDash(warehouseLabel)} />
+            {legacyWarehouse}
           </>
         )}
       </RecordFieldGrid>
@@ -702,9 +670,7 @@ export function PulloutDetailView({
       detail.status.code === PULLOUT_WORKFLOW_CODE.pending_logistics) &&
     capabilities.canManage &&
     inScope(branchScope, detail.branch.id);
-  const [warehouses, setWarehouses] = useState<{ id: string; name: string; code: string }[]>([]);
   const [extraSerials, setExtraSerials] = useState<ExtraSerial[]>([]);
-  const [warehouseId, setWarehouseId] = useState(detail.warehouse.id);
   const [waybillNo, setWaybillNo] = useState(detail.waybillNo ?? "");
   const [courierName, setCourierName] = useState(detail.courierName ?? "");
   const [scheduledAt, setScheduledAt] = useState(manilaDateTimeInputValue(detail.scheduledAt));
@@ -717,32 +683,6 @@ export function PulloutDetailView({
   const [checklistOptions, setChecklistOptions] =
     useState<PulloutChecklistOptions>(EMPTY_CHECKLIST_OPTIONS);
   const [deleteTarget, setDeleteTarget] = useState<ItemRow | null>(null);
-  const [rejectTarget, setRejectTarget] = useState<ItemRow | null>(null);
-  const [rejectRemarks, setRejectRemarks] = useState("");
-  const rejectRemarksId = useId();
-  const [receiveIds, setReceiveIds] = useState<string[]>([]);
-  const [receiveLocationBySerial, setReceiveLocationBySerial] = useState<Record<string, string>>(
-    () =>
-      Object.fromEntries(
-        detail.lines.map((line) => [
-          line.serialNumberId,
-          defaultReceiveLocation(line.recordedLocationId, detail.receiveLocations),
-        ]),
-      ),
-  );
-
-  useEffect(() => {
-    if (!canEditList) return;
-    let cancelled = false;
-    void listWarehousesForLogisticsAction().then((warehouseRows) => {
-      if (cancelled) return;
-      setWarehouses(warehouseRows);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [canEditList]);
-
   useEffect(() => {
     if (!addOpen || !canEditList) return;
     let cancelled = false;
@@ -806,37 +746,6 @@ export function PulloutDetailView({
     });
   }
 
-  function toggleReceive(serialNumberId: string, checked: boolean) {
-    setReceiveIds((current) =>
-      checked ? [...current, serialNumberId] : current.filter((id) => id !== serialNumberId),
-    );
-  }
-
-  function setReceiveLocation(serialNumberIds: readonly string[], locationId: string) {
-    setReceiveLocationBySerial((current) => ({
-      ...current,
-      ...Object.fromEntries(serialNumberIds.map((id) => [id, locationId])),
-    }));
-  }
-
-  function receiveSelected() {
-    startTransition(async () => {
-      const result = await completePulloutAction(detail.id, {
-        lines: receiveIds.map((serialNumberId) => ({
-          serialNumberId,
-          warehouseLocationId: receiveLocationBySerial[serialNumberId] ?? "",
-        })),
-      });
-      if ("error" in result) {
-        toast.error(result.error);
-        return;
-      }
-      toast.success(result.completed ? "Pull-out received and completed" : "Units received");
-      setReceiveIds([]);
-      router.refresh();
-    });
-  }
-
   const onPulloutIds = new Set(detail.lines.map((line) => line.serialNumberId));
   const availableSerials = extraSerials.filter((serial) => !onPulloutIds.has(serial.serialNumberId));
   const addedSerials = availableSerials.filter((serial) => selected.includes(serial.serialNumberId));
@@ -853,28 +762,15 @@ export function PulloutDetailView({
   const showReject = showApprove && capabilities.canRejectTransfer;
   const showSend = canEditList && detail.status.code === PULLOUT_WORKFLOW_CODE.pending_logistics;
   const inTransit = detail.status.code === PULLOUT_WORKFLOW_CODE.in_transit;
-  const canReceive = inTransit && capabilities.canCompletePullout;
-  const showReceipts =
-    inTransit ||
-    detail.status.code === PULLOUT_WORKFLOW_CODE.completed ||
-    detail.lines.some((line) => line.rejectedAt);
-  const awaitingIds = detail.lines
-    .filter((line) => !line.receivedAt && !line.rejectedAt)
-    .map((line) => line.serialNumberId);
+  // Receipts and in-transit rejections only exist on pull-outs from before receiving was dropped.
+  const showReceipts = detail.lines.some((line) => line.receivedAt || line.rejectedAt);
   const printDocument = pulloutPrintDocument(detail);
-  const receiveOptions = detail.receiveLocations.map((location) => ({
-    id: location.id,
-    label: joinedLabel(location.name, location.code) ?? location.name,
-  }));
-  const receiveReady =
-    receiveIds.length > 0 && receiveIds.every((id) => receiveLocationBySerial[id]);
   const canAttach =
     capabilities.canCreate &&
     inScope(branchScope, detail.branch.id) &&
     PULLOUT_ATTACHMENT_OPEN_CODES.includes(detail.status.code) &&
     detail.attachments.length < PULLOUT_ATTACHMENT_MAX_FILES;
   const listDirty =
-    warehouseId !== detail.warehouse.id ||
     waybillNo !== (detail.waybillNo ?? "") ||
     courierName !== (detail.courierName ?? "") ||
     scheduledAt !== manilaDateTimeInputValue(detail.scheduledAt) ||
@@ -896,7 +792,6 @@ export function PulloutDetailView({
     run(
       () =>
         updatePulloutListAction(detail.id, {
-          warehouseId,
           waybillNo,
           courierName,
           scheduledAt,
@@ -940,20 +835,6 @@ export function PulloutDetailView({
     const { serialNumberId } = deleteTarget;
     setDeleteTarget(null);
     run(() => deletePulloutLineAction(detail.id, serialNumberId), "Unit rejected from this pull-out");
-  }
-
-  function closeReject() {
-    setRejectTarget(null);
-    setRejectRemarks("");
-  }
-
-  function confirmReject() {
-    if (!rejectTarget) return;
-    const { serialNumberId } = rejectTarget;
-    const remarks = rejectRemarks.trim();
-    closeReject();
-    toggleReceive(serialNumberId, false);
-    run(() => rejectPulloutLineAction(detail.id, serialNumberId, { remarks }), "Unit rejected");
   }
 
   function reserveLineAction(row: ItemRow) {
@@ -1022,85 +903,10 @@ export function PulloutDetailView({
     );
   }
 
-  function receiveLineAction(row: ItemRow) {
-    if (row.receivedAt) return <span className="text-xs text-emerald-700">Received</span>;
-    if (row.rejectedAt) return <span className="text-xs text-destructive">Rejected</span>;
-    return (
-      <div className="flex items-center justify-end gap-2">
-        <Checkbox
-          checked={receiveIds.includes(row.serialNumberId)}
-          disabled={pending || receiveOptions.length === 0}
-          aria-label={`Receive ${row.serialNo}`}
-          onCheckedChange={(value) => toggleReceive(row.serialNumberId, value === true)}
-        />
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={pending}
-          aria-label={`Reject ${row.serialNo}`}
-          onClick={() => setRejectTarget(row)}
-        >
-          Reject
-        </Button>
-      </div>
-    );
-  }
-
-  function receiveLocationCell(row: ItemRow) {
-    if (row.receivedAt || row.rejectedAt) return <ReceivedCell row={row} />;
-    return (
-      <SearchableSelect
-        id={`receive-location-${row.serialNumberId}`}
-        ariaLabel={`Warehouse location for ${row.serialNo}`}
-        options={receiveOptions}
-        value={receiveLocationBySerial[row.serialNumberId] ?? ""}
-        onChange={(locationId) => setReceiveLocation([row.serialNumberId], locationId)}
-        placeholder="Select location…"
-        searchPlaceholder="Search locations…"
-        disabled={pending || !receiveIds.includes(row.serialNumberId)}
-      />
-    );
-  }
-
   function lineActionRenderer(): ((row: ItemRow) => ReactNode) | null {
     if (showApprove) return reserveLineAction;
     if (canEditList) return listLineAction;
-    if (canReceive) return receiveLineAction;
     return null;
-  }
-
-  function receivedRenderer(): ((row: ItemRow) => ReactNode) | null {
-    if (canReceive) return receiveLocationCell;
-    return showReceipts ? (row) => <ReceivedCell row={row} /> : null;
-  }
-
-  function receiveToolbar(): ReactNode {
-    if (!canReceive || awaitingIds.length === 0) return undefined;
-    return (
-      <div className="flex flex-wrap items-center gap-2">
-        <SearchableSelect
-          id="receive-location-all"
-          className="w-56"
-          options={receiveOptions}
-          value=""
-          onChange={(locationId) => setReceiveLocation(receiveIds, locationId)}
-          placeholder="Set location for selected"
-          searchPlaceholder="Search locations…"
-          disabled={pending || receiveIds.length === 0}
-        />
-        <Button
-          type="button"
-          variant="outline"
-          disabled={pending || receiveOptions.length === 0}
-          onClick={() =>
-            setReceiveIds(receiveIds.length === awaitingIds.length ? [] : awaitingIds)
-          }
-        >
-          {receiveIds.length === awaitingIds.length ? "Clear selection" : "Select all"}
-        </Button>
-      </div>
-    );
   }
 
   function logisticsNote(): ReactNode {
@@ -1108,43 +914,20 @@ export function PulloutDetailView({
       return (
         <p className="text-sm text-muted-foreground">
           {printDocument
-            ? "Sending puts the units in transit. The warehouse receives them next."
-            : "Save the waybill, courier and schedule to print the slip. Sending puts the units in transit."}
+            ? "Sending puts the units in transit and ends the pull-out."
+            : "Save the waybill, courier and schedule to print the slip. Sending puts the units in transit and ends the pull-out."}
         </p>
       );
     }
     if (!inTransit) return null;
-    if (canReceive && receiveOptions.length === 0) {
-      return (
-        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-          {`${detail.warehouse.name} has no locations yet. Add one in Settings → Warehouses to receive these units.`}
-        </p>
-      );
-    }
     return (
       <p className="text-sm text-muted-foreground">
-        {canReceive
-          ? "Tick the units that arrived and choose where each one goes. Reject a unit that did not arrive. Units you leave stay in transit."
-          : `Units stay in transit at ${detail.branch.name} until the warehouse receives them.`}
+        {`These units left ${detail.branch.name} and no longer count in its branch inventory.`}
       </p>
     );
   }
 
   function headerActions(): ReactNode {
-    if (canReceive) {
-      return (
-        <Button
-          type="button"
-          disabled={pending || !receiveReady}
-          title={
-            receiveIds.length > 0 && !receiveReady ? "Choose a location for every unit" : undefined
-          }
-          onClick={receiveSelected}
-        >
-          {receiveIds.length > 0 ? `Receive ${receiveIds.length}` : "Receive"}
-        </Button>
-      );
-    }
     if (isReserve) {
       if (!showApprove) return null;
       return (
@@ -1225,13 +1008,10 @@ export function PulloutDetailView({
         pending={pending}
         waybillNo={waybillNo}
         courierName={courierName}
-        warehouseId={warehouseId}
         scheduledAt={scheduledAt}
         actualDate={actualDate}
-        warehouses={warehouses}
         onWaybillNo={setWaybillNo}
         onCourierName={setCourierName}
-        onWarehouseId={setWarehouseId}
         onScheduledAt={setScheduledAt}
         onActualDate={setActualDate}
         note={logisticsNote()}
@@ -1240,7 +1020,10 @@ export function PulloutDetailView({
         <CompactLineTable
           rows={detail.lines}
           getRowId={(row) => row.serialNumberId}
-          columns={pulloutItemColumns(lineActionRenderer(), receivedRenderer())}
+          columns={pulloutItemColumns(
+            lineActionRenderer(),
+            showReceipts ? (row) => <ReceivedCell row={row} /> : null,
+          )}
           searchText={(row) => [
             row.skuCode,
             row.modelName,
@@ -1271,9 +1054,7 @@ export function PulloutDetailView({
               >
                 {addOpen ? "Hide serials" : "Add serials"}
               </Button>
-            ) : (
-              receiveToolbar()
-            )
+            ) : undefined
           }
           minWidth={showReceipts ? "96rem" : "82rem"}
         />
@@ -1355,36 +1136,6 @@ export function PulloutDetailView({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={confirmDelete}>Reject</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <AlertDialog
-        open={rejectTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) closeReject();
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{`Reject ${rejectTarget?.serialNo ?? "this unit"}?`}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {`Use this when the unit did not arrive or cannot be accepted. It goes back to ${detail.branch.name} as ${rejectTarget?.priorCode ?? "its original status"}. If it is lost, the next stock count shows it as missing.`}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="grid gap-1.5">
-            <Label htmlFor={rejectRemarksId}>Reason for rejection</Label>
-            <Textarea
-              id={rejectRemarksId}
-              value={rejectRemarks}
-              maxLength={PULLOUT_REJECTION_REMARKS_MAX}
-              onChange={(event) => setRejectRemarks(event.target.value)}
-            />
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction disabled={!rejectRemarks.trim()} onClick={confirmReject}>
-              Reject unit
-            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
