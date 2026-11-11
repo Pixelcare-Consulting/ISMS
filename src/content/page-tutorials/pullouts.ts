@@ -5,22 +5,22 @@ export const PULLOUTS_PAGE_TUTORIAL: PageTutorialContent = {
   triggerLabel: "Open pull-outs tutorial",
   dialogTitle: "Pull-outs & pickups — quick guide",
   dialogDescription:
-    "Return or pull inventory from branch back through logistics to warehouse.",
+    "Take units out of a branch through Team Lead approval and Logistics.",
   helpHref: "/help",
   helpLinkLabel: "Full Help & Support portal",
   sections: [
     {
       title: "What this page is for",
       description:
-        "Pull-outs move stock from branch back to warehouse. Flow: PS creates → TL approves → logistics schedules → branch releases → warehouse validates.",
+        "Pull-outs take units out of a branch. Flow: branch requests → TL approves → Logistics saves the list → Logistics sends it. Sending is the last step.",
     },
     {
       title: "How to use it",
       bullets: [
         "Choose Stock (STK) or Defective (DEF), then add the units and their details.",
         "Team Lead approves or deletes each unit, or approves them all.",
-        "After approval, Logistics enters the waybill and schedule and coordinates with the branch.",
-        "Branch completes release in Operations; warehouse closes receipt.",
+        "After approval, Logistics enters the waybill and schedule and saves the list.",
+        "Send puts every unit in transit (DIT) and ends the pull-out. Sent units no longer count in Branch Inventory.",
       ],
     },
     {

@@ -52,11 +52,7 @@ import {
 import { parseManilaDateTime, parseScheduleDate } from "@/features/logistics/lib/shipment";
 import {
   PULLOUT_CREATE_INPUT_ERROR,
-  PULLOUT_RECEIVE_INPUT_ERROR,
-  PULLOUT_LINE_REJECT_INPUT_ERROR,
-  pulloutLineRejectSchema,
   pulloutLineSchema,
-  pulloutReceiveSchema,
   pulloutSchema,
 } from "@/features/logistics/schemas/pullout.schema";
 import { transferLineRemarksSchema } from "@/features/logistics/lib/transfer-line-remarks";
@@ -98,7 +94,6 @@ const TRANSFER_SORT_FIELDS = new Set<TransferListSort>([
 const PULLOUT_SORT_FIELDS = new Set<PulloutListSort>([
   "pulloutNo",
   "branch",
-  "warehouse",
   "reason",
   "status",
 ]);
@@ -141,7 +136,6 @@ const transferSchema = z.object({
     .transform((value) => value || undefined),
 });
 const pulloutListSchema = z.object({
-  warehouseId: z.string().min(1),
   waybillNo: z.string().optional(),
   courierName: z.string().trim().max(120).optional(),
   scheduledAt: z.string().optional(),
@@ -150,13 +144,6 @@ const pulloutListSchema = z.object({
   serialNumberIds: z.array(z.string().min(1)).min(1),
   addedLines: z.array(pulloutLineSchema).optional(),
 });
-const shipmentSchema = z.object({
-  waybillNo: z.string().trim().min(1).max(80),
-  courierName: z.string().trim().min(1).max(120),
-  scheduledAt: z.string().trim().min(1),
-});
-const SHIPMENT_INPUT_ERROR = "Enter the waybill, courier or forwarder, and schedule date";
-
 const serialIdsSchema = z.object({
   serialNumberIds: z.array(z.string().min(1)).min(1),
 });
@@ -304,24 +291,6 @@ export async function getDeliveryDetailAction(id: string) {
     return { success: true as const, detail };
   } catch (error) {
     return actionError(error, "Delivery not found");
-  }
-}
-
-export async function saveDeliveryShipmentAction(id: string, input: unknown) {
-  const session = await requireAnyPermission([...DISPATCH_PERMISSIONS]);
-  const parsed = shipmentSchema.safeParse(input);
-  const scheduledAt = parsed.success ? parseScheduleDate(parsed.data.scheduledAt) : null;
-  if (!parsed.success || !scheduledAt) return { error: SHIPMENT_INPUT_ERROR };
-  try {
-    await deliveryPostingService.saveShipment(postingActor(session), id, {
-      waybillNo: parsed.data.waybillNo,
-      courierName: parsed.data.courierName,
-      scheduledAt,
-    });
-    revalidateDelivery(id);
-    return { success: true as const };
-  } catch (error) {
-    return actionError(error, "Failed to save waybill and schedule");
   }
 }
 
@@ -488,24 +457,6 @@ export async function getTransferDetailAction(id: string) {
   }
 }
 
-export async function saveTransferShipmentAction(id: string, input: unknown) {
-  const session = await requirePermission(LOGISTICS_MANAGE);
-  const parsed = shipmentSchema.safeParse(input);
-  const scheduledAt = parsed.success ? parseScheduleDate(parsed.data.scheduledAt) : null;
-  if (!parsed.success || !scheduledAt) return { error: SHIPMENT_INPUT_ERROR };
-  try {
-    await transferPostingService.saveShipment(postingActor(session), id, {
-      waybillNo: parsed.data.waybillNo,
-      courierName: parsed.data.courierName,
-      scheduledAt,
-    });
-    revalidateTransfer(id);
-    return { success: true as const };
-  } catch (error) {
-    return actionError(error, "Failed to save waybill and schedule");
-  }
-}
-
 export async function listTransferModelsAction(branchId: string) {
   const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
   try {
@@ -654,16 +605,6 @@ export async function listPulloutSerialsAction(branchId: string) {
   }
 }
 
-export async function getPulloutDestinationAction(branchId: string) {
-  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
-  try {
-    const warehouse = await pulloutPostingService.destination(postingActor(session), branchId);
-    return { success: true as const, warehouse };
-  } catch (error) {
-    return actionError(error, "Failed to load the destination warehouse");
-  }
-}
-
 export interface PulloutChecklistOptions {
   classifications: { id: string; name: string }[];
   unitPackingConditions: { id: string; name: string }[];
@@ -808,7 +749,7 @@ function optionalDate(
 export async function updatePulloutListAction(id: string, input: unknown) {
   const session = await requirePermission(LOGISTICS_MANAGE);
   const parsed = pulloutListSchema.safeParse(input);
-  if (!parsed.success) return { error: "Choose the warehouse and the serials on this list" };
+  if (!parsed.success) return { error: "Choose the serials on this list" };
   const scheduledAt = optionalDate(parsed.data.scheduledAt, parseManilaDateTime);
   const actualScheduledDate = optionalDate(parsed.data.actualPulloutDate, parseScheduleDate);
   if (scheduledAt === "invalid" || actualScheduledDate === "invalid") {
@@ -817,7 +758,6 @@ export async function updatePulloutListAction(id: string, input: unknown) {
   try {
     await pulloutPostingService.updateList(postingActor(session), {
       pulloutId: id,
-      warehouseId: parsed.data.warehouseId,
       waybillNo: parsed.data.waybillNo,
       courierName: parsed.data.courierName,
       scheduledAt,
@@ -841,33 +781,6 @@ export async function releasePulloutAction(id: string) {
     return { success: true as const };
   } catch (error) {
     return actionError(error, "Failed to send the pull-out");
-  }
-}
-
-export async function completePulloutAction(id: string, input: unknown) {
-  const session = await requirePermission(LOGISTICS_MANAGE);
-  const parsed = pulloutReceiveSchema.safeParse(input);
-  if (!parsed.success) return { error: PULLOUT_RECEIVE_INPUT_ERROR };
-  try {
-    const result = await pulloutPostingService.complete(postingActor(session), id, parsed.data);
-    revalidatePullout(id);
-    revalidatePath("/inventory/warehouse-stock");
-    return { success: true as const, completed: result.completed };
-  } catch (error) {
-    return actionError(error, "Failed to receive the units");
-  }
-}
-
-export async function rejectPulloutLineAction(id: string, serialNumberId: string, input: unknown) {
-  const session = await requirePermission(LOGISTICS_MANAGE);
-  const parsed = pulloutLineRejectSchema.safeParse(input);
-  if (!parsed.success) return { error: PULLOUT_LINE_REJECT_INPUT_ERROR };
-  try {
-    await pulloutPostingService.rejectLine(postingActor(session), id, serialNumberId, parsed.data);
-    revalidatePullout(id);
-    return { success: true as const };
-  } catch (error) {
-    return actionError(error, "Failed to reject this unit");
   }
 }
 

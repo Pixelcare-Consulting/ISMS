@@ -32,14 +32,13 @@ const transferListInclude = {
 
 const pulloutListInclude = {
   branch: { select: { name: true } },
-  warehouse: { select: { name: true, code: true } },
   statusCode: { select: { id: true, code: true, name: true, color: true } },
   reasonStatusCode: { select: { id: true, code: true, name: true, color: true } },
 } satisfies Prisma.BranchPulloutInclude;
 
 export type DeliveryListSort = "deliveryNo" | "orderNumber" | "branch" | "status";
 export type TransferListSort = "transferNo" | "fromBranch" | "toBranch" | "status";
-export type PulloutListSort = "pulloutNo" | "branch" | "warehouse" | "reason" | "status";
+export type PulloutListSort = "pulloutNo" | "branch" | "reason" | "status";
 export type LogisticsListSortDir = "asc" | "desc";
 
 function deliveryPrismaOrderBy(
@@ -87,8 +86,6 @@ function pulloutPrismaOrderBy(
       return { pulloutNo: dir };
     case "branch":
       return { branch: { name: dir } };
-    case "warehouse":
-      return { warehouse: { name: dir } };
     case "reason":
       return { reasonStatusCode: { name: dir } };
     case "status":

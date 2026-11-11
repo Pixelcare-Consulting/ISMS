@@ -68,7 +68,7 @@ describe("logistics actionable status codes", () => {
     ).toEqual([]);
     expect(
       getPulloutActionableStatusCodes(caps({ canCompletePullout: true })),
-    ).toEqual(["in_transit"]);
+    ).toEqual([]);
     expect(
       getPulloutActionableStatusCodes(caps({ canManage: true })),
     ).toEqual(["for_pullout", "pending_logistics"]);

@@ -12,7 +12,6 @@ import {
   listTransferSerialsAction,
 } from "@/features/logistics/actions/logistics.actions";
 import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
-import { EMPTY_SHIPMENT, type LogisticsShipment } from "@/features/logistics/lib/shipment";
 import type { TransferDetail } from "@/features/logistics/services/transfer-posting.service";
 
 jest.mock("sonner", () => ({
@@ -29,20 +28,14 @@ jest.mock("@/features/logistics/actions/logistics.actions", () => ({
   receiveTransferAction: jest.fn(),
   rejectTransferAction: jest.fn(),
   rejectTransferSerialAction: jest.fn(),
-  saveTransferShipmentAction: jest.fn(),
 }));
-
-const SAVED_SHIPMENT: LogisticsShipment = {
-  ...EMPTY_SHIPMENT,
-  waybillNo: "WB-1",
-  courierName: "LBC",
-  scheduledAt: "2026-11-05",
-};
 
 const listBranches = jest.mocked(listBranchesForLogisticsAction);
 const listModels = jest.mocked(listTransferModelsAction);
 const listSerials = jest.mocked(listTransferSerialsAction);
 const getDetail = jest.mocked(getTransferDetailAction);
+
+const STOCK = { code: "STK", name: "Stock", color: "emerald" };
 
 function renderCreate() {
   const onSubmit = jest.fn(async () => ({ transferNo: "XFR-1" }));
@@ -76,7 +69,6 @@ function detail(overrides: Partial<TransferDetail> = {}): TransferDetail {
     id: "transfer-1",
     transferNo: "XFR-1",
     notes: null,
-    shipment: EMPTY_SHIPMENT,
     createdAt: "2026-11-05T01:00:00.000Z",
     createdBy: "Paula Staff",
     status: { code: "pending_tl", name: "Pending TL", color: null },
@@ -93,9 +85,11 @@ function detail(overrides: Partial<TransferDetail> = {}): TransferDetail {
         quantity: 1,
         priorCode: "STK",
         inventoryCode: "RSV",
+        inventoryStatus: { code: "RSV", name: "Reserved", color: "orange" },
         branchId: "branch-a",
         branchName: "Branch A",
         decision: "pending",
+        awaitingReceipt: false,
         remarks: null,
         requestRemarks: "For the mall display",
       },
@@ -105,8 +99,8 @@ function detail(overrides: Partial<TransferDetail> = {}): TransferDetail {
   } as TransferDetail;
 }
 
-function releasableDetail(shipment: LogisticsShipment): TransferDetail {
-  return detail({ status: { code: "for_transfer", name: "For transfer", color: null }, shipment });
+function releasableDetail(): TransferDetail {
+  return detail({ status: { code: "for_transfer", name: "For transfer", color: null } });
 }
 
 beforeAll(() => {
@@ -134,21 +128,21 @@ beforeEach(() => {
   listSerials.mockResolvedValue({
     success: true,
     serials: [
-      { serialNumberId: "s1", serialNo: "SN-1", inventoryCode: "STK" },
-      { serialNumberId: "s2", serialNo: "SN-2", inventoryCode: "STK" },
+      { serialNumberId: "s1", serialNo: "SN-1", inventoryCode: "STK", inventoryStatus: STOCK },
+      { serialNumberId: "s2", serialNo: "SN-2", inventoryCode: "STK", inventoryStatus: STOCK },
     ],
   } as Awaited<ReturnType<typeof listTransferSerialsAction>>);
   getDetail.mockReset();
 });
 
 describe("new transfer request form", () => {
-  it("lays out Transfer details as Model, Serial number, Remarks, Action", async () => {
+  it("lays out Transfer details as Model, Serial number, Status, Remarks, Action", async () => {
     renderCreate();
     const table = await screen.findByRole("table");
     const headers = within(table)
       .getAllByRole("columnheader")
       .map((cell) => cell.textContent);
-    expect(headers).toEqual(["#", "", "Model", "Serial number", "Remarks", "Action"]);
+    expect(headers).toEqual(["#", "", "Model", "Serial number", "Status", "Remarks", "Action"]);
   });
 
   it("takes remarks per serial instead of one remark for the whole request", async () => {
@@ -179,22 +173,9 @@ describe("new transfer request form", () => {
 });
 
 describe("transfer page", () => {
-  const scope = { capabilities: { canExecuteTransfer: true } as LogisticsActionCapabilities };
-
-  it("tells Logistics what to save before Release appears", () => {
-    render(
-      <TransferForm mode="view" layout="page" detail={releasableDetail(EMPTY_SHIPMENT)} {...scope} />,
-    );
-    expect(
-      screen.getByText("Save the waybill, courier and schedule date to release these units."),
-    ).toBeInTheDocument();
-  });
-
-  it("drops that line once they are saved", () => {
-    render(
-      <TransferForm mode="view" layout="page" detail={releasableDetail(SAVED_SHIPMENT)} {...scope} />,
-    );
-    expect(screen.queryByText(/to release these units/)).not.toBeInTheDocument();
+  it("has no waybill and scheduling section", () => {
+    render(<TransferForm mode="view" layout="page" detail={releasableDetail()} />);
+    expect(screen.queryByText("Waybill and scheduling")).not.toBeInTheDocument();
   });
 
   it("offers Approve and Reject only on a branch this person can approve for", async () => {
@@ -226,13 +207,6 @@ describe("transfer page", () => {
         expect.objectContaining({ canApprove: true, canReject: true }),
       ),
     );
-  });
-
-  it("does not tell people who cannot release", () => {
-    render(
-      <TransferForm mode="view" layout="page" detail={releasableDetail(EMPTY_SHIPMENT)} capabilities={{} as LogisticsActionCapabilities} />,
-    );
-    expect(screen.queryByText(/to release these units/)).not.toBeInTheDocument();
   });
 });
 
@@ -272,11 +246,41 @@ describe("branch transfer dialog", () => {
     expect(screen.getAllByText("Remarks")).toHaveLength(1);
   });
 
+  it("shows each serial's current status on the line items", async () => {
+    const lines = detail().lines.map((line) => ({
+      ...line,
+      inventoryCode: "FTR",
+      inventoryStatus: { code: "FTR", name: "For transfer", color: "violet" },
+    }));
+    getDetail.mockResolvedValue({
+      success: true,
+      detail: detail({ status: { code: "for_transfer", name: "For transfer", color: null }, lines }),
+    } as Awaited<ReturnType<typeof getTransferDetailAction>>);
+    render(
+      <TransferRequestDialog
+        open
+        onOpenChange={jest.fn()}
+        onSubmit={jest.fn()}
+        onCreated={jest.fn()}
+        transferId="transfer-1"
+      />,
+    );
+    const row = (await screen.findByText("SN-1")).closest("tr");
+    expect(row).not.toBeNull();
+    expect(within(row as HTMLElement).getByText("For transfer")).toBeInTheDocument();
+  });
+
   it.each([
     ["for_transfer", false],
     ["in_transit", true],
   ])("offers the receiving branch Accept and Reject on %s: %s", async (code, offered) => {
-    const lines = detail().lines.map((line) => ({ ...line, inventoryCode: "DIT" }));
+    // The service sets awaitingReceipt only once the transfer is in transit.
+    const lines = detail().lines.map((line) => ({
+      ...line,
+      inventoryCode: "DIT",
+      branchId: "branch-b",
+      awaitingReceipt: offered,
+    }));
     getDetail.mockResolvedValue({
       success: true,
       detail: detail({ status: { code, name: code, color: null }, lines }),
@@ -297,13 +301,10 @@ describe("branch transfer dialog", () => {
     expect(screen.queryAllByRole("button", { name: "Reject" })).toHaveLength(offered ? 1 : 0);
   });
 
-  it.each([
-    ["without the waybill, courier and schedule", EMPTY_SHIPMENT, 0],
-    ["with the waybill, courier and schedule", SAVED_SHIPMENT, 1],
-  ])("offers Logistics Release %s", async (_, shipment, buttons) => {
+  it("offers Logistics Release once the Team Lead approves, without a waybill", async () => {
     getDetail.mockResolvedValue({
       success: true,
-      detail: releasableDetail(shipment),
+      detail: releasableDetail(),
     } as Awaited<ReturnType<typeof getTransferDetailAction>>);
     render(
       <TransferRequestDialog
@@ -317,7 +318,7 @@ describe("branch transfer dialog", () => {
     );
     await screen.findByText("SN-1");
     await waitFor(() =>
-      expect(screen.queryAllByRole("button", { name: "Release" })).toHaveLength(buttons),
+      expect(screen.queryAllByRole("button", { name: "Release" })).toHaveLength(1),
     );
   });
 

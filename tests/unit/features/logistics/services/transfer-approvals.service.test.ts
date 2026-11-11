@@ -55,6 +55,7 @@ jest.mock("@/features/reason-status/services/reason-status.service", () => ({
 }));
 
 import * as dbClient from "@/lib/database/client";
+import { claimInventory } from "@/features/logistics/services/posting-support";
 import { aorRepository } from "@/features/aors/repositories/aor.repository";
 import { transferPostingService } from "@/features/logistics/services/transfer-posting.service";
 import { notificationService } from "@/features/notifications/services/notification.service";
@@ -84,9 +85,6 @@ function transfer(code: string, decision = "pending") {
     statusCode: { code },
     rsNo: "RS-1",
     drNo: "DR-1",
-    waybillNo: "WB-1",
-    courierName: "LBC",
-    scheduledAt: new Date("2026-11-06T00:00:00.000Z"),
     lines: ["s1", "s2"].map((serialNumberId) => ({
       serialNumberId,
       decision,
@@ -96,12 +94,12 @@ function transfer(code: string, decision = "pending") {
   };
 }
 
-function setUp(code: string, inventoryCode: string) {
+function setUp(code: string, inventoryCode: string, branchId = "b1") {
   mockTx.branchTransfer.findFirst.mockResolvedValue(transfer(code));
   mockTx.branchInventory.findMany.mockResolvedValue(
     ["s1", "s2"].map((serialNumberId) => ({
       serialNumberId,
-      branchId: "b1",
+      branchId,
       statusCode: { code: inventoryCode },
     })),
   );
@@ -302,5 +300,103 @@ describe("transfer approvals", () => {
     await transferPostingService.receive(actor, "x1", ["s1"]);
 
     expect(mockTx.inventoryApproval.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("serial status through the transfer", () => {
+  const claim = claimInventory as jest.Mock;
+
+  it("reserves the units when the request is created", async () => {
+    await requestTransfer();
+
+    expect(claim).toHaveBeenCalledWith(
+      mockTx,
+      expect.objectContaining({
+        serialNumberIds: ["s1", "s2"],
+        fromStatusCodeId: "inventory_system-STK",
+        toStatusCodeId: "inventory_system-RSV",
+      }),
+    );
+  });
+
+  it("moves reserved units to For transfer on approval", async () => {
+    setUp("pending_tl", "RSV");
+
+    await transferPostingService.approve(actor, "x1");
+
+    expect(claim).toHaveBeenCalledWith(
+      mockTx,
+      expect.objectContaining({
+        serialNumberIds: ["s1", "s2"],
+        fromStatusCodeId: "inventory_system-RSV",
+        toStatusCodeId: "inventory_system-FTR",
+      }),
+    );
+    expect(mockTx.serialNumberHistory.createMany.mock.calls[0]?.[0].data).toEqual([
+      expect.objectContaining({ serialNumberId: "s1", status: "FTR", details: "Approved for transfer on XFR-1" }),
+      expect.objectContaining({ serialNumberId: "s2", status: "FTR" }),
+    ]);
+  });
+
+  it("moves For transfer units in transit to the receiving branch on release", async () => {
+    setUp("for_transfer", "FTR");
+
+    await transferPostingService.release(actor, "x1");
+
+    expect(claim).toHaveBeenCalledWith(
+      mockTx,
+      expect.objectContaining({
+        branchId: "b1",
+        serialNumberIds: ["s1", "s2"],
+        fromStatusCodeId: "inventory_system-FTR",
+        toStatusCodeId: "inventory_system-DIT",
+        toBranchId: "b2",
+      }),
+    );
+  });
+
+  it("accepts an in-transit unit into stock at the receiving branch", async () => {
+    setUp("in_transit", "DIT", "b2");
+
+    await transferPostingService.receive(actor, "x1", ["s1"]);
+
+    expect(claim).toHaveBeenCalledWith(
+      mockTx,
+      expect.objectContaining({
+        branchId: "b2",
+        serialNumberIds: ["s1"],
+        fromStatusCodeId: "inventory_system-DIT",
+        toStatusCodeId: "inventory_system-STK",
+        toBranchId: "b2",
+      }),
+    );
+  });
+
+  it("returns a rejected in-transit unit to stock at the releasing branch", async () => {
+    setUp("in_transit", "DIT", "b2");
+
+    await transferPostingService.rejectSerial(actor, "x1", "s2", "Wrong model");
+
+    expect(claim).toHaveBeenCalledWith(
+      mockTx,
+      expect.objectContaining({
+        branchId: "b2",
+        serialNumberIds: ["s2"],
+        fromStatusCodeId: "inventory_system-DIT",
+        toStatusCodeId: "inventory_system-STK",
+        toBranchId: "b1",
+      }),
+    );
+  });
+
+  it("still accepts a unit released before the row moved to the receiving branch", async () => {
+    setUp("in_transit", "DIT", "b1");
+
+    await transferPostingService.receive(actor, "x1", ["s1"]);
+
+    expect(claim).toHaveBeenCalledWith(
+      mockTx,
+      expect.objectContaining({ branchId: "b1", fromStatusCodeId: "inventory_system-DIT", toBranchId: "b2" }),
+    );
   });
 });

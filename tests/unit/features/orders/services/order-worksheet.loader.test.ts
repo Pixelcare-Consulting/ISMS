@@ -10,6 +10,7 @@ jest.mock("@/lib/database/client", () => ({
     branchOrderDetail: { findMany: jest.fn() },
     branchSalesTransactionDetail: { findMany: jest.fn() },
     branchQuota: { findMany: jest.fn() },
+    $queryRaw: jest.fn(async () => []),
   },
 }));
 

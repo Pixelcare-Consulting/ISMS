@@ -33,7 +33,7 @@ export default async function PickupsPage({ searchParams }: PickupsPageProps) {
   return (
     <div className="space-y-4">
       <SectionPageLead>
-        Request a pull-out, approve it, save the logistics list, then send it. The warehouse receives each unit into a location.
+        Request a pull-out, approve it, save the logistics list, then send it. Sending puts the units in transit and ends the pull-out.
       </SectionPageLead>
       <PulloutKpisStrip kpis={kpis} />
       <PulloutsPanel

@@ -11,9 +11,10 @@ export interface ShipmentPrintLine {
 export interface ShipmentPrintDocument {
   title: string;
   documentNo: string;
-  waybillNo: string;
-  courierName: string;
-  scheduleDate: string;
+  /** Pull-outs only. Deliveries and transfers print without a waybill. */
+  waybillNo?: string;
+  courierName?: string;
+  scheduleDate?: string;
   fields: { label: string; value: string }[];
   lines: ShipmentPrintLine[];
   lineHeaders: { model: string; detail: string };
@@ -31,37 +32,40 @@ function escapeHtml(value: string): string {
 export function shipmentPrintDocument(input: {
   title: string;
   documentNo: string;
-  shipment: LogisticsShipment;
+  /** When given, the slip stays off until the waybill, courier and schedule are saved. */
+  shipment?: LogisticsShipment;
   fields: { label: string; value: string }[];
   lines: ShipmentPrintLine[];
   lineHeaders: { model: string; detail: string };
   extraHeaders?: string[];
 }): ShipmentPrintDocument | null {
-  if (!shipmentIsReady(input.shipment)) return null;
-  const waybillNo = input.shipment.waybillNo?.trim() ?? "";
-  const courierName = input.shipment.courierName?.trim() ?? "";
-  const scheduleDate = formatScheduleDate(input.shipment.scheduledAt);
-  if (!waybillNo || !courierName || scheduleDate === "—") return null;
-  return {
+  const base = {
     title: input.title,
     documentNo: input.documentNo,
-    waybillNo,
-    courierName,
-    scheduleDate,
     fields: input.fields,
     lines: input.lines,
     lineHeaders: input.lineHeaders,
     extraHeaders: input.extraHeaders,
   };
+  if (!input.shipment) return base;
+  if (!shipmentIsReady(input.shipment)) return null;
+  const waybillNo = input.shipment.waybillNo?.trim() ?? "";
+  const courierName = input.shipment.courierName?.trim() ?? "";
+  const scheduleDate = formatScheduleDate(input.shipment.scheduledAt);
+  if (!waybillNo || !courierName || scheduleDate === "—") return null;
+  return { ...base, waybillNo, courierName, scheduleDate };
 }
 
 export function shipmentPrintHtml(document: ShipmentPrintDocument): string {
-  const fields = [
-    { label: "Waybill", value: document.waybillNo },
-    { label: "Courier / forwarder", value: document.courierName },
-    { label: "Schedule date", value: document.scheduleDate },
-    ...document.fields,
-  ]
+  const shipmentFields =
+    document.waybillNo && document.courierName && document.scheduleDate
+      ? [
+          { label: "Waybill", value: document.waybillNo },
+          { label: "Courier / forwarder", value: document.courierName },
+          { label: "Schedule date", value: document.scheduleDate },
+        ]
+      : [];
+  const fields = [...shipmentFields, ...document.fields]
     .map(
       (field) =>
         `<div class="field"><div class="label">${escapeHtml(field.label)}</div><div>${escapeHtml(field.value)}</div></div>`,
@@ -111,7 +115,7 @@ export function shipmentPrintHtml(document: ShipmentPrintDocument): string {
 </html>`;
 }
 
-/** Opens the browser print dialog for the saved waybill sheet. */
+/** Opens the browser print dialog for the slip. */
 export function printShipmentDocument(document: ShipmentPrintDocument): void {
   printHtml(shipmentPrintHtml(document));
 }

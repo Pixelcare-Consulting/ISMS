@@ -241,7 +241,6 @@ describe("worksheet inventory classification", () => {
   it("labels outbound DIT as outgoing even when a delivery also references it", () => {
     expect(
       resolveDitDirection({
-        onInTransitPullout: false,
         transferLeaving: true,
         deliveryIntoBranch: true,
         transferEntering: true,
@@ -309,18 +308,17 @@ describe("worksheet inventory classification", () => {
     }
     expect(isAwaitingPulloutWorkflow("for_pullout")).toBe(true);
 
+    // The loader drops units sent on a pull-out, so only the pull-out line reaches here.
     const classified = classifyWorksheetInventory({
       modelIds: ["m1"],
-      serials: [
-        { serialNumberId: "leave", modelId: "m1", statusCode: "DIT", pendingDefectInspection: false },
-      ],
+      serials: [],
       pullouts: [{ serialNumberId: "leave", modelId: "m1", workflowCode: "in_transit" }],
       transfers: [],
       deliveriesIntoBranch: [],
     });
     expect(classified.get("m1")).toMatchObject({
       awaitingPulloutQty: 0,
-      transitOutgoingQty: 1,
+      transitOutgoingQty: 0,
       transitIncomingQty: 0,
       defectiveQty: 0,
     });

@@ -5,7 +5,6 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useState, useT
 import { toast } from "sonner";
 
 import { LogisticsHistoryBody } from "@/app/(app)/logistics/_components/logistics-detail-ui";
-import { LogisticsShipmentSection } from "@/app/(app)/logistics/_components/logistics-shipment-section";
 import { transferAuditLabel, TransferTracker } from "@/app/(app)/logistics/_components/transfer-tracker";
 import {
   CompactLineTable,
@@ -17,7 +16,6 @@ import { RecordFieldGrid, RecordReadout, RecordSection, RecordSheet } from "@/co
 import {
   approveTransferAction,
   executeTransferAction,
-  saveTransferShipmentAction,
   listBranchesForLogisticsAction,
   listTransferModelsAction,
   listTransferSerialsAction,
@@ -42,9 +40,11 @@ import {
 } from "@/features/logistics/lib/transfer-line-remarks";
 import { canApproveTransferAt } from "@/features/logistics/lib/transfer-approver";
 import { nextTransferNo } from "@/features/logistics/lib/transfer-number";
-import { shipmentIsReady } from "@/features/logistics/lib/shipment";
 import { printTransferSlips } from "@/features/logistics/lib/transfer-slip-print";
-import type { TransferDetail } from "@/features/logistics/services/transfer-posting.service";
+import type {
+  TransferDetail,
+  TransferInventoryStatus,
+} from "@/features/logistics/services/transfer-posting.service";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -130,6 +130,7 @@ interface FreeSerial {
   serialNumberId: string;
   serialNo: string;
   inventoryCode: string;
+  inventoryStatus: TransferInventoryStatus;
 }
 
 type PendingConfirm =
@@ -140,12 +141,10 @@ type PendingConfirm =
   | { type: "reject-serial"; serialNumberId: string; serialNo: string };
 
 const APPROVE_NOTE =
-  "Team Lead approval keeps the units reserved and sends the request to the releasing branch. Stock at the receiving branch does not increase.";
+  "Team Lead approval sets the units to For transfer and sends the request to the releasing branch. Stock at the receiving branch does not increase.";
 const REJECT_NOTE = "Rejected requests release only the units reserved on this transfer.";
 const RELEASE_NOTE =
   "Release sends these units in transit. Stock at the receiving branch does not increase until they are accepted.";
-const SAVE_SHIPMENT_TO_RELEASE =
-  "Save the waybill, courier and schedule date to release these units.";
 const RECEIVE_NOTE =
   "This serial moves to the receiving branch as stock. Its delivery receipt number updates. The original delivery date stays the same.";
 const REJECT_SERIAL_NOTE =
@@ -246,14 +245,12 @@ function modelLabel(model: { skuCode: string; name: string } | null | undefined)
 
 type TransferLineRow = TransferDetail["lines"][number];
 
-function lineCanBeDecided(line: TransferLineRow, fromBranchId: string | null): boolean {
-  if (line.decision !== "pending") return false;
-  const held = line.inventoryCode === "RSV" || line.inventoryCode === "DIT";
-  return held && line.branchId === fromBranchId;
+function InventoryStatusCell({ status }: { status: TransferInventoryStatus | null | undefined }) {
+  if (!status) return <span className="text-muted-foreground">—</span>;
+  return <StatusCodeBadge code={status.code} name={status.name} color={status.color} />;
 }
 
 function transferLineColumns(
-  fromBranchId: string | null,
   canReceive: boolean,
   pending: boolean,
   onAccept: (line: TransferLineRow) => void,
@@ -270,6 +267,12 @@ function transferLineColumns(
       header: "Serial number",
       className: "w-48 font-mono",
       cell: (line) => line.serialNo,
+    },
+    {
+      id: "status",
+      header: "Status",
+      className: "w-36",
+      cell: (line) => <InventoryStatusCell status={line.inventoryStatus} />,
     },
     {
       id: "remarks",
@@ -295,7 +298,7 @@ function transferLineColumns(
           </span>
         );
       }
-      if (!lineCanBeDecided(line, fromBranchId)) return null;
+      if (!line.awaitingReceipt) return null;
       return (
         <div className="flex justify-end gap-2">
           <Button
@@ -325,7 +328,6 @@ function transferLineColumns(
 
 function TransferLinesTable({
   lines,
-  fromBranchId,
   canReceive,
   pending,
   onAccept,
@@ -333,7 +335,6 @@ function TransferLinesTable({
   showHeading = true,
 }: {
   lines: TransferLineRow[];
-  fromBranchId: string | null;
   canReceive: boolean;
   pending: boolean;
   onAccept: (line: TransferLineRow) => void;
@@ -353,7 +354,7 @@ function TransferLinesTable({
       <CompactLineTable
         rows={lines}
         getRowId={(line) => line.serialNumberId}
-        columns={transferLineColumns(fromBranchId, canReceive, pending, onAccept, onReject)}
+        columns={transferLineColumns(canReceive, pending, onAccept, onReject)}
         searchText={(line) => [line.skuCode, line.modelName, line.serialNo, line.requestRemarks]}
         searchPlaceholder="Search serials…"
         itemLabel="serial"
@@ -513,9 +514,7 @@ function showsOnTheWay(kind: TransferWorkspaceKind): boolean {
 }
 
 function serialsStillOnTheWay(detail: TransferDetail): number {
-  return detail.lines.filter(
-    (line) => line.inventoryCode === "DIT" && line.branchId === detail.fromBranch.id,
-  ).length;
+  return detail.lines.filter((line) => line.awaitingReceipt && line.inventoryCode === "DIT").length;
 }
 
 function onTheWayLine(count: number): string {
@@ -526,25 +525,19 @@ function onTheWayLine(count: number): string {
 function TransferPageWorkspace({
   detail,
   canReceive,
-  canEditShipment,
-  needsShipmentToRelease,
   pending,
   workflowStatuses,
   onAccept,
   onReject,
   onPrintSlips,
-  onShipmentSaved,
 }: {
   detail: TransferDetail;
   canReceive: boolean;
-  canEditShipment: boolean;
-  needsShipmentToRelease: boolean;
   pending: boolean;
   workflowStatuses: readonly WorkflowStatusOption[];
   onAccept: (line: TransferLineRow) => void;
   onReject: (line: TransferLineRow) => void;
   onPrintSlips: (() => void) | null;
-  onShipmentSaved: () => void;
 }) {
   const kind = transferWorkspaceKind(detail.status.code);
   const remarks = detail.notes?.trim() ?? "";
@@ -578,18 +571,7 @@ function TransferPageWorkspace({
         {showsOnTheWay(kind) ? (
           <p className="text-sm">{onTheWayLine(serialsStillOnTheWay(detail))}</p>
         ) : null}
-        {needsShipmentToRelease ? <p className="text-sm">{SAVE_SHIPMENT_TO_RELEASE}</p> : null}
       </RecordSection>
-      <LogisticsShipmentSection
-        key={`${detail.shipment.waybillNo ?? ""}|${detail.shipment.courierName ?? ""}|${detail.shipment.scheduledAt ?? ""}`}
-        shipment={detail.shipment}
-        canEdit={canEditShipment}
-        onSave={async (input) => {
-          const result = await saveTransferShipmentAction(detail.id, input);
-          if ("success" in result && result.success) onShipmentSaved();
-          return result;
-        }}
-      />
       <RecordSection title="Units" description="Serials on this transfer." divided>
         {onPrintSlips ? (
           <div className="mb-3 flex justify-end">
@@ -600,7 +582,6 @@ function TransferPageWorkspace({
         ) : null}
         <TransferLinesTable
           lines={detail.lines}
-          fromBranchId={detail.fromBranch.id}
           canReceive={canReceive}
           pending={pending}
           onAccept={onAccept}
@@ -755,15 +736,13 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
       capabilities?.canRejectTransfer &&
       canApproveTransferAt(approvalBranchIds, detail.fromBranch.id),
   );
-  const mayRelease = Boolean(
+  const canRelease = Boolean(
     hasLines &&
       detail &&
       releasable &&
       capabilities?.canExecuteTransfer &&
       inScope(branchScope, detail.fromBranch.id),
   );
-  const shipmentSaved = Boolean(detail && shipmentIsReady(detail.shipment));
-  const canRelease = mayRelease && shipmentSaved;
   const receivable = detail?.status.code === TRANSFER_WORKFLOW_CODE.in_transit;
   const canReceive = Boolean(
     hasLines &&
@@ -776,10 +755,6 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
     branches.find((branch) => branch.id === fromBranchId)?.dealerId,
     branches.find((branch) => branch.id === toBranchId)?.dealerId,
   );
-  const shipmentClosed =
-    detail?.status.code === TRANSFER_WORKFLOW_CODE.rejected ||
-    detail?.status.code === TRANSFER_WORKFLOW_CODE.cancelled;
-  const canEditShipment = Boolean(detail && capabilities?.canManage && !shipmentClosed);
   const documentActions: TransferDocumentActions = {
     canApprove,
     canReject,
@@ -1089,11 +1064,8 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
         <TransferPageWorkspace
           detail={detail}
           canReceive={canReceive}
-          canEditShipment={canEditShipment}
-          needsShipmentToRelease={mayRelease && !shipmentSaved}
           pending={pending}
           workflowStatuses={workflowStatuses}
-          onShipmentSaved={() => onUpdated?.()}
           onPrintSlips={detail.rsNo && detail.drNo ? () => printCurrentSlips(detail) : null}
           onAccept={(line) =>
             setPendingConfirm({
@@ -1120,7 +1092,6 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
         {mode === "view" ? (
           <TransferLinesTable
             lines={detail?.lines ?? []}
-            fromBranchId={detail?.fromBranch.id ?? null}
             canReceive={canReceive}
             pending={pending}
             onAccept={(line) =>
@@ -1141,7 +1112,7 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
           />
         ) : (
         <div className="min-w-0 overflow-x-auto rounded-md border">
-          <table className="w-full min-w-[42rem] table-fixed text-sm">
+          <table className="w-full min-w-[50rem] table-fixed text-sm">
             <thead className="bg-muted/40 text-left">
               <tr>
                 <th
@@ -1163,6 +1134,12 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
                 </th>
                 <th className="px-2 py-2 align-middle font-medium text-muted-foreground" scope="col">
                   Serial number
+                </th>
+                <th
+                  className="w-32 px-2 py-2 align-middle font-medium text-muted-foreground"
+                  scope="col"
+                >
+                  Status
                 </th>
                 <th className="px-2 py-2 align-middle font-medium text-muted-foreground" scope="col">
                   Remarks
@@ -1219,7 +1196,7 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
                     .map((serial) => ({
                       id: serial.serialNumberId,
                       label: serial.serialNo,
-                      description: serial.inventoryCode,
+                      description: serial.inventoryStatus.name,
                     }));
                   return (
                     <tr key={row.key} className="border-t">
@@ -1267,6 +1244,14 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
                           emptyMessage="No stock or defective serials are free for this model."
                           disabled={pending || !lockedModelId || serialsLoading || serials.length === 0}
                           popoverClassName={SERIAL_POPOVER_CLASS}
+                        />
+                      </td>
+                      <td className="px-2 py-2 align-middle">
+                        <InventoryStatusCell
+                          status={
+                            serials.find((serial) => serial.serialNumberId === row.serialNumberId)
+                              ?.inventoryStatus
+                          }
                         />
                       </td>
                       <td className="min-w-0 px-2 py-2 align-middle">

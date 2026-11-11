@@ -819,7 +819,7 @@ const OPEN_PULLOUT_CODES = [
 const OPEN_ATR_STATUSES = ["open", "reserve"] as const;
 const OPEN_RETURN_STATUSES = ["pending_cs", "pending_tl", "approved"] as const;
 /** Branch stock that is mid-move, not resting stock or a finished sale. */
-const IN_FLIGHT_INVENTORY_CODES = ["DIT", "RSV", "FPO", "FW"] as const;
+const IN_FLIGHT_INVENTORY_CODES = ["DIT", "RSV", "FPO", "FTR", "FW"] as const;
 
 /**
  * In-progress validation work that must keep the serial: an open stock count

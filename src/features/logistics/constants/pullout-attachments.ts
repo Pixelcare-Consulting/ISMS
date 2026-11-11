@@ -1,3 +1,5 @@
+import { PULLOUT_WORKFLOW_CODE } from "@/features/logistics/constants/workflow-codes";
+
 /** Upload rules shared by the pull-out form and the server. */
 export const PULLOUT_ATTACHMENT_MAX_FILES = 5;
 
@@ -12,6 +14,14 @@ export const PULLOUT_ATTACHMENT_MIME_TYPES = [
 ] as const;
 
 export const PULLOUT_ATTACHMENT_ACCEPT = ".pdf,.jpg,.jpeg,.png,.webp";
+
+/** Files can still be added once the units are sent, for example the signed slip. */
+export const PULLOUT_ATTACHMENT_OPEN_CODES: readonly string[] = [
+  PULLOUT_WORKFLOW_CODE.pending_tl,
+  PULLOUT_WORKFLOW_CODE.for_pullout,
+  PULLOUT_WORKFLOW_CODE.pending_logistics,
+  PULLOUT_WORKFLOW_CODE.in_transit,
+];
 
 /** Null when the file can be attached. */
 export function pulloutAttachmentError(input: {

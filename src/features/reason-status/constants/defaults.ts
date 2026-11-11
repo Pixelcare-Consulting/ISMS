@@ -25,7 +25,7 @@ export const REASON_STATUS_DEFAULTS: ReasonStatusDefaultGroup[] = [
     name: "Inventory system status",
     code: "inventory_system",
     usedIn:
-      "Stock units and serial detail — the life-cycle of each physical unit (in transit, on hand, display unit, sold, official sold, reserved, defective, for pull-out).",
+      "Stock units and serial detail — the life-cycle of each physical unit (in transit, on hand, display unit, sold, official sold, reserved, defective, for pull-out, for transfer).",
     codes: [
       { code: "DIT", name: "Delivery in transit", sortOrder: 1, color: "sky" },
       { code: "STK", name: "Stock", sortOrder: 2, color: "emerald" },
@@ -36,6 +36,7 @@ export const REASON_STATUS_DEFAULTS: ReasonStatusDefaultGroup[] = [
       { code: "DEF", name: "Defective", sortOrder: 7, color: "rose" },
       { code: "FPO", name: "For pull-out", sortOrder: 8, color: "violet" },
       { code: "FW", name: "TO FOLLOW", sortOrder: 9, color: "orange" },
+      { code: "FTR", name: "For transfer", sortOrder: 10, color: "violet" },
     ],
   },
   {
@@ -90,7 +91,7 @@ export const REASON_STATUS_DEFAULTS: ReasonStatusDefaultGroup[] = [
     name: "Pull-out workflow",
     code: "pullout_workflow",
     usedIn:
-      "Logistics → Pull-outs — progress of a pull-out request (reserve, schedule, logistics, in transit, pulled out).",
+      "Logistics → Pull-outs — progress of a pull-out request (reserve, for pull-out, logistics, in transit). In transit is the last step.",
     codes: [
       { code: "requested", name: "Requested", sortOrder: 1, color: "sky" },
       { code: "approved", name: "Approved", sortOrder: 2, color: "emerald" },

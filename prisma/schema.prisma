@@ -2482,7 +2482,8 @@ model BranchPullout {
   id                  String    @id @default(cuid())
   tenantId            String    @map("tenant_id")
   branchId            String    @map("branch_id")
-  warehouseId         String    @map("warehouse_id")
+  /// Destination warehouse on pull-outs made before receiving was dropped. New pull-outs leave it null.
+  warehouseId         String?   @map("warehouse_id")
   warehouseLocationId String?   @map("warehouse_location_id")
   pulloutNo           String    @map("pullout_no")
   statusCodeId        String    @map("status_code_id")
@@ -2501,7 +2502,7 @@ model BranchPullout {
 
   tenant            Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branch            Branch                       @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  warehouse         Warehouse                    @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  warehouse         Warehouse?                   @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
   warehouseLocation WarehouseLocation?           @relation(fields: [warehouseLocationId], references: [id], onDelete: SetNull)
   statusCode        ReasonStatusCode             @relation("PulloutWorkflowStatus", fields: [statusCodeId], references: [id])
   reasonStatus      ReasonStatus?                @relation("PulloutReasonStatus", fields: [reasonStatusId], references: [id], onDelete: SetNull)

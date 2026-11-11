@@ -4,7 +4,6 @@ import { useEffect, useState, useTransition, type ChangeEvent, type ReactNode } 
 import { toast } from "sonner";
 
 import {
-  getPulloutDestinationAction,
   listBranchesForLogisticsAction,
   listPulloutChecklistOptionsAction,
   listPulloutSerialsAction,
@@ -19,7 +18,6 @@ import {
 import { pulloutCondition } from "@/features/logistics/services/pullout-posting.planner";
 import type {
   PulloutCreateInput,
-  PulloutDestination,
   PulloutSerialOption,
 } from "@/features/logistics/services/pullout-posting.service";
 import {
@@ -59,7 +57,6 @@ const MANILA_DATE = new Intl.DateTimeFormat("en-PH", {
   timeZone: "Asia/Manila",
 });
 
-type DestinationState = { warehouse: PulloutDestination } | { error: string };
 
 interface PulloutRequestDialogProps {
   open: boolean;
@@ -126,21 +123,6 @@ function Field({
   );
 }
 
-function DestinationReadout({
-  branchChosen,
-  destination,
-}: {
-  branchChosen: boolean;
-  destination: DestinationState | null;
-}) {
-  if (!branchChosen) {
-    return <span className="text-muted-foreground">Follows the selected branch</span>;
-  }
-  if (!destination) return <span className="text-muted-foreground">Loading…</span>;
-  if ("error" in destination) return <span className="text-destructive">{destination.error}</span>;
-  return `${destination.warehouse.name} (${destination.warehouse.code})`;
-}
-
 function ModelCell({ skuCode, name }: { skuCode: string; name: string }) {
   const title = name ? `${skuCode} — ${name}` : skuCode;
   return (
@@ -164,7 +146,6 @@ export function PulloutRequestDialog({
   const [loadedBranchId, setLoadedBranchId] = useState<string | null>(null);
   const [listsLoaded, setListsLoaded] = useState(false);
   const [branchId, setBranchId] = useState("");
-  const [destination, setDestination] = useState<DestinationState | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [choices, setChoices] = useState<Record<string, PulloutLineChoice>>({});
   const [files, setFiles] = useState<File[]>([]);
@@ -199,18 +180,6 @@ export function PulloutRequestDialog({
       cancelled = true;
     };
   }, [open]);
-
-  useEffect(() => {
-    if (!open || !branchId) return;
-    let cancelled = false;
-    void getPulloutDestinationAction(branchId).then((result) => {
-      if (cancelled) return;
-      setDestination("warehouse" in result ? { warehouse: result.warehouse } : { error: result.error });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, branchId]);
 
   useEffect(() => {
     if (!open || !branchId) return;
@@ -252,7 +221,6 @@ export function PulloutRequestDialog({
     serialCount: serials.length,
     matchCount: filteredSerials.length,
   });
-  const destinationReady = destination !== null && "warehouse" in destination;
   const selectedCondition = pulloutCondition(
     selectedSerials.map((serial) => ({ priorCode: serial.inventoryCode })),
   );
@@ -299,7 +267,6 @@ export function PulloutRequestDialog({
   function resetForm() {
     setLoadedBranchId(null);
     setBranchId("");
-    setDestination(null);
     setFiles([]);
     resetUnits();
   }
@@ -314,7 +281,6 @@ export function PulloutRequestDialog({
     if (nextBranchId === branchId) return;
     setBranchId(nextBranchId);
     setLoadedBranchId(null);
-    setDestination(null);
     resetUnits();
   }
 
@@ -420,9 +386,6 @@ export function PulloutRequestDialog({
                 </Field>
                 <Field label="Created Date">{createdOn}</Field>
                 <Field label="Pull-out Status">New</Field>
-                <Field label="Destination warehouse">
-                  <DestinationReadout branchChosen={Boolean(branchId)} destination={destination} />
-                </Field>
                 <Field label="Attachments" htmlFor="pullout-attachments" wide>
                   <div className="space-y-2 pt-1">
                     <Input
@@ -634,7 +597,7 @@ export function PulloutRequestDialog({
           <Button
             type="submit"
             form={PULLOUT_CREATE_FORM_ID}
-            disabled={pending || !ready || !destinationReady}
+            disabled={pending || !ready}
           >
             Submit
           </Button>

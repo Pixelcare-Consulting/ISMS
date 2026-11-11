@@ -11,13 +11,12 @@ const PRINTABLE_CODES: readonly string[] = [
   TRANSFER_WORKFLOW_CODE.completed,
 ];
 
-/** Null until approval and until the waybill, courier and schedule are saved. */
+/** Null until Team Lead approval, and on rejected or cancelled transfers. */
 export function transferPrintDocument(detail: TransferDetail) {
   if (!PRINTABLE_CODES.includes(detail.status.code)) return null;
   return shipmentPrintDocument({
     title: "Transfer",
     documentNo: detail.transferNo,
-    shipment: detail.shipment,
     fields: [
       { label: "Releasing branch", value: detail.fromBranch.name },
       { label: "Receiving branch", value: detail.toBranch.name },

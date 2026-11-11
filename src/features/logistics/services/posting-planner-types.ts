@@ -4,7 +4,7 @@ import {
 } from "@/features/logistics/constants/workflow-codes";
 
 /** Closed inventory codes from the seeded inventory system list. */
-export type InventoryCode = "DIT" | "STK" | "SLD" | "OFS" | "RSV" | "DEF" | "FPO" | "FW";
+export type InventoryCode = "DIT" | "STK" | "SLD" | "OFS" | "RSV" | "DEF" | "FPO" | "FTR" | "FW";
 
 /** Codes a transfer or pull-out may hold and later restore. */
 export type HoldCode = "STK" | "DEF";
@@ -30,13 +30,13 @@ export const OPEN_TRANSFER_STATUS_CODES = [
   TRANSFER_WORKFLOW_CODE.in_transit,
 ] as const;
 
+/** In transit is where a pull-out ends, so it no longer holds its serials. */
 export const OPEN_PULLOUT_STATUS_CODES = [
   PULLOUT_WORKFLOW_CODE.pending_tl,
   PULLOUT_WORKFLOW_CODE.requested,
   PULLOUT_WORKFLOW_CODE.approved,
   PULLOUT_WORKFLOW_CODE.for_pullout,
   PULLOUT_WORKFLOW_CODE.pending_logistics,
-  PULLOUT_WORKFLOW_CODE.in_transit,
 ] as const;
 
 export function isHoldCode(code: InventoryCode | null): code is HoldCode {
@@ -68,6 +68,8 @@ function blockedInventoryMessage(code: Exclude<InventoryCode, HoldCode>): string
       return "is already in transit";
     case "FPO":
       return "is already waiting for pull-out";
+    case "FTR":
+      return "is already approved for transfer";
     case "FW":
       return "is marked to follow";
     default: {
@@ -103,6 +105,7 @@ export function classifyAllocation(serial: AllocatableSerial): { ok: true; prior
     case "RSV":
     case "DIT":
     case "FPO":
+    case "FTR":
     case "FW":
       return { ok: false, error: `${label} ${blockedInventoryMessage(code)} and cannot be allocated` };
     default: {

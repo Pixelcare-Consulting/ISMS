@@ -7,6 +7,7 @@ import {
   type ProgressStageIcon,
 } from "@/app/(app)/logistics/_components/progress-tracker";
 import {
+  PULLOUT_LEGACY_AFTER_TRANSIT_CODES,
   PULLOUT_SETTLED_CODES,
   PULLOUT_STOP_CODES,
   PULLOUT_WORKFLOW_CODE,
@@ -146,8 +147,11 @@ export function buildPulloutTracker(
   history: readonly ProgressAuditRow[],
   catalog: readonly WorkflowStatusOption[],
 ) {
+  const reachedLegacyStep = PULLOUT_LEGACY_AFTER_TRANSIT_CODES.includes(status.code);
   return buildCatalogProgress({
-    catalog,
+    catalog: reachedLegacyStep
+      ? catalog
+      : catalog.filter((row) => !PULLOUT_LEGACY_AFTER_TRANSIT_CODES.includes(row.code)),
     status,
     stopCodes: PULLOUT_STOP_CODES,
     settledCodes: PULLOUT_SETTLED_CODES,

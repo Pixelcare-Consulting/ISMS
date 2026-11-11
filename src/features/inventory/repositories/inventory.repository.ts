@@ -6,7 +6,10 @@ import {
 import { prisma } from "@/lib/database/client";
 import { formatSapDocNo } from "@/features/logistics/lib/sap-doc-number";
 import type { OrderSapDocType } from "@/features/orders/constants/order-sap-doc-type";
-import { inventoryGroupRepository } from "@/features/inventory/repositories/inventory-group.repository";
+import {
+  inventoryGroupRepository,
+  sentOnPulloutSql,
+} from "@/features/inventory/repositories/inventory-group.repository";
 import {
   inventoryListInclude,
   type InventoryListRow,
@@ -575,11 +578,17 @@ export const inventoryRepository = {
     }));
   },
 
-  countAll(tenantId: string, branchIds: string[]) {
-    if (branchIds.length === 0) return Promise.resolve(0);
-    return prisma.branchInventory.count({
-      where: { tenantId, branchId: { in: branchIds } },
-    });
+  /** Every unit in scope, less the ones sent on a pull-out (`sentOnPulloutSql`). */
+  async countAll(tenantId: string, branchIds: string[]): Promise<number> {
+    if (branchIds.length === 0) return 0;
+    const [row] = await prisma.$queryRaw<{ count: bigint }[]>`
+      SELECT COUNT(*)::bigint AS count
+      FROM branch_inventories bi
+      WHERE bi.tenant_id = ${tenantId}
+        AND bi.branch_id IN (${Prisma.join(branchIds)})
+        AND NOT ${sentOnPulloutSql()}
+    `;
+    return Number(row?.count ?? 0);
   },
 
   /** Live sellable STK units in scope. Display units and defective units are excluded. */
@@ -594,13 +603,21 @@ export const inventoryRepository = {
     });
   },
 
-  countByStatus(tenantId: string, branchIds: string[]) {
-    if (branchIds.length === 0) return Promise.resolve([]);
-    return prisma.branchInventory.groupBy({
-      by: ["statusCodeId"],
-      where: { tenantId, branchId: { in: branchIds } },
-      _count: { id: true },
-    });
+  /** Same shape as a Prisma groupBy, less the units sent on a pull-out. */
+  async countByStatus(
+    tenantId: string,
+    branchIds: string[],
+  ): Promise<{ statusCodeId: string; _count: { id: number } }[]> {
+    if (branchIds.length === 0) return [];
+    const rows = await prisma.$queryRaw<{ status_code_id: string; count: bigint }[]>`
+      SELECT bi.status_code_id, COUNT(*)::bigint AS count
+      FROM branch_inventories bi
+      WHERE bi.tenant_id = ${tenantId}
+        AND bi.branch_id IN (${Prisma.join(branchIds)})
+        AND NOT ${sentOnPulloutSql()}
+      GROUP BY bi.status_code_id
+    `;
+    return rows.map((row) => ({ statusCodeId: row.status_code_id, _count: { id: Number(row.count) } }));
   },
 
   findByIdWithStatus(tenantId: string, id: string) {

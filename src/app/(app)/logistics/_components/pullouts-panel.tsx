@@ -55,7 +55,6 @@ interface PulloutRow {
   statusCode: StatusCodeRef;
   reasonStatusCode: StatusCodeRef | null;
   branch: { name: string };
-  warehouse: { name: string; code: string };
 }
 
 interface PulloutsPanelProps {
@@ -69,7 +68,7 @@ interface PulloutsPanelProps {
 
 const pulloutColumn = createColumnHelper<DataTableFeatures, PulloutRow>();
 
-type PulloutSortField = "pulloutNo" | "branch" | "warehouse" | "reason" | "status";
+type PulloutSortField = "pulloutNo" | "branch" | "reason" | "status";
 type PulloutSortDir = "asc" | "desc";
 
 export function PulloutsPanel({
@@ -108,8 +107,6 @@ export function PulloutsPanel({
         matchesTableSearch(query, [
           p.pulloutNo,
           p.branch.name,
-          p.warehouse.name,
-          p.warehouse.code,
           p.reasonStatusCode?.name,
           p.reasonStatusCode?.code,
           p.statusCode.name,
@@ -124,8 +121,6 @@ export function PulloutsPanel({
       uniqueSearchSuggestions(
         pullouts.items.map((p) => p.pulloutNo),
         pullouts.items.map((p) => p.branch.name),
-        pullouts.items.map((p) => p.warehouse.name),
-        pullouts.items.map((p) => p.warehouse.code),
         pullouts.items.map((p) => p.reasonStatusCode?.name),
         pullouts.items.map((p) => p.reasonStatusCode?.code),
         pullouts.items.map((p) => p.statusCode.name),
@@ -184,11 +179,6 @@ export function PulloutsPanel({
         header: "Branch",
         enableSorting: true,
       }),
-      pulloutColumn.accessor((row) => row.warehouse.name, {
-        id: "warehouse",
-        header: "Warehouse",
-        enableSorting: true,
-      }),
       pulloutColumn.display({
         id: "reason",
         header: "Reason",
@@ -234,7 +224,6 @@ export function PulloutsPanel({
       "pulloutNo",
       "progress",
       "branch",
-      "warehouse",
       "reason",
       "status",
       "actions",
