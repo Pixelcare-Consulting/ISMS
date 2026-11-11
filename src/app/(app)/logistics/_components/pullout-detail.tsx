@@ -329,7 +329,7 @@ function sameIds(left: readonly string[], right: readonly string[]): boolean {
 function stageDescription(code: string): string {
   switch (code) {
     case PULLOUT_WORKFLOW_CODE.pending_tl:
-      return "Team Lead approves or deletes each unit, or decides the whole pull-out.";
+      return "Team Lead approves or rejects each unit, or decides the whole pull-out.";
     case PULLOUT_WORKFLOW_CODE.for_pullout:
       return "Logistics confirms these units, then saves the list.";
     case PULLOUT_WORKFLOW_CODE.pending_logistics:
@@ -939,7 +939,7 @@ export function PulloutDetailView({
     if (!deleteTarget) return;
     const { serialNumberId } = deleteTarget;
     setDeleteTarget(null);
-    run(() => deletePulloutLineAction(detail.id, serialNumberId), "Unit deleted from this pull-out");
+    run(() => deletePulloutLineAction(detail.id, serialNumberId), "Unit rejected from this pull-out");
   }
 
   function closeReject() {
@@ -980,10 +980,10 @@ export function PulloutDetailView({
             variant="outline"
             disabled={pending || detail.lines.length === 1}
             title={detail.lines.length === 1 ? "Reject the pull-out instead" : undefined}
-            aria-label={`Delete ${row.serialNo}`}
+            aria-label={`Reject ${row.serialNo}`}
             onClick={() => setDeleteTarget(row)}
           >
-            Delete
+            Reject
           </Button>
         ) : null}
       </div>
@@ -1347,14 +1347,14 @@ export function PulloutDetailView({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{`Delete ${deleteTarget?.serialNo ?? "this unit"}?`}</AlertDialogTitle>
+            <AlertDialogTitle>{`Reject ${deleteTarget?.serialNo ?? "this unit"}?`}</AlertDialogTitle>
             <AlertDialogDescription>
               The unit comes off this pull-out and goes back to its branch status.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete}>Delete</AlertDialogAction>
+            <AlertDialogAction onClick={confirmDelete}>Reject</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
