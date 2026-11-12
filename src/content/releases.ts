@@ -66,6 +66,40 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.90.0",
+    date: "2026-11-12",
+    releasedAt: "2026-11-12T17:00:00+08:00",
+    title: "Logistics: faster transfers, clearer pull-outs, branded slips",
+    highlights: [
+      "When the team leader approves a transfer, the units go in transit to the receiving branch right away.",
+      "Picking pull-out units shows the problem already recorded for each unit.",
+      "You can link a pull-out unit to the IT or Return you made in SAP.",
+      "Pull-out, transfer, release slip and delivery receipt print-outs carry your company logo and address.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "On a pull-out, Link SAP document lets you enter the IT or Return number you created in SAP and pick the units it covers. ISMS checks that the document exists and lists those serials before saving the link. Nothing is posted to SAP, and the pull-out history shows when a link is added or removed.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Transfers no longer wait for a separate release step. The releasing branch's team leader approves or rejects the request, and approval sends the units in transit. The receiving branch then accepts or rejects each serial; rejected units go back to the releasing branch as stock. Help and the Transfers workflow chart describe the new steps.",
+      },
+      {
+        type: "improvement",
+        description:
+          "When picking units for a pull-out, a Problem description column shows the problem recorded from an approved defect report or a sales return, and search also matches it.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Company Settings has a document header for your address and contact lines. It prints beside the company logo on pull-out, transfer, release slip and delivery receipt print-outs, which now use the Ubuntu font.",
+      },
+    ],
+  },
+  {
     version: "0.89.0",
     date: "2026-11-12",
     releasedAt: "2026-11-12T10:00:00+08:00",
