@@ -7,6 +7,7 @@ import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import {
   getBranchInventoryUnreadAction,
   getBranchInventoryV2CardAmountsAction,
+  getBranchInventoryV2StatusAmountsAction,
   getInventoryKpisAction,
   getInventorySeriesSummaryAction,
   listInventoryAction,
@@ -19,7 +20,10 @@ import {
 } from "@/features/inventory/actions/inventory.actions";
 import { InventorySeriesSummaryPanel } from "@/features/inventory/components/inventory-series-summary";
 import { defectApprovalBranchIds } from "@/features/inventory/lib/defect-approver";
-import type { BranchInventoryV2CardAmounts } from "@/features/inventory/services/inventory.service";
+import type {
+  BranchInventoryV2CardAmounts,
+  BranchInventoryV2StatusAmounts,
+} from "@/features/inventory/services/inventory.service";
 import {
   branchInventoryUnitTotal,
   isBranchInventoryV2HiddenStatus,
@@ -129,7 +133,7 @@ export default async function BranchInventoryV2Page({
   const offPlanogram = params.offPlanogram === "1";
   const sku = params.sku?.trim() || undefined;
 
-  const [kpis, seriesSummary, groupResult, offPlanogramResult, approvalBranchIds, unread, cardAmounts] =
+  const [kpis, seriesSummary, groupResult, offPlanogramResult, approvalBranchIds, unread, cardAmounts, statusAmounts] =
     await Promise.all([
       getInventoryKpisAction(),
       getInventorySeriesSummaryAction(
@@ -147,6 +151,9 @@ export default async function BranchInventoryV2Page({
       ),
       screen.kind === "all"
         ? getBranchInventoryV2CardAmountsAction()
+        : Promise.resolve(null),
+      screen.kind === "branch"
+        ? getBranchInventoryV2StatusAmountsAction(screen.branchId)
         : Promise.resolve(null),
     ]);
 
@@ -166,6 +173,7 @@ export default async function BranchInventoryV2Page({
           .map((status) => status.code)
           .filter((code) => !isBranchInventoryV2HiddenStatus(code)),
         cardAmounts,
+        statusAmounts,
         page,
         limit,
         q,
@@ -189,6 +197,7 @@ async function renderScreen(input: {
   totalUnits: number;
   statusCodes: string[];
   cardAmounts: BranchInventoryV2CardAmounts | null;
+  statusAmounts: BranchInventoryV2StatusAmounts | null;
   page: number;
   limit: number;
   q: string;
@@ -273,6 +282,13 @@ async function renderScreen(input: {
           approvalBranchIds={input.approvalBranchIds}
           singleBranch={input.singleBranch}
           offPlanogramCount={offPlanogramCount}
+          statusAmounts={
+            input.statusAmounts ?? {
+              total: 0,
+              offPlanogram: 0,
+              byStatus: {},
+            }
+          }
           unreadByCode={input.unreadByCode}
           unreadIds={unreadIds}
           seriesSummary={input.seriesSummary}

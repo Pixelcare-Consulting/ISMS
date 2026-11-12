@@ -4,6 +4,7 @@ import type { StockUnitsWarehouseRole } from "@/features/inventory/constants/sto
 import {
   inventoryGroupAggregatesFromParts,
   inventoryGroupAggregatesFromSqlRow,
+  readGroupStatusCounts,
   type InventoryGroupCountParts,
 } from "@/features/inventory/utils/stock-units-group-aggregates";
 import { stockUnitsGroupSearchPattern } from "@/features/inventory/utils/stock-units-group-search";
@@ -100,6 +101,23 @@ type BranchInventoryV2ModelQtyRaw = {
   stk_qty: number | bigint;
   def_qty: number | bigint;
   off_planogram_qty: number | bigint;
+};
+
+/** One model at a single branch, with the quantity behind each status card. */
+export type BranchInventoryV2StatusModelQtyRow = {
+  modelId: string;
+  srp: { toString(): string } | number | null;
+  totalQty: number;
+  offPlanogramQty: number;
+  qtyByStatus: Record<string, number>;
+};
+
+type BranchInventoryV2StatusModelQtyRaw = {
+  model_id: string;
+  srp: { toString(): string } | number | null;
+  total_qty: number | bigint;
+  off_planogram_qty: number | bigint;
+  status_counts?: unknown;
 };
 
 type ModelBranchSubgroupRaw = {
@@ -742,6 +760,60 @@ export const inventoryGroupRepository = {
       inStockQty: Number(row.stk_qty),
       defectiveQty: Number(row.def_qty),
       offPlanogramQty: Number(row.off_planogram_qty),
+    }));
+  },
+
+  /**
+   * One row per model for a single branch's status cards.
+   * `statusCodes` must already omit Sold and Official Sold.
+   * STK in `qtyByStatus` is stocked-in only, matching the Stock card. `totalQty`
+   * still includes stock that is not stocked in. Off planogram is the same set
+   * where the model is not on this branch's planogram.
+   */
+  async aggregateBranchInventoryV2StatusQty(
+    tenantId: string,
+    branchId: string,
+    statusCodes: readonly InventoryGroupStatusCodeRef[],
+  ): Promise<BranchInventoryV2StatusModelQtyRow[]> {
+    if (!branchId || statusCodes.length === 0) return [];
+
+    const stockedIn = stockedInSql();
+    const statusCountArgs = statusCodes.flatMap((status) => [
+      Prisma.sql`CAST(${status.code} AS text)`,
+      status.code === "STK"
+        ? Prisma.sql`COUNT(*) FILTER (WHERE bi.status_code_id = CAST(${status.id} AS text) AND ${stockedIn})::int`
+        : Prisma.sql`COUNT(*) FILTER (WHERE bi.status_code_id = CAST(${status.id} AS text))::int`,
+    ]);
+    const rows = await prisma.$queryRaw<BranchInventoryV2StatusModelQtyRaw[]>`
+      SELECT
+        pm.id AS model_id,
+        pm.srp AS srp,
+        COUNT(*)::int AS total_qty,
+        COUNT(*) FILTER (
+          WHERE NOT EXISTS (
+            SELECT 1
+            FROM branch_planograms bp
+            WHERE bp.branch_id = bi.branch_id
+              AND bp.model_id = sn.model_id
+          )
+        )::int AS off_planogram_qty,
+        jsonb_build_object(${Prisma.join(statusCountArgs)}) AS status_counts
+      FROM branch_inventories bi
+      INNER JOIN serial_numbers sn ON sn.id = bi.serial_number_id
+      INNER JOIN product_models pm ON pm.id = sn.model_id
+      WHERE bi.tenant_id = ${tenantId}
+        AND bi.branch_id = ${branchId}
+        AND bi.status_code_id IN (${Prisma.join(statusCodes.map((status) => status.id))})
+        AND NOT ${sentOnPulloutSql()}
+      GROUP BY pm.id, pm.srp
+    `;
+
+    return rows.map((row) => ({
+      modelId: row.model_id,
+      srp: row.srp,
+      totalQty: Number(row.total_qty),
+      offPlanogramQty: Number(row.off_planogram_qty),
+      qtyByStatus: readGroupStatusCounts(row.status_counts),
     }));
   },
 };

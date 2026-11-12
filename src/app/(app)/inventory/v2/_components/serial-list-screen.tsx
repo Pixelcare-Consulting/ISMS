@@ -37,6 +37,7 @@ import {
 import { InventoryListRefreshProvider } from "@/features/inventory/components/inventory-list-refresh";
 import { InventoryApprovalBranchIdsProvider } from "@/features/inventory/components/inventory-unit-status-cell";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
+import type { BranchInventoryV2StatusAmounts } from "@/features/inventory/utils/branch-inventory-v2-card-amounts";
 import {
   branchChangeableStatus,
   branchInventoryChangeableHint,
@@ -65,6 +66,8 @@ interface SerialListScreenProps {
   approvalBranchIds: string[] | null;
   singleBranch?: boolean;
   offPlanogramCount: number;
+  /** Server-computed peso value for this branch's status cards. */
+  statusAmounts: BranchInventoryV2StatusAmounts;
   /** Unread units per status code for this branch. */
   unreadByCode?: Record<string, number>;
   /** Units on this page whose status changed since they were last opened. */
@@ -189,6 +192,7 @@ function SerialListBody({
   limit,
   singleBranch = false,
   offPlanogramCount,
+  statusAmounts,
   unreadByCode = {},
   unreadIds = [],
   seriesSummary,
@@ -660,6 +664,7 @@ function SerialListBody({
         statuses={statuses}
         totalUnits={totalUnits}
         offPlanogramCount={offPlanogramCount}
+        statusAmounts={statusAmounts}
         unreadByCode={unreadByCode}
       />
 

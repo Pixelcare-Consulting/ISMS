@@ -5,6 +5,7 @@ import {
 import {
   resolveInventoryCardUnitPrice,
   sumBranchInventoryV2CardAmounts,
+  sumBranchInventoryV2StatusAmounts,
   type BranchInventoryV2CardPriceRow,
 } from "@/features/inventory/utils/branch-inventory-v2-card-amounts";
 import type { InventoryGroupAggregates } from "@/features/inventory/utils/stock-units-group-aggregates";
@@ -112,6 +113,44 @@ describe("sumBranchInventoryV2CardAmounts", () => {
       inStock: 2100,
       defective: 1000,
       offPlanogram: 3000,
+    });
+  });
+});
+
+describe("sumBranchInventoryV2StatusAmounts", () => {
+  it("prices each status from its own quantity and keeps stock that is not on the Stock card in the total", () => {
+    const amounts = sumBranchInventoryV2StatusAmounts(
+      [
+        {
+          modelId: "priced",
+          srp: 100,
+          totalQty: 4,
+          offPlanogramQty: 3,
+          qtyByStatus: { STK: 2, DIT: 1, DU: 0 },
+        },
+        {
+          modelId: "srp-only",
+          srp: 50,
+          totalQty: 2,
+          offPlanogramQty: 0,
+          qtyByStatus: { DU: 2 },
+        },
+        {
+          modelId: "unpriced",
+          srp: null,
+          totalQty: 1,
+          offPlanogramQty: 1,
+          qtyByStatus: { DEF: 1 },
+        },
+      ],
+      [price("priced", 1000, "2026-11-01", "2026-11-30")],
+      TODAY,
+    );
+
+    expect(amounts).toEqual({
+      total: 4100,
+      offPlanogram: 3000,
+      byStatus: { STK: 2000, DIT: 1000, DU: 100, DEF: 0 },
     });
   });
 });

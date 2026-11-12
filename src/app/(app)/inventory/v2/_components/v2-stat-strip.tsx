@@ -1,12 +1,16 @@
 import { SidebarNavCountBadge } from "@/app/(app)/_components/sidebar-nav-count-badge";
 import { isBranchInventoryV2HiddenStatus } from "@/features/inventory/utils/branch-inventory-v2";
+import type { BranchInventoryV2StatusAmounts } from "@/features/inventory/utils/branch-inventory-v2-card-amounts";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { cn } from "@/utils/cn";
+import { formatPeso } from "@/utils/format-currency";
 
 interface V2StatStripProps {
   statuses: readonly { code: string; name: string; count: number; color?: string | null }[];
   totalUnits?: number;
   offPlanogramCount?: number;
+  /** Server-computed peso value for this branch. Zero stays ₱0, same as the home cards. */
+  statusAmounts: BranchInventoryV2StatusAmounts;
   /** Unread units per status code for this branch. Hidden when a status has none. */
   unreadByCode?: Record<string, number>;
   className?: string;
@@ -14,10 +18,18 @@ interface V2StatStripProps {
   maxStatusCards?: number;
 }
 
+function StatAmount({ amount, className }: { amount: number; className?: string }) {
+  const value = Number.isFinite(amount) ? amount : 0;
+  return (
+    <p className={cn("mt-1 text-sm font-medium tabular-nums", className)}>{formatPeso(value)}</p>
+  );
+}
+
 export function V2StatStrip({
   statuses,
   totalUnits,
   offPlanogramCount = 0,
+  statusAmounts,
   unreadByCode = {},
   className,
   maxStatusCards = 6,
@@ -39,6 +51,7 @@ export function V2StatStrip({
         <div className="rounded-xl border border-border/80 bg-card px-3 py-3 shadow-sm">
           <p className="text-xs font-medium text-muted-foreground">Total units</p>
           <p className="mt-2 text-xl font-semibold tabular-nums">{totalUnits.toLocaleString()}</p>
+          <StatAmount amount={statusAmounts.total} />
         </div>
       ) : null}
       {visible.map((status) => (
@@ -60,6 +73,7 @@ export function V2StatStrip({
             />
           </div>
           <p className="mt-2 text-xl font-semibold tabular-nums">{status.count.toLocaleString()}</p>
+          <StatAmount amount={statusAmounts.byStatus[status.code] ?? 0} />
         </div>
       ))}
       {offPlanogramCount > 0 || showTotal ? (
@@ -73,6 +87,10 @@ export function V2StatStrip({
           <p className="mt-2 text-xl font-semibold tabular-nums text-amber-950 dark:text-amber-50">
             {offPlanogramCount.toLocaleString()}
           </p>
+          <StatAmount
+            amount={statusAmounts.offPlanogram}
+            className="text-amber-950 dark:text-amber-50"
+          />
         </div>
       ) : null}
     </div>

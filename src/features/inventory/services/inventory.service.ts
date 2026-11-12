@@ -23,7 +23,9 @@ import {
 import { isBranchInventoryV2HiddenStatus } from "@/features/inventory/utils/branch-inventory-v2";
 import {
   sumBranchInventoryV2CardAmounts,
+  sumBranchInventoryV2StatusAmounts,
   type BranchInventoryV2CardAmounts,
+  type BranchInventoryV2StatusAmounts,
 } from "@/features/inventory/utils/branch-inventory-v2-card-amounts";
 import { groupStockByModelSeries } from "@/features/inventory/utils/group-stock-by-model-series";
 import {
@@ -55,7 +57,7 @@ export interface InventoryKpis {
   statuses: InventoryStatusKpi[];
 }
 
-export type { BranchInventoryV2CardAmounts };
+export type { BranchInventoryV2CardAmounts, BranchInventoryV2StatusAmounts };
 
 export interface InventorySeriesRow {
   series: string;
@@ -693,6 +695,65 @@ export const inventoryService = {
         inStockQty: row.inStockQty,
         defectiveQty: row.defectiveQty,
         offPlanogramQty: row.offPlanogramQty,
+      })),
+      priceLists.map((row) => ({
+        modelId: row.modelId,
+        amount: decimalToNumber(row.amount),
+        periodStart: formatPeriodDate(row.periodStart),
+        periodEnd: formatPeriodDate(row.periodEnd),
+        packageTypeId: row.packageTypeId,
+      })),
+    );
+  },
+
+  /**
+   * Peso totals for one branch's status cards.
+   * Sold and Official Sold are left out. Each amount is that card's quantity
+   * times the same display price the home cards use.
+   */
+  async getBranchInventoryV2StatusAmounts(
+    tenantId: string,
+    userId: string,
+    isUnrestricted: boolean,
+    branchId: string,
+  ): Promise<BranchInventoryV2StatusAmounts> {
+    const empty: BranchInventoryV2StatusAmounts = {
+      total: 0,
+      offPlanogram: 0,
+      byStatus: {},
+    };
+    const trimmedBranchId = branchId.trim();
+    if (!trimmedBranchId) return empty;
+
+    const [branchIds, statusCodes] = await Promise.all([
+      scopedBranchIds(tenantId, userId, isUnrestricted, trimmedBranchId),
+      loadInventoryStatusCodes(tenantId),
+    ]);
+    const visibleStatuses = statusCodes.filter(
+      (status) => !isBranchInventoryV2HiddenStatus(status.code),
+    );
+    const branchInScope = branchIds[0];
+    if (!branchInScope || visibleStatuses.length === 0) return empty;
+
+    const qtyRows = await inventoryRepository.aggregateBranchInventoryV2StatusQty(
+      tenantId,
+      branchInScope,
+      toStatusCodeRefs(visibleStatuses),
+    );
+    if (qtyRows.length === 0) return empty;
+
+    const priceLists = await inventoryRepository.listModelPriceListRows(
+      tenantId,
+      qtyRows.map((row) => row.modelId),
+    );
+
+    return sumBranchInventoryV2StatusAmounts(
+      qtyRows.map((row) => ({
+        modelId: row.modelId,
+        srp: decimalToNumberOrNull(row.srp),
+        totalQty: row.totalQty,
+        offPlanogramQty: row.offPlanogramQty,
+        qtyByStatus: row.qtyByStatus,
       })),
       priceLists.map((row) => ({
         modelId: row.modelId,
