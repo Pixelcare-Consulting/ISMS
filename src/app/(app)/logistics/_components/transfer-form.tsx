@@ -142,8 +142,9 @@ type PendingConfirm =
   | { type: "reject-serial"; serialNumberId: string; serialNo: string };
 
 const APPROVE_NOTE =
-  "Team Lead approval sets the units to For transfer and sends the request to the releasing branch. Stock at the receiving branch does not increase.";
+  "Approval sends these units in transit to the receiving branch. They leave the releasing branch's stock, and the receiving branch's stock does not increase until each serial is accepted.";
 const REJECT_NOTE = "Rejected requests release only the units reserved on this transfer.";
+/** Only transfers approved before approval sent units in transit still need a release. */
 const RELEASE_NOTE =
   "Release sends these units in transit. Stock at the receiving branch does not increase until they are accepted.";
 const RECEIVE_NOTE =
@@ -223,7 +224,7 @@ function confirmNote(type: PendingConfirm["type"]): string {
 function successMessage(confirm: PendingConfirm): string {
   switch (confirm.type) {
     case "approve":
-      return "Transfer approved for release";
+      return "Transfer approved. Units are in transit";
     case "reject":
       return "Transfer rejected";
     case "release":

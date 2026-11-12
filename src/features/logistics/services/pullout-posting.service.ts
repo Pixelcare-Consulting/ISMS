@@ -11,9 +11,17 @@ import {
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import {
   asWorkflowCode,
+  PULLOUT_SETTLED_CODES,
   PULLOUT_WORKFLOW_CODE,
   type PulloutWorkflowCodeKey,
 } from "@/features/logistics/constants/workflow-codes";
+import {
+  checkPulloutSapDocument,
+  formatPulloutSapDoc,
+  type PulloutSapDocType,
+} from "@/features/logistics/lib/pullout-sap-document";
+import { recordedProblemsBySerial } from "@/features/logistics/services/pullout-recorded-problems";
+import { fetchPulloutSapDocument } from "@/features/logistics/services/pullout-sap-document.service";
 import type { AllocatableSerial, HoldCode } from "@/features/logistics/services/posting-planner-types";
 import {
   planPulloutApprove,
@@ -61,6 +69,24 @@ export interface PulloutSerialOption {
   skuCode: string;
   modelName: string;
   inventoryCode: "STK" | "DEF";
+  /** Problem already recorded on a defect tag or sales return. Read-only on the pull-out. */
+  recordedProblem: string | null;
+}
+
+/** The IT or Return a user linked to a sent unit after creating it in SAP. */
+export interface PulloutLineSapDocument {
+  type: PulloutSapDocType;
+  docNum: number;
+  /** YYYY-MM-DD */
+  docDate: string | null;
+  linkedAt: string | null;
+  linkedByName: string | null;
+}
+
+export interface PulloutSapDocumentLinkInput {
+  serialNumberIds: string[];
+  docType: PulloutSapDocType;
+  docNum: number;
 }
 
 /**
@@ -129,8 +155,19 @@ export interface PulloutDetail {
     rejectedAt: string | null;
     rejectedByName: string | null;
     rejectionRemarks: string | null;
+    sapDocument: PulloutLineSapDocument | null;
   }[];
+  /** Sent: users may link the SAP IT or Return they made by hand. */
+  canLinkSapDocuments: boolean;
   history: { id: string; action: string; at: string; userName: string | null }[];
+}
+
+function dateOnly(value: Date | null): string | null {
+  return value ? value.toISOString().slice(0, 10) : null;
+}
+
+function isSettledPullout(code: string): boolean {
+  return (PULLOUT_SETTLED_CODES as readonly string[]).includes(code);
 }
 
 function asPulloutStatus(code: string): PulloutStatus | null {
@@ -257,7 +294,8 @@ async function writeHistory(
     userId: string;
     pulloutNo: string;
     serialNumberIds: string[];
-    status: string;
+    /** Null when the event does not change the unit's status. */
+    status: string | null;
     details: string;
   },
 ) {
@@ -601,10 +639,11 @@ export const pulloutPostingService = {
       orderBy: { serialNumber: { serialNo: "asc" } },
       take: 300,
     });
-    const openDocs = await openDocumentIdsBySerial(
-      actor.tenantId,
-      rows.map((row) => row.serialNumberId),
-    );
+    const serialIds = rows.map((row) => row.serialNumberId);
+    const [openDocs, problems] = await Promise.all([
+      openDocumentIdsBySerial(actor.tenantId, serialIds),
+      recordedProblemsBySerial(actor.tenantId, serialIds),
+    ]);
     return rows.flatMap((row) => {
       if ((openDocs.get(row.serialNumberId) ?? []).length > 0) return [];
       const code = asHoldCode(row.statusCode.code);
@@ -617,6 +656,7 @@ export const pulloutPostingService = {
           skuCode: row.serialNumber.model.skuCode,
           modelName: row.serialNumber.model.name,
           inventoryCode: code,
+          recordedProblem: problems.get(row.serialNumberId) ?? null,
         },
       ];
     });
@@ -656,6 +696,11 @@ export const pulloutPostingService = {
             rejectedAt: true,
             rejectedBy: { select: { name: true } },
             rejectionRemarks: true,
+            sapDocType: true,
+            sapDocNum: true,
+            sapDocDate: true,
+            sapDocLinkedAt: true,
+            sapDocLinkedBy: { select: { name: true } },
             priorStatusCode: { select: { code: true } },
             reasonCode: { select: { name: true } },
             problemDescriptions: {
@@ -751,7 +796,18 @@ export const pulloutPostingService = {
         rejectedAt: line.rejectedAt?.toISOString() ?? null,
         rejectedByName: displayName(line.rejectedBy?.name),
         rejectionRemarks: line.rejectionRemarks,
+        sapDocument:
+          line.sapDocType && line.sapDocNum != null
+            ? {
+                type: line.sapDocType,
+                docNum: line.sapDocNum,
+                docDate: dateOnly(line.sapDocDate),
+                linkedAt: line.sapDocLinkedAt?.toISOString() ?? null,
+                linkedByName: displayName(line.sapDocLinkedBy?.name),
+              }
+            : null,
       })),
+      canLinkSapDocuments: isSettledPullout(pullout.statusCode.code),
       history: history.map((row) => ({
         id: row.id,
         action: row.action,
@@ -1399,4 +1455,150 @@ export const pulloutPostingService = {
       idempotent: preview.idempotent,
     };
   },
+
+  /**
+   * Links units of a sent pull-out to the IT or Return a user created by hand in SAP.
+   * ISMS posts nothing: it checks the document exists, is not cancelled, and lists every
+   * selected serial, then stores its number and date. Linking again replaces the link.
+   */
+  async linkSapDocument(actor: PostingActor, pulloutId: string, input: PulloutSapDocumentLinkInput) {
+    const pullout = await loadSentPullout(actor, pulloutId);
+    const ids = [...new Set(input.serialNumberIds)];
+    if (ids.length === 0) throw new Error("Select the units this SAP document covers");
+    const lineById = new Map(pullout.lines.map((line) => [line.serialNumberId, line]));
+    const serialNos = ids.map((id) => {
+      const line = lineById.get(id);
+      if (!line) throw new Error("One or more units are not on this pull-out");
+      return line.serialNumber.serialNo;
+    });
+
+    const doc = await fetchPulloutSapDocument(actor.tenantId, input.docType, input.docNum);
+    const check = checkPulloutSapDocument(doc, serialNos);
+    if (!check.ok) throw new Error(check.error);
+
+    const label = formatPulloutSapDoc(doc.type, doc.docNum);
+    try {
+      await prisma.$transaction(async (tx) => {
+        const updated = await tx.branchPulloutLine.updateMany({
+          where: { pulloutId, serialNumberId: { in: ids } },
+          data: {
+            sapDocType: doc.type,
+            sapDocEntry: doc.docEntry,
+            sapDocNum: doc.docNum,
+            sapDocDate: doc.docDate ? new Date(`${doc.docDate}T00:00:00.000Z`) : null,
+            sapDocLinkedAt: new Date(),
+            sapDocLinkedById: actor.userId,
+          },
+        });
+        if (updated.count !== ids.length) {
+          throw new Error("This pull-out was updated by someone else");
+        }
+        await writeHistory(tx, {
+          tenantId: actor.tenantId,
+          userId: actor.userId,
+          pulloutNo: pullout.pulloutNo,
+          serialNumberIds: ids,
+          status: null,
+          details: `SAP ${label} linked on ${pullout.pulloutNo}`,
+        });
+        await tx.auditLog.create({
+          data: {
+            tenantId: actor.tenantId,
+            userId: actor.userId,
+            action: "pullout.sap_document_linked",
+            entityType: "BranchPullout",
+            entityId: pulloutId,
+            metadata: {
+              pulloutNo: pullout.pulloutNo,
+              sapDocType: doc.type,
+              sapDocNum: doc.docNum,
+              sapDocEntry: doc.docEntry,
+              serialNumberIds: ids,
+            },
+          },
+        });
+      });
+    } catch (error) {
+      throw postingError(error, "Failed to link the SAP document");
+    }
+    return { id: pullout.id, label, linkedCount: ids.length };
+  },
+
+  /** Removes a unit's SAP link, e.g. when the wrong number was linked. */
+  async unlinkSapDocument(actor: PostingActor, pulloutId: string, serialNumberId: string) {
+    const pullout = await loadSentPullout(actor, pulloutId);
+    const line = pullout.lines.find((row) => row.serialNumberId === serialNumberId);
+    if (!line) throw new Error("That unit is not on this pull-out");
+    if (!line.sapDocType || line.sapDocNum == null) return { id: pullout.id, idempotent: true };
+    const label = formatPulloutSapDoc(line.sapDocType, line.sapDocNum);
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.branchPulloutLine.updateMany({
+          where: { pulloutId, serialNumberId },
+          data: {
+            sapDocType: null,
+            sapDocEntry: null,
+            sapDocNum: null,
+            sapDocDate: null,
+            sapDocLinkedAt: null,
+            sapDocLinkedById: null,
+          },
+        });
+        await writeHistory(tx, {
+          tenantId: actor.tenantId,
+          userId: actor.userId,
+          pulloutNo: pullout.pulloutNo,
+          serialNumberIds: [serialNumberId],
+          status: null,
+          details: `SAP ${label} unlinked on ${pullout.pulloutNo}`,
+        });
+        await tx.auditLog.create({
+          data: {
+            tenantId: actor.tenantId,
+            userId: actor.userId,
+            action: "pullout.sap_document_unlinked",
+            entityType: "BranchPullout",
+            entityId: pulloutId,
+            metadata: {
+              pulloutNo: pullout.pulloutNo,
+              sapDocType: line.sapDocType,
+              sapDocNum: line.sapDocNum,
+              serialNumberIds: [serialNumberId],
+            },
+          },
+        });
+      });
+    } catch (error) {
+      throw postingError(error, "Failed to unlink the SAP document");
+    }
+    return { id: pullout.id, idempotent: false };
+  },
 };
+
+/** A pull-out the actor may link SAP documents on: sent, and in their scope. */
+async function loadSentPullout(actor: PostingActor, pulloutId: string) {
+  const pullout = await prisma.branchPullout.findFirst({
+    where: { id: pulloutId, tenantId: actor.tenantId },
+    select: {
+      id: true,
+      pulloutNo: true,
+      branchId: true,
+      statusCode: { select: { code: true } },
+      lines: {
+        select: {
+          serialNumberId: true,
+          sapDocType: true,
+          sapDocNum: true,
+          serialNumber: { select: { serialNo: true } },
+        },
+      },
+    },
+  });
+  if (!pullout) throw new Error("Pull-out not found");
+  await authorizePosting(actor, "pullout.linkSapDocument", pullout.branchId);
+  if (!isSettledPullout(pullout.statusCode.code)) {
+    throw new Error("Link SAP documents only after the pull-out is sent");
+  }
+  return pullout;
+}

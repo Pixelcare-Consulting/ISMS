@@ -32,7 +32,9 @@ type PulloutAuditAction =
   | "pullout.finalized"
   | "pullout.received"
   | "pullout.line_rejected"
-  | "pullout.completed";
+  | "pullout.completed"
+  | "pullout.sap_document_linked"
+  | "pullout.sap_document_unlinked";
 
 const PULLOUT_ICONS: Readonly<Record<string, ProgressStageIcon>> = {
   [PULLOUT_WORKFLOW_CODE.requested]: "approval",
@@ -58,6 +60,8 @@ function asPulloutAuditAction(action: string): PulloutAuditAction | null {
     case "pullout.received":
     case "pullout.line_rejected":
     case "pullout.completed":
+    case "pullout.sap_document_linked":
+    case "pullout.sap_document_unlinked":
       return action;
     default:
       return null;
@@ -90,6 +94,10 @@ export function pulloutAuditLabel(action: string): string {
       return "Unit rejected";
     case "pullout.completed":
       return "Received — completed";
+    case "pullout.sap_document_linked":
+      return "SAP document linked";
+    case "pullout.sap_document_unlinked":
+      return "SAP document unlinked";
     default: {
       const unreachable: never = known;
       return unreachable;

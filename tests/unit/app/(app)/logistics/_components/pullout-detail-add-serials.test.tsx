@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 import "@testing-library/jest-dom";
 
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { PulloutDetailView } from "@/app/(app)/logistics/_components/pullout-detail";
 import {
@@ -73,8 +73,10 @@ const detail = {
       rejectedAt: null,
       rejectedByName: null,
       rejectionRemarks: null,
+      sapDocument: null,
     },
   ],
+  canLinkSapDocuments: false,
   history: [],
 } as unknown as PulloutDetail;
 
@@ -88,6 +90,7 @@ function serial(serialNumberId: string, inventoryCode: "STK" | "DEF") {
     skuCode: "SKU2",
     modelName: "Model Two",
     inventoryCode,
+    recordedProblem: inventoryCode === "DEF" ? "No power" : null,
   };
 }
 
@@ -136,6 +139,16 @@ beforeEach(() => {
 });
 
 describe("Add serials on the Logistics step", () => {
+  it("shows each other serial's recorded problem description, read-only", async () => {
+    await openAddSerials();
+
+    expect(screen.getByRole("columnheader", { name: "Problem description" })).toBeInTheDocument();
+    const defRow = screen.getByRole("checkbox", { name: "Add NEW-DEF" }).closest("tr") as HTMLElement;
+    expect(within(defRow).getByText("No power")).toBeInTheDocument();
+    const stkRow = screen.getByRole("checkbox", { name: "Add NEW-STK" }).closest("tr") as HTMLElement;
+    expect(within(stkRow).getByText("None recorded")).toBeInTheDocument();
+  });
+
   it("keeps a serial's fields disabled until it is ticked", async () => {
     await openAddSerials();
 

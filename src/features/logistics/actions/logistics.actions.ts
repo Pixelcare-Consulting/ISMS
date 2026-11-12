@@ -44,7 +44,10 @@ import type {
   PulloutListSort,
   TransferListSort,
 } from "@/features/logistics/repositories/logistics.repository";
-import { DELIVERY_WORKFLOW_CODE } from "@/features/logistics/constants/workflow-codes";
+import {
+  DELIVERY_WORKFLOW_CODE,
+  TRANSFER_LEGACY_RELEASE_CODES,
+} from "@/features/logistics/constants/workflow-codes";
 import {
   resolveLogisticsBranchScope,
   transferListWhere,
@@ -56,6 +59,7 @@ import {
   pulloutSchema,
 } from "@/features/logistics/schemas/pullout.schema";
 import { transferLineRemarksSchema } from "@/features/logistics/lib/transfer-line-remarks";
+import { parseSapDocNum, PULLOUT_SAP_DOC_TYPES } from "@/features/logistics/lib/pullout-sap-document";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
@@ -248,12 +252,19 @@ export async function getTransferKpisAction(): Promise<LogisticsKpis> {
       permissions: session.user.permissions,
     }),
   );
-  return buildLogisticsKpis(
+  const kpis = await buildLogisticsKpis(
     tid,
     "transfer_workflow",
     () => logisticsRepository.countTransfersByStatus(tid, where),
     () => logisticsRepository.countAllTransfers(tid, where),
   );
+  // Approval sends units in transit; the old release steps only count while a transfer waits there.
+  return {
+    ...kpis,
+    statuses: kpis.statuses.filter(
+      (status) => status.count > 0 || !TRANSFER_LEGACY_RELEASE_CODES.includes(status.code),
+    ),
+  };
 }
 
 export async function getPulloutKpisAction(): Promise<LogisticsKpis> {
@@ -781,6 +792,47 @@ export async function releasePulloutAction(id: string) {
     return { success: true as const };
   } catch (error) {
     return actionError(error, "Failed to send the pull-out");
+  }
+}
+
+const pulloutSapDocumentLinkSchema = z.object({
+  serialNumberIds: z.array(z.string().min(1)).min(1, "Select the units this SAP document covers").max(500),
+  docType: z.enum(PULLOUT_SAP_DOC_TYPES),
+  docNum: z.string().transform((value, ctx) => {
+    const parsed = parseSapDocNum(value);
+    if (parsed == null) {
+      ctx.addIssue({ code: "custom", message: "Enter the SAP document number (digits only)" });
+      return z.NEVER;
+    }
+    return parsed;
+  }),
+});
+
+/** Links sent pull-out units to the IT or Return a user created by hand in SAP. */
+export async function linkPulloutSapDocumentAction(id: string, input: unknown) {
+  const session = await requirePermission(LOGISTICS_MANAGE);
+  const parsed = pulloutSapDocumentLinkSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid SAP document" };
+  }
+  try {
+    const result = await pulloutPostingService.linkSapDocument(postingActor(session), id, parsed.data);
+    revalidatePullout(id);
+    return { success: true as const, label: result.label, linkedCount: result.linkedCount };
+  } catch (error) {
+    return actionError(error, "Failed to link the SAP document");
+  }
+}
+
+export async function unlinkPulloutSapDocumentAction(id: string, serialNumberId: string) {
+  const session = await requirePermission(LOGISTICS_MANAGE);
+  if (!serialNumberId) return { error: "Choose a unit" };
+  try {
+    await pulloutPostingService.unlinkSapDocument(postingActor(session), id, serialNumberId);
+    revalidatePullout(id);
+    return { success: true as const };
+  } catch (error) {
+    return actionError(error, "Failed to unlink the SAP document");
   }
 }
 

@@ -30,6 +30,7 @@ import {
   pulloutMissingDetailsText,
   type PulloutLineChoice,
 } from "@/app/(app)/logistics/_components/pullout-line-fields";
+import { RecordedProblemCell } from "@/app/(app)/logistics/_components/recorded-problem-cell";
 import { PulloutConditionBadge } from "@/features/logistics/components/pullout-condition-badge";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { Button } from "@/components/ui/button";
@@ -48,7 +49,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 const PULLOUT_CREATE_FORM_ID = "pullout-create-form";
 const POPOVER_CLASS = "z-[100]";
 const SERIAL_PAGE_SIZE = 10;
-const UNIT_COLUMN_COUNT = 10;
+const UNIT_COLUMN_COUNT = 11;
 
 const MANILA_DATE = new Intl.DateTimeFormat("en-PH", {
   year: "numeric",
@@ -74,7 +75,8 @@ function serialMatches(serial: PulloutSerialOption, query: string): boolean {
   return (
     serial.skuCode.toLowerCase().includes(needle) ||
     serial.modelName.toLowerCase().includes(needle) ||
-    serial.serialNo.toLowerCase().includes(needle)
+    serial.serialNo.toLowerCase().includes(needle) ||
+    (serial.recordedProblem?.toLowerCase().includes(needle) ?? false)
   );
 }
 
@@ -445,7 +447,7 @@ export function PulloutRequestDialog({
                 }}
               />
               <div className="min-w-0 overflow-x-auto rounded-md border">
-                <table className="w-full min-w-[76rem] table-fixed text-sm">
+                <table className="w-full min-w-[88rem] table-fixed text-sm">
                   <thead className="bg-muted/40 text-left text-muted-foreground">
                     <tr>
                       <th className="w-10 px-2 py-2 align-middle font-medium" scope="col">
@@ -473,6 +475,9 @@ export function PulloutRequestDialog({
                       </th>
                       <th className="w-16 px-2 py-2 align-middle font-medium" scope="col">
                         Status
+                      </th>
+                      <th className="w-48 px-2 py-2 align-middle font-medium" scope="col">
+                        Problem description
                       </th>
                       {PULLOUT_LINE_FIELDS.map(({ field, header }) => (
                         <th
@@ -532,6 +537,9 @@ export function PulloutRequestDialog({
                                 code={serial.inventoryCode}
                                 name={serial.inventoryCode}
                               />
+                            </td>
+                            <td className="min-w-0 px-2 py-2 align-top">
+                              <RecordedProblemCell problem={serial.recordedProblem} />
                             </td>
                             {PULLOUT_LINE_FIELDS.map(({ field }) => (
                               <td key={field} className="px-2 py-2 align-top">

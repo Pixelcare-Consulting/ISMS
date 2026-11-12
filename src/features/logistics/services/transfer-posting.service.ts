@@ -478,7 +478,6 @@ async function workflowForHeader(tenantId: string, status: TransferHeaderAfterLi
   switch (status) {
     case "rejected":
       return rejectStatusId(tenantId);
-    case "for_transfer":
     case "in_transit":
     case "accepted":
     case "completed":
@@ -992,7 +991,7 @@ export const transferPostingService = {
     }
 
     const codes = await inventoryIds(actor.tenantId);
-    const nextStatusId = await workflowId(actor.tenantId, "for_transfer");
+    const nextStatusId = await workflowId(actor.tenantId, "in_transit");
     const fromIds = await Promise.all(
       (["pending_tl", "requested"] as const).map((code) => workflowId(actor.tenantId, code)),
     );
@@ -1005,19 +1004,21 @@ export const transferPostingService = {
         if (!plan.ok) throw new Error(plan.error);
         if (plan.idempotent) return;
 
-        await lockSerialNumbers(
-          tx,
-          plan.moves.map((move) => move.serialNumberId),
-        );
+        const movedIds = plan.moves.map((move) => move.serialNumberId);
+        await lockSerialNumbers(tx, movedIds);
+        await assertMovable(actor.tenantId, movedIds);
+        // Approval sends the units: the row moves to the receiving branch as DIT, so the
+        // unit leaves the releasing branch's inventory and shows there as incoming.
         for (const from of ["RSV", "STK", "DEF"] as const) {
           await claimInventory(tx, {
             tenantId: actor.tenantId,
             branchId: fresh.fromBranchId,
             serialNumberIds: plan.moves.filter((move) => move.fromCode === from).map((move) => move.serialNumberId),
             fromStatusCodeId: codes[from],
-            toStatusCodeId: codes.FTR,
+            toStatusCodeId: codes.DIT,
             userId: actor.userId,
             message: CLAIM_LOST,
+            toBranchId: fresh.toBranchId,
           });
         }
         // Legacy rows that were never reserved also never recorded their prior code.
@@ -1045,6 +1046,10 @@ export const transferPostingService = {
           status: "APPROVED",
           decidedById: actor.userId,
         });
+        await inventoryApprovalLedger.recordRequested(tx, approvalDocument(actor.tenantId, fresh, "RECEIVING"), {
+          requestedById: actor.userId,
+          units: movedIds.map((serialNumberId) => ({ serialNumberId })),
+        });
         const slips = transferSlipNumbers(fresh.transferNo);
         await tx.branchTransfer.update({
           where: { id: transferId },
@@ -1054,9 +1059,9 @@ export const transferPostingService = {
           tenantId: actor.tenantId,
           userId: actor.userId,
           transferNo: fresh.transferNo,
-          serialNumberIds: plan.moves.map((move) => move.serialNumberId),
-          status: "FTR",
-          details: `Approved for transfer on ${fresh.transferNo}`,
+          serialNumberIds: movedIds,
+          status: "DIT",
+          details: `Approved and in transit on ${fresh.transferNo}`,
         });
         await tx.auditLog.create({
           data: {
@@ -1065,7 +1070,11 @@ export const transferPostingService = {
             action: "transfer.approved",
             entityType: "BranchTransfer",
             entityId: transferId,
-            metadata: { transferNo: fresh.transferNo, destinationStockAdded: false },
+            metadata: {
+              transferNo: fresh.transferNo,
+              serialCount: movedIds.length,
+              destinationStockAdded: false,
+            },
           },
         });
       });
@@ -1169,6 +1178,7 @@ export const transferPostingService = {
     return { id: current.id, idempotent: false };
   },
 
+  /** Legacy only: transfers approved while Logistics still released them (For transfer). */
   async release(actor: PostingActor, transferId: string) {
     const current = await loadLines(prisma, actor.tenantId, transferId);
     if (!current) throw new Error("Transfer not found");

@@ -247,7 +247,29 @@ describe("transfer approvals", () => {
     });
   });
 
-  it("opens the receiving step on release", async () => {
+  it("opens the receiving step on approval", async () => {
+    setUp("pending_tl", "RSV");
+
+    await transferPostingService.approve(actor, "x1");
+
+    // The TL decision writes first; the receiving rows follow.
+    const receiving = mockTx.inventoryApproval.createMany.mock.calls
+      .map((call) => call[0].data)
+      .find((rows) => rows[0]?.step === "RECEIVING");
+    expect(receiving).toEqual([
+      expect.objectContaining({
+        sourceType: "TRANSFER",
+        sourceNo: "XFR-1",
+        step: "RECEIVING",
+        serialNumberId: "s1",
+        status: "PENDING",
+        requestedById: "u1",
+      }),
+      expect.objectContaining({ serialNumberId: "s2", step: "RECEIVING" }),
+    ]);
+  });
+
+  it("opens the receiving step on a legacy release", async () => {
     setUp("for_transfer", "RSV");
 
     await transferPostingService.release(actor, "x1");
@@ -319,7 +341,7 @@ describe("serial status through the transfer", () => {
     );
   });
 
-  it("moves reserved units to For transfer on approval", async () => {
+  it("moves reserved units in transit to the receiving branch on approval", async () => {
     setUp("pending_tl", "RSV");
 
     await transferPostingService.approve(actor, "x1");
@@ -327,18 +349,24 @@ describe("serial status through the transfer", () => {
     expect(claim).toHaveBeenCalledWith(
       mockTx,
       expect.objectContaining({
+        branchId: "b1",
         serialNumberIds: ["s1", "s2"],
         fromStatusCodeId: "inventory_system-RSV",
-        toStatusCodeId: "inventory_system-FTR",
+        toStatusCodeId: "inventory_system-DIT",
+        toBranchId: "b2",
       }),
     );
     expect(mockTx.serialNumberHistory.createMany.mock.calls[0]?.[0].data).toEqual([
-      expect.objectContaining({ serialNumberId: "s1", status: "FTR", details: "Approved for transfer on XFR-1" }),
-      expect.objectContaining({ serialNumberId: "s2", status: "FTR" }),
+      expect.objectContaining({
+        serialNumberId: "s1",
+        status: "DIT",
+        details: "Approved and in transit on XFR-1",
+      }),
+      expect.objectContaining({ serialNumberId: "s2", status: "DIT" }),
     ]);
   });
 
-  it("moves For transfer units in transit to the receiving branch on release", async () => {
+  it("moves legacy For transfer units in transit to the receiving branch on release", async () => {
     setUp("for_transfer", "FTR");
 
     await transferPostingService.release(actor, "x1");

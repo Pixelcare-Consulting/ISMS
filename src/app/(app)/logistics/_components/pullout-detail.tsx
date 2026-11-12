@@ -27,6 +27,8 @@ import {
   type PulloutLineChoice,
 } from "@/app/(app)/logistics/_components/pullout-line-fields";
 import { pulloutPrintDocument } from "@/app/(app)/logistics/_components/pullout-print";
+import { PulloutSapDocumentDialog } from "@/app/(app)/logistics/_components/pullout-sap-document-dialog";
+import { RecordedProblemCell } from "@/app/(app)/logistics/_components/recorded-problem-cell";
 import { pulloutAuditLabel, PulloutTracker } from "@/app/(app)/logistics/_components/pullout-tracker";
 import {
   CompactLineTable,
@@ -72,6 +74,7 @@ import {
   listPulloutSerialsAction,
   rejectPulloutAction,
   releasePulloutAction,
+  unlinkPulloutSapDocumentAction,
   updatePulloutListAction,
   uploadPulloutAttachmentAction,
   type PulloutChecklistOptions,
@@ -80,6 +83,7 @@ import {
   manilaDateTimeInputValue,
   scheduleDateInputValue,
 } from "@/features/logistics/lib/shipment";
+import { formatPulloutSapDoc } from "@/features/logistics/lib/pullout-sap-document";
 import { PULLOUT_LINE_DECISION } from "@/features/logistics/services/pullout-posting.planner";
 import type { PulloutDetail } from "@/features/logistics/services/pullout-posting.service";
 import { PulloutConditionBadge } from "@/features/logistics/components/pullout-condition-badge";
@@ -95,6 +99,7 @@ interface ExtraSerial {
   skuCode: string;
   modelName: string;
   inventoryCode: "STK" | "DEF";
+  recordedProblem: string | null;
 }
 
 type ExtraSerialLoad = "idle" | "loading" | "ready" | "error";
@@ -220,9 +225,22 @@ function ReceivedCell({ row }: { row: ItemRow }) {
   );
 }
 
+function SapDocumentCell({ row }: { row: ItemRow }) {
+  const doc = row.sapDocument;
+  if (!doc) return <span className="text-muted-foreground">Not linked</span>;
+  const date = formatWhen(doc.docDate, false);
+  return (
+    <div>
+      <p className="font-mono">{formatPulloutSapDoc(doc.type, doc.docNum)}</p>
+      {date ? <p className="text-xs text-muted-foreground">{date}</p> : null}
+    </div>
+  );
+}
+
 function pulloutItemColumns(
   renderAction: ((row: ItemRow) => ReactNode) | null,
   renderReceived: ((row: ItemRow) => ReactNode) | null,
+  showSapDocument: boolean,
 ): CompactLineColumn<ItemRow>[] {
   const columns: CompactLineColumn<ItemRow>[] = [
     {
@@ -273,6 +291,14 @@ function pulloutItemColumns(
       cell: (row) => textOrDash(row.remarks),
     },
   ];
+  if (showSapDocument) {
+    columns.push({
+      id: "sapDocument",
+      header: "SAP document",
+      className: "min-w-32",
+      cell: (row) => <SapDocumentCell row={row} />,
+    });
+  }
   if (renderReceived) {
     columns.push({
       id: "received",
@@ -552,6 +578,12 @@ function extraSerialColumns(
         return prior ? <StatusCodeBadge code={prior} name={prior} /> : <Dash />;
       },
     },
+    {
+      id: "recordedProblem",
+      header: "Problem description",
+      className: "min-w-44",
+      cell: (row) => <RecordedProblemCell problem={row.recordedProblem} />,
+    },
     ...PULLOUT_LINE_FIELDS.map(
       ({ field, header }): CompactLineColumn<ExtraSerial> => ({
         id: field,
@@ -594,12 +626,18 @@ function ExtraSerialsTable({
         rows={rows}
         getRowId={(row) => row.serialNumberId}
         columns={extraSerialColumns(pending, selected, onToggle, details)}
-        searchText={(row) => [row.skuCode, row.modelName, row.serialNo, row.inventoryCode]}
+        searchText={(row) => [
+          row.skuCode,
+          row.modelName,
+          row.serialNo,
+          row.inventoryCode,
+          row.recordedProblem,
+        ]}
         searchPlaceholder="Search serials…"
         itemLabel="serial"
         emptyMessage="No other free serials at this branch."
         noMatchMessage="No matching serials."
-        minWidth="86rem"
+        minWidth="96rem"
       />
     </div>
   );
@@ -683,6 +721,8 @@ export function PulloutDetailView({
   const [checklistOptions, setChecklistOptions] =
     useState<PulloutChecklistOptions>(EMPTY_CHECKLIST_OPTIONS);
   const [deleteTarget, setDeleteTarget] = useState<ItemRow | null>(null);
+  const [sapDialogOpen, setSapDialogOpen] = useState(false);
+  const [unlinkTarget, setUnlinkTarget] = useState<ItemRow | null>(null);
   useEffect(() => {
     if (!addOpen || !canEditList) return;
     let cancelled = false;
@@ -696,6 +736,7 @@ export function PulloutDetailView({
             skuCode: serial.skuCode,
             modelName: serial.modelName,
             inventoryCode: serial.inventoryCode,
+            recordedProblem: serial.recordedProblem,
           })),
         );
         setExtrasState("ready");
@@ -765,6 +806,10 @@ export function PulloutDetailView({
   // Receipts and in-transit rejections only exist on pull-outs from before receiving was dropped.
   const showReceipts = detail.lines.some((line) => line.receivedAt || line.rejectedAt);
   const printDocument = pulloutPrintDocument(detail);
+  const canLinkSap =
+    detail.canLinkSapDocuments && capabilities.canManage && inScope(branchScope, detail.branch.id);
+  const showSapDocument =
+    detail.canLinkSapDocuments || detail.lines.some((line) => Boolean(line.sapDocument));
   const canAttach =
     capabilities.canCreate &&
     inScope(branchScope, detail.branch.id) &&
@@ -837,6 +882,29 @@ export function PulloutDetailView({
     run(() => deletePulloutLineAction(detail.id, serialNumberId), "Unit rejected from this pull-out");
   }
 
+  function confirmUnlink() {
+    if (!unlinkTarget) return;
+    const { serialNumberId } = unlinkTarget;
+    setUnlinkTarget(null);
+    run(() => unlinkPulloutSapDocumentAction(detail.id, serialNumberId), "SAP document unlinked");
+  }
+
+  function sapLineAction(row: ItemRow) {
+    if (!row.sapDocument) return null;
+    return (
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled={pending}
+        aria-label={`Unlink SAP document from ${row.serialNo}`}
+        onClick={() => setUnlinkTarget(row)}
+      >
+        Unlink
+      </Button>
+    );
+  }
+
   function reserveLineAction(row: ItemRow) {
     const approved = row.decision === PULLOUT_LINE_DECISION.accepted;
     return (
@@ -906,6 +974,7 @@ export function PulloutDetailView({
   function lineActionRenderer(): ((row: ItemRow) => ReactNode) | null {
     if (showApprove) return reserveLineAction;
     if (canEditList) return listLineAction;
+    if (canLinkSap && detail.lines.some((line) => line.sapDocument)) return sapLineAction;
     return null;
   }
 
@@ -922,7 +991,7 @@ export function PulloutDetailView({
     if (!inTransit) return null;
     return (
       <p className="text-sm text-muted-foreground">
-        {`These units left ${detail.branch.name} and no longer count in its branch inventory.`}
+        {`These units left ${detail.branch.name} and no longer count in its branch inventory. If you made an IT or Return for them in SAP, link it under Transfer details, or put ${detail.pulloutNo} in the SAP document's remarks.`}
       </p>
     );
   }
@@ -1023,6 +1092,7 @@ export function PulloutDetailView({
           columns={pulloutItemColumns(
             lineActionRenderer(),
             showReceipts ? (row) => <ReceivedCell row={row} /> : null,
+            showSapDocument,
           )}
           searchText={(row) => [
             row.skuCode,
@@ -1038,6 +1108,7 @@ export function PulloutDetailView({
             ...row.classificationNames,
             ...row.unitPackingConditionNames,
             ...row.accessoryCompletenessNames,
+            row.sapDocument ? formatPulloutSapDoc(row.sapDocument.type, row.sapDocument.docNum) : null,
           ]}
           searchPlaceholder="Search serials…"
           itemLabel="unit"
@@ -1054,9 +1125,18 @@ export function PulloutDetailView({
               >
                 {addOpen ? "Hide serials" : "Add serials"}
               </Button>
+            ) : canLinkSap ? (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={pending || detail.lines.length === 0}
+                onClick={() => setSapDialogOpen(true)}
+              >
+                Link SAP document
+              </Button>
             ) : undefined
           }
-          minWidth={showReceipts ? "96rem" : "82rem"}
+          minWidth={`${82 + (showReceipts ? 14 : 0) + (showSapDocument ? 10 : 0)}rem`}
         />
         {canEditList && addOpen ? (
           <AddSerialsPanel
@@ -1120,6 +1200,36 @@ export function PulloutDetailView({
       ) : (
         sheet
       )}
+      {sapDialogOpen ? (
+        <PulloutSapDocumentDialog
+          open
+          onOpenChange={setSapDialogOpen}
+          pulloutId={detail.id}
+          lines={detail.lines}
+          onLinked={() => router.refresh()}
+        />
+      ) : null}
+      <AlertDialog
+        open={unlinkTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setUnlinkTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{`Unlink the SAP document from ${unlinkTarget?.serialNo ?? "this unit"}?`}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {unlinkTarget?.sapDocument
+                ? `${formatPulloutSapDoc(unlinkTarget.sapDocument.type, unlinkTarget.sapDocument.docNum)} stays in SAP. Only the link in ISMS is removed.`
+                : "Only the link in ISMS is removed."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmUnlink}>Unlink</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {

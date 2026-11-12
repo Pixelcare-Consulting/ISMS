@@ -144,6 +144,12 @@ enum SapOrderDocType {
   SO
 }
 
+/// SAP document a user creates by hand for a sent pull-out unit: Inventory Transfer or Return.
+enum PulloutSapDocType {
+  IT
+  RETURN
+}
+
 enum DeliveryReturnStatus {
   PENDING_APPROVAL
   APPROVED
@@ -418,6 +424,7 @@ model User {
   branchPulloutLinesDecided          BranchPulloutLine[]           @relation("BranchPulloutLineDecidedBy")
   branchPulloutLinesReceived         BranchPulloutLine[]           @relation("BranchPulloutLineReceivedBy")
   branchPulloutLinesRejected         BranchPulloutLine[]           @relation("BranchPulloutLineRejectedBy")
+  branchPulloutLinesSapDocLinked     BranchPulloutLine[]           @relation("BranchPulloutLineSapDocLinkedBy")
   branchPulloutAttachmentsUploaded   BranchPulloutAttachment[]     @relation("BranchPulloutAttachmentUploadedBy")
   branchPulloutsCreated              BranchPullout[]               @relation("BranchPulloutCreatedBy")
   serialNumbersCreated               SerialNumber[]                @relation("SerialNumberCreatedBy")
@@ -2541,6 +2548,15 @@ model BranchPulloutLine {
   rejectedAt              DateTime? @map("rejected_at")
   rejectedById            String?   @map("rejected_by_id")
   rejectionRemarks        String?   @map("rejection_remarks")
+  /// Optional link to the IT or Return a user created by hand in SAP after the pull-out was sent.
+  /// Checked against SAP when linked: the document exists, is not cancelled, and lists this serial.
+  /// One SAP document can cover units from several pull-outs.
+  sapDocType              PulloutSapDocType? @map("sap_doc_type")
+  sapDocEntry             Int?      @map("sap_doc_entry")
+  sapDocNum               Int?      @map("sap_doc_num")
+  sapDocDate              DateTime? @map("sap_doc_date") @db.Date
+  sapDocLinkedAt          DateTime? @map("sap_doc_linked_at")
+  sapDocLinkedById        String?   @map("sap_doc_linked_by_id")
 
   pullout                 BranchPullout                           @relation(fields: [pulloutId], references: [id], onDelete: Cascade)
   serialNumber            SerialNumber                            @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
@@ -2550,6 +2566,7 @@ model BranchPulloutLine {
   receivedLocation        WarehouseLocation?                      @relation("BranchPulloutLineReceivedLocation", fields: [receivedLocationId], references: [id], onDelete: SetNull)
   reasonCode              ReasonStatusCode?                       @relation("PulloutLineReason", fields: [reasonCodeId], references: [id], onDelete: SetNull)
   rejectedBy              User?                                   @relation("BranchPulloutLineRejectedBy", fields: [rejectedById], references: [id], onDelete: SetNull)
+  sapDocLinkedBy          User?                                   @relation("BranchPulloutLineSapDocLinkedBy", fields: [sapDocLinkedById], references: [id], onDelete: SetNull)
   classifications         BranchPulloutLineClassification[]
   problemDescriptions     BranchPulloutLineProblemDescription[]
   packingConditions       BranchPulloutLinePackingCondition[]
@@ -2562,6 +2579,8 @@ model BranchPulloutLine {
   @@index([receivedLocationId])
   @@index([reasonCodeId])
   @@index([rejectedById])
+  @@index([sapDocLinkedById])
+  @@index([sapDocType, sapDocNum])
   @@map("branch_pullout_lines")
 }
 
