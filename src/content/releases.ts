@@ -75,6 +75,7 @@ export const RELEASES: ReleaseNote[] = [
       "The inventory summary cards show the peso value as well as the quantity.",
       "Sold and Official Sold no longer appear on the inventory screen.",
       "Branch Inventory opens the newer inventory view.",
+      "The new-unit count sits on the branch row next to the status number, so you can see which branch changed.",
     ],
     changes: [
       {
@@ -86,6 +87,11 @@ export const RELEASES: ReleaseNote[] = [
         type: "improvement",
         description:
           "Sold and Official Sold stay on the sales screens and no longer appear in inventory totals, status columns, or the unit list. Branch Inventory in the menu opens the newer inventory view.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The new-unit count sits on the branch row next to the status number, so you can see which branch changed.",
       },
     ],
   },

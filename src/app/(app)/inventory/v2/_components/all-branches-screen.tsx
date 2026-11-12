@@ -38,8 +38,8 @@ interface AllBranchesScreenProps {
     offPlanogram: number;
   };
   initialOffPlanogram?: boolean;
-  /** Unread units per status code. Hidden when a status has none. */
-  unreadByCode?: Record<string, number>;
+  /** Unread units for each branch and status. Hidden when that branch has none. */
+  unreadByBranchCode?: Record<string, Record<string, number>>;
   seriesSummary?: ReactNode;
 }
 
@@ -64,7 +64,7 @@ export function BranchInventoryAllBranchesScreen({
   offPlanogramBranches,
   cardAmounts,
   initialOffPlanogram = false,
-  unreadByCode = {},
+  unreadByBranchCode = {},
   seriesSummary,
 }: AllBranchesScreenProps) {
   const router = useRouter();
@@ -178,22 +178,25 @@ export function BranchInventoryAllBranchesScreen({
         branchColumn.display({
           id: `status-${status.code}`,
           header: () => (
-            <span className="inline-flex items-center justify-end">
-              <StatusCodeBadge
-                code={status.code}
-                name={status.name}
-                color={status.color}
-                codeOnly
-                className="normal-case tracking-normal"
-              />
-              <SidebarNavCountBadge
-                count={unreadByCode[status.code] ?? 0}
-                className="mt-0"
-              />
-            </span>
+            <StatusCodeBadge
+              code={status.code}
+              name={status.name}
+              color={status.color}
+              codeOnly
+              className="normal-case tracking-normal"
+            />
           ),
           enableSorting: false,
-          cell: ({ row }) => countForStatus(row.original, status.code).toLocaleString(),
+          cell: ({ row }) => {
+            const unread =
+              unreadByBranchCode[row.original.branch.id]?.[status.code] ?? 0;
+            return (
+              <span className="inline-flex items-center justify-end whitespace-nowrap">
+                {countForStatus(row.original, status.code).toLocaleString()}
+                <SidebarNavCountBadge count={unread} className="mt-0" />
+              </span>
+            );
+          },
           meta: { align: "end", mobile: "detail", className: "tabular-nums text-xs" },
         }),
       );
@@ -225,7 +228,7 @@ export function BranchInventoryAllBranchesScreen({
     );
 
     return cols;
-  }, [indexOffset, offPlanogramCounts, statusCols, unreadByCode]);
+  }, [indexOffset, offPlanogramCounts, statusCols, unreadByBranchCode]);
 
   function toggleOffPlanogram(checked: boolean) {
     setOffPlanogramOnly(checked);

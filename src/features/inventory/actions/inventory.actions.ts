@@ -407,6 +407,8 @@ export async function countStockUnitsStkAction(): Promise<number> {
 export type BranchInventoryUnreadSummary = {
   total: number;
   byCode: Record<string, number>;
+  /** Unread units keyed by branch id, then status code. */
+  byBranchCode: Record<string, Record<string, number>>;
 };
 
 /** Sidebar badge: units whose status changed after this user last opened them. */

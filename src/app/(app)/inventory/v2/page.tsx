@@ -175,6 +175,7 @@ export default async function BranchInventoryV2Page({
         singleBranch,
         approvalBranchIds,
         unreadByCode: unread.byCode,
+        unreadByBranchCode: unread.byBranchCode,
         seriesSummary: seriesPanel,
       })}
     </div>
@@ -197,6 +198,7 @@ async function renderScreen(input: {
   singleBranch: boolean;
   approvalBranchIds: string[] | null;
   unreadByCode: Record<string, number>;
+  unreadByBranchCode: Record<string, Record<string, number>>;
   seriesSummary?: ReactNode;
 }) {
   const screen = input.screen;
@@ -215,7 +217,7 @@ async function renderScreen(input: {
             }
           }
           initialOffPlanogram={input.offPlanogram}
-          unreadByCode={input.unreadByCode}
+          unreadByBranchCode={input.unreadByBranchCode}
           seriesSummary={input.seriesSummary}
         />
       );

@@ -776,7 +776,11 @@ export const inventoryService = {
     userId: string,
     isUnrestricted: boolean,
     branchId?: string,
-  ): Promise<{ total: number; byCode: Record<string, number> }> {
+  ): Promise<{
+    total: number;
+    byCode: Record<string, number>;
+    byBranchCode: Record<string, Record<string, number>>;
+  }> {
     try {
       const branchIds = await scopedBranchIds(tenantId, userId, isUnrestricted, branchId);
       const counts = await inventoryStatusSeenService.unreadCounts({
@@ -784,10 +788,14 @@ export const inventoryService = {
         userId,
         branchIds,
       });
-      return { total: counts.total, byCode: counts.byCode };
+      return {
+        total: counts.total,
+        byCode: counts.byCode,
+        byBranchCode: counts.byBranchCode,
+      };
     } catch (error) {
       logger.warn({ err: error }, "branch inventory unread summary failed");
-      return { total: 0, byCode: {} };
+      return { total: 0, byCode: {}, byBranchCode: {} };
     }
   },
 
