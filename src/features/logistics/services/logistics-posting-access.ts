@@ -12,7 +12,6 @@ export type LogisticsPostingAction =
   | "transfer.approve"
   | "transfer.reject"
   | "transfer.release"
-  | "transfer.saveShipment"
   | "transfer.receive"
   | "pullout.create"
   | "pullout.approve"
@@ -39,7 +38,6 @@ export function postingPermissionError(
     case "pullout.reject":
       return caps.canRejectTransfer ? null : DENIED;
     case "transfer.release":
-    case "transfer.saveShipment":
     case "pullout.updateList":
     case "pullout.finalize":
       return caps.canManage ? null : DENIED;

@@ -103,7 +103,7 @@ export function StockStatusDonut({ data }: StockStatusDonutProps) {
           </p>
         </div>
         <Link
-          href="/inventory"
+          href="/inventory/v2"
           className="shrink-0 text-sm font-medium text-primary hover:underline"
         >
           View inventory

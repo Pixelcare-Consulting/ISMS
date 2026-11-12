@@ -58,7 +58,7 @@ export function buildDashboardKpiItem(
         key,
         label: "Stock on hand",
         value: kpis.stockCount,
-        href: "/inventory",
+        href: "/inventory/v2",
         icon: <Warehouse />,
       };
     case "openAtr":

@@ -215,6 +215,15 @@ export function stockUnitsBranchHref(branchId: string): string {
   return `/inventory?branch=${encodeURIComponent(branchId)}`;
 }
 
+/** Branch → warehouse on older pull-outs. Newer ones end in transit and name no warehouse. */
+function pulloutRouteLabel(
+  branch: { name: string } | null | undefined,
+  warehouse: { name: string } | null | undefined,
+): string {
+  const from = branch?.name ?? "—";
+  return warehouse ? `${from} → ${warehouse.name}` : from;
+}
+
 function buildTimeline(row: SerialTraceabilityRow): SerialTimelineEvent[] {
   const events: SerialTimelineEvent[] = [];
 
@@ -319,7 +328,7 @@ function buildTimeline(row: SerialTraceabilityRow): SerialTimelineEvent[] {
       branch: pullout.branch?.name ?? null,
       status: statusBadge(pullout.statusCode),
       detail: [
-        `${pullout.branch?.name ?? "—"} → ${pullout.warehouse?.name ?? "—"}`,
+        pulloutRouteLabel(pullout.branch, pullout.warehouse),
         pullout.pulloutNo,
       ]
         .filter(Boolean)
@@ -528,7 +537,7 @@ function buildRelatedLinks(
       id: `pullout-${line.pullout.id}`,
       kind: "pullout",
       label: line.pullout.pulloutNo,
-      detail: `${line.pullout.branch?.name ?? "—"} → ${line.pullout.warehouse?.name ?? "—"}`,
+      detail: pulloutRouteLabel(line.pullout.branch, line.pullout.warehouse),
       href: `/logistics/pickups?q=${encodeURIComponent(line.pullout.pulloutNo)}`,
     });
   }

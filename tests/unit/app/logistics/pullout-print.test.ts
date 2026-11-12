@@ -125,6 +125,23 @@ describe("pulloutPrintDocument", () => {
 });
 
 describe("other shipment slips", () => {
+  it("prints a delivery or transfer slip with no waybill rows", () => {
+    const document = shipmentPrintDocument({
+      title: "Delivery",
+      documentNo: "DLV-1",
+      fields: [{ label: "Branch", value: "Branch A" }],
+      lines: [{ model: "SKU1", detail: "SN1" }],
+      lineHeaders: { model: "Model", detail: "Serial number" },
+    });
+    if (!document) throw new Error("No slip");
+
+    const html = shipmentPrintHtml(document);
+
+    expect(html).not.toContain("Waybill");
+    expect(html).not.toContain("Schedule date");
+    expect(html).toContain("Branch A");
+  });
+
   it("keeps two columns when a document has no extra columns", () => {
     const document = shipmentPrintDocument({
       title: "Transfer",

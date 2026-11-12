@@ -209,7 +209,7 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
       {
         id: "logistics",
         role: "Logistics",
-        nodeIds: ["sched", "dispatch"],
+        nodeIds: ["dispatch"],
       },
       {
         id: "branch",
@@ -218,13 +218,11 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
       },
     ],
     nodes: [
-      { id: "sched", label: "Set schedule & waybill" },
       { id: "dispatch", label: "Copy To IT / DR in SAP" },
       { id: "receive", label: "Accept in Operations" },
       { id: "resolve", label: "Resolve shortage / damage" },
     ],
     edges: [
-      { from: "sched", to: "dispatch" },
       { from: "dispatch", to: "receive" },
       { from: "receive", to: "resolve" },
     ],
@@ -288,12 +286,12 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
     title: "Pull-outs",
     tabLabel: "Pull-outs",
     summary:
-      "Bring stock back from a branch through logistics to the warehouse.",
+      "Take units out of a branch. The pull-out ends when Logistics sends it.",
     kind: "swimlane",
     lanes: [
       {
-        id: "ps",
-        role: "Product Specialist",
+        id: "branch",
+        role: "Branch",
         nodeIds: ["request"],
       },
       {
@@ -304,31 +302,19 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
       {
         id: "logistics",
         role: "Logistics",
-        nodeIds: ["pickup"],
-      },
-      {
-        id: "branch",
-        role: "Branch",
-        nodeIds: ["release_po"],
-      },
-      {
-        id: "wh",
-        role: "Warehouse",
-        nodeIds: ["validate"],
+        nodeIds: ["list", "send"],
       },
     ],
     nodes: [
-      { id: "request", label: "Create pull-out" },
-      { id: "approve", label: "Approve request" },
-      { id: "pickup", label: "Schedule pickup" },
-      { id: "release_po", label: "Release goods" },
-      { id: "validate", label: "Validate receipt" },
+      { id: "request", label: "Submit request (Reserved)" },
+      { id: "approve", label: "Approve (For pull-out)" },
+      { id: "list", label: "Save pull-out list" },
+      { id: "send", label: "Send (Pull-out in transit)" },
     ],
     edges: [
       { from: "request", to: "approve" },
-      { from: "approve", to: "pickup" },
-      { from: "pickup", to: "release_po" },
-      { from: "release_po", to: "validate" },
+      { from: "approve", to: "list" },
+      { from: "list", to: "send" },
     ],
   },
   {

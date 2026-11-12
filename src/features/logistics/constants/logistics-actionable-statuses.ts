@@ -11,7 +11,7 @@ function uniqueCodes(codes: string[]): string[] {
 
 /**
  * Delivery workflow codes needing the viewer. Approved: waiting on SAP Copy To, which
- * logistics schedules (waybill, courier) and follows up. Pending / partial: to accept.
+ * logistics follows up. Pending / partial: to accept.
  */
 export function getDeliveryActionableStatusCodes(
   capabilities: LogisticsActionCapabilities,
@@ -42,7 +42,8 @@ export function getTransferActionableStatusCodes(
 }
 
 /**
- * Pull-out codes the viewer can approve, finish, or receive on the logistics list.
+ * Pull-out codes the viewer can approve or finish on the logistics list. In transit is the
+ * end of a pull-out, so it needs nobody.
  */
 export function getPulloutActionableStatusCodes(
   capabilities: LogisticsActionCapabilities,
@@ -52,6 +53,5 @@ export function getPulloutActionableStatusCodes(
   if (capabilities.canSchedulePullout || capabilities.canManage) {
     codes.push(PULLOUT_WORKFLOW_CODE.for_pullout, PULLOUT_WORKFLOW_CODE.pending_logistics);
   }
-  if (capabilities.canCompletePullout) codes.push(PULLOUT_WORKFLOW_CODE.in_transit);
   return uniqueCodes(codes);
 }

@@ -17,7 +17,7 @@ export const STATUS_SETTINGS_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "Which tab is for which module?",
       bullets: [
-        "Inventory system status — Stock units / serial life-cycle (STK, DIT, SLD, RSV, DEF, FPO).",
+        "Inventory system status — Stock units / serial life-cycle (STK, DIT, SLD, RSV, DEF, FPO, FTR).",
         "Pull-out reason — why a pull-out was requested (Logistics → Pull-outs forms).",
         "Delivery workflow — Logistics → Deliveries (requested → accepted / rejected / partial).",
         "Transfer workflow — Logistics → Transfers (draft, pending TL, in transit, completed…).",

@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/database/client";
 
 export type UnreadStatusCount = {
+  branchId: string;
   statusCodeId: string;
   code: string;
   count: number;
@@ -57,7 +58,8 @@ export const inventoryStatusSeenRepository = {
   }): Promise<UnreadStatusCount[]> {
     if (input.branchIds.length === 0) return [];
     const rows = await prisma.$queryRaw<UnreadStatusCount[]>`
-      SELECT bi.status_code_id AS "statusCodeId",
+      SELECT bi.branch_id AS "branchId",
+             bi.status_code_id AS "statusCodeId",
              c.code AS "code",
              COUNT(*)::int AS count
       FROM branch_inventories bi
@@ -69,7 +71,7 @@ export const inventoryStatusSeenRepository = {
         AND bi.branch_id IN (${Prisma.join(input.branchIds)})
         AND bi.status_updated_at IS NOT NULL
         AND bi.status_updated_at > COALESCE(r.read_at, ${input.seenThroughAt})
-      GROUP BY bi.status_code_id, c.code
+      GROUP BY bi.branch_id, bi.status_code_id, c.code
     `;
     return rows;
   },

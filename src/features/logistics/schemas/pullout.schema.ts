@@ -1,9 +1,6 @@
 import { z } from "zod";
 
-import {
-  PULLOUT_LINE_REMARKS_MAX,
-  PULLOUT_REJECTION_REMARKS_MAX,
-} from "@/features/logistics/services/pullout-posting.planner";
+import { PULLOUT_LINE_REMARKS_MAX } from "@/features/logistics/services/pullout-posting.planner";
 
 const checklistIdList = z.array(z.string().min(1));
 
@@ -27,22 +24,3 @@ export const pulloutSchema = z.object({
 });
 
 export const PULLOUT_CREATE_INPUT_ERROR = "Choose a branch and the details for each serial";
-
-export const pulloutReceiveSchema = z.object({
-  lines: z
-    .array(
-      z.object({
-        serialNumberId: z.string().min(1),
-        warehouseLocationId: z.string().min(1),
-      }),
-    )
-    .min(1),
-});
-
-export const PULLOUT_RECEIVE_INPUT_ERROR = "Choose a warehouse location for every unit";
-
-export const pulloutLineRejectSchema = z.object({
-  remarks: z.string().trim().min(1).max(PULLOUT_REJECTION_REMARKS_MAX),
-});
-
-export const PULLOUT_LINE_REJECT_INPUT_ERROR = "Enter the reason for rejecting this unit";

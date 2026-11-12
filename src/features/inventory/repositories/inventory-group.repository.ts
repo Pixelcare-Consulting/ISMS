@@ -4,6 +4,7 @@ import type { StockUnitsWarehouseRole } from "@/features/inventory/constants/sto
 import {
   inventoryGroupAggregatesFromParts,
   inventoryGroupAggregatesFromSqlRow,
+  readGroupStatusCounts,
   type InventoryGroupCountParts,
 } from "@/features/inventory/utils/stock-units-group-aggregates";
 import { stockUnitsGroupSearchPattern } from "@/features/inventory/utils/stock-units-group-search";
@@ -84,6 +85,41 @@ type ModelGroupAggRaw = {
   status_counts?: unknown;
 };
 
+export type BranchInventoryV2ModelQtyRow = {
+  modelId: string;
+  srp: { toString(): string } | number | null;
+  totalQty: number;
+  inStockQty: number;
+  defectiveQty: number;
+  offPlanogramQty: number;
+};
+
+type BranchInventoryV2ModelQtyRaw = {
+  model_id: string;
+  srp: { toString(): string } | number | null;
+  total_qty: number | bigint;
+  stk_qty: number | bigint;
+  def_qty: number | bigint;
+  off_planogram_qty: number | bigint;
+};
+
+/** One model at a single branch, with the quantity behind each status card. */
+export type BranchInventoryV2StatusModelQtyRow = {
+  modelId: string;
+  srp: { toString(): string } | number | null;
+  totalQty: number;
+  offPlanogramQty: number;
+  qtyByStatus: Record<string, number>;
+};
+
+type BranchInventoryV2StatusModelQtyRaw = {
+  model_id: string;
+  srp: { toString(): string } | number | null;
+  total_qty: number | bigint;
+  off_planogram_qty: number | bigint;
+  status_counts?: unknown;
+};
+
 type ModelBranchSubgroupRaw = {
   branch_id: string;
   branch_name: string;
@@ -105,6 +141,50 @@ function openPendingDefectReportExistsSql(): Prisma.Sql {
       AND bdr.tenant_id = bi.tenant_id
       AND bdr.status = 'pending_inspection'
   )`;
+}
+
+/**
+ * A unit sent on a pull-out (`bi` = branch_inventories). Sending ends the pull-out with
+ * the unit still DIT on its branch row, which stays so the SAP serial sync does not
+ * re-create it as branch stock, so Branch Inventory leaves it out. A row changed after
+ * the send (a later delivery of the same serial, say) is not the sent unit any more and
+ * shows again.
+ */
+export function sentOnPulloutSql(): Prisma.Sql {
+  return Prisma.sql`EXISTS (
+    SELECT 1
+    FROM branch_pullout_lines bpl
+    INNER JOIN branch_pullouts bp ON bp.id = bpl.pullout_id
+    INNER JOIN reason_status_codes psc ON psc.id = bp.status_code_id
+    INNER JOIN reason_status_codes isc ON isc.id = bi.status_code_id
+    WHERE bpl.serial_number_id = bi.serial_number_id
+      AND bp.tenant_id = bi.tenant_id
+      AND bp.branch_id = bi.branch_id
+      AND psc.code = 'in_transit'
+      AND isc.code = 'DIT'
+      AND bpl.received_at IS NULL
+      AND bpl.rejected_at IS NULL
+      AND bi.updated_at <= bp.updated_at
+  )`;
+}
+
+/** Branch inventory ids of the units sent on a pull-out, for Prisma-built queries. */
+export async function findSentOnPulloutInventoryIds(
+  tenantId: string,
+  branchId: string,
+  modelIds: readonly string[],
+): Promise<string[]> {
+  if (modelIds.length === 0) return [];
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT bi.id
+    FROM branch_inventories bi
+    INNER JOIN serial_numbers sn ON sn.id = bi.serial_number_id
+    WHERE bi.tenant_id = ${tenantId}
+      AND bi.branch_id = ${branchId}
+      AND sn.model_id IN (${Prisma.join(modelIds)})
+      AND ${sentOnPulloutSql()}
+  `;
+  return rows.map((row) => row.id);
 }
 
 function resolveEffectiveBranchIdsForGroups(
@@ -176,6 +256,7 @@ async function buildGroupInventoryConditions(
     Prisma.sql`bi.tenant_id = ${tenantId}`,
     Prisma.sql`bi.branch_id IN (${Prisma.join(effectiveBranchIds)})`,
     Prisma.sql`bi.status_code_id IN (${Prisma.join(statusCodes.map((status) => status.id))})`,
+    Prisma.sql`NOT ${sentOnPulloutSql()}`,
   ];
 
   if (filters?.modelId) {
@@ -571,9 +652,11 @@ export const inventoryGroupRepository = {
     }
 
     const q = filters.q?.trim();
+    const hiddenIds = await findSentOnPulloutInventoryIds(tenantId, filters.branchId, [filters.modelId]);
     const andParts: Prisma.BranchInventoryWhereInput[] = [
       {
         tenantId,
+        ...(hiddenIds.length > 0 ? { id: { notIn: hiddenIds } } : {}),
         branchId: filters.branchId,
         serialNumber: {
           modelId: filters.modelId,
@@ -627,5 +710,110 @@ export const inventoryGroupRepository = {
     ]);
 
     return toPaginatedResult(items as InventoryListRow[], total, page, limit);
+  },
+
+  /**
+   * One row per model for the v2 home cards.
+   * `statusCodeIds` must already omit Sold and Official Sold.
+   * In-stock qty is stocked-in STK, matching the STK column. Total includes every
+   * remaining status, including STK that is not stocked in. Off planogram is that
+   * same set where the model is not on the branch planogram.
+   */
+  async aggregateBranchInventoryV2ModelQty(
+    tenantId: string,
+    branchIds: string[],
+    statusCodeIds: readonly string[],
+  ): Promise<BranchInventoryV2ModelQtyRow[]> {
+    if (branchIds.length === 0 || statusCodeIds.length === 0) return [];
+
+    const stockedIn = stockedInSql();
+    const rows = await prisma.$queryRaw<BranchInventoryV2ModelQtyRaw[]>`
+      SELECT
+        pm.id AS model_id,
+        pm.srp AS srp,
+        COUNT(*)::int AS total_qty,
+        COUNT(*) FILTER (WHERE rsc.code = 'STK' AND ${stockedIn})::int AS stk_qty,
+        COUNT(*) FILTER (WHERE rsc.code = 'DEF')::int AS def_qty,
+        COUNT(*) FILTER (
+          WHERE NOT EXISTS (
+            SELECT 1
+            FROM branch_planograms bp
+            WHERE bp.branch_id = bi.branch_id
+              AND bp.model_id = sn.model_id
+          )
+        )::int AS off_planogram_qty
+      FROM branch_inventories bi
+      INNER JOIN serial_numbers sn ON sn.id = bi.serial_number_id
+      INNER JOIN product_models pm ON pm.id = sn.model_id
+      INNER JOIN reason_status_codes rsc ON rsc.id = bi.status_code_id
+      WHERE bi.tenant_id = ${tenantId}
+        AND bi.branch_id IN (${Prisma.join(branchIds)})
+        AND bi.status_code_id IN (${Prisma.join([...statusCodeIds])})
+        AND NOT ${sentOnPulloutSql()}
+      GROUP BY pm.id, pm.srp
+    `;
+
+    return rows.map((row) => ({
+      modelId: row.model_id,
+      srp: row.srp,
+      totalQty: Number(row.total_qty),
+      inStockQty: Number(row.stk_qty),
+      defectiveQty: Number(row.def_qty),
+      offPlanogramQty: Number(row.off_planogram_qty),
+    }));
+  },
+
+  /**
+   * One row per model for a single branch's status cards.
+   * `statusCodes` must already omit Sold and Official Sold.
+   * STK in `qtyByStatus` is stocked-in only, matching the Stock card. `totalQty`
+   * still includes stock that is not stocked in. Off planogram is the same set
+   * where the model is not on this branch's planogram.
+   */
+  async aggregateBranchInventoryV2StatusQty(
+    tenantId: string,
+    branchId: string,
+    statusCodes: readonly InventoryGroupStatusCodeRef[],
+  ): Promise<BranchInventoryV2StatusModelQtyRow[]> {
+    if (!branchId || statusCodes.length === 0) return [];
+
+    const stockedIn = stockedInSql();
+    const statusCountArgs = statusCodes.flatMap((status) => [
+      Prisma.sql`CAST(${status.code} AS text)`,
+      status.code === "STK"
+        ? Prisma.sql`COUNT(*) FILTER (WHERE bi.status_code_id = CAST(${status.id} AS text) AND ${stockedIn})::int`
+        : Prisma.sql`COUNT(*) FILTER (WHERE bi.status_code_id = CAST(${status.id} AS text))::int`,
+    ]);
+    const rows = await prisma.$queryRaw<BranchInventoryV2StatusModelQtyRaw[]>`
+      SELECT
+        pm.id AS model_id,
+        pm.srp AS srp,
+        COUNT(*)::int AS total_qty,
+        COUNT(*) FILTER (
+          WHERE NOT EXISTS (
+            SELECT 1
+            FROM branch_planograms bp
+            WHERE bp.branch_id = bi.branch_id
+              AND bp.model_id = sn.model_id
+          )
+        )::int AS off_planogram_qty,
+        jsonb_build_object(${Prisma.join(statusCountArgs)}) AS status_counts
+      FROM branch_inventories bi
+      INNER JOIN serial_numbers sn ON sn.id = bi.serial_number_id
+      INNER JOIN product_models pm ON pm.id = sn.model_id
+      WHERE bi.tenant_id = ${tenantId}
+        AND bi.branch_id = ${branchId}
+        AND bi.status_code_id IN (${Prisma.join(statusCodes.map((status) => status.id))})
+        AND NOT ${sentOnPulloutSql()}
+      GROUP BY pm.id, pm.srp
+    `;
+
+    return rows.map((row) => ({
+      modelId: row.model_id,
+      srp: row.srp,
+      totalQty: Number(row.total_qty),
+      offPlanogramQty: Number(row.off_planogram_qty),
+      qtyByStatus: readGroupStatusCounts(row.status_counts),
+    }));
   },
 };

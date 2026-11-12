@@ -3,13 +3,9 @@ import {
   inventoryApprovalLedger,
   type InventoryApprovalDocument,
 } from "@/features/inventory-approvals/services/inventory-approval-ledger";
+import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
 import {
-  assertExclusivePlacement,
-  loadCurrentPlacements,
-  lockSerialNumbers,
-} from "@/features/inventory/services/serial-placement";
-import { assertExclusiveClaim } from "@/features/logistics/services/delivery-posting.planner";
-import {
+  PULLOUT_ATTACHMENT_OPEN_CODES,
   pulloutAttachmentError,
 } from "@/features/logistics/constants/pullout-attachments";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
@@ -21,13 +17,10 @@ import {
 import type { AllocatableSerial, HoldCode } from "@/features/logistics/services/posting-planner-types";
 import {
   planPulloutApprove,
-  planPulloutReceive,
   planPulloutCreate,
-  pulloutDestination,
   planPulloutFinalize,
   planPulloutLineApprove,
   planPulloutLineDelete,
-  planPulloutLineReject,
   planPulloutReject,
   planPulloutUpdateList,
   PULLOUT_DEFECTIVE_REASON_CODE,
@@ -37,8 +30,6 @@ import {
   pulloutReasonError,
   type PulloutConditionView,
   type PulloutDecisionLineView,
-  type PulloutReceipt,
-  type PulloutReceivePlan,
   type PulloutStatus,
 } from "@/features/logistics/services/pullout-posting.planner";
 import {
@@ -54,7 +45,6 @@ import {
   type PostingActor,
   type PostingDb,
 } from "@/features/logistics/services/posting-support";
-import { OPEN_PULLOUT_STATUS_CODES } from "@/features/logistics/services/posting-planner-types";
 import { STOCK_COUNT_FREEZE_SESSION_STATUSES } from "@/features/stock-audit/constants/stock-count-workflow";
 import { prisma } from "@/lib/database/client";
 import { buildPulloutAttachmentPath, getObjectStorage } from "@/lib/storage";
@@ -93,23 +83,9 @@ export interface PulloutCreateInput {
   notes?: string;
 }
 
-export interface PulloutDestination {
-  id: string;
-  name: string;
-  code: string;
-}
-
 export interface PulloutAttachment {
   id: string;
   fileName: string;
-}
-
-export interface PulloutReceiveInput {
-  lines: PulloutReceipt[];
-}
-
-export interface PulloutLineRejectInput {
-  remarks: string;
 }
 
 export interface PulloutDetail {
@@ -126,10 +102,9 @@ export interface PulloutDetail {
   actualScheduledDate: string | null;
   status: { code: string; name: string; color: string | null };
   branch: { id: string; name: string };
-  warehouse: { id: string; name: string; code: string };
+  /** Only on pull-outs made before receiving was dropped. */
+  warehouse: { id: string; name: string; code: string } | null;
   warehouseLocation: { name: string; code: string } | null;
-  /** Locations of the destination warehouse. Filled while the pull-out can be received. */
-  receiveLocations: { id: string; code: string; name: string; isDefault: boolean }[];
   /** Set on pull-outs made before the form dropped the reason. */
   reason: { id: string; code: string; name: string; color: string | null } | null;
   attachments: PulloutAttachment[];
@@ -147,8 +122,7 @@ export interface PulloutDetail {
     classificationNames: string[];
     unitPackingConditionNames: string[];
     accessoryCompletenessNames: string[];
-    /** The unit's location before it left the branch, offered first on receipt. */
-    recordedLocationId: string | null;
+    /** Receipt and in-transit rejection only exist on pull-outs from before receiving was dropped. */
     receivedAt: string | null;
     receivedByName: string | null;
     receivedLocation: { code: string; name: string } | null;
@@ -594,59 +568,7 @@ async function approveInTx(
   });
 }
 
-const RECEIVE_CLAIM_LOST = "Some units are no longer in transit at the branch";
-
-/** Id to label, refusing any location outside the pull-out's destination warehouse. */
-async function loadReceiveLocations(
-  tenantId: string,
-  warehouseId: string,
-  locationIds: readonly string[],
-): Promise<Map<string, string>> {
-  const ids = [...new Set(locationIds)];
-  const rows = await prisma.warehouseLocation.findMany({
-    where: { id: { in: ids }, warehouseId, warehouse: { tenantId } },
-    select: { id: true, code: true, warehouse: { select: { name: true } } },
-  });
-  if (rows.length !== ids.length) throw new Error("That location is not in the destination warehouse");
-  return new Map(rows.map((row) => [row.id, `${row.warehouse.name} / ${row.code}`]));
-}
-
-function serialsByLocation(lines: PulloutReceivePlan["lines"]): Map<string, string[]> {
-  const grouped = new Map<string, string[]>();
-  for (const line of lines) {
-    const ids = grouped.get(line.warehouseLocationId) ?? [];
-    ids.push(line.serialNumberId);
-    grouped.set(line.warehouseLocationId, ids);
-  }
-  return grouped;
-}
-
-async function resolveDestination(tenantId: string, branchId: string): Promise<PulloutDestination> {
-  const select = { id: true, name: true, code: true, deletedAt: true } as const;
-  const branch = await prisma.branch.findFirst({
-    where: { id: branchId, tenantId, deletedAt: null },
-    select: { name: true, primaryWarehouse: { select } },
-  });
-  if (!branch) throw new Error("Branch not found");
-
-  const main = await prisma.warehouse.findFirst({
-    where: { tenantId, isMain: true, deletedAt: null },
-    select,
-    orderBy: { createdAt: "asc" },
-  });
-  const destination = pulloutDestination(branch.primaryWarehouse, main);
-  if (!destination) {
-    throw new Error(`${branch.name} has no primary warehouse and no main warehouse is set.`);
-  }
-  return { id: destination.id, name: destination.name, code: destination.code };
-}
-
 export const pulloutPostingService = {
-  async destination(actor: PostingActor, branchId: string): Promise<PulloutDestination> {
-    await authorizePosting(actor, "pullout.create", branchId);
-    return resolveDestination(actor.tenantId, branchId);
-  },
-
   async listSerials(
     actor: PostingActor,
     branchId: string,
@@ -770,27 +692,17 @@ export const pulloutPostingService = {
           },
           select: {
             serialNumberId: true,
-            warehouseLocationId: true,
             statusCode: { select: { code: true } },
           },
         })
       : [];
     const inventoryBySerial = new Map(inventory.map((row) => [row.serialNumberId, row]));
-    const [history, receiveLocations] = await Promise.all([
-      prisma.auditLog.findMany({
-        where: { tenantId: actor.tenantId, entityType: "BranchPullout", entityId: pullout.id },
-        orderBy: { createdAt: "desc" },
-        take: 40,
-        select: { id: true, action: true, createdAt: true, user: { select: { name: true } } },
-      }),
-      pullout.statusCode.code === PULLOUT_WORKFLOW_CODE.in_transit
-        ? prisma.warehouseLocation.findMany({
-            where: { warehouseId: pullout.warehouse.id },
-            select: { id: true, code: true, name: true, isDefault: true },
-            orderBy: { code: "asc" },
-          })
-        : Promise.resolve([]),
-    ]);
+    const history = await prisma.auditLog.findMany({
+      where: { tenantId: actor.tenantId, entityType: "BranchPullout", entityId: pullout.id },
+      orderBy: { createdAt: "desc" },
+      take: 40,
+      select: { id: true, action: true, createdAt: true, user: { select: { name: true } } },
+    });
     return {
       id: pullout.id,
       pulloutNo: pullout.pulloutNo,
@@ -810,7 +722,6 @@ export const pulloutPostingService = {
       branch: pullout.branch,
       warehouse: pullout.warehouse,
       warehouseLocation: pullout.warehouseLocation,
-      receiveLocations,
       reason: pullout.reasonStatusCode,
       lines: pullout.lines.map((line) => ({
         serialNumberId: line.serialNumberId,
@@ -834,7 +745,6 @@ export const pulloutPostingService = {
         accessoryCompletenessNames: savedNames(
           line.accessoryCompletenesses.map((row) => row.accessoryCompleteness.name),
         ),
-        recordedLocationId: inventoryBySerial.get(line.serialNumberId)?.warehouseLocationId ?? null,
         receivedAt: line.receivedAt?.toISOString() ?? null,
         receivedByName: displayName(line.receivedBy?.name),
         receivedLocation: line.receivedLocation,
@@ -854,15 +764,10 @@ export const pulloutPostingService = {
   async create(actor: PostingActor, input: PulloutCreateInput) {
     await authorizePosting(actor, "pullout.create", input.branchId);
     const checklist = checklistBySerial(input.lines);
-    const destination = await resolveDestination(actor.tenantId, input.branchId);
     const problemNames = await assertActiveChecklist(actor.tenantId, input.lines);
 
     const serials = await loadAllocatable(actor.tenantId, input.branchId, [...checklist.keys()]);
-    const plan = planPulloutCreate({
-      branchId: input.branchId,
-      warehouseId: destination.id,
-      serials,
-    });
+    const plan = planPulloutCreate({ branchId: input.branchId, serials });
     if (!plan.ok) throw new Error(plan.error);
     assertLineDetails(plan.lines, checklist);
     const codes = await inventoryIds(actor.tenantId);
@@ -894,7 +799,6 @@ export const pulloutPostingService = {
           data: {
             tenantId: actor.tenantId,
             branchId: input.branchId,
-            warehouseId: destination.id,
             pulloutNo,
             statusCodeId,
             notes: input.notes?.trim() || null,
@@ -1105,7 +1009,7 @@ export const pulloutPostingService = {
     });
     if (!pullout) throw new Error("Pull-out not found");
     await authorizePosting(actor, "pullout.create", pullout.branchId);
-    if (!(OPEN_PULLOUT_STATUS_CODES as readonly string[]).includes(pullout.statusCode.code)) {
+    if (!PULLOUT_ATTACHMENT_OPEN_CODES.includes(pullout.statusCode.code)) {
       throw new Error("Files can only be attached to an open pull-out");
     }
     const refused = pulloutAttachmentError({
@@ -1251,7 +1155,6 @@ export const pulloutPostingService = {
     actor: PostingActor,
     input: {
       pulloutId: string;
-      warehouseId?: string;
       waybillNo?: string | null;
       courierName?: string | null;
       scheduledAt?: Date | null;
@@ -1286,12 +1189,6 @@ export const pulloutPostingService = {
     const fromIds = await Promise.all(
       (["for_pullout", "pending_logistics"] as const).map((code) => workflowId(actor.tenantId, code)),
     );
-    const warehouseId = input.warehouseId ?? current.warehouseId;
-    const warehouse = await prisma.warehouse.findFirst({
-      where: { id: warehouseId, tenantId: actor.tenantId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!warehouse) throw new Error("Choose a warehouse");
 
     try {
       await prisma.$transaction(async (tx) => {
@@ -1380,7 +1277,6 @@ export const pulloutPostingService = {
         await tx.branchPullout.update({
           where: { id: fresh.id },
           data: {
-            warehouseId,
             waybillNo: input.waybillNo === undefined ? fresh.waybillNo : input.waybillNo?.trim() || null,
             courierName:
               input.courierName === undefined ? fresh.courierName : input.courierName?.trim() || null,
@@ -1480,10 +1376,6 @@ export const pulloutPostingService = {
             status: "DIT",
             details: `In transit on ${fresh.pulloutNo}`,
           });
-          await inventoryApprovalLedger.recordRequested(tx, approvalDocument(actor.tenantId, fresh, "RECEIVING"), {
-            requestedById: actor.userId,
-            units: plan.moves.map((move) => ({ serialNumberId: move.serialNumberId })),
-          });
           await tx.auditLog.create({
             data: {
               tenantId: actor.tenantId,
@@ -1506,235 +1398,5 @@ export const pulloutPostingService = {
       status: "in_transit" as const,
       idempotent: preview.idempotent,
     };
-  },
-
-  /**
-   * Warehouse receipt, ISMS only: SAP is not touched. Each unit's in-transit branch row is
-   * replaced by a warehouse row, which is what stops the SAP serial sync putting it back at
-   * the branch (`planReplicate` leaves anything with a warehouse placement alone).
-   */
-  async complete(actor: PostingActor, pulloutId: string, input: PulloutReceiveInput) {
-    await authorizePosting(actor, "pullout.complete", null);
-    const current = await loadPullout(prisma, actor.tenantId, pulloutId);
-    if (!current) throw new Error("Pull-out not found");
-    const preview = planPulloutReceive({
-      status: current.status,
-      lines: current.lines,
-      receipts: input.lines,
-    });
-    if (!preview.ok) throw new Error(preview.error);
-
-    const locationById = await loadReceiveLocations(
-      actor.tenantId,
-      current.warehouseId,
-      preview.lines.map((line) => line.warehouseLocationId),
-    );
-    const codes = await inventoryIds(actor.tenantId);
-    const inTransitId = await workflowId(actor.tenantId, "in_transit");
-    const completedId = await workflowId(actor.tenantId, "completed");
-
-    try {
-      return await prisma.$transaction(async (tx) => {
-        const fresh = await loadPullout(tx, actor.tenantId, pulloutId);
-        if (!fresh) throw new Error("Pull-out not found");
-        const plan = planPulloutReceive({
-          status: fresh.status,
-          lines: fresh.lines,
-          receipts: input.lines,
-        });
-        if (!plan.ok) throw new Error(plan.error);
-
-        const serialIds = plan.lines.map((line) => line.serialNumberId);
-        await lockSerialNumbers(tx, serialIds);
-        await assertMovable(actor.tenantId, serialIds);
-        const placements = await loadCurrentPlacements(tx, serialIds);
-        assertExclusivePlacement({
-          placements,
-          replacingIds: placements
-            .filter(
-              (row) =>
-                row.table === "branch" && row.branchId === fresh.branchId && row.statusCode === "DIT",
-            )
-            .map((row) => row.id),
-        });
-
-        const removed = await tx.branchInventory.deleteMany({
-          where: {
-            tenantId: actor.tenantId,
-            branchId: fresh.branchId,
-            serialNumberId: { in: serialIds },
-            statusCodeId: codes.DIT,
-          },
-        });
-        assertExclusiveClaim(removed.count, serialIds.length, RECEIVE_CLAIM_LOST);
-
-        const now = new Date();
-        await tx.warehouseInventory.createMany({
-          data: plan.lines.map((line) => ({
-            tenantId: actor.tenantId,
-            serialNumberId: line.serialNumberId,
-            warehouseLocationId: line.warehouseLocationId,
-            systemStatus: line.priorCode,
-            systemUpdatedAt: now,
-          })),
-        });
-
-        for (const [warehouseLocationId, ids] of serialsByLocation(plan.lines)) {
-          const claimed = await tx.branchPulloutLine.updateMany({
-            where: { pulloutId, serialNumberId: { in: ids }, receivedAt: null },
-            data: {
-              receivedAt: now,
-              receivedById: actor.userId,
-              receivedLocationId: warehouseLocationId,
-            },
-          });
-          assertExclusiveClaim(claimed.count, ids.length, RECEIVE_CLAIM_LOST);
-        }
-
-        await tx.serialNumberHistory.createMany({
-          data: plan.lines.map((line) => ({
-            tenantId: actor.tenantId,
-            serialNumberId: line.serialNumberId,
-            txnType: "pullout" as const,
-            details: `Received on ${fresh.pulloutNo} at ${locationById.get(line.warehouseLocationId)}`,
-            status: line.priorCode,
-            createdById: actor.userId,
-          })),
-        });
-        await inventoryApprovalLedger.recordDecision(tx, approvalDocument(actor.tenantId, fresh, "RECEIVING"), {
-          serialNumberIds: serialIds,
-          status: "APPROVED",
-          decidedById: actor.userId,
-          decidedAt: now,
-        });
-
-        if (plan.completes) {
-          await claimHeader(tx, "branchPullout", {
-            id: pulloutId,
-            tenantId: actor.tenantId,
-            fromStatusCodeIds: [inTransitId],
-            toStatusCodeId: completedId,
-            message: "This pull-out was updated by someone else",
-          });
-        }
-        await tx.auditLog.create({
-          data: {
-            tenantId: actor.tenantId,
-            userId: actor.userId,
-            action: plan.completes ? "pullout.completed" : "pullout.received",
-            entityType: "BranchPullout",
-            entityId: pulloutId,
-            metadata: {
-              pulloutNo: fresh.pulloutNo,
-              serialCount: plan.lines.length,
-              units: plan.lines.map((line) => ({
-                serialNumberId: line.serialNumberId,
-                condition: line.priorCode,
-                location: locationById.get(line.warehouseLocationId),
-              })),
-            },
-          },
-        });
-        return { id: pulloutId, pulloutNo: fresh.pulloutNo, completed: plan.completes };
-      });
-    } catch (error) {
-      throw postingError(error, "Failed to receive the units");
-    }
-  },
-
-  /** Refuses one in-transit unit. See `planPulloutLineReject` for where it goes. */
-  async rejectLine(
-    actor: PostingActor,
-    pulloutId: string,
-    serialNumberId: string,
-    input: PulloutLineRejectInput,
-  ) {
-    await authorizePosting(actor, "pullout.complete", null);
-    const remarks = input.remarks.trim();
-    const current = await loadPullout(prisma, actor.tenantId, pulloutId);
-    if (!current) throw new Error("Pull-out not found");
-    const preview = planPulloutLineReject({ ...current, serialNumberId, remarks });
-    if (!preview.ok) throw new Error(preview.error);
-
-    const codes = await inventoryIds(actor.tenantId);
-    const inTransitId = await workflowId(actor.tenantId, "in_transit");
-    const closedIds = {
-      completed: await workflowId(actor.tenantId, "completed"),
-      cancelled: await workflowId(actor.tenantId, "cancelled"),
-    };
-
-    try {
-      await prisma.$transaction(async (tx) => {
-        await lockSerialNumbers(tx, [serialNumberId]);
-        const fresh = await loadPullout(tx, actor.tenantId, pulloutId);
-        if (!fresh) throw new Error("Pull-out not found");
-        const plan = planPulloutLineReject({ ...fresh, serialNumberId, remarks });
-        if (!plan.ok) throw new Error(plan.error);
-        await assertMovable(actor.tenantId, [serialNumberId]);
-
-        await claimInventory(tx, {
-          tenantId: actor.tenantId,
-          branchId: fresh.branchId,
-          serialNumberIds: [serialNumberId],
-          fromStatusCodeId: codes.DIT,
-          toStatusCodeId: codes[plan.restoreCode],
-          userId: actor.userId,
-          message: RECEIVE_CLAIM_LOST,
-        });
-        const claimed = await tx.branchPulloutLine.updateMany({
-          where: { pulloutId, serialNumberId, receivedAt: null, rejectedAt: null },
-          data: {
-            rejectedAt: new Date(),
-            rejectedById: actor.userId,
-            rejectionRemarks: remarks,
-          },
-        });
-        assertExclusiveClaim(claimed.count, 1, RECEIVE_CLAIM_LOST);
-
-        await writeHistory(tx, {
-          tenantId: actor.tenantId,
-          userId: actor.userId,
-          pulloutNo: fresh.pulloutNo,
-          serialNumberIds: [serialNumberId],
-          status: plan.restoreCode,
-          details: `Rejected on ${fresh.pulloutNo}, back at the branch: ${remarks}`,
-        });
-        await inventoryApprovalLedger.recordDecision(tx, approvalDocument(actor.tenantId, fresh, "RECEIVING"), {
-          serialNumberIds: [serialNumberId],
-          status: "REJECTED",
-          decidedById: actor.userId,
-          remarks,
-        });
-        if (plan.closesAs) {
-          await claimHeader(tx, "branchPullout", {
-            id: pulloutId,
-            tenantId: actor.tenantId,
-            fromStatusCodeIds: [inTransitId],
-            toStatusCodeId: closedIds[plan.closesAs],
-            message: "This pull-out was updated by someone else",
-          });
-        }
-        const closingAction = plan.closesAs === "completed" ? "pullout.completed" : "pullout.rejected";
-        await tx.auditLog.create({
-          data: {
-            tenantId: actor.tenantId,
-            userId: actor.userId,
-            action: plan.closesAs ? closingAction : "pullout.line_rejected",
-            entityType: "BranchPullout",
-            entityId: pulloutId,
-            metadata: {
-              pulloutNo: fresh.pulloutNo,
-              serialNo: fresh.lines.find((line) => line.serialNumberId === serialNumberId)?.serialNo,
-              condition: plan.restoreCode,
-              remarks,
-            },
-          },
-        });
-      });
-    } catch (error) {
-      throw postingError(error, "Failed to reject this unit");
-    }
-
-    return { id: current.id };
   },
 };

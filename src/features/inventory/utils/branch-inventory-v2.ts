@@ -1,3 +1,36 @@
+import type { InventoryGroupAggregates } from "@/features/inventory/utils/stock-units-group-aggregates";
+
+/** Left on Sales and Official Sales. Hidden only on Branch Inventory v2. */
+export const BRANCH_INVENTORY_V2_HIDDEN_STATUS_CODES = ["SLD", "OFS"] as const;
+
+const HIDDEN_BRANCH_INVENTORY_V2_STATUS_CODES = new Set<string>(
+  BRANCH_INVENTORY_V2_HIDDEN_STATUS_CODES,
+);
+
+export function isBranchInventoryV2HiddenStatus(code: string): boolean {
+  return HIDDEN_BRANCH_INVENTORY_V2_STATUS_CODES.has(code.trim().toUpperCase());
+}
+
+/**
+ * Drops Sold and Official Sold from a v2 branch or model rollup.
+ * Totals that sum the remaining status chips then match the columns still on screen.
+ */
+export function omitBranchInventoryV2HiddenStatusCounts(
+  counts: InventoryGroupAggregates,
+): InventoryGroupAggregates {
+  return {
+    ...counts,
+    statuses: counts.statuses.filter(
+      (status) => !isBranchInventoryV2HiddenStatus(status.code),
+    ),
+    statusCounts: Object.fromEntries(
+      Object.entries(counts.statusCounts).filter(
+        ([code]) => !isBranchInventoryV2HiddenStatus(code),
+      ),
+    ),
+  };
+}
+
 export type BranchAttentionSource = {
   branch: { id: string; name: string; sapCode: string };
   counts: {

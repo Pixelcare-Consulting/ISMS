@@ -20,14 +20,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   approveInventoryDefectAction,
   rejectInventoryDefectAction,
   reportInventoryDefectAction,
 } from "@/features/inventory/actions/defect.actions";
 import { updateInventoryStatusAction } from "@/features/inventory/actions/inventory.actions";
+import { DefectProblemChecklist } from "@/features/inventory/components/defect-problem-checklist";
 import {
   useNotifyInventoryListRefresh,
   type InventoryStatusSnapshot,
@@ -145,7 +144,7 @@ export function InventoryUnitStatusCell({
   async function submitDefect() {
     const reason = problem.trim();
     if (!reason) {
-      toast.error("Describe the problem before sending");
+      toast.error("Choose at least one problem before sending");
       return;
     }
     setBusy(true);
@@ -277,20 +276,10 @@ export function InventoryUnitStatusCell({
           <DialogHeader>
             <DialogTitle>Report a defect</DialogTitle>
             <DialogDescription>
-              Describe the problem. The unit stays as it is until the branch team leader approves.
+              Choose the problem. The unit stays as it is until the branch team leader approves.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor={`defect-problem-${unit.id}`}>Problem description</Label>
-            <Textarea
-              id={`defect-problem-${unit.id}`}
-              value={problem}
-              maxLength={500}
-              required
-              placeholder="What is wrong with this unit?"
-              onChange={(event) => setProblem(event.target.value)}
-            />
-          </div>
+          <DefectProblemChecklist disabled={busy} onReasonChange={setProblem} />
           <DialogFooter>
             <Button
               type="button"

@@ -30,7 +30,6 @@ import {
   lockDeliveryRow,
   txWorkflowCodeId,
 } from "@/features/logistics/services/delivery-settle";
-import type { LogisticsShipment } from "@/features/logistics/lib/shipment";
 import type { PostingActor, PostingDb } from "@/features/logistics/services/posting-support";
 
 /**
@@ -205,7 +204,6 @@ export interface DeliveryDetail {
   /** DR#: the IT's DCS Remarks, or the DR's number. */
   drNo: string | null;
   drDate: string | null;
-  shipment: LogisticsShipment;
   status: { code: string; name: string; color: string | null };
   branch: { name: string };
   order: {
@@ -251,10 +249,6 @@ export const deliveryPostingService = {
         sapDocNo: true,
         drNo: true,
         drDate: true,
-        waybillNo: true,
-        courierName: true,
-        scheduledAt: true,
-        scheduledBy: { select: { name: true } },
         branchId: true,
         sourceWarehouseId: true,
         branch: { select: { name: true } },
@@ -344,12 +338,6 @@ export const deliveryPostingService = {
       sapDocNo: delivery.sapDocNo,
       drNo: delivery.drNo,
       drDate: delivery.drDate ? delivery.drDate.toISOString() : null,
-      shipment: {
-        waybillNo: delivery.waybillNo,
-        courierName: delivery.courierName,
-        scheduledAt: delivery.scheduledAt ? delivery.scheduledAt.toISOString() : null,
-        scheduledByName: delivery.scheduledBy?.name.trim() || null,
-      },
       status: delivery.statusCode,
       branch: { name: delivery.branch.name },
       order: delivery.order
@@ -387,58 +375,6 @@ export const deliveryPostingService = {
         userName: row.user?.name || null,
       })),
     };
-  },
-
-  /** Saves waybill, courier, and schedule date. Does not move stock or change status. */
-  async saveShipment(
-    actor: PostingActor,
-    deliveryId: string,
-    input: { waybillNo: string; courierName: string; scheduledAt: Date },
-  ) {
-    const delivery = await prisma.branchDelivery.findFirst({
-      where: { id: deliveryId, tenantId: actor.tenantId },
-      select: {
-        id: true,
-        deliveryNo: true,
-        branchId: true,
-        sourceWarehouseId: true,
-        statusCode: { select: { code: true } },
-      },
-    });
-    if (!delivery) throw new Error("Delivery not found");
-    await authorizeDeliveryScope(actor, {
-      branchId: delivery.branchId,
-      sourceWarehouseId: delivery.sourceWarehouseId,
-    });
-    if (delivery.statusCode.code === DELIVERY_WORKFLOW_CODE.rejected) {
-      throw new Error("This delivery is closed");
-    }
-
-    await prisma.branchDelivery.update({
-      where: { id: delivery.id },
-      data: {
-        waybillNo: input.waybillNo,
-        courierName: input.courierName,
-        scheduledAt: input.scheduledAt,
-        scheduledById: actor.userId,
-      },
-    });
-    await prisma.auditLog.create({
-      data: {
-        tenantId: actor.tenantId,
-        userId: actor.userId,
-        action: "delivery.shipment_saved",
-        entityType: "BranchDelivery",
-        entityId: delivery.id,
-        metadata: {
-          deliveryNo: delivery.deliveryNo,
-          waybillNo: input.waybillNo,
-          courierName: input.courierName,
-          scheduledAt: input.scheduledAt.toISOString().slice(0, 10),
-        },
-      },
-    });
-    return { id: delivery.id };
   },
 
   /** Serials on a dispatched delivery, split by whether the branch has received them. */

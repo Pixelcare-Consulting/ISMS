@@ -81,7 +81,32 @@ describe("inventoryGroupRepository.listBranchGroups", () => {
 });
 
 describe("inventoryGroupRepository.listGroupSerials", () => {
+  it("leaves out units sent on a pull-out", async () => {
+    queryRaw.mockResolvedValueOnce([{ id: "inv-sent" }]);
+    findMany.mockResolvedValue([]);
+    count.mockResolvedValue(0);
+
+    await inventoryGroupRepository.listGroupSerials(
+      "t1",
+      ["b1"],
+      { page: 1, limit: 25 },
+      { branchId: "b1", modelId: "m1" },
+      [{ id: "dit", code: "DIT" }],
+    );
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            expect.objectContaining({ id: { notIn: ["inv-sent"] }, branchId: "b1" }),
+          ]),
+        }),
+      }),
+    );
+  });
+
   it("scopes serial rows to branch, model, and grouped status codes", async () => {
+    queryRaw.mockResolvedValueOnce([]);
     findMany.mockResolvedValue([]);
     count.mockResolvedValue(0);
 

@@ -69,10 +69,18 @@ export const TRANSFER_SETTLED_CODES = [
   TRANSFER_WORKFLOW_CODE.accepted,
   TRANSFER_WORKFLOW_CODE.completed,
 ] as const;
+/** In transit is where a pull-out ends: nothing receives the units. */
 export const PULLOUT_SETTLED_CODES = [
+  PULLOUT_WORKFLOW_CODE.in_transit,
   PULLOUT_WORKFLOW_CODE.pulled_out,
   PULLOUT_WORKFLOW_CODE.completed,
 ] as const;
+
+/** Steps after In transit, shown only on pull-outs that reached them before receiving was dropped. */
+export const PULLOUT_LEGACY_AFTER_TRANSIT_CODES: readonly string[] = [
+  PULLOUT_WORKFLOW_CODE.pulled_out,
+  PULLOUT_WORKFLOW_CODE.completed,
+];
 
 export interface WorkflowStatusOption {
   code: string;

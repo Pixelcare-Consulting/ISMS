@@ -59,6 +59,11 @@ const nextConfig: NextConfig = {
         destination: "/settings/planning/runs",
         permanent: false,
       },
+      {
+        source: "/inventory",
+        destination: "/inventory/v2",
+        permanent: false,
+      },
     ];
   },
 };

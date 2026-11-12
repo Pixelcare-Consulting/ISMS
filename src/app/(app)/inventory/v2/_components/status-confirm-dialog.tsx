@@ -11,8 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { DefectProblemChecklist } from "@/features/inventory/components/defect-problem-checklist";
 import {
   branchStatusTargets,
   projectDisplayUnitMove,
@@ -53,7 +52,7 @@ const TARGET_COPY: Record<
   DEF: {
     kind: "defect",
     title: "Defective (DEF)",
-    detail: "Asks for the problem. Status stays until the team leader approves.",
+    detail: "Choose the problem from the checklist. Status stays until the team leader approves.",
   },
 };
 
@@ -155,7 +154,10 @@ export function StatusConfirmDialog({
                 key={target}
                 type="button"
                 disabled={busy}
-                onClick={() => setKind(copy.kind)}
+                onClick={() => {
+                  if (copy.kind !== kind) setReason("");
+                  setKind(copy.kind);
+                }}
                 className={cn(
                   "rounded-xl border p-4 text-left transition-colors",
                   selected &&
@@ -190,17 +192,7 @@ export function StatusConfirmDialog({
         </div>
 
         {kind === "defect" ? (
-          <div className="space-y-2">
-            <Label htmlFor="v2-defect-reason">Reason for defective report</Label>
-            <Textarea
-              id="v2-defect-reason"
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-              placeholder="Describe what is wrong with these units"
-              maxLength={500}
-              rows={3}
-            />
-          </div>
+          <DefectProblemChecklist disabled={busy} onReasonChange={setReason} />
         ) : null}
 
         <div className="rounded-lg border border-amber-200 bg-amber-50/90 px-3 py-3 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
@@ -241,7 +233,7 @@ export function StatusConfirmDialog({
                 "bg-teal-600 hover:bg-teal-700 dark:bg-teal-500",
               kind === "defect" && "bg-rose-700 hover:bg-rose-800 dark:bg-rose-600",
             )}
-            onClick={() => onConfirm(kind, reason.trim())}
+            onClick={() => onConfirm(kind, kind === "defect" ? reason.trim() : "")}
           >
             {confirmLabel(kind, busy)}
           </Button>

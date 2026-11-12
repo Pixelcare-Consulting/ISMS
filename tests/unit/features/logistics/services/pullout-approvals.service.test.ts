@@ -130,19 +130,16 @@ describe("pull-out approvals", () => {
     ]);
   });
 
-  it("opens the receiving step when the pull-out is sent", async () => {
+  it("opens no receiving step when the pull-out is sent, since nothing receives it", async () => {
     setUp("pending_logistics", "FPO", [{ id: "s1", decision: "accepted" }]);
 
     await pulloutPostingService.finalize(actor, "p1");
 
-    expect(mockTx.inventoryApproval.createMany.mock.calls[0]?.[0].data).toEqual([
+    expect(mockTx.inventoryApproval.createMany).not.toHaveBeenCalled();
+    expect(mockTx.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        sourceType: "PULLOUT",
-        sourceNo: "PLT-1",
-        step: "RECEIVING",
-        serialNumberId: "s1",
-        status: "PENDING",
+        data: expect.objectContaining({ action: "pullout.finalized" }),
       }),
-    ]);
+    );
   });
 });

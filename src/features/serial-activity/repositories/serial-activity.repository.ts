@@ -170,6 +170,11 @@ function route(from: string, to: string): string {
   return `${from} → ${to}`;
 }
 
+/** Only pull-outs from before receiving was dropped name a destination warehouse. */
+function pulloutRoute(branchName: string, warehouse: { name: string } | null): string | null {
+  return warehouse ? route(branchName, warehouse.name) : null;
+}
+
 /** Date-only label for reference lines (the timestamp column carries the time). */
 function formatEventDate(value: Date): string {
   return value.toLocaleDateString("en-PH", {
@@ -583,12 +588,11 @@ async function pulledOutSource(
           timestamp: r.pullout.createdAt,
           serialNo: serial.serialNo,
           modelLabel: serial.modelLabel,
-          location: r.pullout.warehouseLocation
-            ? `${r.pullout.warehouse.name} · ${r.pullout.warehouseLocation.code}`
-            : r.pullout.warehouse.name,
+          location:
+            placeLabel(null, r.pullout.warehouse, r.pullout.warehouseLocation) ?? r.pullout.branch.name,
           reference: r.pullout.pulloutNo,
           referenceDetails: referenceDetails(
-            route(r.pullout.branch.name, r.pullout.warehouse.name),
+            pulloutRoute(r.pullout.branch.name, r.pullout.warehouse),
             reason ? `Reason: ${reason}` : null,
             problems.length > 0 ? `Problem: ${problems.join(", ")}` : null,
             r.pullout.waybillNo ? `Waybill ${r.pullout.waybillNo}` : null,
@@ -658,7 +662,7 @@ async function pulloutReceivedSource(
           modelLabel: serial.modelLabel,
           location: placeLabel(null, r.pullout.warehouse, r.receivedLocation),
           reference: r.pullout.pulloutNo,
-          referenceDetails: referenceDetails(route(r.pullout.branch.name, r.pullout.warehouse.name)),
+          referenceDetails: referenceDetails(pulloutRoute(r.pullout.branch.name, r.pullout.warehouse)),
           status: r.priorStatusCode ? `Received: ${r.priorStatusCode.code}` : "Received",
           performedBy: performedByLabel(r.receivedBy),
         },
@@ -723,7 +727,7 @@ async function pulloutRejectedSource(
           location: r.pullout.branch.name,
           reference: r.pullout.pulloutNo,
           referenceDetails: referenceDetails(
-            route(r.pullout.branch.name, r.pullout.warehouse.name),
+            pulloutRoute(r.pullout.branch.name, r.pullout.warehouse),
             r.rejectionRemarks ? `Reason: ${r.rejectionRemarks}` : null,
           ),
           status: r.priorStatusCode ? `Back at branch: ${r.priorStatusCode.code}` : "Back at branch",

@@ -37,12 +37,14 @@ import {
 import { InventoryListRefreshProvider } from "@/features/inventory/components/inventory-list-refresh";
 import { InventoryApprovalBranchIdsProvider } from "@/features/inventory/components/inventory-unit-status-cell";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
+import type { BranchInventoryV2StatusAmounts } from "@/features/inventory/utils/branch-inventory-v2-card-amounts";
 import {
   branchChangeableStatus,
   branchInventoryChangeableHint,
   branchInventoryUnitTotal,
   branchSerialLabel,
   branchSerialSelectionBlock,
+  isBranchInventoryV2HiddenStatus,
   type BranchChangeableStatus,
   type BranchSerialSelectionBlock,
 } from "@/features/inventory/utils/branch-inventory-v2";
@@ -64,6 +66,8 @@ interface SerialListScreenProps {
   approvalBranchIds: string[] | null;
   singleBranch?: boolean;
   offPlanogramCount: number;
+  /** Server-computed peso value for this branch's status cards. */
+  statusAmounts: BranchInventoryV2StatusAmounts;
   /** Unread units per status code for this branch. */
   unreadByCode?: Record<string, number>;
   /** Units on this page whose status changed since they were last opened. */
@@ -188,6 +192,7 @@ function SerialListBody({
   limit,
   singleBranch = false,
   offPlanogramCount,
+  statusAmounts,
   unreadByCode = {},
   unreadIds = [],
   seriesSummary,
@@ -258,10 +263,14 @@ function SerialListBody({
     [result.items],
   );
   const statusMenu = useMemo(() => {
-    const byId = new Map(statusOptions.map((option) => [option.id, option]));
+    const byId = new Map(
+      statusOptions
+        .filter((option) => !isBranchInventoryV2HiddenStatus(option.code))
+        .map((option) => [option.id, option]),
+    );
     for (const item of result.items) {
       const status = item.statusCode;
-      if (byId.has(status.id)) continue;
+      if (isBranchInventoryV2HiddenStatus(status.code) || byId.has(status.id)) continue;
       byId.set(status.id, { id: status.id, code: status.code, name: status.name });
     }
     return [...byId.values()];
@@ -655,6 +664,7 @@ function SerialListBody({
         statuses={statuses}
         totalUnits={totalUnits}
         offPlanogramCount={offPlanogramCount}
+        statusAmounts={statusAmounts}
         unreadByCode={unreadByCode}
       />
 

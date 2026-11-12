@@ -1,4 +1,5 @@
 import { cn } from "@/utils/cn";
+import { formatPeso } from "@/utils/format-currency";
 
 type V2MetricVariant = "rose" | "amber" | "white";
 
@@ -6,6 +7,8 @@ interface V2MetricCardProps {
   variant: V2MetricVariant;
   label: string;
   value: number;
+  /** Server-computed peso amount for this card's quantity. */
+  amount?: number;
   subtext?: string;
   active?: boolean;
   onClick?: () => void;
@@ -34,6 +37,7 @@ export function V2MetricCard({
   variant,
   label,
   value,
+  amount,
   subtext,
   active,
   onClick,
@@ -59,6 +63,11 @@ export function V2MetricCard({
       <p className={cn("mt-2 text-2xl font-semibold tabular-nums tracking-tight", valueStyles[variant])}>
         {(Number.isFinite(value) ? value : 0).toLocaleString()}
       </p>
+      {amount != null ? (
+        <p className={cn("mt-1 text-sm font-medium tabular-nums", valueStyles[variant])}>
+          {formatPeso(Number.isFinite(amount) ? amount : 0)}
+        </p>
+      ) : null}
       {subtext ? <p className="mt-1 text-xs text-muted-foreground">{subtext}</p> : null}
     </Tag>
   );

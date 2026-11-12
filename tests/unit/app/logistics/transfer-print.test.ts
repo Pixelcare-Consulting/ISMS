@@ -21,25 +21,14 @@ const detail = (overrides: Partial<TransferDetail> = {}) =>
     status: { code: "in_transit", name: "In transit", color: null },
     fromBranch: { id: "b1", name: "Branch A" },
     toBranch: { id: "b2", name: "Branch B" },
-    shipment: {
-      waybillNo: "WB-1",
-      courierName: "LBC",
-      scheduledAt: "2026-11-05",
-      scheduledByName: "Logistics",
-    },
     lines: [line()],
     ...overrides,
   }) as TransferDetail;
 
 describe("transferPrintDocument", () => {
-  it("stays off until Logistics saves the waybill, courier and schedule", () => {
-    const shipment = { ...detail().shipment, waybillNo: null };
-    expect(transferPrintDocument(detail({ shipment }))).toBeNull();
-  });
-
-  it("carries the waybill and the RS and DR numbers", () => {
+  it("carries the RS and DR numbers, with no waybill", () => {
     const document = transferPrintDocument(detail());
-    expect(document?.waybillNo).toBe("WB-1");
+    expect(document?.waybillNo).toBeUndefined();
     expect(document?.fields).toEqual(
       expect.arrayContaining([
         { label: "RS number", value: "XFR-1" },
@@ -69,7 +58,7 @@ describe("transferPrintDocument", () => {
   });
 
   it.each(["draft", "requested", "pending_tl"])(
-    "stays off before Team Lead approval, even with the waybill saved (%s)",
+    "stays off before Team Lead approval (%s)",
     (code) => {
       const status = { code, name: code, color: null };
       expect(transferPrintDocument(detail({ status }))).toBeNull();

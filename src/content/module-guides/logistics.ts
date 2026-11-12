@@ -26,12 +26,11 @@ export const TRANSFERS_MODULE_GUIDE: ModuleGuideContent = {
 export const PULLOUTS_MODULE_GUIDE: ModuleGuideContent = {
   title: "Pull-outs",
   description:
-    "Return stock from branch to warehouse. PS creates → TL approves → logistics schedules → branch releases → warehouse validates.",
+    "Take units out of a branch. Branch requests (units reserved) → TL approves (For pull-out) → Logistics saves the list and sends it (Pull-out in transit). The pull-out ends there.",
   tips: [
     { label: "One pull-out can hold stock and defective units. Stock units need a reason and classification, defective units a problem description" },
-    { label: "Branch completes release in Operations after pickup is scheduled" },
-    { label: "Warehouse receives each unit into a location, keeping its STK or DEF status. Units not yet received stay in transit" },
-    { label: "Reject a unit that did not arrive, with the reason. It goes back to the branch as STK or DEF, and the stock count shows it if it is missing" },
+    { label: "A rejected request releases the units back to their branch status" },
+    { label: "Sent units leave Branch Inventory. They stay visible on the pull-out and in the serial's history" },
   ],
   storageKey: "module-guide.logistics.pullouts",
 };

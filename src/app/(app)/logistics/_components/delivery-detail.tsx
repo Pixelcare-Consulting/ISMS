@@ -5,10 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { deliveryAuditLabel, DeliveryTracker } from "@/app/(app)/logistics/_components/delivery-tracker";
-import {
-  LogisticsShipmentSection,
-  ShipmentPrintButton,
-} from "@/app/(app)/logistics/_components/logistics-shipment-section";
+import { ShipmentPrintButton } from "@/app/(app)/logistics/_components/shipment-print-button";
 import { shipmentPrintDocument } from "@/app/(app)/logistics/_components/shipment-print";
 import { CheckSapNowButton } from "@/app/(app)/logistics/_components/check-sap-now-button";
 import { CloseSapClosedOrderButton } from "@/app/(app)/logistics/_components/close-sap-closed-order-button";
@@ -44,7 +41,6 @@ import {
   getDeliveryReturnAction,
   listDeliveryReceiptLinesAction,
   requestDeliveryReturnAction,
-  saveDeliveryShipmentAction,
   retryDeliveryReturnSapAction,
 } from "@/features/logistics/actions/logistics.actions";
 import { needsSapRetry } from "@/features/logistics/constants/delivery-workflow-labels";
@@ -241,7 +237,6 @@ function deliveryPrintDocument(detail: DeliveryDetail) {
   return shipmentPrintDocument({
     title: "Delivery",
     documentNo: detail.deliveryNo,
-    shipment: detail.shipment,
     fields: [
       { label: "Order", value: detail.order?.orderNumber ?? "—" },
       { label: "Branch", value: detail.branch.name },
@@ -281,9 +276,6 @@ export function DeliveryDetailView({
   const dispatched =
     code === DELIVERY_WORKFLOW_CODE.pending || code === DELIVERY_WORKFLOW_CODE.partial;
   const hasSerials = detail.serials.length > 0;
-  const canEditShipment =
-    (capabilities.canManage || capabilities.canDispatch) &&
-    code !== DELIVERY_WORKFLOW_CODE.rejected;
 
   function refresh() {
     router.refresh();
@@ -352,16 +344,6 @@ export function DeliveryDetailView({
         <SapDocumentsSection
           detail={detail}
           canCheckSap={capabilities.canDispatch || capabilities.canManage}
-        />
-        <LogisticsShipmentSection
-          key={`${detail.shipment.waybillNo ?? ""}|${detail.shipment.courierName ?? ""}|${detail.shipment.scheduledAt ?? ""}`}
-          shipment={detail.shipment}
-          canEdit={canEditShipment}
-          onSave={async (input) => {
-            const result = await saveDeliveryShipmentAction(detail.id, input);
-            if ("success" in result && result.success) refresh();
-            return result;
-          }}
         />
         <RecordSection
           title={hasSerials ? "Units" : "Models"}

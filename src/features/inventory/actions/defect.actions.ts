@@ -8,6 +8,7 @@ import {
 } from "@/features/inventory/schemas/defect.schema";
 import { defectService } from "@/features/inventory/services/defect.service";
 import { requirePermission } from "@/lib/auth/permissions";
+import { prisma } from "@/lib/database/client";
 import {
   buildDefectReportPhotoPath,
   getObjectStorage,
@@ -68,6 +69,25 @@ export async function uploadDefectReportPhotoAction(formData: FormData) {
   } catch (e) {
     return {
       error: e instanceof Error ? e.message : "Failed to upload photo",
+    };
+  }
+}
+
+/** Active problem descriptions — the same list pull-outs load. */
+export async function listActiveProblemDescriptionsAction(): Promise<
+  { items: { id: string; name: string }[] } | { error: string }
+> {
+  const session = await requirePermission("inventory.view");
+  try {
+    const items = await prisma.problemDescription.findMany({
+      where: { tenantId: session.user.tenantId, recordStatus: "active" },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    });
+    return { items };
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e.message : "Failed to load problem descriptions",
     };
   }
 }

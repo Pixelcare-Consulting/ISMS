@@ -379,6 +379,29 @@ export async function getInventoryKpisAction() {
   );
 }
 
+/** Peso lines for the four Branch Inventory v2 home cards. Counts stay on the page. */
+export async function getBranchInventoryV2CardAmountsAction() {
+  const session = await requirePermission("inventory.view");
+  const unrestricted = isUnrestricted(session.user.permissions);
+  return inventoryService.getBranchInventoryV2CardAmounts(
+    session.user.tenantId,
+    session.user.id,
+    unrestricted,
+  );
+}
+
+/** Peso lines for one branch's status cards. Counts stay on the page. */
+export async function getBranchInventoryV2StatusAmountsAction(branchId: string) {
+  const session = await requirePermission("inventory.view");
+  const unrestricted = isUnrestricted(session.user.permissions);
+  return inventoryService.getBranchInventoryV2StatusAmounts(
+    session.user.tenantId,
+    session.user.id,
+    unrestricted,
+    branchId,
+  );
+}
+
 /** Sidebar badge: live STK qty in the caller's Stock units scope (0 when unauthorized). */
 export async function countStockUnitsStkAction(): Promise<number> {
   const session = await requireAuth();
@@ -396,6 +419,8 @@ export async function countStockUnitsStkAction(): Promise<number> {
 export type BranchInventoryUnreadSummary = {
   total: number;
   byCode: Record<string, number>;
+  /** Unread units keyed by branch id, then status code. */
+  byBranchCode: Record<string, Record<string, number>>;
 };
 
 /** Sidebar badge: units whose status changed after this user last opened them. */

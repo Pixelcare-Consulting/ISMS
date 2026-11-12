@@ -5,6 +5,8 @@ export type InventoryUnreadCounts = {
   total: number;
   byStatusCodeId: Record<string, number>;
   byCode: Record<string, number>;
+  /** Unread units for one branch, then status code. */
+  byBranchCode: Record<string, Record<string, number>>;
 };
 
 /**
@@ -35,13 +37,17 @@ export const inventoryStatusSeenService = {
     });
     const byStatusCodeId: Record<string, number> = {};
     const byCode: Record<string, number> = {};
+    const byBranchCode: Record<string, Record<string, number>> = {};
     let total = 0;
     for (const row of rows) {
-      byStatusCodeId[row.statusCodeId] = row.count;
+      byStatusCodeId[row.statusCodeId] = (byStatusCodeId[row.statusCodeId] ?? 0) + row.count;
       byCode[row.code] = (byCode[row.code] ?? 0) + row.count;
+      const branchCounts = byBranchCode[row.branchId] ?? {};
+      branchCounts[row.code] = (branchCounts[row.code] ?? 0) + row.count;
+      byBranchCode[row.branchId] = branchCounts;
       total += row.count;
     }
-    return { seenThroughAt: cursor.seenThroughAt, total, byStatusCodeId, byCode };
+    return { seenThroughAt: cursor.seenThroughAt, total, byStatusCodeId, byCode, byBranchCode };
   },
 
   unreadIds(input: {

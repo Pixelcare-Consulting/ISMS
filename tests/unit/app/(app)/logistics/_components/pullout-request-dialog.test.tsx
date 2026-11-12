@@ -4,10 +4,7 @@ import "@testing-library/jest-dom";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { PulloutRequestDialog } from "@/app/(app)/logistics/_components/pullout-request-dialog";
-import {
-  getPulloutDestinationAction,
-  listPulloutSerialsAction,
-} from "@/features/logistics/actions/logistics.actions";
+import { listPulloutSerialsAction } from "@/features/logistics/actions/logistics.actions";
 import type { PulloutSerialOption } from "@/features/logistics/services/pullout-posting.service";
 
 jest.mock("sonner", () => ({ toast: { error: jest.fn(), success: jest.fn() } }));
@@ -24,13 +21,11 @@ jest.mock("@/features/logistics/actions/logistics.actions", () => ({
     unitPackingConditions: [{ id: "packing-1", name: "Sealed" }],
     accessoryCompleteness: [{ id: "accessory-1", name: "Complete" }],
   })),
-  getPulloutDestinationAction: jest.fn(),
   listPulloutSerialsAction: jest.fn(),
   uploadPulloutAttachmentAction: jest.fn(),
 }));
 
 const listSerials = jest.mocked(listPulloutSerialsAction);
-const getDestination = jest.mocked(getPulloutDestinationAction);
 
 function serial(
   serialNumberId: string,
@@ -79,11 +74,6 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  getDestination.mockReset();
-  getDestination.mockImplementation(async (branchId) => ({
-    success: true,
-    warehouse: { id: `${branchId}-wh`, name: `Warehouse of ${branchId}`, code: "WH1" },
-  }));
   listSerials.mockReset();
   listSerials.mockImplementation(async (branchId) => ({
     success: true,
@@ -226,7 +216,6 @@ describe("PulloutRequestDialog units", () => {
     renderDialog();
     await formShown();
     await chooseBranch("Branch A");
-    await screen.findByText("Warehouse of branch-a (WH1)");
     await pickUnitDetails("BRANCH-A-STK");
     expect(submitButton()).toBeEnabled();
 
@@ -277,7 +266,6 @@ describe("PulloutRequestDialog units", () => {
     const { props } = renderDialog();
     await formShown();
     await chooseBranch("Branch A");
-    await screen.findByText("Warehouse of branch-a (WH1)");
     await pickUnit("BRANCH-A-DEF");
     await fillDetails("BRANCH-A-DEF");
     expect(submitButton()).toBeDisabled();
@@ -309,7 +297,6 @@ describe("PulloutRequestDialog units", () => {
     renderDialog();
     await formShown();
     await chooseBranch("Branch A");
-    await screen.findByText("Warehouse of branch-a (WH1)");
     await pickUnit("BRANCH-A-STK");
     await fillClassification("BRANCH-A-STK");
     await fillDetails("BRANCH-A-STK");
@@ -324,7 +311,6 @@ describe("PulloutRequestDialog units", () => {
     renderDialog();
     await formShown();
     await chooseBranch("Branch A");
-    await screen.findByText("Warehouse of branch-a (WH1)");
     await pickUnit("BRANCH-A-STK");
     await fillReason("BRANCH-A-STK");
     await fillDetails("BRANCH-A-STK");
@@ -353,7 +339,7 @@ describe("PulloutRequestDialog units", () => {
   });
 });
 
-describe("PulloutRequestDialog branch and warehouse", () => {
+describe("PulloutRequestDialog branch", () => {
   it("starts empty and fetches no units until a branch is chosen", async () => {
     renderDialog();
     await formShown();
@@ -363,29 +349,16 @@ describe("PulloutRequestDialog branch and warehouse", () => {
         "Select branch…",
       ),
     );
-    expect(screen.getByText("Follows the selected branch")).toBeInTheDocument();
     expect(screen.getByText("Select a branch to see its units.")).toBeInTheDocument();
     expect(listSerials).not.toHaveBeenCalled();
-    expect(getDestination).not.toHaveBeenCalled();
   });
 
-  it("shows the warehouse connected to the chosen branch", async () => {
-    renderDialog();
-    await formShown();
-    await chooseBranch("Branch A");
-    expect(await screen.findByText("Warehouse of branch-a (WH1)")).toBeInTheDocument();
-
-    await chooseBranch("Branch B");
-    expect(await screen.findByText("Warehouse of branch-b (WH1)")).toBeInTheDocument();
-    expect(screen.queryByText("Warehouse of branch-a (WH1)")).not.toBeInTheDocument();
-  });
-
-  it("does not send a warehouse: the server decides it from the branch", async () => {
+  it("names no destination warehouse and sends none: the pull-out ends in transit", async () => {
     const { props } = renderDialog();
     await formShown();
     await chooseBranch("Branch A");
-    await screen.findByText("Warehouse of branch-a (WH1)");
     await pickUnitDetails("BRANCH-A-UNIT");
+    expect(screen.queryByText("Destination warehouse")).not.toBeInTheDocument();
 
     await act(async () => {
       fireEvent.click(submitButton());
@@ -395,21 +368,6 @@ describe("PulloutRequestDialog branch and warehouse", () => {
     const [input] = props.onSubmit.mock.calls[0] as unknown as [Record<string, unknown>];
     expect(input.branchId).toBe("branch-a");
     expect(input).not.toHaveProperty("warehouseId");
-  });
-
-  it("explains and blocks submit when the branch has no warehouse", async () => {
-    getDestination.mockImplementation(async () => ({
-      error: "Branch A has no primary warehouse and no main warehouse is set.",
-    }));
-    renderDialog();
-    await formShown();
-    await chooseBranch("Branch A");
-    expect(
-      await screen.findByText("Branch A has no primary warehouse and no main warehouse is set."),
-    ).toBeInTheDocument();
-
-    await pickUnitDetails("BRANCH-A-UNIT");
-    expect(submitButton()).toBeDisabled();
   });
 
   it("fetches units only for the chosen branch and type", async () => {
@@ -443,7 +401,6 @@ describe("PulloutRequestDialog branch and warehouse", () => {
     const { rerender, props } = renderDialog();
     await formShown();
     await chooseBranch("Branch A");
-    await screen.findByText("BRANCH-A-UNIT");
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     rerender(<PulloutRequestDialog open={false} {...props} />);

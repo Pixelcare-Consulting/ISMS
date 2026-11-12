@@ -91,6 +91,7 @@ const CODE_FALLBACK_COLOR: Record<string, StatusColorKey> = {
   for_transfer: "violet",
   for_pullout: "violet",
   FPO: "violet",
+  FTR: "violet",
   accepted: "emerald",
   approved: "emerald",
   completed: "emerald",
