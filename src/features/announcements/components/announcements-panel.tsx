@@ -211,7 +211,12 @@ export function AnnouncementsPanel({
                     </div>
                   ) : null}
                 </div>
-                <AnnouncementBody body={row.body} clamp className="mt-4" />
+                <AnnouncementBody
+                  body={row.body}
+                  clamp
+                  expandable
+                  className="mt-4"
+                />
               </article>
             );
           })}

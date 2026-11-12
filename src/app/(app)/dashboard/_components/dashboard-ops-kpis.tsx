@@ -58,7 +58,7 @@ export function buildDashboardKpiItem(
         key,
         label: "Stock on hand",
         value: kpis.stockCount,
-        href: "/inventory",
+        href: "/inventory/v2",
         icon: <Warehouse />,
       };
     case "openAtr":
@@ -74,7 +74,7 @@ export function buildDashboardKpiItem(
     case "belowPlanogramCapacity":
       return {
         key,
-        label: "Below planogram capacity",
+        label: "Below Max Qty",
         value: kpis.belowPlanogramCapacity,
         href: "/settings/planogram",
         icon: <TrendingDown />,

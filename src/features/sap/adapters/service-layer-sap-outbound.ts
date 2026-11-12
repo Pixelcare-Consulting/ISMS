@@ -451,7 +451,6 @@ export const serviceLayerSapOutbound: SapOutboundPort = {
   },
 
   // Live pull-out and legacy partial-return documents are out of this plan's scope: use the mock.
-  createPulloutItr: (args) => mockSapOutbound.createPulloutItr(args),
 
   createPartialDeliveryInventoryTransfer: (args) =>
     mockSapOutbound.createPartialDeliveryInventoryTransfer(args),

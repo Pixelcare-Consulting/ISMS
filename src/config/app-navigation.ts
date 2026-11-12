@@ -7,6 +7,7 @@ import {
   CalendarClock,
   CalendarDays,
   ChartColumn,
+  ClipboardCheck,
   ClipboardList,
   Clock,
   History,
@@ -31,11 +32,13 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { getModuleNavPermission } from "@/config/app-modules";
+import { BRANCH_QUOTA_ACCESS } from "@/features/branch-quotas/constants/branch-quota-permissions";
 import { CUSTOM_DASHBOARD_ACCESS } from "@/features/custom-dashboards/constants/custom-dashboard-permissions";
 
 export type NavCountBadgeKey =
   | "unreadAnnouncements"
   | "stockUnitsStk"
+  | "branchInventoryV2Updates"
   | "monthlySirPending"
   | "ordersManualQueue"
   | "ordersSpecialQueue"
@@ -303,52 +306,63 @@ export const appNavigation: NavEntry[] = [
     icon: Package,
     items: [
       {
-        href: "/logistics/deliveries",
-        label: "Deliveries",
+        label: "Movement",
         icon: Truck,
-        anyPermissions: ["logistics.view", "logistics.create", "logistics.manage"],
-        countBadgeKey: "logisticsDeliveries",
+        items: [
+          {
+            href: "/logistics/deliveries",
+            label: "Deliveries",
+            icon: Truck,
+            anyPermissions: ["logistics.view", "logistics.create", "logistics.manage"],
+            countBadgeKey: "logisticsDeliveries",
+          },
+          {
+            href: "/logistics/transfers",
+            label: "Transfers",
+            icon: ArrowLeftRight,
+            // The unit-transfer permissions no longer open this page: its Unit transfers tab is
+            // hidden (see HIDDEN_TRANSFERS_PAGE_TABS). orders.create is how a PS reaches the
+            // transfers they accept.
+            anyPermissions: ["logistics.view", "logistics.create", "logistics.manage", "orders.create"],
+            countBadgeKey: "logisticsTransfers",
+            activePathPrefixes: ["/logistics/delivery-transfers"],
+          },
+          {
+            href: "/logistics/pickups",
+            label: "Pull-outs",
+            icon: ArrowUpToLine,
+            anyPermissions: ["pullouts.view"],
+            countBadgeKey: "logisticsPullouts",
+          },
+        ],
       },
       {
-        href: "/logistics/transfers",
-        label: "Transfers",
-        icon: ArrowLeftRight,
-        // The unit-transfer permissions no longer open this page: its Unit transfers tab is
-        // hidden (see HIDDEN_TRANSFERS_PAGE_TABS).
-        anyPermissions: ["logistics.view", "logistics.create", "logistics.manage"],
-        countBadgeKey: "logisticsTransfers",
-        activePathPrefixes: ["/logistics/delivery-transfers"],
-      },
-      {
-        href: "/logistics/pickups",
-        label: "Pull-outs",
-        icon: ArrowUpToLine,
-        anyPermissions: ["logistics.view", "logistics.create", "logistics.manage"],
-        countBadgeKey: "logisticsPullouts",
-      },
-      {
-        href: "/inventory",
-        label: "Branch Inventory",
+        label: "Inventory",
         icon: Package,
-        exact: true,
-        permission: "inventory.view",
-        countBadgeKey: "stockUnitsStk",
+        items: [
+          {
+            href: "/inventory/v2",
+            label: "Branch Inventory",
+            icon: ClipboardCheck,
+            permission: "inventory.view",
+            countBadgeKey: "branchInventoryV2Updates",
+          },
+          {
+            href: "/inventory/monthly-sir",
+            label: "Monthly SIR",
+            icon: ClipboardList,
+            permission: "inventory.view",
+            countBadgeKey: "monthlySirPending",
+          },
+          // { DO NOT UNCOMMENT THIS, NO NEED TO SHOW IN THE NAVIGATION
+          //   href: "/inventory/stock-count",
+          //   label: "P-Count",
+          //   icon: ClipboardList,
+          //   permission: "inventory.view",
+          //   badge: "new",
+          // },
+        ],
       },
-      {
-        href: "/inventory/monthly-sir",
-        label: "Monthly SIR",
-        icon: ClipboardList,
-        permission: "inventory.view",
-        countBadgeKey: "monthlySirPending",
-      },
-      // { DO NOT UNCOMMENT THIS, NO NEED TO SHOW IN THE NAVIGATION
-      //   href: "/inventory/stock-count",
-      //   label: "P-Count",
-      //   icon: ClipboardList,
-      //   permission: "inventory.view",
-      //   badge: "new",
-      // },
-    
     ],
   },
   {
@@ -526,6 +540,12 @@ export const appNavigation: NavEntry[] = [
         icon: Barcode,
         permission: "serial_logs.view",
       },
+      {
+        href: "/audit-logs/inventory-approvals",
+        label: "Inventory approvals",
+        icon: ClipboardCheck,
+        permission: "inventory_approvals.view",
+      },
     ],
   },
   {
@@ -631,7 +651,7 @@ export const appNavigation: NavEntry[] = [
             href: "/settings/branch-quotas",
             label: "Branch quotas",
             icon: ChartColumn,
-            anyPermissions: ["branches.view", "branches.manage"],
+            anyPermissions: BRANCH_QUOTA_ACCESS,
           },
           {
             href: "/settings/planning",

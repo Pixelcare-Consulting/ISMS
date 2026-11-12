@@ -248,24 +248,19 @@ export const HELP_WORKFLOW_GUIDES: HelpWorkflowGuide[] = [
     steps: [
       {
         label:
-          "Requesting branch creates a transfer request (syncs to SAP as a transfer request when connected).",
+          "Releasing branch creates a transfer request to a branch of the same dealer. The units are reserved.",
       },
       {
         label:
-          "Team Leader approves the request — or cancels it if it should not proceed.",
+          "The releasing branch's Team Leader approves or rejects it. Approval sends the units in transit to the receiving branch; there is no separate release step.",
       },
       {
         label:
-          "Releasing branch marks units For Transfer and releases them (syncs the transfer document to SAP when connected).",
-      },
-      {
-        label:
-          "Requesting branch receives stock in Operations; units move to On hand. Use the Transfers report to reconcile open moves.",
+          "Receiving branch accepts or rejects each serial. Accepted units become stock there; rejected units go back to the releasing branch as stock.",
       },
     ],
     tips: [
-      "Who can create, approve, release, or receive depends on your role setup.",
-      "SAP sync may be queued or pending depending on your tenant integration.",
+      "Who can create, approve, or receive depends on your role setup.",
     ],
   },
   {
@@ -276,7 +271,7 @@ export const HELP_WORKFLOW_GUIDES: HelpWorkflowGuide[] = [
     audience: "PS · TL · Logistics · Branch",
     href: "/logistics/pickups",
     steps: [
-      { label: "Product Specialist creates the pull-out request with reason and items." },
+      { label: "Product Specialist picks the branch and units, then adds each unit's details." },
       { label: "Team Leader reviews and approves." },
       { label: "Logistics schedules pickup and coordinates with branch." },
       { label: "Branch releases goods; warehouse validates receipt to close the loop." },
@@ -571,9 +566,9 @@ export const HELP_FAQ_CATEGORIES: HelpFaqCategory[] = [
       },
       {
         id: "orders-8",
-        question: "What is Max Qty on planogram?",
+        question: "What is Max Qty?",
         answer:
-          "Max Qty = (Target forecast qty + current DU) ÷ frequency, rounded up. Frequency is the branch's deliveries per month. Every forecast upload recalculates it for the branches in the file and replaces manual edits, and the upload lists what it replaced. It is 0 until the first upload that includes the branch, so Manual orders cannot include that SKU before then. Suggested order qty (SUG) is Max Qty minus on-hand stock.",
+          "Max Qty = (Target forecast qty + current DU) ÷ frequency, rounded up. Frequency is the branch's deliveries per month. Every forecast upload recalculates it for the branches in the file. It is 0 until the first upload that includes the branch, so Manual orders cannot include that SKU before then. Suggested order qty (SUG) is Max Qty minus on-hand stock.",
       },
       {
         id: "orders-super-admin-bulk-cancel",

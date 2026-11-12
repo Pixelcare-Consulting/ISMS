@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+import {
+  DOCUMENT_HEADER_MAX_LENGTH,
+  DOCUMENT_HEADER_MAX_LINES,
+  splitDocumentHeader,
+} from "@/features/tenants/types/tenant-branding";
+
 const companyLogoSchema = z
   .string()
   .max(200_000, "Image is too large")
@@ -22,6 +28,19 @@ export const companySettingsSchema = z.object({
     .trim()
     .max(120, "Tagline must be 120 characters or fewer"),
   logo: companyLogoSchema.optional().nullable(),
+});
+
+export const documentHeaderSchema = z.object({
+  documentHeader: z
+    .string()
+    .max(
+      DOCUMENT_HEADER_MAX_LENGTH,
+      `Document header must be ${DOCUMENT_HEADER_MAX_LENGTH} characters or fewer`,
+    )
+    .refine(
+      (value) => splitDocumentHeader(value).length <= DOCUMENT_HEADER_MAX_LINES,
+      `Use at most ${DOCUMENT_HEADER_MAX_LINES} lines`,
+    ),
 });
 
 export type CompanySettingsInput = z.infer<typeof companySettingsSchema>;

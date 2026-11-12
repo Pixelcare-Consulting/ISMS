@@ -1,6 +1,7 @@
 /**
- * Branch pull-out rules. Finalize stops at in-transit on the source branch.
- * It does not create warehouse stock and does not mark the request completed.
+ * Branch pull-out rules: request (RSV), Team Lead approval (FPO), logistics list, then
+ * Send (DIT). The flow ends In transit: nothing receives the units and there is no
+ * destination warehouse. Pull-outs are ISMS only: nothing here posts to SAP.
  */
 
 import type { PulloutWorkflowCodeKey } from "@/features/logistics/constants/workflow-codes";
@@ -15,10 +16,25 @@ import {
 
 export type PulloutStatus = PulloutWorkflowCodeKey;
 
+/** Read from the lines. Each unit keeps its own STK or DEF, so one pull-out can hold both. */
+export type PulloutConditionView = HoldCode | "Mixed";
+
+export const PULLOUT_LINE_DECISION = { pending: "pending", accepted: "accepted" } as const;
+
+/** Matches SAP's row Remarks column, as on delivery returns. */
+export const PULLOUT_LINE_REMARKS_MAX = 30;
+
+/** The `pullout_reason` code every defective unit carries. Stock units pick from the others. */
+export const PULLOUT_DEFECTIVE_REASON_CODE = "DEF";
+
 export interface PulloutLineView {
   serialNumberId: string;
   priorCode: HoldCode | null;
   inventoryCode: InventoryCode | null;
+}
+
+export interface PulloutDecisionLineView extends PulloutLineView {
+  decision: string;
 }
 
 export interface PulloutCreatePlan {
@@ -48,12 +64,24 @@ export interface PulloutListPlan {
   holds: { serialNumberId: string; priorCode: HoldCode; nextCode: "FPO" | "DEF" }[];
 }
 
+export interface PulloutLineApprovePlan {
+  ok: true;
+  idempotent: boolean;
+  /** Every unit is now approved, so the pull-out moves to For pull-out. */
+  completesApproval: boolean;
+}
+
+export interface PulloutLineDeletePlan {
+  ok: true;
+  /** Null when the unit is defective: it never left DEF, so there is no hold to release. */
+  restore: { serialNumberId: string; restoreCode: HoldCode } | null;
+  completesApproval: boolean;
+}
+
 export interface PulloutFinalizePlan {
   ok: true;
   nextStatus: "in_transit";
   moves: { serialNumberId: string; nextCode: "DIT" }[];
-  createsWarehouseInventory: false;
-  setsCompleted: false;
   idempotent: boolean;
 }
 
@@ -67,13 +95,48 @@ function missingPrior(serialNumberId: string): PlanFailure {
   };
 }
 
+/** STK or DEF from what the lines started as. Null when no line recorded it. */
+export function pulloutCondition(
+  lines: readonly { priorCode: string | null }[],
+): PulloutConditionView | null {
+  const stock = lines.some((line) => line.priorCode === "STK");
+  const defective = lines.some((line) => line.priorCode === "DEF");
+  if (stock && defective) return "Mixed";
+  if (stock) return "STK";
+  if (defective) return "DEF";
+  return null;
+}
+
+/** Classification describes stock units only, so a unit's own status decides if it needs one. */
+export function pulloutClassificationError(
+  priorCode: HoldCode,
+  classificationCount: number,
+): string | null {
+  if (priorCode === "STK") {
+    return classificationCount > 0 ? null : "Choose a classification for every STK unit";
+  }
+  return classificationCount > 0 ? "Defective units have no classification" : null;
+}
+
+/** A stock unit gives a reason. A defective unit's reason is fixed, so it names the problem. */
+export function pulloutReasonError(
+  priorCode: HoldCode,
+  reasonChosen: boolean,
+  problemCount: number,
+): string | null {
+  if (priorCode === "STK") {
+    if (!reasonChosen) return "Choose a reason for every STK unit";
+    return problemCount > 0 ? "Stock units have no problem description" : null;
+  }
+  if (reasonChosen) return "Defective units are always pulled out as defective";
+  return problemCount > 0 ? null : "Choose a problem description for every DEF unit";
+}
+
 export function planPulloutCreate(input: {
   branchId: string;
-  warehouseId: string;
   serials: readonly AllocatableSerial[];
 }): PulloutCreatePlan | PlanFailure {
   if (!input.branchId) return { ok: false, error: "Choose a branch" };
-  if (!input.warehouseId) return { ok: false, error: "Choose a warehouse" };
 
   const ids = uniqueSerialIds(input.serials.map((serial) => serial.serialNumberId));
   if (!ids) return { ok: false, error: "Each serial can only be selected once" };
@@ -129,6 +192,68 @@ export function planPulloutApprove(input: {
   }
 
   return { ok: true, nextStatus: "for_pullout", moves, idempotent: false };
+}
+
+function reserveLine<T extends PulloutDecisionLineView>(input: {
+  status: PulloutStatus;
+  lines: readonly T[];
+  serialNumberId: string;
+}): { ok: true; line: T } | PlanFailure {
+  if (input.status !== "pending_tl") {
+    return { ok: false, error: "Units can only be approved or deleted while the pull-out is on reserve" };
+  }
+  const line = input.lines.find((row) => row.serialNumberId === input.serialNumberId);
+  if (!line) return { ok: false, error: "This serial is not on this pull-out" };
+  return { ok: true, line };
+}
+
+function othersApproved(
+  lines: readonly PulloutDecisionLineView[],
+  serialNumberId: string,
+): boolean {
+  return lines
+    .filter((line) => line.serialNumberId !== serialNumberId)
+    .every((line) => line.decision === PULLOUT_LINE_DECISION.accepted);
+}
+
+export function planPulloutLineApprove(input: {
+  status: PulloutStatus;
+  lines: readonly PulloutDecisionLineView[];
+  serialNumberId: string;
+}): PulloutLineApprovePlan | PlanFailure {
+  const found = reserveLine(input);
+  if (!found.ok) return found;
+  if (found.line.decision === PULLOUT_LINE_DECISION.accepted) {
+    return { ok: true, idempotent: true, completesApproval: false };
+  }
+  return {
+    ok: true,
+    idempotent: false,
+    completesApproval: othersApproved(input.lines, input.serialNumberId),
+  };
+}
+
+export function planPulloutLineDelete(input: {
+  status: PulloutStatus;
+  lines: readonly PulloutDecisionLineView[];
+  serialNumberId: string;
+}): PulloutLineDeletePlan | PlanFailure {
+  const found = reserveLine(input);
+  if (!found.ok) return found;
+  if (input.lines.length === 1) {
+    return { ok: false, error: "This is the last unit. Reject the pull-out instead." };
+  }
+  const { line } = found;
+  if (line.priorCode !== "STK" && line.priorCode !== "DEF") return missingPrior(line.serialNumberId);
+  const held = line.inventoryCode === "RSV";
+  if (!held && !(line.inventoryCode === "DEF" && line.priorCode === "DEF")) {
+    return { ok: false, error: "A deleted serial is not held by this pull-out" };
+  }
+  return {
+    ok: true,
+    restore: held ? { serialNumberId: line.serialNumberId, restoreCode: line.priorCode } : null,
+    completesApproval: othersApproved(input.lines, input.serialNumberId),
+  };
 }
 
 export function planPulloutReject(input: {
@@ -202,14 +327,16 @@ export function planPulloutUpdateList(input: {
 
 export function planPulloutFinalize(input: {
   status: PulloutStatus;
-  lines: readonly PulloutLineView[];
+  lines: readonly (PulloutLineView & { received?: boolean; rejected?: boolean })[];
 }): PulloutFinalizePlan | PlanFailure {
   if (input.lines.length === 0) {
     return { ok: false, error: "This pull-out has no serials to send" };
   }
 
   if (input.status === "in_transit") {
-    const allTransit = input.lines.every((line) => line.inventoryCode === "DIT");
+    const allTransit = input.lines.every(
+      (line) => line.received || line.rejected || line.inventoryCode === "DIT",
+    );
     if (!allTransit) {
       return { ok: false, error: "Some serials are not ready to leave the branch" };
     }
@@ -217,8 +344,6 @@ export function planPulloutFinalize(input: {
       ok: true,
       nextStatus: "in_transit",
       moves: [],
-      createsWarehouseInventory: false,
-      setsCompleted: false,
       idempotent: true,
     };
   }
@@ -240,27 +365,6 @@ export function planPulloutFinalize(input: {
     ok: true,
     nextStatus: "in_transit",
     moves,
-    createsWarehouseInventory: false,
-    setsCompleted: false,
     idempotent: false,
   };
-}
-
-/** Warehouse receipt of an in-transit pull-out is not implemented. */
-export function planPulloutComplete(): PlanFailure {
-  return {
-    ok: false,
-    error: "Warehouse receipt is not available yet. Units stay in transit.",
-  };
-}
-
-export function pulloutSapMessage(
-  job: { status: string; stub: boolean } | null,
-): string {
-  if (!job) return "No SAP request has been queued for this pull-out.";
-  const status = job.status.replaceAll("_", " ");
-  if (job.stub || job.status !== "completed") {
-    return `SAP request is ${status}. It has not been posted to SAP.`;
-  }
-  return `SAP request is ${status}.`;
 }

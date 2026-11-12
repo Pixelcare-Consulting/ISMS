@@ -1,3 +1,6 @@
+import { escapeHtml, letterheadHtml, printDocumentHtml, type PrintLetterhead } from "@/utils/print-document";
+import { printHtml } from "@/utils/print-html";
+
 export interface TransferSlipPrintInput {
   transferNo: string;
   rsNo: string;
@@ -7,15 +10,13 @@ export interface TransferSlipPrintInput {
   lines: { serialNo: string; model: string }[];
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
-
-function slipSection(title: string, numberLabel: string, number: string, input: TransferSlipPrintInput): string {
+function slipSection(
+  title: string,
+  numberLabel: string,
+  number: string,
+  input: TransferSlipPrintInput,
+  letterhead: PrintLetterhead | null,
+): string {
   const rows = input.lines
     .map(
       (line) =>
@@ -23,6 +24,7 @@ function slipSection(title: string, numberLabel: string, number: string, input: 
     )
     .join("");
   return `<section class="slip">
+    ${letterheadHtml(letterhead)}
     <h1>${escapeHtml(title)}</h1>
     <p><strong>${escapeHtml(numberLabel)}</strong> ${escapeHtml(number)}</p>
     <p><strong>Transfer</strong> ${escapeHtml(input.transferNo)}</p>
@@ -35,31 +37,22 @@ function slipSection(title: string, numberLabel: string, number: string, input: 
   </section>`;
 }
 
-/** Opens the browser print dialog for the release slip and delivery receipt. */
-export function printTransferSlips(input: TransferSlipPrintInput): boolean {
-  const popup = window.open("", "_blank", "noopener,noreferrer,width=800,height=900");
-  if (!popup) return false;
-  popup.document.write(`<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>${escapeHtml(input.transferNo)}</title>
-  <style>
-    body { font-family: sans-serif; color: #111; margin: 24px; }
+/** Each slip is its own page, so each carries the company header. */
+export function transferSlipsHtml(input: TransferSlipPrintInput, letterhead: PrintLetterhead | null): string {
+  return printDocumentHtml({
+    title: input.transferNo,
+    styles: `
     h1 { font-size: 18px; margin: 0 0 12px; }
     p { margin: 4px 0; }
     table { width: 100%; border-collapse: collapse; margin-top: 16px; }
     th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; font-size: 13px; }
-    .slip + .slip { break-before: page; page-break-before: always; margin-top: 32px; }
-  </style>
-</head>
-<body>
-  ${slipSection("Release slip", "RS number", input.rsNo, input)}
-  ${slipSection("Delivery receipt", "DR number", input.drNo, input)}
-</body>
-</html>`);
-  popup.document.close();
-  popup.focus();
-  popup.print();
-  return true;
+    .slip + .slip { break-before: page; page-break-before: always; }`,
+    body: `${slipSection("Release slip", "RS number", input.rsNo, input, letterhead)}
+${slipSection("Delivery receipt", "DR number", input.drNo, input, letterhead)}`,
+  });
+}
+
+/** Opens the browser print dialog for the release slip and delivery receipt. */
+export function printTransferSlips(input: TransferSlipPrintInput, letterhead: PrintLetterhead | null): void {
+  printHtml(transferSlipsHtml(input, letterhead));
 }

@@ -3,6 +3,11 @@ import { Prisma } from "@/lib/database/generated/prisma/client";
 
 import { auditService } from "@/features/audit/services/audit.service";
 import {
+  inventoryApprovalLedger,
+  type InventoryApprovalDocument,
+} from "@/features/inventory-approvals/services/inventory-approval-ledger";
+import { statusUpdatedStamp } from "@/features/inventory/lib/status-updated-stamp";
+import {
   assertExclusivePlacement,
   loadCurrentPlacements,
   lockSerialNumbers,
@@ -322,6 +327,24 @@ async function settleHeader(tx: PostingDb, transferId: string, current: Delivery
   return next;
 }
 
+function approvedSerialIds(lines: readonly { status: string; serialNumberId: string }[]): string[] {
+  return lines.filter((line) => line.status === "APPROVED").map((line) => line.serialNumberId);
+}
+
+function approvalDocument(
+  tenantId: string,
+  transfer: { id: string; transferNo: string },
+  step: "APPROVAL" | "RECEIVING",
+): InventoryApprovalDocument {
+  return {
+    tenantId,
+    sourceType: "DELIVERY_TRANSFER",
+    sourceId: transfer.id,
+    sourceNo: transfer.transferNo,
+    step,
+  };
+}
+
 export const deliveryTransferService = {
   async listPlaces(actor: PostingActor): Promise<TransferPlaceOptions> {
     requireCapability(actor, "canCreateDeliveryTransfer");
@@ -547,6 +570,13 @@ export const deliveryTransferService = {
           },
           select: { id: true, transferNo: true },
         });
+        await inventoryApprovalLedger.recordRequested(tx, approvalDocument(actor.tenantId, row, "APPROVAL"), {
+          requestedById: actor.userId,
+          units: input.lines.map((line) => ({
+            serialNumberId: line.serialNumberId,
+            remarks: line.remarks?.trim().slice(0, REMARKS_MAX),
+          })),
+        });
         await tx.auditLog.create({
           data: {
             tenantId: actor.tenantId,
@@ -610,6 +640,11 @@ export const deliveryTransferService = {
         });
         assertExclusiveClaim(claimed.count, 1, "This line was updated by someone else");
         const headerStatus = await settleHeader(tx, transfer.id, line.transfer.status);
+        await inventoryApprovalLedger.recordDecision(tx, approvalDocument(actor.tenantId, transfer, "APPROVAL"), {
+          serialNumberIds: [line.serialNumberId],
+          status: action === "APPROVE" ? "APPROVED" : "REJECTED",
+          decidedById: actor.userId,
+        });
 
         await tx.auditLog.create({
           data: {
@@ -647,7 +682,10 @@ export const deliveryTransferService = {
         await lockTransferHeader(tx, actor.tenantId, transferId);
         const header = await tx.deliveryTransfer.findFirst({ where: { id: transferId }, select: { status: true } });
         if (header?.status !== "PENDING_APPROVAL") throw new Error("This transfer has already been released");
-        const lines = await tx.deliveryTransferLine.findMany({ where: { transferId }, select: { status: true } });
+        const lines = await tx.deliveryTransferLine.findMany({
+          where: { transferId },
+          select: { status: true, serialNumberId: true },
+        });
         const plan = planRelease(lines);
         if (!plan.ok) throw new Error(plan.error);
         const claimed = await tx.deliveryTransfer.updateMany({
@@ -655,6 +693,10 @@ export const deliveryTransferService = {
           data: { status: "IN_TRANSIT" },
         });
         assertExclusiveClaim(claimed.count, 1, "This transfer was updated by someone else");
+        await inventoryApprovalLedger.recordRequested(tx, approvalDocument(actor.tenantId, transfer, "RECEIVING"), {
+          requestedById: actor.userId,
+          units: approvedSerialIds(lines).map((serialNumberId) => ({ serialNumberId })),
+        });
         await tx.auditLog.create({
           data: {
             tenantId: actor.tenantId,
@@ -707,7 +749,10 @@ export const deliveryTransferService = {
           select: { status: true, sapDocEntry: true },
         });
         if (!header) throw new Error("Unit transfer not found");
-        const lines = await tx.deliveryTransferLine.findMany({ where: { transferId }, select: { status: true } });
+        const lines = await tx.deliveryTransferLine.findMany({
+          where: { transferId },
+          select: { status: true, serialNumberId: true },
+        });
         const plan = planInTransitCancel({ ...header, lines });
         if (!plan.ok) throw new Error(plan.error);
 
@@ -726,6 +771,11 @@ export const deliveryTransferService = {
         const removed = await tx.deliveryTransferLine.updateMany({
           where: { transferId, status: "APPROVED" },
           data: { status: "REMOVED", decidedById: actor.userId, decidedAt: new Date() },
+        });
+        await inventoryApprovalLedger.recordDecision(tx, approvalDocument(actor.tenantId, transfer, "RECEIVING"), {
+          serialNumberIds: approvedSerialIds(lines),
+          status: "CANCELLED",
+          decidedById: actor.userId,
         });
         await tx.auditLog.create({
           data: {
@@ -804,7 +854,12 @@ export const deliveryTransferService = {
         if (header.receiveBranchId) {
           const moved = await tx.branchInventory.updateMany({
             where: { id: shelf.id, statusCodeId: ditCodeId },
-            data: { branchId: header.receiveBranchId, statusCodeId: stkCodeId, updatedById: actor.userId },
+            data: {
+              branchId: header.receiveBranchId,
+              statusCodeId: stkCodeId,
+              updatedById: actor.userId,
+              ...statusUpdatedStamp(ditCodeId, stkCodeId),
+            },
           });
           assertExclusiveClaim(moved.count, 1, "This unit is no longer in transit at the delivery branch");
           historyStatus = "STK";
@@ -841,6 +896,11 @@ export const deliveryTransferService = {
             status: historyStatus,
             createdById: actor.userId,
           },
+        });
+        await inventoryApprovalLedger.recordDecision(tx, approvalDocument(actor.tenantId, transfer, "RECEIVING"), {
+          serialNumberIds: [serialNumberId],
+          status: "APPROVED",
+          decidedById: actor.userId,
         });
         await tx.auditLog.create({
           data: {

@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 
+import { SFE_IMPORT_ALIAS_MAP } from "@/features/forecast/schemas/forecast-import.schema";
 import {
-  PLANOGRAM_DEFAULT_MAX_QTY,
   PLANOGRAM_IMPORT_ALIAS_MAP,
   PLANOGRAM_IMPORT_COLUMN_LABELS,
   PLANOGRAM_IMPORT_REQUIRED_COLUMNS,
@@ -19,13 +19,18 @@ export interface SheetRows {
 export interface PlanogramTemplateRow {
   branchName: string;
   sku: string;
-  maxQty: number;
 }
 
 const EMPTY_SHEET: SheetRows = { present: false, columns: new Set(), rows: [] };
 
 const BRS_LAYOUT_ERROR =
-  "This file is the old BRS forecast/planogram layout, not the Planogram template. Download the template (branch_name, sku, shelf_max). Branch Target Quota belongs on Planning via the SFE Forecast template.";
+  "This file is the old BRS forecast/planogram layout, not the Planogram template. Download the template (branch_name, sku). Branch Target Quota belongs on Planning via the SFE Forecast template.";
+
+const FORECAST_LAYOUT_ERROR =
+  "This file looks like the Forecast template, not Planogram. Download the Planogram template (branch_name, sku). Forecasts belong on Planning.";
+
+/** Forecast files also carry branch_name and sku, so only these columns tell them apart. */
+const FORECAST_ONLY_COLUMNS = new Set(["period", "forecast_qty"]);
 
 /** Headers that appear on the wide Dealer 1 BRS sheet (Brand / SKU / Model / Series / SRP + Y/N pairs). */
 const BRS_WIDE_HEADER_HINTS = new Set([
@@ -119,9 +124,19 @@ function looksLikeBrsWideLayout(columns: Set<string>, rawHeaders: string[]): boo
   return false;
 }
 
+function looksLikeForecastTemplate(rawHeaders: string[]): boolean {
+  return rawHeaders.some((header) => {
+    const key = SFE_IMPORT_ALIAS_MAP[header];
+    return key != null && FORECAST_ONLY_COLUMNS.has(key);
+  });
+}
+
 function assertOurTemplate(columns: Set<string>, rawHeaders: string[]): void {
   if (looksLikeBrsWideLayout(columns, rawHeaders)) {
     throw new Error(BRS_LAYOUT_ERROR);
+  }
+  if (looksLikeForecastTemplate(rawHeaders)) {
+    throw new Error(FORECAST_LAYOUT_ERROR);
   }
 
   const missing = PLANOGRAM_IMPORT_REQUIRED_COLUMNS.filter((col) => !columns.has(col));
@@ -147,12 +162,12 @@ export async function buildPlanogramTemplateWorkbook(
   const sheet = workbook.addWorksheet(PLANOGRAM_SHEET_NAME);
   sheet.addRow([...PLANOGRAM_SHEET_HEADERS]);
   for (const row of rows) {
-    sheet.addRow([row.branchName, row.sku, row.maxQty]);
+    sheet.addRow([row.branchName, row.sku]);
   }
   if (rows.length === 0) {
-    sheet.addRow(["Western Makati", "100L10E", PLANOGRAM_DEFAULT_MAX_QTY]);
+    sheet.addRow(["Western Makati", "100L10E"]);
   }
-  styleHeader(sheet, [28, 16, 12]);
+  styleHeader(sheet, [28, 16]);
 
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);

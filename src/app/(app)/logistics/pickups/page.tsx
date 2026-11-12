@@ -3,13 +3,13 @@ import {
   listPulloutsAction,
 } from "@/features/logistics/actions/logistics.actions";
 import {
-  LOGISTICS_PAGE_PERMISSIONS,
+  PULLOUTS_VIEW,
   resolveLogisticsCapabilities,
 } from "@/features/logistics/constants/logistics-permissions";
 import { PulloutKpisStrip } from "@/features/logistics/components/pullout-kpis";
 import { loadWorkflowCatalog } from "@/features/logistics/constants/workflow-catalog";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
-import { requireAnyPermission } from "@/lib/auth/permissions";
+import { requirePermission } from "@/lib/auth/permissions";
 import { SectionPageLead } from "@/components/navigation/section-page-lead";
 import { PulloutsPanel } from "@/app/(app)/logistics/_components/pullouts-panel";
 
@@ -18,7 +18,7 @@ interface PickupsPageProps {
 }
 
 export default async function PickupsPage({ searchParams }: PickupsPageProps) {
-  const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
+  const session = await requirePermission(PULLOUTS_VIEW);
   const capabilities = resolveLogisticsCapabilities(session.user.permissions);
   const params = await searchParams;
   const page = Number(params.page) || 1;
@@ -33,7 +33,7 @@ export default async function PickupsPage({ searchParams }: PickupsPageProps) {
   return (
     <div className="space-y-4">
       <SectionPageLead>
-        Request a pull-out, approve it, save the logistics list, then send it. Warehouse receipt is not available yet, so units stay in transit.
+        Request a pull-out, approve it, save the logistics list, then send it. Sending puts the units in transit and ends the pull-out.
       </SectionPageLead>
       <PulloutKpisStrip kpis={kpis} />
       <PulloutsPanel

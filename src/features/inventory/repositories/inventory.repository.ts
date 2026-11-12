@@ -6,7 +6,10 @@ import {
 import { prisma } from "@/lib/database/client";
 import { formatSapDocNo } from "@/features/logistics/lib/sap-doc-number";
 import type { OrderSapDocType } from "@/features/orders/constants/order-sap-doc-type";
-import { inventoryGroupRepository } from "@/features/inventory/repositories/inventory-group.repository";
+import {
+  inventoryGroupRepository,
+  sentOnPulloutSql,
+} from "@/features/inventory/repositories/inventory-group.repository";
 import {
   inventoryListInclude,
   type InventoryListRow,
@@ -66,13 +69,27 @@ export type InventoryListFilters = {
   skuCode?: string;
   statusCodeId?: string;
   offPlanogramOnly?: boolean;
+  /**
+   * When omitted, the list stays on STK, DU, and DEF.
+   * Branch Inventory v2 passes the live inventory status codes.
+   * An empty array matches nothing.
+   */
+  statusCodes?: readonly string[];
+  /** Serial number or model (SKU or name). */
+  q?: string;
 };
 
 /**
- * Stock units lists on-hand stock only (STK). Sold / reserved / in-transit
- * units belong in Sales, Logistics, or other modules.
+ * Sellable on-hand stock. Sidebar count, series summary, and orders stay on STK.
+ * Display units and defective units are not sellable.
  */
-export const STOCK_UNITS_LIST_STATUS_CODES = ["STK"] as const;
+export const SELLABLE_STOCK_STATUS_CODES = ["STK"] as const;
+
+/**
+ * All serials keeps a unit on the list after it becomes a display unit or defective.
+ * Reserved, sold, in transit, and pull-out statuses stay out of this list.
+ */
+export const ALL_SERIALS_STATUS_CODES = ["STK", "DU", "DEF"] as const;
 
 export type InventorySeriesSkuAgg = {
   skuCode: string;
@@ -123,6 +140,17 @@ async function buildOffPlanogramBranchOr(
   });
 }
 
+function resolveListStatusCodes(
+  filters?: InventoryListFilters,
+): readonly string[] {
+  if (filters?.statusCodes === undefined) return ALL_SERIALS_STATUS_CODES;
+  return [
+    ...new Set(
+      filters.statusCodes.map((code) => code.trim()).filter((code) => code.length > 0),
+    ),
+  ];
+}
+
 async function buildInventoryWhere(
   tenantId: string,
   branchIds: string[],
@@ -136,27 +164,47 @@ async function buildInventoryWhere(
     return null;
   }
 
-  const base: Prisma.BranchInventoryWhereInput = {
-    tenantId,
-    ...(filters?.skuCode
-      ? { serialNumber: { model: { skuCode: filters.skuCode } } }
-      : {}),
-    statusCode: {
-      code: { in: [...STOCK_UNITS_LIST_STATUS_CODES] },
-    },
-  };
+  const statusCodes = resolveListStatusCodes(filters);
+  if (statusCodes.length === 0) return null;
 
-  if (filters?.offPlanogramOnly) {
-    return {
-      ...base,
-      OR: await buildOffPlanogramBranchOr(tenantId, effectiveBranchIds),
-    };
+  const and: Prisma.BranchInventoryWhereInput[] = [
+    {
+      tenantId,
+      statusCode: { code: { in: [...statusCodes] } },
+      ...(filters?.statusCodeId ? { statusCodeId: filters.statusCodeId } : {}),
+    },
+  ];
+
+  if (filters?.skuCode) {
+    and.push({ serialNumber: { model: { skuCode: filters.skuCode } } });
   }
 
-  return {
-    ...base,
-    branchId: { in: effectiveBranchIds },
-  };
+  const q = filters?.q?.trim();
+  if (q) {
+    and.push({
+      OR: [
+        { serialNumber: { serialNo: { contains: q, mode: "insensitive" } } },
+        {
+          serialNumber: {
+            model: {
+              OR: [
+                { skuCode: { contains: q, mode: "insensitive" } },
+                { name: { contains: q, mode: "insensitive" } },
+              ],
+            },
+          },
+        },
+      ],
+    });
+  }
+
+  if (filters?.offPlanogramOnly) {
+    and.push({ OR: await buildOffPlanogramBranchOr(tenantId, effectiveBranchIds) });
+  } else {
+    and.push({ branchId: { in: effectiveBranchIds } });
+  }
+
+  return { AND: and };
 }
 
 function resolveEffectiveBranchIds(
@@ -418,32 +466,7 @@ export const inventoryRepository = {
       }
     }
 
-    const acceptedLines = await prisma.branchTransferLine.findMany({
-      where: {
-        serialNumberId: { in: serialNumberIds },
-        decision: "accepted",
-        transfer: { tenantId, drNo: { not: null } },
-      },
-      select: {
-        serialNumberId: true,
-        decidedAt: true,
-        transfer: { select: { drNo: true, transferNo: true } },
-      },
-    });
-    const newestTransfer = new Map<string, { drNo: string; transferNo: string; decidedAt: number }>();
-    for (const row of acceptedLines) {
-      const drNo = row.transfer.drNo;
-      if (!drNo) continue;
-      const decidedAt = row.decidedAt?.getTime() ?? 0;
-      const current = newestTransfer.get(row.serialNumberId);
-      if (!current || decidedAt >= current.decidedAt) {
-        newestTransfer.set(row.serialNumberId, {
-          drNo,
-          transferNo: row.transfer.transferNo,
-          decidedAt,
-        });
-      }
-    }
+    const newestTransfer = await this.findNewestTransferReceipts(tenantId, serialNumberIds);
     for (const [serialNumberId, slip] of newestTransfer) {
       const existing = latest.get(serialNumberId);
       if (existing) {
@@ -458,6 +481,43 @@ export const inventoryRepository = {
       });
     }
     return Array.from(latest.values());
+  },
+
+  /**
+   * The DR number from each serial's most recently accepted transfer. A transfer replaces the
+   * DR number only: the DR date stays the original delivery's, which ageing counts from.
+   */
+  async findNewestTransferReceipts(
+    tenantId: string,
+    serialNumberIds: string[],
+  ): Promise<Map<string, { drNo: string; transferNo: string }>> {
+    const acceptedLines = await prisma.branchTransferLine.findMany({
+      where: {
+        serialNumberId: { in: serialNumberIds },
+        decision: "accepted",
+        transfer: { tenantId, drNo: { not: null } },
+      },
+      select: {
+        serialNumberId: true,
+        decidedAt: true,
+        transfer: { select: { drNo: true, transferNo: true } },
+      },
+    });
+    const newest = new Map<string, { drNo: string; transferNo: string; decidedAt: number }>();
+    for (const row of acceptedLines) {
+      const drNo = row.transfer.drNo;
+      if (!drNo) continue;
+      const decidedAt = row.decidedAt?.getTime() ?? 0;
+      const current = newest.get(row.serialNumberId);
+      if (!current || decidedAt >= current.decidedAt) {
+        newest.set(row.serialNumberId, {
+          drNo,
+          transferNo: row.transfer.transferNo,
+          decidedAt,
+        });
+      }
+    }
+    return newest;
   },
 
   /**
@@ -482,7 +542,7 @@ export const inventoryRepository = {
     }
     conditions.push(
       Prisma.sql`rsc.code IN (${Prisma.join([
-        ...STOCK_UNITS_LIST_STATUS_CODES,
+        ...SELLABLE_STOCK_STATUS_CODES,
       ])})`,
     );
     if (filters?.offPlanogramOnly) {
@@ -518,32 +578,46 @@ export const inventoryRepository = {
     }));
   },
 
-  countAll(tenantId: string, branchIds: string[]) {
-    if (branchIds.length === 0) return Promise.resolve(0);
-    return prisma.branchInventory.count({
-      where: { tenantId, branchId: { in: branchIds } },
-    });
+  /** Every unit in scope, less the ones sent on a pull-out (`sentOnPulloutSql`). */
+  async countAll(tenantId: string, branchIds: string[]): Promise<number> {
+    if (branchIds.length === 0) return 0;
+    const [row] = await prisma.$queryRaw<{ count: bigint }[]>`
+      SELECT COUNT(*)::bigint AS count
+      FROM branch_inventories bi
+      WHERE bi.tenant_id = ${tenantId}
+        AND bi.branch_id IN (${Prisma.join(branchIds)})
+        AND NOT ${sentOnPulloutSql()}
+    `;
+    return Number(row?.count ?? 0);
   },
 
-  /** Live STK units in scope — same status filter as the Stock units list. */
+  /** Live sellable STK units in scope. Display units and defective units are excluded. */
   countStockUnits(tenantId: string, branchIds: string[]) {
     if (branchIds.length === 0) return Promise.resolve(0);
     return prisma.branchInventory.count({
       where: {
         tenantId,
         branchId: { in: branchIds },
-        statusCode: { code: { in: [...STOCK_UNITS_LIST_STATUS_CODES] } },
+        statusCode: { code: { in: [...SELLABLE_STOCK_STATUS_CODES] } },
       },
     });
   },
 
-  countByStatus(tenantId: string, branchIds: string[]) {
-    if (branchIds.length === 0) return Promise.resolve([]);
-    return prisma.branchInventory.groupBy({
-      by: ["statusCodeId"],
-      where: { tenantId, branchId: { in: branchIds } },
-      _count: { id: true },
-    });
+  /** Same shape as a Prisma groupBy, less the units sent on a pull-out. */
+  async countByStatus(
+    tenantId: string,
+    branchIds: string[],
+  ): Promise<{ statusCodeId: string; _count: { id: number } }[]> {
+    if (branchIds.length === 0) return [];
+    const rows = await prisma.$queryRaw<{ status_code_id: string; count: bigint }[]>`
+      SELECT bi.status_code_id, COUNT(*)::bigint AS count
+      FROM branch_inventories bi
+      WHERE bi.tenant_id = ${tenantId}
+        AND bi.branch_id IN (${Prisma.join(branchIds)})
+        AND NOT ${sentOnPulloutSql()}
+      GROUP BY bi.status_code_id
+    `;
+    return rows.map((row) => ({ statusCodeId: row.status_code_id, _count: { id: Number(row.count) } }));
   },
 
   findByIdWithStatus(tenantId: string, id: string) {
@@ -555,15 +629,35 @@ export const inventoryRepository = {
     });
   },
 
-  updateStatus(
-    tenantId: string,
-    id: string,
-    statusCodeId: string,
-    updatedById: string,
-  ) {
-    return prisma.branchInventory.update({
-      where: { id, tenantId },
-      data: { statusCodeId, updatedById },
+  updateStatus(input: {
+    tenantId: string;
+    id: string;
+    statusCodeId: string;
+    updatedById: string;
+    serialNumberId: string;
+    historyDetails: string;
+    historyStatus: string;
+  }) {
+    return prisma.$transaction(async (tx) => {
+      const item = await tx.branchInventory.update({
+        where: { id: input.id, tenantId: input.tenantId },
+        data: {
+          statusCodeId: input.statusCodeId,
+          updatedById: input.updatedById,
+          statusUpdatedAt: new Date(),
+        },
+      });
+      await tx.serialNumberHistory.create({
+        data: {
+          tenantId: input.tenantId,
+          serialNumberId: input.serialNumberId,
+          txnType: "inv_status_update",
+          details: input.historyDetails,
+          status: input.historyStatus,
+          createdById: input.updatedById,
+        },
+      });
+      return item;
     });
   },
 
@@ -571,6 +665,21 @@ export const inventoryRepository = {
     if (branchIds.length === 0) return Promise.resolve(0);
     return prisma.branchInventory.count({
       where: { tenantId, branchId: { in: branchIds }, statusCodeId },
+    });
+  },
+
+  /** Price-list periods for the models on the v2 summary cards. */
+  listModelPriceListRows(tenantId: string, modelIds: readonly string[]) {
+    if (modelIds.length === 0) return Promise.resolve([]);
+    return prisma.priceList.findMany({
+      where: { tenantId, modelId: { in: [...modelIds] } },
+      select: {
+        modelId: true,
+        amount: true,
+        periodStart: true,
+        periodEnd: true,
+        packageTypeId: true,
+      },
     });
   },
 

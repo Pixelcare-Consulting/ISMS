@@ -239,7 +239,7 @@ export const SAMPLE_ALLOCATION_GAPS = {
       gapQty: 2,
     },
   ],
-  note: "Max Qty is planogram capacity already stored on the allocation row.",
+  note: "Max Qty is the forecast-calculated limit already stored on the allocation row.",
   nextSteps: [{ label: "Open Planning", href: "/settings/planning" }],
 };
 

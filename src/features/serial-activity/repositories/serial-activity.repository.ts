@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/database/client";
+import { buildDateFilter } from "@/lib/shared/date-filter";
 import { resolvePagination, toPaginatedResult } from "@/lib/shared/pagination";
 import { STOCK_COUNT_SESSION_LABELS } from "@/features/stock-audit/constants/stock-count-workflow";
 import { formatPeso } from "@/utils/format-currency";
@@ -25,6 +26,7 @@ import {
   type ApproverRef,
   type AuditTrailEntry,
 } from "@/features/serial-activity/lib/approval-reference";
+import { transferReferenceLines } from "@/features/serial-activity/lib/transfer-reference";
 import {
   DELIVERY_RETURN_HISTORY_PREFIX,
   documentReferenceFromHistoryDetails,
@@ -55,26 +57,6 @@ interface SourceOptions {
   q?: string;
   dateFilter?: Prisma.DateTimeFilter;
   dir: SerialActivitySortDir;
-}
-
-/** Local-day boundary: start → 00:00:00.000, end → 23:59:59.999. */
-function parseDateBoundary(value: string, boundary: "start" | "end"): Date {
-  const [year, month, day] = value.split("-").map(Number);
-  if (boundary === "start") {
-    return new Date(year, month - 1, day, 0, 0, 0, 0);
-  }
-  return new Date(year, month - 1, day, 23, 59, 59, 999);
-}
-
-function buildDateFilter(
-  dateFrom?: string,
-  dateTo?: string,
-): Prisma.DateTimeFilter | undefined {
-  if (!dateFrom && !dateTo) return undefined;
-  return {
-    ...(dateFrom ? { gte: parseDateBoundary(dateFrom, "start") } : {}),
-    ...(dateTo ? { lte: parseDateBoundary(dateTo, "end") } : {}),
-  };
 }
 
 const modelSelect = {
@@ -186,6 +168,11 @@ function referenceDetails(...parts: (string | null | undefined)[]): string[] {
 
 function route(from: string, to: string): string {
   return `${from} → ${to}`;
+}
+
+/** Only pull-outs from before receiving was dropped name a destination warehouse. */
+function pulloutRoute(branchName: string, warehouse: { name: string } | null): string | null {
+  return warehouse ? route(branchName, warehouse.name) : null;
 }
 
 /** Date-only label for reference lines (the timestamp column carries the time). */
@@ -383,10 +370,15 @@ async function transferredSource(
       take: window,
       select: {
         id: true,
+        decision: true,
+        remarks: true,
+        requestRemarks: true,
         serialNumber: { select: { serialNo: true, model: modelSelect } },
         transfer: {
           select: {
             transferNo: true,
+            rsNo: true,
+            drNo: true,
             createdAt: true,
             notes: true,
             fromBranch: { select: { name: true } },
@@ -422,6 +414,13 @@ async function transferredSource(
             route(r.transfer.fromBranch.name, r.transfer.toBranch.name),
             r.transfer.notes ? `Note: ${r.transfer.notes}` : null,
             ...approvalReferenceLines(r.transfer.approvalLevels, approvers),
+            ...transferReferenceLines({
+              rsNo: r.transfer.rsNo,
+              drNo: r.transfer.drNo,
+              decision: r.decision,
+              remarks: r.remarks,
+              requestRemarks: r.requestRemarks,
+            }),
           ),
           status: `Transfer: ${r.transfer.statusCode.name}`,
           performedBy: performedByLabel(r.transfer.createdBy),
@@ -548,6 +547,8 @@ async function pulledOutSource(
       take: window,
       select: {
         id: true,
+        reasonCode: { select: { name: true } },
+        problemDescriptions: { select: { problemDescription: { select: { name: true } } } },
         serialNumber: { select: { serialNo: true, model: modelSelect } },
         pullout: {
           select: {
@@ -577,6 +578,9 @@ async function pulledOutSource(
     events: rows.flatMap((r) => {
       const serial = serialFields(r.serialNumber);
       if (!serial) return [];
+      // Older pull-outs hold one reason on the header instead of one per unit.
+      const reason = r.reasonCode?.name ?? r.pullout.reasonStatusCode?.name;
+      const problems = r.problemDescriptions.map((row) => row.problemDescription.name);
       return [
         {
           id: `pulled_out:${r.id}`,
@@ -584,21 +588,150 @@ async function pulledOutSource(
           timestamp: r.pullout.createdAt,
           serialNo: serial.serialNo,
           modelLabel: serial.modelLabel,
-          location: r.pullout.warehouseLocation
-            ? `${r.pullout.warehouse.name} · ${r.pullout.warehouseLocation.code}`
-            : r.pullout.warehouse.name,
+          location:
+            placeLabel(null, r.pullout.warehouse, r.pullout.warehouseLocation) ?? r.pullout.branch.name,
           reference: r.pullout.pulloutNo,
           referenceDetails: referenceDetails(
-            route(r.pullout.branch.name, r.pullout.warehouse.name),
-            r.pullout.reasonStatusCode
-              ? `Reason: ${r.pullout.reasonStatusCode.name}`
-              : null,
+            pulloutRoute(r.pullout.branch.name, r.pullout.warehouse),
+            reason ? `Reason: ${reason}` : null,
+            problems.length > 0 ? `Problem: ${problems.join(", ")}` : null,
             r.pullout.waybillNo ? `Waybill ${r.pullout.waybillNo}` : null,
             r.pullout.notes ? `Note: ${r.pullout.notes}` : null,
             ...approvalReferenceLines(r.pullout.approvalLevels, approvers),
           ),
           status: `Pullout: ${r.pullout.statusCode.name}`,
           performedBy: performedByLabel(r.pullout.createdBy),
+        },
+      ];
+    }),
+  };
+}
+
+/** One event per received unit, dated when it arrived rather than when the pull-out began. */
+async function pulloutReceivedSource(
+  tenantId: string,
+  { window, q, dateFilter, dir }: SourceOptions,
+): Promise<SourceResult> {
+  const where: Prisma.BranchPulloutLineWhereInput = {
+    receivedAt: { not: null, ...dateFilter },
+    pullout: { tenantId },
+    ...(q
+      ? {
+          OR: [
+            { serialNumber: { serialNo: textContains(q) } },
+            { pullout: { pulloutNo: textContains(q) } },
+          ],
+        }
+      : {}),
+  };
+  const [rows, count] = await Promise.all([
+    prisma.branchPulloutLine.findMany({
+      where,
+      orderBy: { receivedAt: dir },
+      take: window,
+      select: {
+        id: true,
+        receivedAt: true,
+        priorStatusCode: { select: { code: true } },
+        receivedLocation: { select: { code: true } },
+        receivedBy: userSelect,
+        serialNumber: { select: { serialNo: true, model: modelSelect } },
+        pullout: {
+          select: {
+            pulloutNo: true,
+            branch: { select: { name: true } },
+            warehouse: { select: { name: true } },
+          },
+        },
+      },
+    }),
+    prisma.branchPulloutLine.count({ where }),
+  ]);
+  return {
+    count,
+    events: rows.flatMap((r) => {
+      const serial = serialFields(r.serialNumber);
+      if (!serial || !r.receivedAt) return [];
+      return [
+        {
+          id: `pulled_out_received:${r.id}`,
+          type: "pulled_out" as const,
+          typeLabel: "Pull-out received",
+          timestamp: r.receivedAt,
+          serialNo: serial.serialNo,
+          modelLabel: serial.modelLabel,
+          location: placeLabel(null, r.pullout.warehouse, r.receivedLocation),
+          reference: r.pullout.pulloutNo,
+          referenceDetails: referenceDetails(pulloutRoute(r.pullout.branch.name, r.pullout.warehouse)),
+          status: r.priorStatusCode ? `Received: ${r.priorStatusCode.code}` : "Received",
+          performedBy: performedByLabel(r.receivedBy),
+        },
+      ];
+    }),
+  };
+}
+
+/** One event per unit rejected in transit, dated when it was refused. */
+async function pulloutRejectedSource(
+  tenantId: string,
+  { window, q, dateFilter, dir }: SourceOptions,
+): Promise<SourceResult> {
+  const where: Prisma.BranchPulloutLineWhereInput = {
+    rejectedAt: { not: null, ...dateFilter },
+    pullout: { tenantId },
+    ...(q
+      ? {
+          OR: [
+            { serialNumber: { serialNo: textContains(q) } },
+            { pullout: { pulloutNo: textContains(q) } },
+          ],
+        }
+      : {}),
+  };
+  const [rows, count] = await Promise.all([
+    prisma.branchPulloutLine.findMany({
+      where,
+      orderBy: { rejectedAt: dir },
+      take: window,
+      select: {
+        id: true,
+        rejectedAt: true,
+        rejectionRemarks: true,
+        priorStatusCode: { select: { code: true } },
+        rejectedBy: userSelect,
+        serialNumber: { select: { serialNo: true, model: modelSelect } },
+        pullout: {
+          select: {
+            pulloutNo: true,
+            branch: { select: { name: true } },
+            warehouse: { select: { name: true } },
+          },
+        },
+      },
+    }),
+    prisma.branchPulloutLine.count({ where }),
+  ]);
+  return {
+    count,
+    events: rows.flatMap((r) => {
+      const serial = serialFields(r.serialNumber);
+      if (!serial || !r.rejectedAt) return [];
+      return [
+        {
+          id: `pulled_out_rejected:${r.id}`,
+          type: "pulled_out" as const,
+          typeLabel: "Pull-out rejected",
+          timestamp: r.rejectedAt,
+          serialNo: serial.serialNo,
+          modelLabel: serial.modelLabel,
+          location: r.pullout.branch.name,
+          reference: r.pullout.pulloutNo,
+          referenceDetails: referenceDetails(
+            pulloutRoute(r.pullout.branch.name, r.pullout.warehouse),
+            r.rejectionRemarks ? `Reason: ${r.rejectionRemarks}` : null,
+          ),
+          status: r.priorStatusCode ? `Back at branch: ${r.priorStatusCode.code}` : "Back at branch",
+          performedBy: performedByLabel(r.rejectedBy),
         },
       ];
     }),
@@ -1466,7 +1599,7 @@ const SOURCES: Record<SerialActivityType, ActivitySource[]> = {
   status: [statusSource],
   transferred: [transferredSource, unitTransferSource, deliveryReturnSource],
   sold: [soldSource, officialSalesAuditSource],
-  pulled_out: [pulledOutSource],
+  pulled_out: [pulledOutSource, pulloutReceivedSource, pulloutRejectedSource],
   counted: [countedSource],
 };
 

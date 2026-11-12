@@ -35,6 +35,9 @@ export type InventoryListItem = {
   deliveryDate: string | null;
   agingDays: number;
   pendingDefectInspection: boolean;
+  pendingDefectReportId: string | null;
+  /** When this unit's status last changed. Null until a status change is recorded. */
+  statusUpdatedAt: string | null;
   statusCode: { id: string; code: string; name: string; color: string | null };
   branch: { id: string; name: string; sapCode: string };
   serialNumber: {
@@ -130,6 +133,8 @@ function mapEnrichedToListItem(
     deliveryDate: r.deliveryDate ? r.deliveryDate.toISOString() : null,
     agingDays: r.agingDays,
     pendingDefectInspection: r.pendingDefectInspection,
+    pendingDefectReportId: r.pendingDefectReportId,
+    statusUpdatedAt: r.statusUpdatedAt ? r.statusUpdatedAt.toISOString() : null,
     statusCode: {
       id: r.statusCode.id,
       code: r.statusCode.code,
@@ -191,17 +196,24 @@ export async function listInventoryAction(input?: {
   sku?: string;
   statusCodeId?: string;
   offPlanogram?: boolean;
+  /** Omit to keep All serials on STK, DU, and DEF. */
+  statusCodes?: readonly string[];
+  /** Serial number or model. */
+  q?: string;
   sort?: string;
   sortDir?: string;
 }): Promise<PaginatedResult<InventoryListItem>> {
   const session = await requirePermission("inventory.view");
   const unrestricted = isUnrestricted(session.user.permissions);
   const limit = parseTablePageSize(input?.limit);
+  const q = input?.q?.trim();
   const filters: InventoryListOptions = {
     branchId: input?.branchId,
     skuCode: input?.sku,
     statusCodeId: input?.statusCodeId,
     offPlanogramOnly: input?.offPlanogram === true,
+    ...(input?.statusCodes !== undefined ? { statusCodes: input.statusCodes } : {}),
+    ...(q ? { q } : {}),
     sort: parseSort(input?.sort),
     sortDir: parseSortDir(input?.sortDir),
   };
@@ -317,21 +329,23 @@ export async function listInventoryGroupChildrenAction(input: {
   >;
 }
 
-export async function listInventoryStatusOptionsAction(): Promise<
-  InventoryStatusOption[]
-> {
+export async function listInventoryStatusOptionsAction(input?: {
+  /** Stock units dropdown hides DEF. Branch Inventory v2 lists every inventory status. */
+  includeDefective?: boolean;
+}): Promise<InventoryStatusOption[]> {
   const session = await requirePermission("inventory.view");
-  const codes = await reasonStatusService.listActiveCodes(
+  const codes = (await reasonStatusService.listActiveCodes(
     session.user.tenantId,
     "inventory_system",
-  );
-  return filterStatusCodesForStockUnitsDropdown(
-    codes as Array<{ id: string; code: string; name: string }>,
-  ).map((c) => ({
-      id: c.id,
-      code: c.code,
-      name: c.name,
-    }));
+  )) as Array<{ id: string; code: string; name: string }>;
+  const visible = input?.includeDefective
+    ? codes
+    : filterStatusCodesForStockUnitsDropdown(codes);
+  return visible.map((c) => ({
+    id: c.id,
+    code: c.code,
+    name: c.name,
+  }));
 }
 
 export async function getInventorySeriesSummaryAction(input?: {
@@ -365,6 +379,29 @@ export async function getInventoryKpisAction() {
   );
 }
 
+/** Peso lines for the four Branch Inventory v2 home cards. Counts stay on the page. */
+export async function getBranchInventoryV2CardAmountsAction() {
+  const session = await requirePermission("inventory.view");
+  const unrestricted = isUnrestricted(session.user.permissions);
+  return inventoryService.getBranchInventoryV2CardAmounts(
+    session.user.tenantId,
+    session.user.id,
+    unrestricted,
+  );
+}
+
+/** Peso lines for one branch's status cards. Counts stay on the page. */
+export async function getBranchInventoryV2StatusAmountsAction(branchId: string) {
+  const session = await requirePermission("inventory.view");
+  const unrestricted = isUnrestricted(session.user.permissions);
+  return inventoryService.getBranchInventoryV2StatusAmounts(
+    session.user.tenantId,
+    session.user.id,
+    unrestricted,
+    branchId,
+  );
+}
+
 /** Sidebar badge: live STK qty in the caller's Stock units scope (0 when unauthorized). */
 export async function countStockUnitsStkAction(): Promise<number> {
   const session = await requireAuth();
@@ -379,19 +416,107 @@ export async function countStockUnitsStkAction(): Promise<number> {
   );
 }
 
-export async function updateInventoryStatusAction(
-  inventoryId: string,
-  statusCodeId: string,
-) {
+export type BranchInventoryUnreadSummary = {
+  total: number;
+  byCode: Record<string, number>;
+  /** Unread units keyed by branch id, then status code. */
+  byBranchCode: Record<string, Record<string, number>>;
+};
+
+/** Sidebar badge: units whose status changed after this user last opened them. */
+export async function countBranchInventoryV2UpdatesAction(): Promise<number> {
+  const session = await requireAuth();
+  if (!hasPermission(session.user.permissions, "inventory.view")) {
+    return 0;
+  }
+  const summary = await unreadSummaryForSession(session.user, undefined);
+  return summary.total;
+}
+
+/** Unread counts for Branch Inventory v2. Pass a branch to limit the stat strip. */
+export async function getBranchInventoryUnreadAction(input?: {
+  branchId?: string;
+}): Promise<BranchInventoryUnreadSummary> {
+  const session = await requirePermission("inventory.view");
+  return unreadSummaryForSession(session.user, input?.branchId);
+}
+
+/** Which of these units are still unread for the signed-in user. */
+export async function listUnreadBranchInventoryIdsAction(
+  branchInventoryIds: string[],
+): Promise<string[]> {
+  const session = await requirePermission("inventory.view");
+  const ids = [...new Set(branchInventoryIds.filter((id) => id.trim().length > 0))];
+  return inventoryService.unreadInventoryIds(
+    session.user.tenantId,
+    session.user.id,
+    isUnrestricted(session.user.permissions),
+    ids,
+  );
+}
+
+/** Opening unit details marks that status change as seen. */
+export async function markBranchInventoryStatusReadAction(
+  branchInventoryId: string,
+): Promise<{ success: true } | { error: string }> {
   const session = await requirePermission("inventory.view");
   try {
+    await inventoryService.markStatusSeen({
+      tenantId: session.user.tenantId,
+      userId: session.user.id,
+      permissions: session.user.permissions,
+      inventoryId: branchInventoryId,
+    });
+    revalidatePath("/inventory/v2");
+    return { success: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Could not update what you have seen" };
+  }
+}
+
+function unreadSummaryForSession(
+  user: { tenantId: string; id: string; permissions: string[] },
+  branchId: string | undefined,
+): Promise<BranchInventoryUnreadSummary> {
+  return inventoryService.unreadStatusSummary(
+    user.tenantId,
+    user.id,
+    isUnrestricted(user.permissions),
+    branchId,
+  );
+}
+
+export async function updateInventoryStatusAction(
+  inventoryId: string,
+  targetCode: "STK" | "DU",
+) {
+  const session = await requirePermission("inventory.view");
+  switch (targetCode) {
+    case "STK":
+    case "DU":
+      break;
+    default: {
+      const unexpected: never = targetCode;
+      return { error: `This status cannot be set from here (${unexpected})` };
+    }
+  }
+
+  try {
+    const statusCodeId = await reasonStatusService.requireCodeId(
+      session.user.tenantId,
+      "inventory_system",
+      targetCode,
+    );
     await inventoryService.updateStatus({
       tenantId: session.user.tenantId,
       actorUserId: session.user.id,
+      permissions: session.user.permissions,
       inventoryId,
       statusCodeId,
     });
     revalidatePath("/inventory");
+    revalidatePath("/inventory/v2");
+    revalidatePath("/inventory/serial-numbers");
     return { success: true as const };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to update status" };

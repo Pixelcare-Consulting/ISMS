@@ -11,6 +11,7 @@ interface LocationRow {
   id: string;
   code: string;
   name: string;
+  isDefault: boolean;
 }
 
 interface WarehouseRow {

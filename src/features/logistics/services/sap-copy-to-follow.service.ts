@@ -1,4 +1,5 @@
 import { Prisma } from "@/lib/database/generated/prisma/client";
+import { statusUpdatedStamp } from "@/features/inventory/lib/status-updated-stamp";
 import {
   loadCurrentPlacements,
   lockSerialNumbers,
@@ -377,7 +378,12 @@ async function applyDocument(
     if (branchRows.length > 0) {
       const moved = await tx.branchInventory.updateMany({
         where: { id: { in: branchRows.map((row) => row.id) }, statusCodeId: codes.stk },
-        data: { branchId: delivery.branchId, statusCodeId: codes.dit, warehouseLocationId: null },
+        data: {
+          branchId: delivery.branchId,
+          statusCodeId: codes.dit,
+          warehouseLocationId: null,
+          ...statusUpdatedStamp(codes.stk, codes.dit),
+        },
       });
       if (moved.count !== branchRows.length) {
         throw new FollowError(

@@ -7,6 +7,7 @@ import {
   type ProgressStageIcon,
 } from "@/app/(app)/logistics/_components/progress-tracker";
 import {
+  TRANSFER_LEGACY_RELEASE_CODES,
   TRANSFER_SETTLED_CODES,
   TRANSFER_STOP_CODES,
   TRANSFER_WORKFLOW_CODE,
@@ -16,7 +17,8 @@ import { buildCatalogProgress } from "@/features/logistics/constants/workflow-pr
 
 /**
  * Progress for a branch transfer. Steps, names, colors, and order come from
- * the Transfer workflow codes in Status settings.
+ * the Transfer workflow codes in Status settings. TL approval sends the units in
+ * transit, so the old release steps only show on transfers still waiting there.
  */
 
 type TransferAuditAction =
@@ -74,7 +76,7 @@ export function transferAuditLabel(action: string): string {
   }
 }
 
-function historyAction(code: string): string | null {
+function historyAction(code: string, history: readonly ProgressAuditRow[]): string | null {
   switch (code) {
     case TRANSFER_WORKFLOW_CODE.requested:
     case TRANSFER_WORKFLOW_CODE.pending_tl:
@@ -84,7 +86,10 @@ function historyAction(code: string): string | null {
     case TRANSFER_WORKFLOW_CODE.for_transfer:
       return "transfer.approved";
     case TRANSFER_WORKFLOW_CODE.in_transit:
-      return "transfer.released";
+      // Older transfers went in transit on a separate release; newer ones on approval.
+      return history.some((row) => row.action === "transfer.released")
+        ? "transfer.released"
+        : "transfer.approved";
     case TRANSFER_WORKFLOW_CODE.accepted:
     case TRANSFER_WORKFLOW_CODE.completed:
       return "transfer.received";
@@ -112,7 +117,7 @@ function latestAction(history: readonly ProgressAuditRow[], action: string): str
 }
 
 function occurredAt(code: string, statusCode: string, history: readonly ProgressAuditRow[]): string | null {
-  const action = historyAction(code);
+  const action = historyAction(code, history);
   if (!action) return null;
   if (code === TRANSFER_WORKFLOW_CODE.accepted || code === TRANSFER_WORKFLOW_CODE.completed) {
     return statusCode === code ? latestAction(history, action) : null;
@@ -125,15 +130,18 @@ export function buildTransferTracker(
   history: readonly ProgressAuditRow[],
   catalog: readonly WorkflowStatusOption[],
 ) {
+  const waitingOnRelease = TRANSFER_LEGACY_RELEASE_CODES.includes(status.code);
   return buildCatalogProgress({
-    catalog,
+    catalog: waitingOnRelease
+      ? catalog
+      : catalog.filter((row) => !TRANSFER_LEGACY_RELEASE_CODES.includes(row.code)),
     status,
     stopCodes: TRANSFER_STOP_CODES,
     settledCodes: TRANSFER_SETTLED_CODES,
     icons: TRANSFER_ICONS,
     occurredAt: (code) => occurredAt(code, status.code, history),
     eventsFor: (code) => {
-      const action = historyAction(code);
+      const action = historyAction(code, history);
       return progressEventsForActions(history, action ? [action] : [], transferAuditLabel);
     },
     stopAt: earliestAction(history, "transfer.rejected"),

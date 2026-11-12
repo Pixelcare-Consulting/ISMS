@@ -8,6 +8,7 @@ import {
 } from "@/features/inventory/schemas/defect.schema";
 import { defectService } from "@/features/inventory/services/defect.service";
 import { requirePermission } from "@/lib/auth/permissions";
+import { prisma } from "@/lib/database/client";
 import {
   buildDefectReportPhotoPath,
   getObjectStorage,
@@ -15,6 +16,7 @@ import {
 
 function revalidateInventoryPaths() {
   revalidatePath("/inventory");
+  revalidatePath("/inventory/v2");
   revalidatePath("/inventory/serial-numbers");
 }
 
@@ -71,6 +73,25 @@ export async function uploadDefectReportPhotoAction(formData: FormData) {
   }
 }
 
+/** Active problem descriptions — the same list pull-outs load. */
+export async function listActiveProblemDescriptionsAction(): Promise<
+  { items: { id: string; name: string }[] } | { error: string }
+> {
+  const session = await requirePermission("inventory.view");
+  try {
+    const items = await prisma.problemDescription.findMany({
+      where: { tenantId: session.user.tenantId, recordStatus: "active" },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    });
+    return { items };
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e.message : "Failed to load problem descriptions",
+    };
+  }
+}
+
 export async function reportInventoryDefectAction(input: unknown) {
   const session = await requirePermission("inventory.view");
   const parsed = reportDefectSchema.safeParse(input);
@@ -98,7 +119,7 @@ export async function reportInventoryDefectAction(input: unknown) {
 }
 
 export async function approveInventoryDefectAction(input: unknown) {
-  const session = await requirePermission("inventory.manage");
+  const session = await requirePermission("inventory.view");
   const parsed = decideDefectSchema.safeParse(input);
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -108,7 +129,7 @@ export async function approveInventoryDefectAction(input: unknown) {
     await defectService.approveDefect({
       tenantId: session.user.tenantId,
       actorUserId: session.user.id,
-      permissions: session.user.permissions,
+      roleSlugs: session.user.roleSlugs,
       reportId: parsed.data.reportId,
       decisionRemarks: parsed.data.decisionRemarks,
     });
@@ -122,7 +143,7 @@ export async function approveInventoryDefectAction(input: unknown) {
 }
 
 export async function rejectInventoryDefectAction(input: unknown) {
-  const session = await requirePermission("inventory.manage");
+  const session = await requirePermission("inventory.view");
   const parsed = decideDefectSchema.safeParse(input);
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -132,7 +153,7 @@ export async function rejectInventoryDefectAction(input: unknown) {
     await defectService.rejectDefect({
       tenantId: session.user.tenantId,
       actorUserId: session.user.id,
-      permissions: session.user.permissions,
+      roleSlugs: session.user.roleSlugs,
       reportId: parsed.data.reportId,
       decisionRemarks: parsed.data.decisionRemarks,
     });

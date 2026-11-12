@@ -30,6 +30,7 @@ import type {
   SerialTimelineEvent,
   SerialTraceability,
 } from "@/features/serial-numbers/services/serial-number.service";
+import { InventoryUnitStatusCell } from "@/features/inventory/components/inventory-unit-status-cell";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import {
   TablePageSizeSelect,
@@ -116,11 +117,13 @@ interface SerialDetailViewProps {
   serial: SerialTraceability;
   /** Inventory system status masterdata for the Related products filter. */
   inventoryStatusOptions: RelatedInventoryStatusOption[];
+  pendingDefectReportId: string | null;
 }
 
 export function SerialDetailView({
   serial,
   inventoryStatusOptions,
+  pendingDefectReportId,
 }: SerialDetailViewProps) {
   void inventoryStatusOptions;
   void DetailsCard;
@@ -128,7 +131,7 @@ export function SerialDetailView({
 
   return (
     <div className="space-y-6">
-      <DetailHeader serial={serial} />
+      <DetailHeader serial={serial} pendingDefectReportId={pendingDefectReportId} />
       {/*
       <div className="grid items-stretch gap-6 lg:grid-cols-2">
         <DetailsCard
@@ -301,7 +304,28 @@ function CollapsibleCardHeader({
   );
 }
 
-function DetailHeader({ serial }: { serial: SerialTraceability }) {
+function DetailHeader({
+  serial,
+  pendingDefectReportId,
+}: {
+  serial: SerialTraceability;
+  pendingDefectReportId: string | null;
+}) {
+  const current = serial.current;
+  const statusUnit =
+    current?.branchInventoryId && current.branchId && current.status
+      ? {
+          id: current.branchInventoryId,
+          branchId: current.branchId,
+          statusCode: {
+            ...current.status,
+            color: current.status.color ?? null,
+          },
+          pendingDefectInspection: pendingDefectReportId != null,
+          pendingDefectReportId,
+        }
+      : null;
+
   return (
     <div className="sticky top-0 z-20 -mx-4 space-y-3 border-b border-border/60 bg-background px-4 py-2.5 shadow-sm sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -319,6 +343,7 @@ function DetailHeader({ serial }: { serial: SerialTraceability }) {
           </p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2 self-end">
+          {statusUnit ? <InventoryUnitStatusCell unit={statusUnit} /> : null}
           <Button variant="outline" size="sm" asChild className="w-fit">
             <Link href="/inventory/serial-numbers">
               <ArrowLeft className="size-4" /> All serials
@@ -849,13 +874,7 @@ function LocationCard({ serial }: { serial: SerialTraceability }) {
             />
             <DetailRow
               label="On planogram"
-              value={
-                serial.planogram.onPlanogram
-                  ? serial.planogram.maxQty != null
-                    ? `Yes · Max Qty ${serial.planogram.maxQty}`
-                    : "Yes"
-                  : "No"
-              }
+              value={serial.planogram.onPlanogram ? "Yes" : "No"}
             />
             <DetailRow
               label={DR_DATE_LABEL}

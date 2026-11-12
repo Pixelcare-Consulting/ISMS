@@ -1,5 +1,6 @@
 import { Prisma } from "@/lib/database/generated/prisma/client";
 
+import { statusUpdatedStamp } from "@/features/inventory/lib/status-updated-stamp";
 import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
 import { assertExclusiveClaim } from "@/features/logistics/services/delivery-posting.planner";
 import {
@@ -22,11 +23,12 @@ export interface PostingActor {
   tenantId: string;
   userId: string;
   permissions?: string[];
+  roleSlugs?: string[];
 }
 
 export type PostingDb = Prisma.TransactionClient;
 
-const INVENTORY_CODES = ["DIT", "STK", "SLD", "OFS", "RSV", "DEF", "FPO", "FW"] as const;
+const INVENTORY_CODES = ["DIT", "STK", "SLD", "OFS", "RSV", "DEF", "FPO", "FTR", "FW"] as const;
 
 export function postingError(error: unknown, fallback: string): Error {
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
@@ -65,6 +67,7 @@ export function asInventoryCode(code: string | null | undefined): InventoryCode 
     case "RSV":
     case "DEF":
     case "FPO":
+    case "FTR":
     case "FW":
       return code;
     default:
@@ -150,7 +153,11 @@ export async function claimInventory(
     data: {
       statusCodeId: input.toStatusCodeId,
       updatedById: input.userId,
-      ...(input.toBranchId ? { branchId: input.toBranchId } : {}),
+      // A shelf location belongs to the old branch's warehouse, so it cannot travel.
+      ...(input.toBranchId && input.toBranchId !== input.branchId
+        ? { branchId: input.toBranchId, warehouseLocationId: null }
+        : {}),
+      ...statusUpdatedStamp(input.fromStatusCodeId, input.toStatusCodeId),
     },
   });
   assertExclusiveClaim(moved.count, input.serialNumberIds.length, input.message);
@@ -203,6 +210,8 @@ export async function openDocumentIdsBySerial(
       where: {
         serialNumberId: { in: serialNumberIds },
         ...(except?.pulloutId ? { pulloutId: { not: except.pulloutId } } : {}),
+        receivedAt: null,
+        rejectedAt: null,
         pullout: {
           tenantId,
           statusCode: { code: { in: [...OPEN_PULLOUT_STATUS_CODES] } },

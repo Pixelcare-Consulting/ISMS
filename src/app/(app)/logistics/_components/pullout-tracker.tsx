@@ -7,6 +7,7 @@ import {
   type ProgressStageIcon,
 } from "@/app/(app)/logistics/_components/progress-tracker";
 import {
+  PULLOUT_LEGACY_AFTER_TRANSIT_CODES,
   PULLOUT_SETTLED_CODES,
   PULLOUT_STOP_CODES,
   PULLOUT_WORKFLOW_CODE,
@@ -23,9 +24,17 @@ import { buildCatalogProgress } from "@/features/logistics/constants/workflow-pr
 type PulloutAuditAction =
   | "pullout.created"
   | "pullout.approved"
+  | "pullout.line_approved"
+  | "pullout.line_deleted"
+  | "pullout.attachment_added"
   | "pullout.rejected"
   | "pullout.list_saved"
-  | "pullout.finalized";
+  | "pullout.finalized"
+  | "pullout.received"
+  | "pullout.line_rejected"
+  | "pullout.completed"
+  | "pullout.sap_document_linked"
+  | "pullout.sap_document_unlinked";
 
 const PULLOUT_ICONS: Readonly<Record<string, ProgressStageIcon>> = {
   [PULLOUT_WORKFLOW_CODE.requested]: "approval",
@@ -42,9 +51,17 @@ function asPulloutAuditAction(action: string): PulloutAuditAction | null {
   switch (action) {
     case "pullout.created":
     case "pullout.approved":
+    case "pullout.line_approved":
+    case "pullout.line_deleted":
+    case "pullout.attachment_added":
     case "pullout.rejected":
     case "pullout.list_saved":
     case "pullout.finalized":
+    case "pullout.received":
+    case "pullout.line_rejected":
+    case "pullout.completed":
+    case "pullout.sap_document_linked":
+    case "pullout.sap_document_unlinked":
       return action;
     default:
       return null;
@@ -59,12 +76,28 @@ export function pulloutAuditLabel(action: string): string {
       return "Request submitted";
     case "pullout.approved":
       return "Approved by Team Lead";
+    case "pullout.line_approved":
+      return "Unit approved";
+    case "pullout.line_deleted":
+      return "Unit deleted";
+    case "pullout.attachment_added":
+      return "File attached";
     case "pullout.rejected":
       return "Rejected";
     case "pullout.list_saved":
       return "Logistics list saved";
     case "pullout.finalized":
       return "Sent — in transit";
+    case "pullout.received":
+      return "Units received";
+    case "pullout.line_rejected":
+      return "Unit rejected";
+    case "pullout.completed":
+      return "Received — completed";
+    case "pullout.sap_document_linked":
+      return "SAP document linked";
+    case "pullout.sap_document_unlinked":
+      return "SAP document unlinked";
     default: {
       const unreachable: never = known;
       return unreachable;
@@ -86,8 +119,9 @@ function historyAction(code: string): string | null {
       return "pullout.list_saved";
     case PULLOUT_WORKFLOW_CODE.in_transit:
     case PULLOUT_WORKFLOW_CODE.pulled_out:
-    case PULLOUT_WORKFLOW_CODE.completed:
       return "pullout.finalized";
+    case PULLOUT_WORKFLOW_CODE.completed:
+      return "pullout.completed";
     default:
       return null;
   }
@@ -121,8 +155,11 @@ export function buildPulloutTracker(
   history: readonly ProgressAuditRow[],
   catalog: readonly WorkflowStatusOption[],
 ) {
+  const reachedLegacyStep = PULLOUT_LEGACY_AFTER_TRANSIT_CODES.includes(status.code);
   return buildCatalogProgress({
-    catalog,
+    catalog: reachedLegacyStep
+      ? catalog
+      : catalog.filter((row) => !PULLOUT_LEGACY_AFTER_TRANSIT_CODES.includes(row.code)),
     status,
     stopCodes: PULLOUT_STOP_CODES,
     settledCodes: PULLOUT_SETTLED_CODES,

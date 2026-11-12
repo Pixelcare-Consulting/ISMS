@@ -55,6 +55,15 @@ export const PULLOUT_WORKFLOW_CODE = {
 export type PulloutWorkflowCodeKey =
   (typeof PULLOUT_WORKFLOW_CODE)[keyof typeof PULLOUT_WORKFLOW_CODE];
 
+/**
+ * Steps TL approval no longer passes through: approval sends the units in transit, with no
+ * Logistics release. Shown only on transfers still sitting at one of them from before.
+ */
+export const TRANSFER_LEGACY_RELEASE_CODES: readonly string[] = [
+  TRANSFER_WORKFLOW_CODE.approved,
+  TRANSFER_WORKFLOW_CODE.for_transfer,
+];
+
 /** Outcomes that stop progress. The label still comes from Status settings. */
 export const DELIVERY_STOP_CODES = [DELIVERY_WORKFLOW_CODE.rejected] as const;
 export const TRANSFER_STOP_CODES = [
@@ -69,10 +78,18 @@ export const TRANSFER_SETTLED_CODES = [
   TRANSFER_WORKFLOW_CODE.accepted,
   TRANSFER_WORKFLOW_CODE.completed,
 ] as const;
+/** In transit is where a pull-out ends: nothing receives the units. */
 export const PULLOUT_SETTLED_CODES = [
+  PULLOUT_WORKFLOW_CODE.in_transit,
   PULLOUT_WORKFLOW_CODE.pulled_out,
   PULLOUT_WORKFLOW_CODE.completed,
 ] as const;
+
+/** Steps after In transit, shown only on pull-outs that reached them before receiving was dropped. */
+export const PULLOUT_LEGACY_AFTER_TRANSIT_CODES: readonly string[] = [
+  PULLOUT_WORKFLOW_CODE.pulled_out,
+  PULLOUT_WORKFLOW_CODE.completed,
+];
 
 export interface WorkflowStatusOption {
   code: string;

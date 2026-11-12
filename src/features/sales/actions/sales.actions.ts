@@ -7,10 +7,18 @@ import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { auditService } from "@/features/audit/services/audit.service";
 import { aorService } from "@/features/aors/services/aor.service";
 import {
+  recordReturnApproved,
+  recordReturnEvaluated,
+  recordReturnRejected,
+  recordReturnRequested,
+  type ReturnApprovalRef,
+} from "@/features/inventory-approvals/services/return-approvals";
+import {
   assertSerialSellableAtStockSource,
   assertSerialsSellableForSale,
   sellableStkDefectReportsFilter,
 } from "@/features/inventory/services/inventory-sellable-guards";
+import { statusUpdatedStamp } from "@/features/inventory/lib/status-updated-stamp";
 import {
   markSerialSoldFromStockSource,
   restoreSerialToStockSource,
@@ -1524,6 +1532,7 @@ export async function requestReturnAction(
           id: true,
           saleAmount: true,
           amount: true,
+          serialNumberId: true,
           model: { select: { skuCode: true, name: true } },
           serialNumber: { select: { serialNo: true } },
         },
@@ -1582,6 +1591,17 @@ export async function requestReturnAction(
         notes: [sale.notes, summaryNote].filter(Boolean).join("\n"),
       },
     });
+    await recordReturnRequested(
+      tx,
+      {
+        tenantId: session.user.tenantId,
+        sourceType: "SALES_RETURN",
+        sourceId: returnRequest.id,
+        sourceNo: sale.transactionNo,
+        serialNumberId: targetDetail.serialNumberId,
+      },
+      { requestedById: session.user.id, problemDescription: problemDescriptionText },
+    );
 
     return returnRequest;
   });
@@ -1770,6 +1790,7 @@ async function restoreOriginalSerialsAtBranchSold(
             branchId: input.soldBranchId,
             statusCodeId: input.restoreStatusCodeId,
             updatedById: input.userId,
+            ...statusUpdatedStamp(existing.statusCode, input.restoreStatusCode),
           },
         });
       } else {
@@ -1887,6 +1908,29 @@ async function restoreReturnInventory(input: {
   return { success: true as const, restoredSerialCount: serialIds.length, statusCode };
 }
 
+/** Same unit as the restore path: the targeted line, or a legacy request's first linked serial. */
+async function salesReturnApproval(
+  tenantId: string,
+  request: { id: string; saleId: string; saleDetailId: string | null; sale: { transactionNo: string } },
+): Promise<ReturnApprovalRef> {
+  const detail = await prisma.branchSalesTransactionDetail.findFirst({
+    where: {
+      salesId: request.saleId,
+      serialNumberId: { not: null },
+      ...(request.saleDetailId ? { id: request.saleDetailId } : {}),
+    },
+    orderBy: { createdAt: "asc" },
+    select: { serialNumberId: true },
+  });
+  return {
+    tenantId,
+    sourceType: "SALES_RETURN",
+    sourceId: request.id,
+    sourceNo: request.sale.transactionNo,
+    serialNumberId: detail?.serialNumberId ?? null,
+  };
+}
+
 export async function evaluateReturnAction(returnRequestId: string, notes?: string) {
   const session = await requireAnyPermission([
     RETURNS_EVALUATE,
@@ -1897,6 +1941,9 @@ export async function evaluateReturnAction(returnRequestId: string, notes?: stri
     select: {
       id: true,
       status: true,
+      saleId: true,
+      saleDetailId: true,
+      sale: { select: { transactionNo: true } },
       documentType: { select: { name: true } },
     },
   });
@@ -1906,25 +1953,33 @@ export async function evaluateReturnAction(returnRequestId: string, notes?: stri
 
   const needsTl = isDealerInitiatedDocumentTypeName(row.documentType?.name);
   const now = new Date();
+  const approval = await salesReturnApproval(session.user.tenantId, row);
 
-  await prisma.branchReturnRequest.update({
-    where: { id: returnRequestId },
-    data: needsTl
-      ? {
-          status: "pending_tl",
-          evaluatedById: session.user.id,
-          evaluatedAt: now,
-          evaluationNotes: notes,
-        }
-      : {
-          // Non-dealer types skip TL — CS evaluate lands directly on approved.
-          status: "approved",
-          evaluatedById: session.user.id,
-          evaluatedAt: now,
-          evaluationNotes: notes,
-          approvedById: session.user.id,
-          approvedAt: now,
-        },
+  await prisma.$transaction(async (tx) => {
+    await tx.branchReturnRequest.update({
+      where: { id: returnRequestId },
+      data: needsTl
+        ? {
+            status: "pending_tl",
+            evaluatedById: session.user.id,
+            evaluatedAt: now,
+            evaluationNotes: notes,
+          }
+        : {
+            // Non-dealer types skip TL — CS evaluate lands directly on approved.
+            status: "approved",
+            evaluatedById: session.user.id,
+            evaluatedAt: now,
+            evaluationNotes: notes,
+            approvedById: session.user.id,
+            approvedAt: now,
+          },
+    });
+    await recordReturnEvaluated(tx, approval, {
+      decidedById: session.user.id,
+      remarks: notes,
+      needsTl,
+    });
   });
 
   await auditService.log({
@@ -1952,18 +2007,23 @@ export async function approveReturnAction(returnRequestId: string) {
   ]);
   const row = await prisma.branchReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
+    include: { sale: { select: { transactionNo: true } } },
   });
   if (!row || row.status !== "pending_tl") {
     return { error: "Return request not found or not pending TL approval" };
   }
 
-  await prisma.branchReturnRequest.update({
-    where: { id: returnRequestId },
-    data: {
-      status: "approved",
-      approvedById: session.user.id,
-      approvedAt: new Date(),
-    },
+  const approval = await salesReturnApproval(session.user.tenantId, row);
+  await prisma.$transaction(async (tx) => {
+    await tx.branchReturnRequest.update({
+      where: { id: returnRequestId },
+      data: {
+        status: "approved",
+        approvedById: session.user.id,
+        approvedAt: new Date(),
+      },
+    });
+    await recordReturnApproved(tx, approval, session.user.id);
   });
 
   await auditService.log({
@@ -2004,16 +2064,22 @@ export async function rejectReturnAction(returnRequestId: string, notes?: string
     return { error: "You do not have permission to reject this return" };
   }
 
-  await prisma.$transaction([
-    prisma.branchReturnRequest.update({
+  const approval = await salesReturnApproval(session.user.tenantId, row);
+  await prisma.$transaction(async (tx) => {
+    await tx.branchReturnRequest.update({
       where: { id: returnRequestId },
       data: { status: "rejected", evaluationNotes: notes ?? row.evaluationNotes },
-    }),
-    prisma.branchSalesTransaction.update({
+    });
+    await tx.branchSalesTransaction.update({
       where: { id: row.saleId },
       data: { atrStatus: "open" },
-    }),
-  ]);
+    });
+    await recordReturnRejected(tx, approval, {
+      fromStatus: row.status,
+      decidedById: session.user.id,
+      remarks: notes,
+    });
+  });
 
   await auditService.log({
     tenantId: session.user.tenantId,
@@ -2835,6 +2901,7 @@ export async function updateSaleHeaderAction(input: unknown) {
             data: {
               statusCodeId: toCodeId,
               updatedById: session.user.id,
+              ...statusUpdatedStamp(fromCodeId, toCodeId),
             },
           });
         }

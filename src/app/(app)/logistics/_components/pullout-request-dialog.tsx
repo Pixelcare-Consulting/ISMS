@@ -1,17 +1,37 @@
 "use client";
 
-import { Fragment, useEffect, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useState, useTransition, type ChangeEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import {
   listBranchesForLogisticsAction,
   listPulloutChecklistOptionsAction,
-  listPulloutReasonCodesAction,
   listPulloutSerialsAction,
-  listWarehousesForLogisticsAction,
   type PulloutChecklistOptions,
+  uploadPulloutAttachmentAction,
 } from "@/features/logistics/actions/logistics.actions";
-import type { PulloutSerialOption } from "@/features/logistics/services/pullout-posting.service";
+import {
+  PULLOUT_ATTACHMENT_ACCEPT,
+  PULLOUT_ATTACHMENT_MAX_FILES,
+  pulloutAttachmentError,
+} from "@/features/logistics/constants/pullout-attachments";
+import { pulloutCondition } from "@/features/logistics/services/pullout-posting.planner";
+import type {
+  PulloutCreateInput,
+  PulloutSerialOption,
+} from "@/features/logistics/services/pullout-posting.service";
+import {
+  EMPTY_CHECKLIST_OPTIONS,
+  PULLOUT_LINE_FIELDS,
+  PulloutLineField,
+  pulloutLineChoice,
+  pulloutLineComplete,
+  pulloutLineInput,
+  pulloutMissingDetailsText,
+  type PulloutLineChoice,
+} from "@/app/(app)/logistics/_components/pullout-line-fields";
+import { RecordedProblemCell } from "@/app/(app)/logistics/_components/recorded-problem-cell";
+import { PulloutConditionBadge } from "@/features/logistics/components/pullout-condition-badge";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -29,13 +49,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 const PULLOUT_CREATE_FORM_ID = "pullout-create-form";
 const POPOVER_CLASS = "z-[100]";
 const SERIAL_PAGE_SIZE = 10;
-const EMPTY_LOOKUP_MESSAGE = "No active names. Add them in Settings → Master data.";
-
-const EMPTY_CHECKLIST_OPTIONS: PulloutChecklistOptions = {
-  classifications: [],
-  unitPackingConditions: [],
-  accessoryCompleteness: [],
-};
+const UNIT_COLUMN_COUNT = 11;
 
 const MANILA_DATE = new Intl.DateTimeFormat("en-PH", {
   year: "numeric",
@@ -44,34 +58,13 @@ const MANILA_DATE = new Intl.DateTimeFormat("en-PH", {
   timeZone: "Asia/Manila",
 });
 
-type RequestCondition = "STK" | "DEF" | "Mixed";
-
-interface PulloutChecklistChoice {
-  pulloutClassificationIds: string[];
-  unitPackingConditionIds: string[];
-  accessoryCompletenessIds: string[];
-}
-
-const EMPTY_CHOICE: PulloutChecklistChoice = {
-  pulloutClassificationIds: [],
-  unitPackingConditionIds: [],
-  accessoryCompletenessIds: [],
-};
 
 interface PulloutRequestDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (input: {
-    branchId: string;
-    warehouseId: string;
-    reasonStatusCodeId: string;
-    lines: {
-      serialNumberId: string;
-      pulloutClassificationIds: string[];
-      unitPackingConditionIds: string[];
-      accessoryCompletenessIds: string[];
-    }[];
-  }) => Promise<{ error?: string; pulloutNo?: string }>;
+  onSubmit: (
+    input: PulloutCreateInput,
+  ) => Promise<{ error?: string; id?: string; pulloutNo?: string }>;
   onCreated: () => void;
   currentUserName?: string;
 }
@@ -82,95 +75,54 @@ function serialMatches(serial: PulloutSerialOption, query: string): boolean {
   return (
     serial.skuCode.toLowerCase().includes(needle) ||
     serial.modelName.toLowerCase().includes(needle) ||
-    serial.serialNo.toLowerCase().includes(needle)
+    serial.serialNo.toLowerCase().includes(needle) ||
+    (serial.recordedProblem?.toLowerCase().includes(needle) ?? false)
   );
 }
 
-function choiceFor(
-  choices: Readonly<Record<string, PulloutChecklistChoice>>,
-  serialNumberId: string,
-): PulloutChecklistChoice {
-  return choices[serialNumberId] ?? EMPTY_CHOICE;
+function unitTableMessage(input: {
+  branchChosen: boolean;
+  loading: boolean;
+  serialCount: number;
+  matchCount: number;
+}): string | null {
+  if (!input.branchChosen) return "Select a branch to see its units.";
+  if (input.loading) return "Loading serials…";
+  if (input.serialCount === 0) return "No serials are free at this branch.";
+  if (input.matchCount === 0) return "No serials match this search.";
+  return null;
 }
 
-function checklistReady(
-  selectedIds: readonly string[],
-  choices: Readonly<Record<string, PulloutChecklistChoice>>,
-): boolean {
-  return selectedIds.every((serialNumberId) => {
-    const choice = choices[serialNumberId];
-    return Boolean(
-      choice &&
-        choice.pulloutClassificationIds.length > 0 &&
-        choice.unitPackingConditionIds.length > 0 &&
-        choice.accessoryCompletenessIds.length > 0,
-    );
-  });
-}
-
-function requestCondition(
-  serials: PulloutSerialOption[],
-  selected: ReadonlySet<string>,
-): RequestCondition | null {
-  let stock = false;
-  let defective = false;
-  for (const serial of serials) {
-    if (!selected.has(serial.serialNumberId)) continue;
-    switch (serial.inventoryCode) {
-      case "STK":
-        stock = true;
-        break;
-      case "DEF":
-        defective = true;
-        break;
-      default: {
-        const unreachable: never = serial.inventoryCode;
-        return unreachable;
-      }
-    }
+async function uploadAttachments(pulloutId: string, files: readonly File[]): Promise<string | null> {
+  for (const file of files) {
+    const formData = new FormData();
+    formData.set("pulloutId", pulloutId);
+    formData.set("file", file);
+    const result = await uploadPulloutAttachmentAction(formData);
+    if ("error" in result) return `${file.name}: ${result.error}`;
   }
-  if (stock && defective) return "Mixed";
-  if (stock) return "STK";
-  if (defective) return "DEF";
   return null;
 }
 
 function Field({
   label,
   htmlFor,
+  wide = false,
   children,
 }: {
   label: string;
   htmlFor?: string;
+  wide?: boolean;
   children: ReactNode;
 }) {
   return (
-    <div className="min-w-0">
+    <div className={wide ? "min-w-0 sm:col-span-2" : "min-w-0"}>
       <dt className="text-sm text-muted-foreground">
         {htmlFor ? <label htmlFor={htmlFor}>{label}</label> : label}
       </dt>
       <dd className="text-sm">{children}</dd>
     </div>
   );
-}
-
-function RequestConditionBadge({ condition }: { condition: RequestCondition }) {
-  switch (condition) {
-    case "STK":
-      return <StatusCodeBadge code="STK" name="STK" />;
-    case "DEF":
-      return <StatusCodeBadge code="DEF" name="DEF" />;
-    case "Mixed":
-      return (
-        <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-normal text-slate-700">
-          Mixed
-        </span>
-      );
-    default: {
-      const unreachable: never = condition;
-      return unreachable;
-    }
-  }
 }
 
 function ModelCell({ skuCode, name }: { skuCode: string; name: string }) {
@@ -183,47 +135,6 @@ function ModelCell({ skuCode, name }: { skuCode: string; name: string }) {
   );
 }
 
-function ChecklistGroup({
-  label,
-  options,
-  selectedIds,
-  onToggle,
-  disabled,
-}: {
-  label: string;
-  options: { id: string; name: string }[];
-  selectedIds: readonly string[];
-  onToggle: (id: string, checked: boolean) => void;
-  disabled: boolean;
-}) {
-  const selected = new Set(selectedIds);
-  return (
-    <fieldset className="min-w-0 space-y-2" disabled={disabled}>
-      <legend className="text-sm font-medium">{label}</legend>
-      {options.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{EMPTY_LOOKUP_MESSAGE}</p>
-      ) : (
-        <ul className="space-y-1.5">
-          {options.map((option) => (
-            <li key={option.id}>
-              <label className="flex items-start gap-2 text-sm leading-snug">
-                <Checkbox
-                  className="mt-0.5"
-                  checked={selected.has(option.id)}
-                  onCheckedChange={(value) => onToggle(option.id, value === true)}
-                  disabled={disabled}
-                  aria-label={`${label}: ${option.name}`}
-                />
-                <span>{option.name}</span>
-              </label>
-            </li>
-          ))}
-        </ul>
-      )}
-    </fieldset>
-  );
-}
-
 export function PulloutRequestDialog({
   open,
   onOpenChange,
@@ -233,18 +144,13 @@ export function PulloutRequestDialog({
 }: PulloutRequestDialogProps) {
   const [pending, startTransition] = useTransition();
   const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
-  const [warehouses, setWarehouses] = useState<{ id: string; name: string; code: string }[]>([]);
-  const [reasons, setReasons] = useState<
-    { id: string; code: string; name: string; color: string | null }[]
-  >([]);
   const [serials, setSerials] = useState<PulloutSerialOption[]>([]);
   const [loadedBranchId, setLoadedBranchId] = useState<string | null>(null);
   const [listsLoaded, setListsLoaded] = useState(false);
   const [branchId, setBranchId] = useState("");
-  const [warehouseId, setWarehouseId] = useState("");
-  const [reasonId, setReasonId] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
-  const [choices, setChoices] = useState<Record<string, PulloutChecklistChoice>>({});
+  const [choices, setChoices] = useState<Record<string, PulloutLineChoice>>({});
+  const [files, setFiles] = useState<File[]>([]);
   const [checklistOptions, setChecklistOptions] = useState<PulloutChecklistOptions>(EMPTY_CHECKLIST_OPTIONS);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -254,33 +160,22 @@ export function PulloutRequestDialog({
     let cancelled = false;
     void Promise.all([
       listBranchesForLogisticsAction(),
-      listWarehousesForLogisticsAction(),
-      listPulloutReasonCodesAction(),
       listPulloutChecklistOptionsAction(),
-    ]).then(([branchRows, warehouseRows, reasonRows, checklist]) => {
+    ]).then(([branchRows, checklist]) => {
       if (cancelled) return;
       setBranches(branchRows);
-      setWarehouses(warehouseRows);
-      setReasons(
-        reasonRows.map((reason) => ({
-          id: reason.id,
-          code: reason.code,
-          name: reason.name,
-          color: reason.color,
-        })),
-      );
       if (checklist.error) {
         setChecklistOptions(EMPTY_CHECKLIST_OPTIONS);
         toast.error(checklist.error);
       } else {
         setChecklistOptions({
+          reasons: checklist.reasons,
+          problemDescriptions: checklist.problemDescriptions,
           classifications: checklist.classifications,
           unitPackingConditions: checklist.unitPackingConditions,
           accessoryCompleteness: checklist.accessoryCompleteness,
         });
       }
-      setBranchId((current) => current || branchRows[0]?.id || "");
-      setWarehouseId((current) => current || warehouseRows[0]?.id || "");
       setListsLoaded(true);
     });
     return () => {
@@ -291,32 +186,21 @@ export function PulloutRequestDialog({
   useEffect(() => {
     if (!open || !branchId) return;
     let cancelled = false;
-    const requestedBranchId = branchId;
-    void listPulloutSerialsAction(requestedBranchId).then((result) => {
+    void listPulloutSerialsAction(branchId).then((result) => {
       if (cancelled) return;
-      setLoadedBranchId(requestedBranchId);
-      setSelected([]);
-      setChoices({});
-      setQuery("");
-      setPage(1);
+      setLoadedBranchId(branchId);
       if ("error" in result && result.error) {
-        setSerials([]);
         toast.error(result.error);
         return;
       }
-      if (!("serials" in result)) {
-        setSerials([]);
-        return;
-      }
-      setSerials(result.serials);
+      if ("serials" in result) setSerials(result.serials);
     });
     return () => {
       cancelled = true;
     };
   }, [open, branchId]);
 
-  const waitingForSerials = !listsLoaded || (branchId !== "" && loadedBranchId !== branchId);
-  const selectedReason = reasons.find((reason) => reason.id === reasonId) ?? null;
+  const waitingForSerials = Boolean(branchId) && loadedBranchId !== branchId;
   const selectedSet = new Set(selected);
   const filteredSerials = serials.filter((serial) => serialMatches(serial, query));
   const pageCount = Math.max(1, Math.ceil(filteredSerials.length / SERIAL_PAGE_SIZE));
@@ -327,8 +211,21 @@ export function PulloutRequestDialog({
     selectedSet.has(serial.serialNumberId),
   ).length;
   const allMatchingSelected = filteredSerials.length > 0 && selectedMatching === filteredSerials.length;
-  const ready = selected.length > 0 && checklistReady(selected, choices);
-  const condition = requestCondition(serials, selectedSet);
+  const selectedSerials = serials.filter((serial) => selectedSet.has(serial.serialNumberId));
+  const missingDetails = selectedSerials.filter(
+    (serial) =>
+      !pulloutLineComplete(serial.inventoryCode, pulloutLineChoice(choices, serial.serialNumberId)),
+  );
+  const ready = selectedSerials.length > 0 && missingDetails.length === 0;
+  const tableMessage = unitTableMessage({
+    branchChosen: Boolean(branchId),
+    loading: waitingForSerials,
+    serialCount: serials.length,
+    matchCount: filteredSerials.length,
+  });
+  const selectedCondition = pulloutCondition(
+    selectedSerials.map((serial) => ({ priorCode: serial.inventoryCode })),
+  );
   const createdBy = currentUserName.trim() || "—";
   const createdOn = MANILA_DATE.format(new Date());
 
@@ -342,25 +239,11 @@ export function PulloutRequestDialog({
     );
   }
 
-  function toggleChecklistId(
-    serialNumberId: string,
-    field: keyof PulloutChecklistChoice,
-    id: string,
-    checked: boolean,
-  ) {
-    setChoices((current) => {
-      const choice = choiceFor(current, serialNumberId);
-      const currentIds = choice[field];
-      const nextIds = checked
-        ? currentIds.includes(id)
-          ? currentIds
-          : [...currentIds, id]
-        : currentIds.filter((value) => value !== id);
-      return {
-        ...current,
-        [serialNumberId]: { ...choice, [field]: nextIds },
-      };
-    });
+  function updateChoice(serialNumberId: string, patch: Partial<PulloutLineChoice>) {
+    setChoices((current) => ({
+      ...current,
+      [serialNumberId]: { ...pulloutLineChoice(current, serialNumberId), ...patch },
+    }));
   }
 
   function toggleAll(checked: boolean) {
@@ -375,22 +258,65 @@ export function PulloutRequestDialog({
     });
   }
 
+  function resetUnits() {
+    setSerials([]);
+    setSelected([]);
+    setChoices({});
+    setQuery("");
+    setPage(1);
+  }
+
+  function resetForm() {
+    setLoadedBranchId(null);
+    setBranchId("");
+    setFiles([]);
+    resetUnits();
+  }
+
+  function close() {
+    if (pending) return;
+    resetForm();
+    onOpenChange(false);
+  }
+
+  function chooseBranch(nextBranchId: string) {
+    if (nextBranchId === branchId) return;
+    setBranchId(nextBranchId);
+    setLoadedBranchId(null);
+    resetUnits();
+  }
+
+  function addFiles(event: ChangeEvent<HTMLInputElement>) {
+    const picked = [...(event.target.files ?? [])];
+    event.target.value = "";
+    const next = [...files];
+    for (const file of picked) {
+      const refused = pulloutAttachmentError({
+        mimeType: file.type,
+        sizeBytes: file.size,
+        attachedCount: next.length,
+      });
+      if (refused) {
+        toast.error(`${file.name}: ${refused}`);
+        continue;
+      }
+      next.push(file);
+    }
+    setFiles(next);
+  }
+
   function submit() {
-    if (!checklistReady(selected, choices)) return;
+    if (!ready) return;
     startTransition(async () => {
       const result = await onSubmit({
         branchId,
-        warehouseId,
-        reasonStatusCodeId: reasonId,
-        lines: selected.map((serialNumberId) => {
-          const choice = choiceFor(choices, serialNumberId);
-          return {
-            serialNumberId,
-            pulloutClassificationIds: choice.pulloutClassificationIds,
-            unitPackingConditionIds: choice.unitPackingConditionIds,
-            accessoryCompletenessIds: choice.accessoryCompletenessIds,
-          };
-        }),
+        lines: selectedSerials.map((serial) =>
+          pulloutLineInput(
+            serial.serialNumberId,
+            serial.inventoryCode,
+            pulloutLineChoice(choices, serial.serialNumberId),
+          ),
+        ),
       });
       if (result.error) {
         toast.error(result.error);
@@ -399,10 +325,11 @@ export function PulloutRequestDialog({
       toast.success(
         result.pulloutNo ? `Pull-out ${result.pulloutNo} submitted` : "Pull-out submitted",
       );
-      setSelected([]);
-      setChoices({});
-      setQuery("");
-      setPage(1);
+      const attachError = result.id ? await uploadAttachments(result.id, files) : null;
+      if (attachError) {
+        toast.error(`The pull-out was saved, but a file was not attached. ${attachError}`);
+      }
+      resetForm();
       onOpenChange(false);
       onCreated();
     });
@@ -412,109 +339,103 @@ export function PulloutRequestDialog({
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (pending) return;
-        if (!next) {
-          setLoadedBranchId(null);
-          setReasonId("");
-          setSelected([]);
-          setChoices({});
-          setQuery("");
-          setPage(1);
-        }
-        onOpenChange(next);
+        if (next) onOpenChange(true);
+        else close();
       }}
     >
-      <DialogContent className="flex max-h-[calc(100svh-2rem)] max-w-4xl flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl sm:p-0">
+      <DialogContent className="flex max-h-[calc(100svh-2rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl sm:p-0">
         <DialogHeader className="shrink-0 border-b px-4 py-4 text-left sm:px-6">
           <DialogTitle>New pull-out</DialogTitle>
           <DialogDescription>
-            Stock units are reserved. Defective units stay defective until the pull-out is sent.
+            Stock units are reserved until the Team Lead decides. Defective units stay defective
+            until the pull-out is sent.
           </DialogDescription>
         </DialogHeader>
         <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-4 sm:px-6">
           <form
             id={PULLOUT_CREATE_FORM_ID}
-            className="space-y-4"
+            className="space-y-6"
             onSubmit={(event) => {
               event.preventDefault();
               submit();
             }}
           >
-            <dl className="grid gap-3 sm:grid-cols-2">
-              <Field label="Pull-out No.">
-                <span className="text-muted-foreground">Assigned when you submit</span>
-              </Field>
-              <Field label="Branch" htmlFor="pullout-branch">
-                <SearchableSelect
-                  id="pullout-branch"
-                  options={branches.map((branch) => ({ id: branch.id, label: branch.name }))}
-                  value={branchId}
-                  onChange={setBranchId}
-                  placeholder="Select branch…"
-                  searchPlaceholder="Search branches…"
-                  disabled={pending}
-                  popoverClassName={POPOVER_CLASS}
-                />
-              </Field>
-              <Field label="Warehouse" htmlFor="pullout-warehouse">
-                <SearchableSelect
-                  id="pullout-warehouse"
-                  options={warehouses.map((warehouse) => ({
-                    id: warehouse.id,
-                    label: `${warehouse.name} (${warehouse.code})`,
-                  }))}
-                  value={warehouseId}
-                  onChange={setWarehouseId}
-                  placeholder="Select warehouse…"
-                  searchPlaceholder="Search warehouses…"
-                  disabled={pending}
-                  popoverClassName={POPOVER_CLASS}
-                />
-              </Field>
-              <Field label="Pull-out reason" htmlFor="pullout-reason">
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="min-w-0 flex-1">
-                    <SearchableSelect
-                      id="pullout-reason"
-                      options={reasons.map((reason) => ({
-                        id: reason.id,
-                        label: `${reason.name} (${reason.code})`,
-                      }))}
-                      value={reasonId}
-                      onChange={setReasonId}
-                      placeholder="Select reason…"
-                      searchPlaceholder="Search reasons…"
-                      disabled={pending}
-                      popoverClassName={POPOVER_CLASS}
+            <section className="space-y-3">
+              <h3 className="font-medium">Requestor</h3>
+              <dl className="grid gap-3 sm:grid-cols-2">
+                <Field label="Pull-out No.">
+                  <span className="text-muted-foreground">Assigned when you submit</span>
+                </Field>
+                <Field label="Branch Name" htmlFor="pullout-branch">
+                  <SearchableSelect
+                    id="pullout-branch"
+                    options={branches.map((branch) => ({ id: branch.id, label: branch.name }))}
+                    value={branchId}
+                    onChange={chooseBranch}
+                    placeholder={listsLoaded ? "Select branch…" : "Loading branches…"}
+                    searchPlaceholder="Search branches…"
+                    disabled={pending || !listsLoaded}
+                    popoverClassName={POPOVER_CLASS}
+                  />
+                </Field>
+                <Field label="Created By">{createdBy}</Field>
+                <Field label="Status">
+                  {selectedCondition ? (
+                    <PulloutConditionBadge condition={selectedCondition} />
+                  ) : (
+                    <span className="text-muted-foreground">Follows the selected units</span>
+                  )}
+                </Field>
+                <Field label="Created Date">{createdOn}</Field>
+                <Field label="Pull-out Status">New</Field>
+                <Field label="Attachments" htmlFor="pullout-attachments" wide>
+                  <div className="space-y-2 pt-1">
+                    <Input
+                      id="pullout-attachments"
+                      type="file"
+                      multiple
+                      accept={PULLOUT_ATTACHMENT_ACCEPT}
+                      disabled={pending || files.length >= PULLOUT_ATTACHMENT_MAX_FILES}
+                      onChange={addFiles}
                     />
+                    <p className="text-xs text-muted-foreground">
+                      Up to {PULLOUT_ATTACHMENT_MAX_FILES} PDF or image files, 4 MB each.
+                    </p>
+                    {files.length > 0 ? (
+                      <ul className="space-y-1">
+                        {files.map((file, index) => (
+                          <li
+                            key={`${file.name}-${index}`}
+                            className="flex items-center justify-between gap-2"
+                          >
+                            <span className="min-w-0 truncate">{file.name}</span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              disabled={pending}
+                              aria-label={`Remove ${file.name}`}
+                              onClick={() =>
+                                setFiles((current) => current.filter((_, at) => at !== index))
+                              }
+                            >
+                              Remove
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
                   </div>
-                  {selectedReason ? (
-                    <StatusCodeBadge
-                      code={selectedReason.code}
-                      name={selectedReason.name}
-                      color={selectedReason.color}
-                    />
-                  ) : null}
-                </div>
-              </Field>
-              <Field label="Created by">{createdBy}</Field>
-              <Field label="Created date">{createdOn}</Field>
-              <Field label="Status">New</Field>
-              <Field label="Inventory condition">
-                {condition ? (
-                  <RequestConditionBadge condition={condition} />
-                ) : (
-                  <span className="text-muted-foreground">—</span>
-                )}
-              </Field>
-            </dl>
+                </Field>
+              </dl>
+            </section>
 
             <section className="space-y-2">
-              <h3 className="font-medium">Items</h3>
+              <h3 className="font-medium">Transfer details</h3>
               <Input
                 id="pullout-serial-search"
                 value={query}
-                disabled={pending || waitingForSerials}
+                disabled={pending || !branchId || waitingForSerials}
                 placeholder="Search model code, model name, or serial number"
                 aria-label="Search model code, model name, or serial number"
                 onChange={(event) => {
@@ -525,14 +446,11 @@ export function PulloutRequestDialog({
                   if (event.key === "Enter") event.preventDefault();
                 }}
               />
-              <div className="min-w-0 overflow-hidden rounded-md border">
-                <table className="w-full table-fixed text-sm">
-                  <thead className="bg-muted/40 text-left">
+              <div className="min-w-0 overflow-x-auto rounded-md border">
+                <table className="w-full min-w-[88rem] table-fixed text-sm">
+                  <thead className="bg-muted/40 text-left text-muted-foreground">
                     <tr>
-                      <th
-                        className="w-10 px-2 py-2 align-middle font-medium text-muted-foreground"
-                        scope="col"
-                      >
+                      <th className="w-10 px-2 py-2 align-middle font-medium" scope="col">
                         #
                       </th>
                       <th className="w-10 px-2 py-2 align-middle" scope="col">
@@ -549,126 +467,95 @@ export function PulloutRequestDialog({
                           }
                         />
                       </th>
-                      <th className="px-2 py-2 align-middle font-medium text-muted-foreground" scope="col">
+                      <th className="w-44 px-2 py-2 align-middle font-medium" scope="col">
                         Model
                       </th>
-                      <th className="px-2 py-2 align-middle font-medium text-muted-foreground" scope="col">
+                      <th className="w-44 px-2 py-2 align-middle font-medium" scope="col">
                         Serial number
                       </th>
-                      <th
-                        className="w-28 px-2 py-2 align-middle font-medium whitespace-normal text-muted-foreground"
-                        scope="col"
-                      >
-                        Inventory condition
+                      <th className="w-16 px-2 py-2 align-middle font-medium" scope="col">
+                        Status
                       </th>
+                      <th className="w-48 px-2 py-2 align-middle font-medium" scope="col">
+                        Problem description
+                      </th>
+                      {PULLOUT_LINE_FIELDS.map(({ field, header }) => (
+                        <th
+                          key={field}
+                          className={`${field === "remarks" ? "w-32 " : ""}px-2 py-2 align-middle font-medium`}
+                          scope="col"
+                        >
+                          {header}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {waitingForSerials ? (
+                    {tableMessage ? (
                       <tr className="border-t">
-                        <td className="px-2 py-3 text-muted-foreground" colSpan={5}>
-                          Loading serials…
-                        </td>
-                      </tr>
-                    ) : serials.length === 0 ? (
-                      <tr className="border-t">
-                        <td className="px-2 py-3 text-muted-foreground" colSpan={5}>
-                          No serials are free at this branch.
-                        </td>
-                      </tr>
-                    ) : filteredSerials.length === 0 ? (
-                      <tr className="border-t">
-                        <td className="px-2 py-3 text-muted-foreground" colSpan={5}>
-                          No serials match this search.
+                        <td
+                          className="px-2 py-3 text-muted-foreground"
+                          colSpan={UNIT_COLUMN_COUNT}
+                        >
+                          {tableMessage}
                         </td>
                       </tr>
                     ) : (
                       visibleSerials.map((serial, index) => {
-                        const checked = selectedSet.has(serial.serialNumberId);
-                        const choice = choiceFor(choices, serial.serialNumberId);
+                        const isSelected = selectedSet.has(serial.serialNumberId);
+                        const fieldsDisabled = pending || !isSelected;
+                        const choice = pulloutLineChoice(choices, serial.serialNumberId);
                         return (
-                          <Fragment key={serial.serialNumberId}>
-                            <tr className="border-t">
-                              <td className="px-2 py-2 align-middle tabular-nums text-muted-foreground">
-                                {pageStart + index + 1}
-                              </td>
-                              <td className="px-2 py-2 align-middle">
-                                <Checkbox
-                                  checked={checked}
-                                  onCheckedChange={(value) =>
-                                    toggleSerial(serial.serialNumberId, value === true)
-                                  }
-                                  disabled={pending}
-                                  aria-label={`Select ${serial.serialNo}`}
+                          <tr
+                            key={serial.serialNumberId}
+                            className={isSelected ? "border-t bg-muted/30" : "border-t"}
+                          >
+                            <td className="px-2 py-2 align-top tabular-nums text-muted-foreground">
+                              {pageStart + index + 1}
+                            </td>
+                            <td className="px-2 py-2 align-top">
+                              <Checkbox
+                                checked={isSelected}
+                                onCheckedChange={(value) =>
+                                  toggleSerial(serial.serialNumberId, value === true)
+                                }
+                                disabled={pending}
+                                aria-label={`Select ${serial.serialNo}`}
+                              />
+                            </td>
+                            <td className="min-w-0 overflow-hidden px-2 py-2 align-top">
+                              <ModelCell skuCode={serial.skuCode} name={serial.modelName} />
+                            </td>
+                            <td
+                              className="min-w-0 overflow-hidden px-2 py-2 align-top font-mono"
+                              title={serial.serialNo}
+                            >
+                              <span className="block truncate">{serial.serialNo}</span>
+                            </td>
+                            <td className="px-2 py-2 align-top">
+                              <StatusCodeBadge
+                                code={serial.inventoryCode}
+                                name={serial.inventoryCode}
+                              />
+                            </td>
+                            <td className="min-w-0 px-2 py-2 align-top">
+                              <RecordedProblemCell problem={serial.recordedProblem} />
+                            </td>
+                            {PULLOUT_LINE_FIELDS.map(({ field }) => (
+                              <td key={field} className="px-2 py-2 align-top">
+                                <PulloutLineField
+                                  field={field}
+                                  serialNumberId={serial.serialNumberId}
+                                  serialNo={serial.serialNo}
+                                  unitCode={serial.inventoryCode}
+                                  options={checklistOptions}
+                                  choice={choice}
+                                  disabled={fieldsDisabled}
+                                  onChange={(patch) => updateChoice(serial.serialNumberId, patch)}
                                 />
                               </td>
-                              <td className="min-w-0 overflow-hidden px-2 py-2 align-middle">
-                                <ModelCell skuCode={serial.skuCode} name={serial.modelName} />
-                              </td>
-                              <td
-                                className="min-w-0 overflow-hidden px-2 py-2 align-middle font-mono"
-                                title={serial.serialNo}
-                              >
-                                <span className="block truncate">{serial.serialNo}</span>
-                              </td>
-                              <td className="px-2 py-2 align-middle">
-                                <StatusCodeBadge
-                                  code={serial.inventoryCode}
-                                  name={serial.inventoryCode}
-                                />
-                              </td>
-                            </tr>
-                            {checked ? (
-                              <tr className="border-t bg-muted/20">
-                                <td className="px-2 py-3" colSpan={5}>
-                                  <div className="grid gap-3 sm:grid-cols-3">
-                                    <ChecklistGroup
-                                      label="Classification"
-                                      options={checklistOptions.classifications}
-                                      selectedIds={choice.pulloutClassificationIds}
-                                      disabled={pending}
-                                      onToggle={(id, checked) =>
-                                        toggleChecklistId(
-                                          serial.serialNumberId,
-                                          "pulloutClassificationIds",
-                                          id,
-                                          checked,
-                                        )
-                                      }
-                                    />
-                                    <ChecklistGroup
-                                      label="Unit packing condition"
-                                      options={checklistOptions.unitPackingConditions}
-                                      selectedIds={choice.unitPackingConditionIds}
-                                      disabled={pending}
-                                      onToggle={(id, checked) =>
-                                        toggleChecklistId(
-                                          serial.serialNumberId,
-                                          "unitPackingConditionIds",
-                                          id,
-                                          checked,
-                                        )
-                                      }
-                                    />
-                                    <ChecklistGroup
-                                      label="Accessory completeness"
-                                      options={checklistOptions.accessoryCompleteness}
-                                      selectedIds={choice.accessoryCompletenessIds}
-                                      disabled={pending}
-                                      onToggle={(id, checked) =>
-                                        toggleChecklistId(
-                                          serial.serialNumberId,
-                                          "accessoryCompletenessIds",
-                                          id,
-                                          checked,
-                                        )
-                                      }
-                                    />
-                                  </div>
-                                </td>
-                              </tr>
-                            ) : null}
-                          </Fragment>
+                            ))}
+                          </tr>
                         );
                       })
                     )}
@@ -679,6 +566,7 @@ export function PulloutRequestDialog({
                 <div className="flex items-center justify-between gap-2 text-sm">
                   <p className="text-muted-foreground">
                     {pageStart + 1}–{pageStart + visibleSerials.length} of {filteredSerials.length}
+                    {selectedSerials.length > 0 ? `, ${selectedSerials.length} selected` : ""}
                   </p>
                   <div className="flex gap-2">
                     <Button
@@ -702,28 +590,22 @@ export function PulloutRequestDialog({
                   </div>
                 </div>
               ) : null}
-              {selected.length > 0 && !ready ? (
+              {missingDetails.length > 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  Choose classification, unit packing condition, and accessory completeness for every
-                  selected serial.
+                  {pulloutMissingDetailsText(missingDetails)}
                 </p>
               ) : null}
             </section>
           </form>
         </div>
         <DialogFooter className="shrink-0 gap-2 border-t px-4 py-4 sm:justify-end sm:px-6">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={pending}
-            onClick={() => onOpenChange(false)}
-          >
+          <Button type="button" variant="outline" disabled={pending} onClick={close}>
             Cancel
           </Button>
           <Button
             type="submit"
             form={PULLOUT_CREATE_FORM_ID}
-            disabled={pending || !ready || !branchId || !warehouseId || !reasonId}
+            disabled={pending || !ready}
           >
             Submit
           </Button>

@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@/lib/database/generated/prisma/client";
+import { statusUpdatedStamp } from "@/features/inventory/lib/status-updated-stamp";
 import type { PsgOutgoingRow } from "@/features/inventory/services/psg-outgoing-workbook";
 import {
   assertExclusivePlacement,
@@ -207,6 +208,7 @@ export async function upsertPsgOutgoing(
               branchId,
               statusCodeId: stkStatusCodeId,
               ...(stockedAt ? { updatedAt: stockedAt } : {}),
+              ...statusUpdatedStamp(primary.statusCode, "STK"),
             },
           });
           if (branchRows.length > 1) {

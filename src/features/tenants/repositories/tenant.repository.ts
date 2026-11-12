@@ -59,6 +59,13 @@ export const tenantRepository = {
     });
   },
 
+  updateDocumentHeader(tenantId: string, documentHeader: string | null) {
+    return prisma.tenant.update({
+      where: { id: tenantId },
+      data: { documentHeader },
+    });
+  },
+
   listCustomers() {
     return prisma.tenant.findMany({
       where: customerWhere,

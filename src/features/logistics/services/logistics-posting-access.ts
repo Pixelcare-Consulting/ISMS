@@ -12,13 +12,13 @@ export type LogisticsPostingAction =
   | "transfer.approve"
   | "transfer.reject"
   | "transfer.release"
-  | "transfer.saveShipment"
   | "transfer.receive"
   | "pullout.create"
   | "pullout.approve"
   | "pullout.reject"
   | "pullout.updateList"
   | "pullout.finalize"
+  | "pullout.linkSapDocument"
   | "pullout.complete";
 
 const DENIED = "You do not have permission for this logistics action";
@@ -39,9 +39,9 @@ export function postingPermissionError(
     case "pullout.reject":
       return caps.canRejectTransfer ? null : DENIED;
     case "transfer.release":
-    case "transfer.saveShipment":
     case "pullout.updateList":
     case "pullout.finalize":
+    case "pullout.linkSapDocument":
       return caps.canManage ? null : DENIED;
     case "transfer.receive":
       return caps.canReceiveTransfer ? null : DENIED;

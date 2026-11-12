@@ -1,21 +1,43 @@
+
+import {
+  inventoryApprovalLedger,
+  type InventoryApprovalDocument,
+} from "@/features/inventory-approvals/services/inventory-approval-ledger";
 import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
+import {
+  PULLOUT_ATTACHMENT_OPEN_CODES,
+  pulloutAttachmentError,
+} from "@/features/logistics/constants/pullout-attachments";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import {
   asWorkflowCode,
+  PULLOUT_SETTLED_CODES,
   PULLOUT_WORKFLOW_CODE,
   type PulloutWorkflowCodeKey,
 } from "@/features/logistics/constants/workflow-codes";
-import { sapService } from "@/features/sap/services/sap.service";
-import type { AllocatableSerial } from "@/features/logistics/services/posting-planner-types";
+import {
+  checkPulloutSapDocument,
+  formatPulloutSapDoc,
+  type PulloutSapDocType,
+} from "@/features/logistics/lib/pullout-sap-document";
+import { recordedProblemsBySerial } from "@/features/logistics/services/pullout-recorded-problems";
+import { fetchPulloutSapDocument } from "@/features/logistics/services/pullout-sap-document.service";
+import type { AllocatableSerial, HoldCode } from "@/features/logistics/services/posting-planner-types";
 import {
   planPulloutApprove,
-  planPulloutComplete,
   planPulloutCreate,
   planPulloutFinalize,
+  planPulloutLineApprove,
+  planPulloutLineDelete,
   planPulloutReject,
   planPulloutUpdateList,
-  pulloutSapMessage,
-  type PulloutLineView,
+  PULLOUT_DEFECTIVE_REASON_CODE,
+  PULLOUT_LINE_DECISION,
+  pulloutClassificationError,
+  pulloutCondition,
+  pulloutReasonError,
+  type PulloutConditionView,
+  type PulloutDecisionLineView,
   type PulloutStatus,
 } from "@/features/logistics/services/pullout-posting.planner";
 import {
@@ -33,8 +55,12 @@ import {
 } from "@/features/logistics/services/posting-support";
 import { STOCK_COUNT_FREEZE_SESSION_STATUSES } from "@/features/stock-audit/constants/stock-count-workflow";
 import { prisma } from "@/lib/database/client";
+import { buildPulloutAttachmentPath, getObjectStorage } from "@/lib/storage";
 
 const CLAIM_LOST = "One or more serials changed before this pull-out could be saved";
+
+/** A unit being put on a pull-out, with the STK or DEF it starts as. */
+type PlannedLine = { serialNumberId: string; priorCode: HoldCode };
 
 export interface PulloutSerialOption {
   serialNumberId: string;
@@ -43,37 +69,58 @@ export interface PulloutSerialOption {
   skuCode: string;
   modelName: string;
   inventoryCode: "STK" | "DEF";
+  /** Problem already recorded on a defect tag or sales return. Read-only on the pull-out. */
+  recordedProblem: string | null;
 }
 
-/** Checklist choices for one selected serial. Each list needs at least one active lookup. */
+/** The IT or Return a user linked to a sent unit after creating it in SAP. */
+export interface PulloutLineSapDocument {
+  type: PulloutSapDocType;
+  docNum: number;
+  /** YYYY-MM-DD */
+  docDate: string | null;
+  linkedAt: string | null;
+  linkedByName: string | null;
+}
+
+export interface PulloutSapDocumentLinkInput {
+  serialNumberIds: string[];
+  docType: PulloutSapDocType;
+  docNum: number;
+}
+
+/**
+ * Details for one selected serial. Classification and reason are for stock units,
+ * problem descriptions for defective ones.
+ */
 export interface PulloutCreateLine {
   serialNumberId: string;
+  pulloutReasonCodeId?: string;
+  problemDescriptionIds: string[];
   pulloutClassificationIds: string[];
   unitPackingConditionIds: string[];
   accessoryCompletenessIds: string[];
+  remarks?: string;
 }
 
 export interface PulloutCreateInput {
   branchId: string;
-  warehouseId: string;
-  reasonStatusCodeId: string;
   lines: PulloutCreateLine[];
   notes?: string;
 }
 
-export interface PulloutSapJob {
+export interface PulloutAttachment {
   id: string;
-  status: string;
-  sapDocRef: string | null;
-  stub: boolean;
-  message: string;
+  fileName: string;
 }
 
 export interface PulloutDetail {
   id: string;
   pulloutNo: string;
+  condition: PulloutConditionView | null;
   notes: string | null;
   waybillNo: string | null;
+  courierName: string | null;
   createdAt: string;
   createdByName: string | null;
   scheduledAt: string | null;
@@ -81,11 +128,18 @@ export interface PulloutDetail {
   actualScheduledDate: string | null;
   status: { code: string; name: string; color: string | null };
   branch: { id: string; name: string };
-  warehouse: { id: string; name: string; code: string };
+  /** Only on pull-outs made before receiving was dropped. */
+  warehouse: { id: string; name: string; code: string } | null;
   warehouseLocation: { name: string; code: string } | null;
+  /** Set on pull-outs made before the form dropped the reason. */
   reason: { id: string; code: string; name: string; color: string | null } | null;
+  attachments: PulloutAttachment[];
   lines: {
     serialNumberId: string;
+    decision: string;
+    remarks: string | null;
+    reasonName: string | null;
+    problemDescriptionNames: string[];
     serialNo: string;
     skuCode: string;
     modelName: string;
@@ -94,9 +148,26 @@ export interface PulloutDetail {
     classificationNames: string[];
     unitPackingConditionNames: string[];
     accessoryCompletenessNames: string[];
+    /** Receipt and in-transit rejection only exist on pull-outs from before receiving was dropped. */
+    receivedAt: string | null;
+    receivedByName: string | null;
+    receivedLocation: { code: string; name: string } | null;
+    rejectedAt: string | null;
+    rejectedByName: string | null;
+    rejectionRemarks: string | null;
+    sapDocument: PulloutLineSapDocument | null;
   }[];
-  sapJob: PulloutSapJob | null;
+  /** Sent: users may link the SAP IT or Return they made by hand. */
+  canLinkSapDocuments: boolean;
   history: { id: string; action: string; at: string; userName: string | null }[];
+}
+
+function dateOnly(value: Date | null): string | null {
+  return value ? value.toISOString().slice(0, 10) : null;
+}
+
+function isSettledPullout(code: string): boolean {
+  return (PULLOUT_SETTLED_CODES as readonly string[]).includes(code);
 }
 
 function asPulloutStatus(code: string): PulloutStatus | null {
@@ -169,12 +240,18 @@ async function loadPullout(db: PostingDb | typeof prisma, tenantId: string, pull
       branchId: true,
       warehouseId: true,
       waybillNo: true,
+      courierName: true,
+      scheduledAt: true,
       notes: true,
       statusCodeId: true,
       statusCode: { select: { code: true } },
       lines: {
         select: {
           serialNumberId: true,
+          decision: true,
+          receivedAt: true,
+          rejectedAt: true,
+          serialNumber: { select: { serialNo: true } },
           priorStatusCodeId: true,
           priorStatusCode: { select: { code: true } },
         },
@@ -192,8 +269,17 @@ async function loadPullout(db: PostingDb | typeof prisma, tenantId: string, pull
       })
     : [];
   const inventoryBySerial = new Map(inventory.map((row) => [row.serialNumberId, row]));
-  const lines: (PulloutLineView & { priorStatusCodeId: string | null })[] = pullout.lines.map((line) => ({
+  const lines: (PulloutDecisionLineView & {
+    received: boolean;
+    rejected: boolean;
+    priorStatusCodeId: string | null;
+    serialNo: string;
+  })[] = pullout.lines.map((line) => ({
     serialNumberId: line.serialNumberId,
+    serialNo: line.serialNumber.serialNo,
+    decision: line.decision,
+    received: line.receivedAt !== null,
+    rejected: line.rejectedAt !== null,
     priorCode: asHoldCode(line.priorStatusCode?.code),
     priorStatusCodeId: line.priorStatusCodeId,
     inventoryCode: asInventoryCode(inventoryBySerial.get(line.serialNumberId)?.statusCode.code),
@@ -208,7 +294,8 @@ async function writeHistory(
     userId: string;
     pulloutNo: string;
     serialNumberIds: string[];
-    status: string;
+    /** Null when the event does not change the unit's status. */
+    status: string | null;
     details: string;
   },
 ) {
@@ -223,6 +310,14 @@ async function writeHistory(
       createdById: input.userId,
     })),
   });
+}
+
+function approvalDocument(
+  tenantId: string,
+  pullout: { id: string; pulloutNo: string },
+  step: "TL_APPROVAL" | "RECEIVING",
+): InventoryApprovalDocument {
+  return { tenantId, sourceType: "PULLOUT", sourceId: pullout.id, sourceNo: pullout.pulloutNo, step };
 }
 
 async function stampApproval(
@@ -254,19 +349,23 @@ function displayName(name: string | null | undefined): string | null {
 }
 
 const CHECKLIST_REQUIRED =
-  "Choose classification, unit packing condition, and accessory completeness for every selected serial";
+  "Choose the classification, unit packing condition, and accessory completeness this pull-out needs for every selected serial";
 const CHECKLIST_DUPLICATE =
   "Each classification, packing condition, and accessory completeness can only be chosen once";
 const CHECKLIST_INACTIVE =
   "Choose an active classification, unit packing condition, and accessory completeness for every selected serial";
 
+function assertNoDuplicateIds(ids: readonly string[]): void {
+  if (new Set(ids).size !== ids.length) {
+    throw new Error(CHECKLIST_DUPLICATE);
+  }
+}
+
 function requireChecklistIds(ids: readonly string[] | undefined): void {
   if (!ids || ids.length === 0 || ids.some((id) => id.length === 0)) {
     throw new Error(CHECKLIST_REQUIRED);
   }
-  if (new Set(ids).size !== ids.length) {
-    throw new Error(CHECKLIST_DUPLICATE);
-  }
+  assertNoDuplicateIds(ids);
 }
 
 function checklistBySerial(lines: readonly PulloutCreateLine[]): Map<string, PulloutCreateLine> {
@@ -274,7 +373,8 @@ function checklistBySerial(lines: readonly PulloutCreateLine[]): Map<string, Pul
   const bySerial = new Map<string, PulloutCreateLine>();
   for (const line of lines) {
     if (!line.serialNumberId) throw new Error(CHECKLIST_REQUIRED);
-    requireChecklistIds(line.pulloutClassificationIds);
+    assertNoDuplicateIds(line.pulloutClassificationIds);
+    assertNoDuplicateIds(line.problemDescriptionIds);
     requireChecklistIds(line.unitPackingConditionIds);
     requireChecklistIds(line.accessoryCompletenessIds);
     if (bySerial.has(line.serialNumberId)) {
@@ -285,14 +385,19 @@ function checklistBySerial(lines: readonly PulloutCreateLine[]): Map<string, Pul
   return bySerial;
 }
 
+/** Refuses retired choices. Returns the problem description names by id, for the approval trail. */
 async function assertActiveChecklist(
   tenantId: string,
   lines: readonly PulloutCreateLine[],
-): Promise<void> {
+): Promise<Map<string, string>> {
   const classificationIds = [...new Set(lines.flatMap((line) => line.pulloutClassificationIds))];
   const packingIds = [...new Set(lines.flatMap((line) => line.unitPackingConditionIds))];
   const accessoryIds = [...new Set(lines.flatMap((line) => line.accessoryCompletenessIds))];
-  const [classifications, packings, accessories] = await Promise.all([
+  const problemIds = [...new Set(lines.flatMap((line) => line.problemDescriptionIds))];
+  const reasonIds = [
+    ...new Set(lines.flatMap((line) => (line.pulloutReasonCodeId ? [line.pulloutReasonCodeId] : []))),
+  ];
+  const [classifications, packings, accessories, problems, reasons] = await Promise.all([
     prisma.pulloutClassification.findMany({
       where: { tenantId, recordStatus: "active", id: { in: classificationIds } },
       select: { id: true },
@@ -305,19 +410,102 @@ async function assertActiveChecklist(
       where: { tenantId, recordStatus: "active", id: { in: accessoryIds } },
       select: { id: true },
     }),
+    prisma.problemDescription.findMany({
+      where: { tenantId, recordStatus: "active", id: { in: problemIds } },
+      select: { id: true, name: true },
+    }),
+    prisma.reasonStatusCode.findMany({
+      where: {
+        tenantId,
+        recordStatus: "active",
+        id: { in: reasonIds },
+        code: { not: PULLOUT_DEFECTIVE_REASON_CODE },
+        reasonStatus: { category: "pullout_reason" },
+      },
+      select: { id: true },
+    }),
   ]);
   const activeClassifications = new Set(classifications.map((row) => row.id));
   const activePackings = new Set(packings.map((row) => row.id));
   const activeAccessories = new Set(accessories.map((row) => row.id));
+  const activeProblems = new Set(problems.map((row) => row.id));
+  const activeReasons = new Set(reasons.map((row) => row.id));
   for (const line of lines) {
     if (
       line.pulloutClassificationIds.some((id) => !activeClassifications.has(id)) ||
       line.unitPackingConditionIds.some((id) => !activePackings.has(id)) ||
-      line.accessoryCompletenessIds.some((id) => !activeAccessories.has(id))
+      line.accessoryCompletenessIds.some((id) => !activeAccessories.has(id)) ||
+      line.problemDescriptionIds.some((id) => !activeProblems.has(id)) ||
+      (line.pulloutReasonCodeId !== undefined && !activeReasons.has(line.pulloutReasonCodeId))
     ) {
       throw new Error(CHECKLIST_INACTIVE);
     }
   }
+  return new Map(problems.map((row) => [row.id, row.name]));
+}
+
+/** Every planned unit has details, and they fit its own STK or DEF. */
+function assertLineDetails(
+  lines: readonly PlannedLine[],
+  details: ReadonlyMap<string, PulloutCreateLine>,
+): void {
+  if (lines.length !== details.size || lines.some((line) => !details.has(line.serialNumberId))) {
+    throw new Error(CHECKLIST_REQUIRED);
+  }
+  for (const line of lines) {
+    const choice = details.get(line.serialNumberId);
+    const classificationError = pulloutClassificationError(
+      line.priorCode,
+      choice?.pulloutClassificationIds.length ?? 0,
+    );
+    if (classificationError) throw new Error(classificationError);
+    const reasonError = pulloutReasonError(
+      line.priorCode,
+      Boolean(choice?.pulloutReasonCodeId),
+      choice?.problemDescriptionIds.length ?? 0,
+    );
+    if (reasonError) throw new Error(reasonError);
+  }
+}
+
+async function defectiveReasonIdFor(
+  tenantId: string,
+  lines: readonly PlannedLine[],
+): Promise<string | null> {
+  if (!lines.some((line) => line.priorCode === "DEF")) return null;
+  return reasonStatusService.requireCodeId(tenantId, "pullout_reason", PULLOUT_DEFECTIVE_REASON_CODE);
+}
+
+/** The details a line saves, whether it was on the request or added by Logistics. */
+function lineDetailData(
+  line: PlannedLine,
+  details: ReadonlyMap<string, PulloutCreateLine>,
+  defectiveReasonId: string | null,
+) {
+  const choice = details.get(line.serialNumberId);
+  if (!choice) throw new Error(CHECKLIST_REQUIRED);
+  return {
+    remarks: choice.remarks?.trim() || null,
+    reasonCodeId: line.priorCode === "DEF" ? defectiveReasonId : choice.pulloutReasonCodeId,
+    problemDescriptions: {
+      create: choice.problemDescriptionIds.map((problemDescriptionId) => ({ problemDescriptionId })),
+    },
+    classifications: {
+      create: choice.pulloutClassificationIds.map((pulloutClassificationId) => ({
+        pulloutClassificationId,
+      })),
+    },
+    packingConditions: {
+      create: choice.unitPackingConditionIds.map((unitPackingConditionId) => ({
+        unitPackingConditionId,
+      })),
+    },
+    accessoryCompletenesses: {
+      create: choice.accessoryCompletenessIds.map((accessoryCompletenessId) => ({
+        accessoryCompletenessId,
+      })),
+    },
+  };
 }
 
 function savedNames(names: readonly (string | null | undefined)[]): string[] {
@@ -327,30 +515,102 @@ function savedNames(names: readonly (string | null | undefined)[]): string[] {
   });
 }
 
-function jobStub(metadata: unknown): boolean {
-  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return false;
-  return (metadata as { stub?: unknown }).stub === true;
+function problemDescriptionText(
+  choice: PulloutCreateLine | undefined,
+  namesById: ReadonlyMap<string, string>,
+): string | null {
+  const names = savedNames((choice?.problemDescriptionIds ?? []).map((id) => namesById.get(id)));
+  return names.length > 0 ? names.join(", ") : null;
 }
 
-async function loadSapJob(tenantId: string, pulloutId: string): Promise<PulloutSapJob | null> {
-  const job = await prisma.sapIntegrationJob.findFirst({
-    where: { tenantId, referenceId: pulloutId, jobType: "pullout_itr" },
-    orderBy: { createdAt: "desc" },
-    select: { id: true, status: true, sapDocRef: true },
+interface ApprovalIds {
+  codes: Awaited<ReturnType<typeof inventoryIds>>;
+  nextStatusId: string;
+  pendingId: string;
+}
+
+async function approvalIds(tenantId: string): Promise<ApprovalIds> {
+  const [codes, nextStatusId, pendingId] = await Promise.all([
+    inventoryIds(tenantId),
+    workflowId(tenantId, "for_pullout"),
+    workflowId(tenantId, "pending_tl"),
+  ]);
+  return { codes, nextStatusId, pendingId };
+}
+
+/** Moves the whole pull-out to For pull-out. Header Approve and the last line decision both land here. */
+async function approveInTx(
+  tx: PostingDb,
+  actor: PostingActor,
+  pulloutId: string,
+  { codes, nextStatusId, pendingId }: ApprovalIds,
+): Promise<void> {
+  const fresh = await loadPullout(tx, actor.tenantId, pulloutId);
+  if (!fresh) throw new Error("Pull-out not found");
+  const plan = planPulloutApprove(fresh);
+  if (!plan.ok) throw new Error(plan.error);
+  if (plan.idempotent) return;
+  await lockSerialNumbers(
+    tx,
+    plan.moves.map((move) => move.serialNumberId),
+  );
+  await claimInventory(tx, {
+    tenantId: actor.tenantId,
+    branchId: fresh.branchId,
+    serialNumberIds: plan.moves.map((move) => move.serialNumberId),
+    fromStatusCodeId: codes.RSV,
+    toStatusCodeId: codes.FPO,
+    userId: actor.userId,
+    message: "A serial on this pull-out is not reserved",
   });
-  if (!job) return null;
-  const audit = await prisma.auditLog.findFirst({
-    where: { tenantId, entityId: pulloutId, action: "sap.pullout_itr_processed" },
-    orderBy: { createdAt: "desc" },
-    select: { metadata: true },
+  await claimHeader(tx, "branchPullout", {
+    id: pulloutId,
+    tenantId: actor.tenantId,
+    fromStatusCodeIds: [pendingId],
+    toStatusCodeId: nextStatusId,
+    message: "This pull-out was updated by someone else",
   });
-  const stub = jobStub(audit?.metadata);
-  const view = { id: job.id, status: job.status, sapDocRef: job.sapDocRef, stub };
-  return { ...view, message: pulloutSapMessage(view) };
+  await tx.branchPulloutLine.updateMany({
+    where: { pulloutId, decision: PULLOUT_LINE_DECISION.pending },
+    data: {
+      decision: PULLOUT_LINE_DECISION.accepted,
+      decidedAt: new Date(),
+      decidedById: actor.userId,
+    },
+  });
+  await stampApproval(tx, pulloutId, actor.userId, "approved");
+  await inventoryApprovalLedger.recordDecision(tx, approvalDocument(actor.tenantId, fresh, "TL_APPROVAL"), {
+    serialNumberIds: fresh.lines
+      .filter((line) => line.decision === PULLOUT_LINE_DECISION.pending)
+      .map((line) => line.serialNumberId),
+    status: "APPROVED",
+    decidedById: actor.userId,
+  });
+  await writeHistory(tx, {
+    tenantId: actor.tenantId,
+    userId: actor.userId,
+    pulloutNo: fresh.pulloutNo,
+    serialNumberIds: plan.moves.map((move) => move.serialNumberId),
+    status: "FPO",
+    details: `Approved on ${fresh.pulloutNo}`,
+  });
+  await tx.auditLog.create({
+    data: {
+      tenantId: actor.tenantId,
+      userId: actor.userId,
+      action: "pullout.approved",
+      entityType: "BranchPullout",
+      entityId: pulloutId,
+      metadata: { pulloutNo: fresh.pulloutNo },
+    },
+  });
 }
 
 export const pulloutPostingService = {
-  async listSerials(actor: PostingActor, branchId: string): Promise<PulloutSerialOption[]> {
+  async listSerials(
+    actor: PostingActor,
+    branchId: string,
+  ): Promise<PulloutSerialOption[]> {
     await authorizePosting(actor, "pullout.create", branchId);
     const codes = await inventoryIds(actor.tenantId);
     const rows = await prisma.branchInventory.findMany({
@@ -379,10 +639,11 @@ export const pulloutPostingService = {
       orderBy: { serialNumber: { serialNo: "asc" } },
       take: 300,
     });
-    const openDocs = await openDocumentIdsBySerial(
-      actor.tenantId,
-      rows.map((row) => row.serialNumberId),
-    );
+    const serialIds = rows.map((row) => row.serialNumberId);
+    const [openDocs, problems] = await Promise.all([
+      openDocumentIdsBySerial(actor.tenantId, serialIds),
+      recordedProblemsBySerial(actor.tenantId, serialIds),
+    ]);
     return rows.flatMap((row) => {
       if ((openDocs.get(row.serialNumberId) ?? []).length > 0) return [];
       const code = asHoldCode(row.statusCode.code);
@@ -395,6 +656,7 @@ export const pulloutPostingService = {
           skuCode: row.serialNumber.model.skuCode,
           modelName: row.serialNumber.model.name,
           inventoryCode: code,
+          recordedProblem: problems.get(row.serialNumberId) ?? null,
         },
       ];
     });
@@ -408,6 +670,7 @@ export const pulloutPostingService = {
         pulloutNo: true,
         notes: true,
         waybillNo: true,
+        courierName: true,
         createdAt: true,
         scheduledAt: true,
         actualScheduledDate: true,
@@ -418,10 +681,32 @@ export const pulloutPostingService = {
         warehouseLocation: { select: { name: true, code: true } },
         statusCode: { select: { code: true, name: true, color: true } },
         reasonStatusCode: { select: { id: true, code: true, name: true, color: true } },
+        attachments: {
+          select: { id: true, fileName: true },
+          orderBy: { createdAt: "asc" },
+        },
         lines: {
           select: {
             serialNumberId: true,
+            decision: true,
+            remarks: true,
+            receivedAt: true,
+            receivedBy: { select: { name: true } },
+            receivedLocation: { select: { code: true, name: true } },
+            rejectedAt: true,
+            rejectedBy: { select: { name: true } },
+            rejectionRemarks: true,
+            sapDocType: true,
+            sapDocNum: true,
+            sapDocDate: true,
+            sapDocLinkedAt: true,
+            sapDocLinkedBy: { select: { name: true } },
             priorStatusCode: { select: { code: true } },
+            reasonCode: { select: { name: true } },
+            problemDescriptions: {
+              select: { problemDescription: { select: { name: true } } },
+              orderBy: { problemDescription: { name: "asc" } },
+            },
             classifications: {
               select: { pulloutClassification: { select: { name: true } } },
               orderBy: { pulloutClassification: { name: "asc" } },
@@ -450,24 +735,29 @@ export const pulloutPostingService = {
             branchId: pullout.branch.id,
             serialNumberId: { in: pullout.lines.map((line) => line.serialNumberId) },
           },
-          select: { serialNumberId: true, statusCode: { select: { code: true } } },
+          select: {
+            serialNumberId: true,
+            statusCode: { select: { code: true } },
+          },
         })
       : [];
     const inventoryBySerial = new Map(inventory.map((row) => [row.serialNumberId, row]));
-    const [history, sapJob] = await Promise.all([
-      prisma.auditLog.findMany({
-        where: { tenantId: actor.tenantId, entityType: "BranchPullout", entityId: pullout.id },
-        orderBy: { createdAt: "desc" },
-        take: 40,
-        select: { id: true, action: true, createdAt: true, user: { select: { name: true } } },
-      }),
-      loadSapJob(actor.tenantId, pullout.id),
-    ]);
+    const history = await prisma.auditLog.findMany({
+      where: { tenantId: actor.tenantId, entityType: "BranchPullout", entityId: pullout.id },
+      orderBy: { createdAt: "desc" },
+      take: 40,
+      select: { id: true, action: true, createdAt: true, user: { select: { name: true } } },
+    });
     return {
       id: pullout.id,
       pulloutNo: pullout.pulloutNo,
+      condition: pulloutCondition(
+        pullout.lines.map((line) => ({ priorCode: line.priorStatusCode?.code ?? null })),
+      ),
+      attachments: pullout.attachments,
       notes: pullout.notes,
       waybillNo: pullout.waybillNo,
+      courierName: pullout.courierName,
       createdAt: pullout.createdAt.toISOString(),
       createdByName: displayName(pullout.createdBy?.name),
       scheduledAt: pullout.scheduledAt?.toISOString() ?? null,
@@ -480,6 +770,12 @@ export const pulloutPostingService = {
       reason: pullout.reasonStatusCode,
       lines: pullout.lines.map((line) => ({
         serialNumberId: line.serialNumberId,
+        decision: line.decision,
+        remarks: line.remarks,
+        reasonName: line.reasonCode?.name ?? null,
+        problemDescriptionNames: savedNames(
+          line.problemDescriptions.map((row) => row.problemDescription.name),
+        ),
         serialNo: line.serialNumber.serialNo,
         skuCode: line.serialNumber.model.skuCode,
         modelName: line.serialNumber.model.name,
@@ -494,8 +790,24 @@ export const pulloutPostingService = {
         accessoryCompletenessNames: savedNames(
           line.accessoryCompletenesses.map((row) => row.accessoryCompleteness.name),
         ),
+        receivedAt: line.receivedAt?.toISOString() ?? null,
+        receivedByName: displayName(line.receivedBy?.name),
+        receivedLocation: line.receivedLocation,
+        rejectedAt: line.rejectedAt?.toISOString() ?? null,
+        rejectedByName: displayName(line.rejectedBy?.name),
+        rejectionRemarks: line.rejectionRemarks,
+        sapDocument:
+          line.sapDocType && line.sapDocNum != null
+            ? {
+                type: line.sapDocType,
+                docNum: line.sapDocNum,
+                docDate: dateOnly(line.sapDocDate),
+                linkedAt: line.sapDocLinkedAt?.toISOString() ?? null,
+                linkedByName: displayName(line.sapDocLinkedBy?.name),
+              }
+            : null,
       })),
-      sapJob,
+      canLinkSapDocuments: isSettledPullout(pullout.statusCode.code),
       history: history.map((row) => ({
         id: row.id,
         action: row.action,
@@ -508,33 +820,15 @@ export const pulloutPostingService = {
   async create(actor: PostingActor, input: PulloutCreateInput) {
     await authorizePosting(actor, "pullout.create", input.branchId);
     const checklist = checklistBySerial(input.lines);
-    await assertActiveChecklist(actor.tenantId, input.lines);
-    const reason = await prisma.reasonStatusCode.findFirst({
-      where: {
-        id: input.reasonStatusCodeId,
-        tenantId: actor.tenantId,
-        reasonStatus: { category: "pullout_reason" },
-      },
-      select: { id: true, reasonStatusId: true, name: true },
-    });
-    if (!reason) throw new Error("Choose a pull-out reason");
+    const problemNames = await assertActiveChecklist(actor.tenantId, input.lines);
 
     const serials = await loadAllocatable(actor.tenantId, input.branchId, [...checklist.keys()]);
-    const plan = planPulloutCreate({
-      branchId: input.branchId,
-      warehouseId: input.warehouseId,
-      serials,
-    });
+    const plan = planPulloutCreate({ branchId: input.branchId, serials });
     if (!plan.ok) throw new Error(plan.error);
-    if (
-      plan.lines.length !== checklist.size ||
-      plan.lines.some((line) => !checklist.has(line.serialNumberId))
-    ) {
-      throw new Error(CHECKLIST_REQUIRED);
-    }
-
+    assertLineDetails(plan.lines, checklist);
     const codes = await inventoryIds(actor.tenantId);
     const statusCodeId = await workflowId(actor.tenantId, "pending_tl");
+    const defectiveReasonId = await defectiveReasonIdFor(actor.tenantId, plan.lines);
 
     try {
       return await prisma.$transaction(async (tx) => {
@@ -561,37 +855,16 @@ export const pulloutPostingService = {
           data: {
             tenantId: actor.tenantId,
             branchId: input.branchId,
-            warehouseId: input.warehouseId,
             pulloutNo,
             statusCodeId,
-            reasonStatusId: reason.reasonStatusId,
-            reasonStatusCodeId: reason.id,
             notes: input.notes?.trim() || null,
             createdById: actor.userId,
             lines: {
-              create: plan.lines.map((line) => {
-                const choice = checklist.get(line.serialNumberId);
-                if (!choice) throw new Error(CHECKLIST_REQUIRED);
-                return {
-                  serialNumberId: line.serialNumberId,
-                  priorStatusCodeId: codes[line.priorCode],
-                  classifications: {
-                    create: choice.pulloutClassificationIds.map((pulloutClassificationId) => ({
-                      pulloutClassificationId,
-                    })),
-                  },
-                  packingConditions: {
-                    create: choice.unitPackingConditionIds.map((unitPackingConditionId) => ({
-                      unitPackingConditionId,
-                    })),
-                  },
-                  accessoryCompletenesses: {
-                    create: choice.accessoryCompletenessIds.map((accessoryCompletenessId) => ({
-                      accessoryCompletenessId,
-                    })),
-                  },
-                };
-              }),
+              create: plan.lines.map((line) => ({
+                serialNumberId: line.serialNumberId,
+                priorStatusCodeId: codes[line.priorCode],
+                ...lineDetailData(line, checklist, defectiveReasonId),
+              })),
             },
             approvalLevels: { create: [{ level: 1, roleSlug: "tl" }] },
           },
@@ -605,6 +878,17 @@ export const pulloutPostingService = {
           status: "RSV",
           details: `Reserved on ${row.pulloutNo}`,
         });
+        await inventoryApprovalLedger.recordRequested(tx, approvalDocument(actor.tenantId, row, "TL_APPROVAL"), {
+          requestedById: actor.userId,
+          units: plan.lines.map((line) => {
+            const choice = checklist.get(line.serialNumberId);
+            return {
+              serialNumberId: line.serialNumberId,
+              remarks: choice?.remarks,
+              problemDescription: problemDescriptionText(choice, problemNames),
+            };
+          }),
+        });
         await tx.auditLog.create({
           data: {
             tenantId: actor.tenantId,
@@ -614,7 +898,7 @@ export const pulloutPostingService = {
             entityId: row.id,
             metadata: {
               pulloutNo: row.pulloutNo,
-              reasonName: reason.name,
+              condition: pulloutCondition(plan.lines),
               serialCount: plan.lines.length,
             },
           },
@@ -634,62 +918,210 @@ export const pulloutPostingService = {
     if (!preview.ok) throw new Error(preview.error);
     if (preview.idempotent) return { id: current.id, pulloutNo: current.pulloutNo, idempotent: true };
 
-    const codes = await inventoryIds(actor.tenantId);
-    const nextStatusId = await workflowId(actor.tenantId, "for_pullout");
-    const pendingId = await workflowId(actor.tenantId, "pending_tl");
+    const ids = await approvalIds(actor.tenantId);
 
     try {
-      await prisma.$transaction(async (tx) => {
-        const fresh = await loadPullout(tx, actor.tenantId, pulloutId);
-        if (!fresh) throw new Error("Pull-out not found");
-        const plan = planPulloutApprove(fresh);
-        if (!plan.ok) throw new Error(plan.error);
-        if (plan.idempotent) return;
-        await lockSerialNumbers(
-          tx,
-          plan.moves.map((move) => move.serialNumberId),
-        );
-        await claimInventory(tx, {
-          tenantId: actor.tenantId,
-          branchId: fresh.branchId,
-          serialNumberIds: plan.moves.map((move) => move.serialNumberId),
-          fromStatusCodeId: codes.RSV,
-          toStatusCodeId: codes.FPO,
-          userId: actor.userId,
-          message: "A serial on this pull-out is not reserved",
-        });
-        await claimHeader(tx, "branchPullout", {
-          id: pulloutId,
-          tenantId: actor.tenantId,
-          fromStatusCodeIds: [pendingId],
-          toStatusCodeId: nextStatusId,
-          message: "This pull-out was updated by someone else",
-        });
-        await stampApproval(tx, pulloutId, actor.userId, "approved");
-        await writeHistory(tx, {
-          tenantId: actor.tenantId,
-          userId: actor.userId,
-          pulloutNo: fresh.pulloutNo,
-          serialNumberIds: plan.moves.map((move) => move.serialNumberId),
-          status: "FPO",
-          details: `Approved on ${fresh.pulloutNo}`,
-        });
-        await tx.auditLog.create({
-          data: {
-            tenantId: actor.tenantId,
-            userId: actor.userId,
-            action: "pullout.approved",
-            entityType: "BranchPullout",
-            entityId: pulloutId,
-            metadata: { pulloutNo: fresh.pulloutNo },
-          },
-        });
-      });
+      await prisma.$transaction((tx) => approveInTx(tx, actor, pulloutId, ids));
     } catch (error) {
       throw postingError(error, "Failed to approve pull-out");
     }
 
     return { id: current.id, pulloutNo: current.pulloutNo, idempotent: false };
+  },
+
+  async approveLine(actor: PostingActor, pulloutId: string, serialNumberId: string) {
+    await authorizePosting(actor, "pullout.approve", null);
+    const current = await loadPullout(prisma, actor.tenantId, pulloutId);
+    if (!current) throw new Error("Pull-out not found");
+    const preview = planPulloutLineApprove({ ...current, serialNumberId });
+    if (!preview.ok) throw new Error(preview.error);
+    if (preview.idempotent) return { id: current.id };
+
+    const ids = await approvalIds(actor.tenantId);
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        // Line actions lock every serial, so two decisions on one pull-out run in turn
+        // and the last one always sees that nothing else is pending.
+        await lockSerialNumbers(
+          tx,
+          current.lines.map((line) => line.serialNumberId),
+        );
+        const fresh = await loadPullout(tx, actor.tenantId, pulloutId);
+        if (!fresh) throw new Error("Pull-out not found");
+        const plan = planPulloutLineApprove({ ...fresh, serialNumberId });
+        if (!plan.ok) throw new Error(plan.error);
+        if (plan.idempotent) return;
+        await tx.branchPulloutLine.updateMany({
+          where: { pulloutId, serialNumberId },
+          data: {
+            decision: PULLOUT_LINE_DECISION.accepted,
+            decidedAt: new Date(),
+            decidedById: actor.userId,
+          },
+        });
+        await inventoryApprovalLedger.recordDecision(tx, approvalDocument(actor.tenantId, fresh, "TL_APPROVAL"), {
+          serialNumberIds: [serialNumberId],
+          status: "APPROVED",
+          decidedById: actor.userId,
+        });
+        await tx.auditLog.create({
+          data: {
+            tenantId: actor.tenantId,
+            userId: actor.userId,
+            action: "pullout.line_approved",
+            entityType: "BranchPullout",
+            entityId: pulloutId,
+            metadata: {
+              pulloutNo: fresh.pulloutNo,
+              serialNo: fresh.lines.find((line) => line.serialNumberId === serialNumberId)?.serialNo,
+            },
+          },
+        });
+        if (plan.completesApproval) await approveInTx(tx, actor, pulloutId, ids);
+      });
+    } catch (error) {
+      throw postingError(error, "Failed to approve this unit");
+    }
+
+    return { id: current.id };
+  },
+
+  async deleteLine(actor: PostingActor, pulloutId: string, serialNumberId: string) {
+    await authorizePosting(actor, "pullout.reject", null);
+    const current = await loadPullout(prisma, actor.tenantId, pulloutId);
+    if (!current) throw new Error("Pull-out not found");
+    const preview = planPulloutLineDelete({ ...current, serialNumberId });
+    if (!preview.ok) throw new Error(preview.error);
+
+    const ids = await approvalIds(actor.tenantId);
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        await lockSerialNumbers(
+          tx,
+          current.lines.map((line) => line.serialNumberId),
+        );
+        const fresh = await loadPullout(tx, actor.tenantId, pulloutId);
+        if (!fresh) throw new Error("Pull-out not found");
+        const plan = planPulloutLineDelete({ ...fresh, serialNumberId });
+        if (!plan.ok) throw new Error(plan.error);
+        if (plan.restore) {
+          await claimInventory(tx, {
+            tenantId: actor.tenantId,
+            branchId: fresh.branchId,
+            serialNumberIds: [plan.restore.serialNumberId],
+            fromStatusCodeId: ids.codes.RSV,
+            toStatusCodeId: ids.codes[plan.restore.restoreCode],
+            userId: actor.userId,
+            message: "A reserved serial on this pull-out could not be restored",
+          });
+          await writeHistory(tx, {
+            tenantId: actor.tenantId,
+            userId: actor.userId,
+            pulloutNo: fresh.pulloutNo,
+            serialNumberIds: [plan.restore.serialNumberId],
+            status: plan.restore.restoreCode,
+            details: `Removed from ${fresh.pulloutNo}`,
+          });
+        }
+        await tx.branchPulloutLine.deleteMany({ where: { pulloutId, serialNumberId } });
+        await inventoryApprovalLedger.recordDecision(tx, approvalDocument(actor.tenantId, fresh, "TL_APPROVAL"), {
+          serialNumberIds: [serialNumberId],
+          status: "REJECTED",
+          decidedById: actor.userId,
+        });
+        await tx.auditLog.create({
+          data: {
+            tenantId: actor.tenantId,
+            userId: actor.userId,
+            action: "pullout.line_deleted",
+            entityType: "BranchPullout",
+            entityId: pulloutId,
+            metadata: {
+              pulloutNo: fresh.pulloutNo,
+              serialNo: fresh.lines.find((line) => line.serialNumberId === serialNumberId)?.serialNo,
+            },
+          },
+        });
+        if (plan.completesApproval) await approveInTx(tx, actor, pulloutId, ids);
+      });
+    } catch (error) {
+      throw postingError(error, "Failed to delete this unit");
+    }
+
+    return { id: current.id };
+  },
+
+  async addAttachment(actor: PostingActor, pulloutId: string, file: File) {
+    const pullout = await prisma.branchPullout.findFirst({
+      where: { id: pulloutId, tenantId: actor.tenantId },
+      select: {
+        pulloutNo: true,
+        branchId: true,
+        statusCode: { select: { code: true } },
+        _count: { select: { attachments: true } },
+      },
+    });
+    if (!pullout) throw new Error("Pull-out not found");
+    await authorizePosting(actor, "pullout.create", pullout.branchId);
+    if (!PULLOUT_ATTACHMENT_OPEN_CODES.includes(pullout.statusCode.code)) {
+      throw new Error("Files can only be attached to an open pull-out");
+    }
+    const refused = pulloutAttachmentError({
+      mimeType: file.type,
+      sizeBytes: file.size,
+      attachedCount: pullout._count.attachments,
+    });
+    if (refused) throw new Error(refused);
+
+    const storagePath = buildPulloutAttachmentPath({
+      tenantId: actor.tenantId,
+      pulloutId,
+      fileId: crypto.randomUUID(),
+      fileName: file.name,
+    });
+    const storage = getObjectStorage();
+    await storage.upload({
+      path: storagePath,
+      body: Buffer.from(await file.arrayBuffer()),
+      contentType: file.type,
+    });
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.branchPulloutAttachment.create({
+          data: {
+            pulloutId,
+            fileName: file.name,
+            storagePath,
+            mimeType: file.type,
+            sizeBytes: file.size,
+            uploadedById: actor.userId,
+          },
+        });
+        await tx.auditLog.create({
+          data: {
+            tenantId: actor.tenantId,
+            userId: actor.userId,
+            action: "pullout.attachment_added",
+            entityType: "BranchPullout",
+            entityId: pulloutId,
+            metadata: { pulloutNo: pullout.pulloutNo, fileName: file.name },
+          },
+        });
+      });
+    } catch (error) {
+      // A file with no row can never be found again, so do not leave it behind.
+      await storage.remove(storagePath).catch(() => undefined);
+      throw postingError(error, "Failed to attach the file");
+    }
+  },
+
+  async getAttachment(tenantId: string, attachmentId: string) {
+    return prisma.branchPulloutAttachment.findFirst({
+      where: { id: attachmentId, pullout: { tenantId } },
+      select: { fileName: true, storagePath: true, mimeType: true },
+    });
   },
 
   async reject(actor: PostingActor, pulloutId: string) {
@@ -737,6 +1169,11 @@ export const pulloutPostingService = {
           message: "This pull-out was updated by someone else",
         });
         await stampApproval(tx, pulloutId, actor.userId, "rejected");
+        await inventoryApprovalLedger.recordDecision(tx, approvalDocument(actor.tenantId, fresh, "TL_APPROVAL"), {
+          serialNumberIds: fresh.lines.map((line) => line.serialNumberId),
+          status: "REJECTED",
+          decidedById: actor.userId,
+        });
         for (const prior of ["STK", "DEF"] as const) {
           await writeHistory(tx, {
             tenantId: actor.tenantId,
@@ -774,10 +1211,14 @@ export const pulloutPostingService = {
     actor: PostingActor,
     input: {
       pulloutId: string;
-      warehouseId?: string;
       waybillNo?: string | null;
+      courierName?: string | null;
+      scheduledAt?: Date | null;
+      actualScheduledDate?: Date | null;
       notes?: string | null;
       serialNumberIds?: string[];
+      /** Details for serials not yet on the pull-out, with the same rules as the request. */
+      addedLines?: PulloutCreateLine[];
     },
   ) {
     const current = await loadPullout(prisma, actor.tenantId, input.pulloutId);
@@ -793,18 +1234,17 @@ export const pulloutPostingService = {
     const added = await loadAllocatable(actor.tenantId, current.branchId, addedIds, current.id);
     const plan = planPulloutUpdateList({ status: current.status, kept, removed, added });
     if (!plan.ok) throw new Error(plan.error);
+    const addedLines = plan.holds.length > 0 ? (input.addedLines ?? []) : [];
+    const addedDetails = plan.holds.length > 0 ? checklistBySerial(addedLines) : new Map();
+    assertLineDetails(plan.holds, addedDetails);
+    await assertActiveChecklist(actor.tenantId, addedLines);
+    const defectiveReasonId = await defectiveReasonIdFor(actor.tenantId, plan.holds);
 
     const codes = await inventoryIds(actor.tenantId);
     const nextStatusId = await workflowId(actor.tenantId, "pending_logistics");
     const fromIds = await Promise.all(
       (["for_pullout", "pending_logistics"] as const).map((code) => workflowId(actor.tenantId, code)),
     );
-    const warehouseId = input.warehouseId ?? current.warehouseId;
-    const warehouse = await prisma.warehouse.findFirst({
-      where: { id: warehouseId, tenantId: actor.tenantId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!warehouse) throw new Error("Choose a warehouse");
 
     try {
       await prisma.$transaction(async (tx) => {
@@ -871,14 +1311,15 @@ export const pulloutPostingService = {
             },
           });
         }
-        if (freshPlan.holds.length > 0) {
-          // New lines from this screen have no checklist. Kept lines are not rewritten.
-          await tx.branchPulloutLine.createMany({
-            data: freshPlan.holds.map((hold) => ({
+        // Nested details need one create each. Kept lines are not rewritten.
+        for (const hold of freshPlan.holds) {
+          await tx.branchPulloutLine.create({
+            data: {
               pulloutId: fresh.id,
               serialNumberId: hold.serialNumberId,
               priorStatusCodeId: codes[hold.priorCode],
-            })),
+              ...lineDetailData(hold, addedDetails, defectiveReasonId),
+            },
           });
         }
 
@@ -892,9 +1333,21 @@ export const pulloutPostingService = {
         await tx.branchPullout.update({
           where: { id: fresh.id },
           data: {
-            warehouseId,
             waybillNo: input.waybillNo === undefined ? fresh.waybillNo : input.waybillNo?.trim() || null,
+            courierName:
+              input.courierName === undefined ? fresh.courierName : input.courierName?.trim() || null,
             notes: input.notes === undefined ? fresh.notes : input.notes?.trim() || null,
+            ...(input.actualScheduledDate === undefined
+              ? {}
+              : { actualScheduledDate: input.actualScheduledDate }),
+            // Scheduled by follows the schedule, not whoever saved an unrelated edit.
+            ...(input.scheduledAt === undefined ||
+            input.scheduledAt?.getTime() === fresh.scheduledAt?.getTime()
+              ? {}
+              : {
+                  scheduledAt: input.scheduledAt,
+                  scheduledById: input.scheduledAt ? actor.userId : null,
+                }),
           },
         });
         await writeHistory(tx, {
@@ -929,9 +1382,6 @@ export const pulloutPostingService = {
     await authorizePosting(actor, "pullout.finalize", current.branchId);
     const preview = planPulloutFinalize(current);
     if (!preview.ok) throw new Error(preview.error);
-    if (preview.createsWarehouseInventory || preview.setsCompleted || preview.nextStatus !== "in_transit") {
-      throw new Error("Warehouse receipt is not available yet. Units stay in transit.");
-    }
 
     const codes = await inventoryIds(actor.tenantId);
     const nextStatusId = await workflowId(actor.tenantId, "in_transit");
@@ -944,9 +1394,6 @@ export const pulloutPostingService = {
           if (!fresh) throw new Error("Pull-out not found");
           const plan = planPulloutFinalize(fresh);
           if (!plan.ok) throw new Error(plan.error);
-          if (plan.createsWarehouseInventory || plan.setsCompleted) {
-            throw new Error("Warehouse receipt is not available yet. Units stay in transit.");
-          }
           if (plan.idempotent) return;
           await lockSerialNumbers(
             tx,
@@ -1001,33 +1448,157 @@ export const pulloutPostingService = {
       }
     }
 
-    const job = await sapService.emitPulloutItr(actor.tenantId, {
-      id: current.id,
-      pulloutNo: current.pulloutNo,
-      branchId: current.branchId,
-      warehouseId: current.warehouseId,
-    });
-    const sapJob = await loadSapJob(actor.tenantId, current.id);
     return {
       id: current.id,
       pulloutNo: current.pulloutNo,
       status: "in_transit" as const,
       idempotent: preview.idempotent,
-      sapJob: sapJob ?? {
-        id: job.id,
-        status: job.status,
-        sapDocRef: job.sapDocRef,
-        stub: false,
-        message: pulloutSapMessage({ status: job.status, stub: false }),
-      },
     };
   },
 
-  async complete(actor: PostingActor, pulloutId: string) {
-    await authorizePosting(actor, "pullout.complete", null);
-    const current = await loadPullout(prisma, actor.tenantId, pulloutId);
-    if (!current) throw new Error("Pull-out not found");
-    const refused = planPulloutComplete();
-    throw new Error(refused.error);
+  /**
+   * Links units of a sent pull-out to the IT or Return a user created by hand in SAP.
+   * ISMS posts nothing: it checks the document exists, is not cancelled, and lists every
+   * selected serial, then stores its number and date. Linking again replaces the link.
+   */
+  async linkSapDocument(actor: PostingActor, pulloutId: string, input: PulloutSapDocumentLinkInput) {
+    const pullout = await loadSentPullout(actor, pulloutId);
+    const ids = [...new Set(input.serialNumberIds)];
+    if (ids.length === 0) throw new Error("Select the units this SAP document covers");
+    const lineById = new Map(pullout.lines.map((line) => [line.serialNumberId, line]));
+    const serialNos = ids.map((id) => {
+      const line = lineById.get(id);
+      if (!line) throw new Error("One or more units are not on this pull-out");
+      return line.serialNumber.serialNo;
+    });
+
+    const doc = await fetchPulloutSapDocument(actor.tenantId, input.docType, input.docNum);
+    const check = checkPulloutSapDocument(doc, serialNos);
+    if (!check.ok) throw new Error(check.error);
+
+    const label = formatPulloutSapDoc(doc.type, doc.docNum);
+    try {
+      await prisma.$transaction(async (tx) => {
+        const updated = await tx.branchPulloutLine.updateMany({
+          where: { pulloutId, serialNumberId: { in: ids } },
+          data: {
+            sapDocType: doc.type,
+            sapDocEntry: doc.docEntry,
+            sapDocNum: doc.docNum,
+            sapDocDate: doc.docDate ? new Date(`${doc.docDate}T00:00:00.000Z`) : null,
+            sapDocLinkedAt: new Date(),
+            sapDocLinkedById: actor.userId,
+          },
+        });
+        if (updated.count !== ids.length) {
+          throw new Error("This pull-out was updated by someone else");
+        }
+        await writeHistory(tx, {
+          tenantId: actor.tenantId,
+          userId: actor.userId,
+          pulloutNo: pullout.pulloutNo,
+          serialNumberIds: ids,
+          status: null,
+          details: `SAP ${label} linked on ${pullout.pulloutNo}`,
+        });
+        await tx.auditLog.create({
+          data: {
+            tenantId: actor.tenantId,
+            userId: actor.userId,
+            action: "pullout.sap_document_linked",
+            entityType: "BranchPullout",
+            entityId: pulloutId,
+            metadata: {
+              pulloutNo: pullout.pulloutNo,
+              sapDocType: doc.type,
+              sapDocNum: doc.docNum,
+              sapDocEntry: doc.docEntry,
+              serialNumberIds: ids,
+            },
+          },
+        });
+      });
+    } catch (error) {
+      throw postingError(error, "Failed to link the SAP document");
+    }
+    return { id: pullout.id, label, linkedCount: ids.length };
+  },
+
+  /** Removes a unit's SAP link, e.g. when the wrong number was linked. */
+  async unlinkSapDocument(actor: PostingActor, pulloutId: string, serialNumberId: string) {
+    const pullout = await loadSentPullout(actor, pulloutId);
+    const line = pullout.lines.find((row) => row.serialNumberId === serialNumberId);
+    if (!line) throw new Error("That unit is not on this pull-out");
+    if (!line.sapDocType || line.sapDocNum == null) return { id: pullout.id, idempotent: true };
+    const label = formatPulloutSapDoc(line.sapDocType, line.sapDocNum);
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.branchPulloutLine.updateMany({
+          where: { pulloutId, serialNumberId },
+          data: {
+            sapDocType: null,
+            sapDocEntry: null,
+            sapDocNum: null,
+            sapDocDate: null,
+            sapDocLinkedAt: null,
+            sapDocLinkedById: null,
+          },
+        });
+        await writeHistory(tx, {
+          tenantId: actor.tenantId,
+          userId: actor.userId,
+          pulloutNo: pullout.pulloutNo,
+          serialNumberIds: [serialNumberId],
+          status: null,
+          details: `SAP ${label} unlinked on ${pullout.pulloutNo}`,
+        });
+        await tx.auditLog.create({
+          data: {
+            tenantId: actor.tenantId,
+            userId: actor.userId,
+            action: "pullout.sap_document_unlinked",
+            entityType: "BranchPullout",
+            entityId: pulloutId,
+            metadata: {
+              pulloutNo: pullout.pulloutNo,
+              sapDocType: line.sapDocType,
+              sapDocNum: line.sapDocNum,
+              serialNumberIds: [serialNumberId],
+            },
+          },
+        });
+      });
+    } catch (error) {
+      throw postingError(error, "Failed to unlink the SAP document");
+    }
+    return { id: pullout.id, idempotent: false };
   },
 };
+
+/** A pull-out the actor may link SAP documents on: sent, and in their scope. */
+async function loadSentPullout(actor: PostingActor, pulloutId: string) {
+  const pullout = await prisma.branchPullout.findFirst({
+    where: { id: pulloutId, tenantId: actor.tenantId },
+    select: {
+      id: true,
+      pulloutNo: true,
+      branchId: true,
+      statusCode: { select: { code: true } },
+      lines: {
+        select: {
+          serialNumberId: true,
+          sapDocType: true,
+          sapDocNum: true,
+          serialNumber: { select: { serialNo: true } },
+        },
+      },
+    },
+  });
+  if (!pullout) throw new Error("Pull-out not found");
+  await authorizePosting(actor, "pullout.linkSapDocument", pullout.branchId);
+  if (!isSettledPullout(pullout.statusCode.code)) {
+    throw new Error("Link SAP documents only after the pull-out is sent");
+  }
+  return pullout;
+}

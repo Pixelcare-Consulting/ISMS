@@ -24,6 +24,7 @@ import {
   DEMAND_PLANNING_COVERAGE_PERMISSIONS,
 } from "@/features/demand-planning/services/coverage.service";
 import { demandPlanningRunService } from "@/features/demand-planning/services/demand-planning-run.service";
+import { BRANCH_QUOTA_ACCESS } from "@/features/branch-quotas/constants/branch-quota-permissions";
 import { branchQuotaService } from "@/features/branch-quotas/services/branch-quota.service";
 import { forecastRepository } from "@/features/forecast/repositories/forecast.repository";
 import { suggestedOrderService } from "@/features/forecast/services/suggested-order.service";
@@ -114,7 +115,7 @@ function canManageForecastOrPlanogram(permissions: string[] | undefined): boolea
 
 function canReadBranchQuotas(permissions: string[] | undefined): boolean {
   return (
-    hasPermission(permissions, "branches.manage") ||
+    BRANCH_QUOTA_ACCESS.some((slug) => hasPermission(permissions, slug)) ||
     hasPermission(permissions, "inventory.view") ||
     hasAnyOrderPermission(permissions, "view")
   );
@@ -475,7 +476,7 @@ export function buildPlanningOpsTools(session: AppSession) {
           periodLabel: period.label,
           total: gaps.length,
           gaps,
-          note: "Max Qty is planogram capacity already stored on the allocation row. SUG for order create remains Max Qty − STK on Order Analytics.",
+          note: "Max Qty is the forecast-calculated limit already stored on the allocation row. SUG for order create remains Max Qty − STK on Order Analytics.",
           nextSteps: [
             { label: "Open Planning", href: "/settings/planning" },
             {
@@ -554,7 +555,7 @@ export function buildPlanningOpsTools(session: AppSession) {
         if (!canQuotas) {
           return {
             error:
-              "Branch quotas are outside your access (needs branches.manage, inventory.view, or order view).",
+              "Branch quotas are outside your access (needs branch_quotas.view, inventory.view, or order view).",
           };
         }
 
@@ -668,7 +669,7 @@ export function buildPlanningOpsTools(session: AppSession) {
           milBreaches: details.milBreaches,
           belowCapacityBranches,
           milBreachBranches,
-          note: "belowCapacity counts SKU-branch rows where on-hand is under Max Qty (planogram capacity).",
+          note: "belowCapacity counts SKU-branch rows where on-hand is under Max Qty.",
           nextSteps: [
             { label: "Open Planogram", href: "/settings/planogram" },
             { label: "Open Dashboard", href: "/dashboard" },

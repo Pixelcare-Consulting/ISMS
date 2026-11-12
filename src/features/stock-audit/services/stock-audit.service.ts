@@ -1,6 +1,7 @@
 import type { StockCountSessionStatus } from "@prisma/client";
 
 import { auditService } from "@/features/audit/services/audit.service";
+import { statusUpdatedStamp } from "@/features/inventory/lib/status-updated-stamp";
 import {
   assertExclusivePlacement,
   loadCurrentPlacements,
@@ -608,7 +609,11 @@ export const stockAuditService = {
             if (existing.statusCode !== "STK") {
               await tx.branchInventory.update({
                 where: { id: existing.id },
-                data: { statusCodeId: stkCode.id, updatedById: userId },
+                data: {
+                  statusCodeId: stkCode.id,
+                  updatedById: userId,
+                  ...statusUpdatedStamp(existing.statusCode, "STK"),
+                },
               });
             }
           } else {

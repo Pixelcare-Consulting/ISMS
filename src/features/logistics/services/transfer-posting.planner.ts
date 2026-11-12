@@ -1,8 +1,14 @@
 /**
- * Branch transfer rules. Approval holds the same branch row as reserved and
- * does not add destination stock. The receiving branch then accepts or rejects
- * each serial into stock (STK). The releasing team leader's whole-request
- * reject still restores the code the line stored.
+ * Branch transfer rules. A request reserves the units (RSV). Team leader approval
+ * puts them in transit (DIT) and moves the row to the receiving branch, so the unit
+ * leaves the releasing branch's inventory and shows as incoming at the receiver.
+ * There is no Logistics release step. The receiving branch then accepts each serial
+ * into its stock (STK) or rejects it back to the releasing branch as STK. The
+ * releasing team leader's whole-request reject still restores the code the line stored.
+ *
+ * Legacy: transfers approved while Logistics still released them sit at For transfer
+ * (FTR units, or RSV from before FTR existed). Release still takes those, so they are
+ * not stuck. Transfers released before the row moved keep DIT on the releasing branch.
  */
 
 import type { TransferWorkflowCodeKey } from "@/features/logistics/constants/workflow-codes";
@@ -37,9 +43,13 @@ export interface TransferCreatePlan {
 
 export interface TransferApprovePlan {
   ok: true;
-  nextStatus: "for_transfer";
-  /** Legacy rows that were never reserved. Already-reserved lines are omitted. */
-  holds: { serialNumberId: string; priorCode: HoldCode }[];
+  nextStatus: "in_transit";
+  /**
+   * Every unit moves to DIT at the receiving branch. fromCode is RSV for a normal
+   * request, or STK/DEF on legacy rows that were never reserved. priorCode is what
+   * the line records.
+   */
+  moves: { serialNumberId: string; fromCode: HoldCode | "RSV"; priorCode: HoldCode }[];
   idempotent: boolean;
   destinationStockAdded: false;
 }
@@ -51,30 +61,36 @@ export interface TransferRejectPlan {
   idempotent: boolean;
 }
 
+/** Legacy release only: FTR, or RSV on transfers approved before FTR existed. */
+export type TransferReleaseFromCode = "FTR" | "RSV";
+
 export interface TransferReleasePlan {
   ok: true;
   nextStatus: "in_transit";
-  moves: { serialNumberId: string }[];
+  moves: { serialNumberId: string; fromCode: TransferReleaseFromCode }[];
   idempotent: boolean;
 }
 
 export interface TransferReceivePlan {
   ok: true;
-  nextStatus: "for_transfer" | "in_transit" | "accepted" | "rejected" | "completed";
-  /** Destination stock is always STK. fromCode is the hold being released. */
-  moves: { serialNumberId: string; restoreCode: "STK"; fromCode: "RSV" | "DIT" }[];
+  nextStatus: TransferHeaderAfterLines;
+  /**
+   * Every decided unit becomes STK. fromCode is the hold being cleared and
+   * atBranchId the branch that holds the row now (releasing or receiving).
+   */
+  moves: { serialNumberId: string; restoreCode: "STK"; fromCode: "RSV" | "DIT"; atBranchId: string }[];
   idempotent: boolean;
 }
 
 export type TransferHeaderAfterLines =
-  | "for_transfer"
   | "in_transit"
   | "accepted"
   | "rejected"
   | "completed";
 
 const APPROVABLE: readonly TransferStatus[] = ["pending_tl", "requested"];
-const RELEASABLE: readonly TransferStatus[] = ["for_transfer", "approved"];
+/** Approved while Logistics still released transfers. New approvals never land here. */
+const LEGACY_RELEASABLE: readonly TransferStatus[] = ["for_transfer", "approved"];
 
 function missingPrior(serialNumberId: string): PlanFailure {
   return {
@@ -139,15 +155,12 @@ export function planTransferApprove(input: {
     return { ok: false, error: "This transfer has no serials to approve" };
   }
 
-  if (input.status === "for_transfer") {
-    const allReserved = input.lines.every((line) => line.inventoryCode === "RSV");
-    if (!allReserved) {
-      return { ok: false, error: "Reserved units on this transfer have changed" };
-    }
+  // Already approved: a repeated approve only reprints the slips.
+  if (input.status === "in_transit" || LEGACY_RELEASABLE.includes(input.status)) {
     return {
       ok: true,
-      nextStatus: "for_transfer",
-      holds: [],
+      nextStatus: "in_transit",
+      moves: [],
       idempotent: true,
       destinationStockAdded: false,
     };
@@ -157,12 +170,17 @@ export function planTransferApprove(input: {
     return { ok: false, error: "Only a request waiting for Team Lead can be approved" };
   }
 
-  const holds: TransferApprovePlan["holds"] = [];
+  const moves: TransferApprovePlan["moves"] = [];
   for (const line of input.lines) {
-    if (line.inventoryCode === "RSV") continue;
+    if (line.inventoryCode === "RSV") {
+      if (line.priorCode !== "STK" && line.priorCode !== "DEF") return missingPrior(line.serialNumberId);
+      moves.push({ serialNumberId: line.serialNumberId, fromCode: "RSV", priorCode: line.priorCode });
+      continue;
+    }
     if (line.inventoryCode === "STK" || line.inventoryCode === "DEF") {
-      holds.push({
+      moves.push({
         serialNumberId: line.serialNumberId,
+        fromCode: line.inventoryCode,
         priorCode: line.priorCode ?? line.inventoryCode,
       });
       continue;
@@ -172,11 +190,16 @@ export function planTransferApprove(input: {
 
   return {
     ok: true,
-    nextStatus: "for_transfer",
-    holds,
+    nextStatus: "in_transit",
+    moves,
     idempotent: false,
     destinationStockAdded: false,
   };
+}
+
+/** A legacy approval held every unit, so a held code at release means it was approved. */
+function isApprovedHold(code: InventoryCode | null): code is TransferReleaseFromCode {
+  return code === "FTR" || code === "RSV";
 }
 
 export function planTransferReject(input: {
@@ -200,7 +223,8 @@ export function planTransferReject(input: {
   return { ok: true, nextStatus: "rejected", restores, idempotent: false };
 }
 
-const RECEIVABLE: readonly TransferStatus[] = ["for_transfer", "approved", "in_transit"];
+/** The receiving branch decides only once the transfer is in transit (after TL approval). */
+const RECEIVABLE: readonly TransferStatus[] = ["in_transit"];
 
 function openLines<T extends { decision?: TransferLineDecision }>(lines: readonly T[]): T[] {
   return lines.filter((line) => line.decision !== "accepted" && line.decision !== "rejected");
@@ -230,13 +254,14 @@ export function headerAfterLineDecisions(
       }
     }
   }
-  if (pending > 0) return accepted + rejected > 0 ? "in_transit" : "for_transfer";
+  if (pending > 0) return "in_transit";
   if (accepted > 0 && rejected > 0) return "completed";
   if (accepted > 0) return "accepted";
   if (rejected > 0) return "rejected";
-  return "for_transfer";
+  return "in_transit";
 }
 
+/** Legacy only: moves a transfer approved before TL approval sent units in transit. */
 export function planTransferRelease(input: {
   status: TransferStatus;
   lines: readonly Pick<TransferLineView, "serialNumberId" | "priorCode" | "inventoryCode" | "decision">[];
@@ -253,22 +278,22 @@ export function planTransferRelease(input: {
   if (input.status === "in_transit") {
     const allTransit = pending.every((line) => line.inventoryCode === "DIT");
     if (!allTransit) {
-      return { ok: false, error: "Some serials are not reserved for release" };
+      return { ok: false, error: "Some serials are not approved for transfer" };
     }
     return { ok: true, nextStatus: "in_transit", moves: [], idempotent: true };
   }
 
-  if (!RELEASABLE.includes(input.status)) {
-    return { ok: false, error: "Release the transfer only after Team Lead approval" };
+  if (!LEGACY_RELEASABLE.includes(input.status)) {
+    return { ok: false, error: "Only a transfer waiting for release can be released" };
   }
 
   const moves: TransferReleasePlan["moves"] = [];
   for (const line of pending) {
     if (line.priorCode !== "STK" && line.priorCode !== "DEF") return missingPrior(line.serialNumberId);
-    if (line.inventoryCode !== "RSV") {
-      return { ok: false, error: "Some serials are not reserved for release" };
+    if (!isApprovedHold(line.inventoryCode)) {
+      return { ok: false, error: "Some serials are not approved for transfer" };
     }
-    moves.push({ serialNumberId: line.serialNumberId });
+    moves.push({ serialNumberId: line.serialNumberId, fromCode: line.inventoryCode });
   }
 
   return { ok: true, nextStatus: "in_transit", moves, idempotent: false };
@@ -284,9 +309,37 @@ function lineIsAccepted(line: TransferLineView, toBranchId: string): boolean {
   );
 }
 
-function holdCode(line: TransferLineView): "RSV" | "DIT" | null {
-  if (line.inventoryCode === "RSV" || line.inventoryCode === "DIT") return line.inventoryCode;
+/**
+ * The hold a pending line clears when the receiving branch decides it, with the
+ * branch holding the row. DIT sits at the receiving branch, or at the releasing
+ * branch on transfers released before the row moved. RSV only remains at the
+ * releasing branch, from transfers part-decided before receiving required transit.
+ */
+function awaitingDecision(
+  line: Pick<TransferLineView, "inventoryCode" | "branchId">,
+  fromBranchId: string,
+  toBranchId: string,
+): { fromCode: "RSV" | "DIT"; atBranchId: string } | null {
+  if (!line.branchId) return null;
+  if (line.inventoryCode === "DIT" && (line.branchId === fromBranchId || line.branchId === toBranchId)) {
+    return { fromCode: "DIT", atBranchId: line.branchId };
+  }
+  if (line.inventoryCode === "RSV" && line.branchId === fromBranchId) {
+    return { fromCode: "RSV", atBranchId: line.branchId };
+  }
   return null;
+}
+
+/** True when the receiving branch can accept or reject this line now. */
+export function lineAwaitsReceipt(input: {
+  status: TransferStatus;
+  fromBranchId: string;
+  toBranchId: string;
+  line: Pick<TransferLineView, "inventoryCode" | "branchId" | "decision">;
+}): boolean {
+  if (!RECEIVABLE.includes(input.status)) return false;
+  if ((input.line.decision ?? "pending") !== "pending") return false;
+  return awaitingDecision(input.line, input.fromBranchId, input.toBranchId) !== null;
 }
 
 export function planTransferReceive(input: {
@@ -324,7 +377,7 @@ export function planTransferReceive(input: {
   }
 
   if (!RECEIVABLE.includes(input.status)) {
-    return { ok: false, error: "Accept serials only after the releasing team leader approves" };
+    return { ok: false, error: "Accept serials only once this transfer is in transit" };
   }
 
   const moves: TransferReceivePlan["moves"] = [];
@@ -342,13 +395,13 @@ export function planTransferReceive(input: {
       acceptedIds.add(serialNumberId);
       continue;
     }
-    const fromCode = holdCode(line);
-    if (line.branchId === input.fromBranchId && fromCode) {
-      moves.push({ serialNumberId, restoreCode: "STK", fromCode });
+    const hold = awaitingDecision(line, input.fromBranchId, input.toBranchId);
+    if (hold) {
+      moves.push({ serialNumberId, restoreCode: "STK", ...hold });
       acceptedIds.add(serialNumberId);
       continue;
     }
-    return { ok: false, error: "A selected serial is not waiting at the releasing branch" };
+    return { ok: false, error: "A selected serial is not in transit on this transfer" };
   }
 
   const projected = input.lines.map((line) =>
@@ -366,6 +419,7 @@ export function planTransferReceive(input: {
 export function planTransferSerialReject(input: {
   status: TransferStatus;
   fromBranchId: string;
+  toBranchId: string;
   lines: readonly TransferLineView[];
   serialNumberId: string;
   remarks: string;
@@ -376,7 +430,7 @@ export function planTransferSerialReject(input: {
     return { ok: false, error: "This transfer has no serials to reject" };
   }
   if (!RECEIVABLE.includes(input.status)) {
-    return { ok: false, error: "Reject serials only after the releasing team leader approves" };
+    return { ok: false, error: "Reject serials only once this transfer is in transit" };
   }
   const line = input.lines.find((row) => row.serialNumberId === input.serialNumberId);
   if (!line) return { ok: false, error: "That serial is not on this transfer" };
@@ -385,9 +439,9 @@ export function planTransferSerialReject(input: {
     return { ok: true, nextStatus: headerAfterLineDecisions(input.lines), moves: [], idempotent: true };
   }
   if (line.priorCode !== "STK" && line.priorCode !== "DEF") return missingPrior(line.serialNumberId);
-  const fromCode = holdCode(line);
-  if (line.branchId !== input.fromBranchId || !fromCode) {
-    return { ok: false, error: "This serial is not waiting at the releasing branch" };
+  const hold = awaitingDecision(line, input.fromBranchId, input.toBranchId);
+  if (!hold) {
+    return { ok: false, error: "This serial is not in transit on this transfer" };
   }
   const projected = input.lines.map((row) =>
     row.serialNumberId === line.serialNumberId ? { ...row, decision: "rejected" as const } : row,
@@ -395,7 +449,7 @@ export function planTransferSerialReject(input: {
   return {
     ok: true,
     nextStatus: headerAfterLineDecisions(projected),
-    moves: [{ serialNumberId: line.serialNumberId, restoreCode: "STK", fromCode }],
+    moves: [{ serialNumberId: line.serialNumberId, restoreCode: "STK", ...hold }],
     idempotent: false,
   };
 }

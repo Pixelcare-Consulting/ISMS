@@ -4,6 +4,10 @@ import { z } from "zod";
 import { Prisma } from "@/lib/database/generated/prisma/client";
 
 import { auditService } from "@/features/audit/services/audit.service";
+import {
+  inventoryApprovalLedger,
+  type InventoryApprovalDocument,
+} from "@/features/inventory-approvals/services/inventory-approval-ledger";
 import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
 import {
   resolveLogisticsCapabilities,
@@ -146,6 +150,19 @@ function cleanText(value: string | null | undefined): string {
 }
 
 /** Loads a return with its delivery, checks it exists, and enforces delivery scope. */
+function approvalDocument(
+  tenantId: string,
+  request: { id: string; requestNo: string },
+): InventoryApprovalDocument {
+  return {
+    tenantId,
+    sourceType: "DELIVERY_RETURN",
+    sourceId: request.id,
+    sourceNo: request.requestNo,
+    step: "APPROVAL",
+  };
+}
+
 async function loadScopedReturn(actor: PostingActor, returnId: string) {
   const row = await prisma.deliveryReturnRequest.findFirst({
     where: { id: returnId, tenantId: actor.tenantId },
@@ -155,6 +172,7 @@ async function loadScopedReturn(actor: PostingActor, returnId: string) {
       status: true,
       sapDocEntry: true,
       delivery: { select: { branchId: true, sourceWarehouseId: true } },
+      lines: { select: { serialNumberId: true } },
     },
   });
   if (!row) throw new Error("Return request not found");
@@ -297,6 +315,19 @@ export const deliveryReturnService = {
           },
           select: { id: true, requestNo: true },
         });
+        const approval = approvalDocument(actor.tenantId, row);
+        await inventoryApprovalLedger.recordRequested(tx, approval, {
+          requestedById: actor.userId,
+          units: plan.lines.map((line) => ({
+            serialNumberId: line.serialNumberId,
+            remarks: remarksBySerial.get(line.serialNumberId) || reason,
+          })),
+        });
+        await inventoryApprovalLedger.recordDecision(tx, approval, {
+          serialNumberIds: serialIds,
+          status: "APPROVED",
+          decidedById: actor.userId,
+        });
         await tx.auditLog.create({
           data: {
             tenantId: actor.tenantId,
@@ -416,6 +447,12 @@ export const deliveryReturnService = {
         data: { status: plan.next, decidedById: actor.userId, decidedAt: new Date(), decisionNote },
       });
       assertExclusiveClaim(claimed.count, 1, "This return request has already been decided");
+      await inventoryApprovalLedger.recordDecision(tx, approvalDocument(actor.tenantId, request), {
+        serialNumberIds: request.lines.map((line) => line.serialNumberId),
+        status: plan.next === "APPROVED" ? "APPROVED" : "REJECTED",
+        decidedById: actor.userId,
+        remarks: decisionNote,
+      });
       await tx.auditLog.create({
         data: {
           tenantId: actor.tenantId,
@@ -466,6 +503,12 @@ export const deliveryReturnService = {
         },
       });
       assertExclusiveClaim(claimed.count, 1, "This return changed. Reload and try again.");
+      await inventoryApprovalLedger.recordDecision(tx, approvalDocument(actor.tenantId, request), {
+        serialNumberIds: request.lines.map((line) => line.serialNumberId),
+        status: "CANCELLED",
+        decidedById: actor.userId,
+        remarks: decisionNote,
+      });
       await tx.auditLog.create({
         data: {
           tenantId: actor.tenantId,

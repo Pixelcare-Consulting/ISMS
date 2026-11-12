@@ -144,6 +144,12 @@ enum SapOrderDocType {
   SO
 }
 
+/// SAP document a user creates by hand for a sent pull-out unit: Inventory Transfer or Return.
+enum PulloutSapDocType {
+  IT
+  RETURN
+}
+
 enum DeliveryReturnStatus {
   PENDING_APPROVAL
   APPROVED
@@ -222,12 +228,40 @@ enum BranchDefectReportStatus {
   rejected
 }
 
+enum InventoryApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum InventoryApprovalSource {
+  DEFECT_REPORT
+  TRANSFER
+  PULLOUT
+  SALES_RETURN
+  DELIVERY_RETURN
+  DELIVERY_TRANSFER
+  SC_PULLOUT
+  SC_RETURN
+}
+
+enum InventoryApprovalStep {
+  INSPECTION
+  CS_EVALUATION
+  TL_APPROVAL
+  APPROVAL
+  RECEIVING
+}
+
 model Tenant {
   id         String    @id @default(cuid())
   name       String
   slug       String    @unique
   tagline    String?
   logo       String?
+  /// Address and contact lines printed beside the logo on slips, one per line.
+  documentHeader String? @map("document_header")
   /// Reserved home tenant for platform operators (Pixelcare). Never listed as a customer.
   isPlatform Boolean   @default(false) @map("is_platform")
   createdAt  DateTime  @default(now()) @map("created_at")
@@ -300,6 +334,7 @@ model Tenant {
   salesReplacements           SalesReplacement[]
   warehouseInventories        WarehouseInventory[]
   serialNumberHistories       SerialNumberHistory[]
+  inventoryApprovals          InventoryApproval[]
   serviceCenterInventories    ServiceCenterInventory[]
   serviceCenterOrders         ServiceCenterOrder[]
   serviceCenterOrderingSettings ServiceCenterOrderingSettings?
@@ -379,9 +414,18 @@ model User {
   branchOrderApprovals               BranchOrderApprovalLevel[]    @relation("BranchOrderApprovalLevelApprovedBy")
   branchOrderRejections              BranchOrderApprovalLevel[]    @relation("BranchOrderApprovalLevelRejectedBy")
   branchInventoriesUpdated           BranchInventory[]             @relation("BranchInventoryUpdatedBy")
+  branchInventorySeenCursor          BranchInventorySeenCursor?
+  branchInventoryReads               BranchInventoryRead[]
   branchDefectReportsReported        BranchDefectReport[]          @relation("BranchDefectReportReporter")
   branchDefectReportsDecided         BranchDefectReport[]          @relation("BranchDefectReportDecider")
+  inventoryApprovalsRequested        InventoryApproval[]           @relation("InventoryApprovalRequestedBy")
+  inventoryApprovalsDecided          InventoryApproval[]           @relation("InventoryApprovalDecidedBy")
   branchDefectReportPhotosUploaded   BranchDefectReportPhoto[]     @relation("BranchDefectReportPhotoUploadedBy")
+  branchPulloutLinesDecided          BranchPulloutLine[]           @relation("BranchPulloutLineDecidedBy")
+  branchPulloutLinesReceived         BranchPulloutLine[]           @relation("BranchPulloutLineReceivedBy")
+  branchPulloutLinesRejected         BranchPulloutLine[]           @relation("BranchPulloutLineRejectedBy")
+  branchPulloutLinesSapDocLinked     BranchPulloutLine[]           @relation("BranchPulloutLineSapDocLinkedBy")
+  branchPulloutAttachmentsUploaded   BranchPulloutAttachment[]     @relation("BranchPulloutAttachmentUploadedBy")
   branchPulloutsCreated              BranchPullout[]               @relation("BranchPulloutCreatedBy")
   serialNumbersCreated               SerialNumber[]                @relation("SerialNumberCreatedBy")
   branchTransfersCreated             BranchTransfer[]              @relation("BranchTransferCreatedBy")
@@ -1111,8 +1155,9 @@ model ProblemDescription {
   createdAt    DateTime           @default(now()) @map("created_at")
   updatedAt    DateTime           @updatedAt @map("updated_at")
 
-  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant               Tenant                                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branchReturnRequests BranchReturnRequest[]
+  pulloutLines         BranchPulloutLineProblemDescription[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -1523,6 +1568,8 @@ model WarehouseLocation {
   warehouseId String   @map("warehouse_id")
   code        String
   name        String
+  /// At most one per warehouse: warehouse_locations_default_uq in the migration.
+  isDefault   Boolean  @default(false) @map("is_default")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -1531,6 +1578,7 @@ model WarehouseLocation {
   branchInventories    BranchInventory[]
   aors                 Aor[]
   branchPullouts       BranchPullout[]
+  pulloutLinesReceived BranchPulloutLine[]   @relation("BranchPulloutLineReceivedLocation")
   deliveryLinesFrom    BranchDeliveryLine[]  @relation("DeliveryLineWarehouseFrom")
   branchReturnRequests BranchReturnRequest[]
   deliveryReturnLines  DeliveryReturnLine[]
@@ -1694,6 +1742,7 @@ model ReasonStatusCode {
   branchTransfers               BranchTransfer[]
   branchPulloutsWorkflow        BranchPullout[]                @relation("PulloutWorkflowStatus")
   branchPulloutsReasonCode      BranchPullout[]                @relation("PulloutReasonCode")
+  branchPulloutLinesReason      BranchPulloutLine[]            @relation("PulloutLineReason")
   transferLinePriorStatuses     BranchTransferLine[]           @relation("TransferLinePriorStatus")
   pulloutLinePriorStatuses      BranchPulloutLine[]            @relation("PulloutLinePriorStatus")
   serviceCenterInventories      ServiceCenterInventory[]
@@ -1761,6 +1810,7 @@ model SerialNumber {
   deliveryReturnLines          DeliveryReturnLine[]
   deliveryTransferLines        DeliveryTransferLine[]
   history                      SerialNumberHistory[]
+  inventoryApprovals           InventoryApproval[]
   serviceCenterInventories     ServiceCenterInventory[]
   serviceCenterSales           ServiceCenterSalesTransaction[]
   serviceCenterPulloutDetails  ServiceCenterPulloutDetail[]
@@ -1784,6 +1834,8 @@ model BranchInventory {
   /// stock. ISMS no longer sets a first location (stock comes from SAP); existing ones can
   /// still be moved.
   warehouseLocationId String? @map("warehouse_location_id")
+  /// Last time this row's status code changed. Null until a status change is recorded.
+  statusUpdatedAt DateTime? @map("status_updated_at")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
@@ -1795,12 +1847,41 @@ model BranchInventory {
   updatedBy       User?                @relation("BranchInventoryUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
   stockCountLines StockCountLine[]
   defectReports   BranchDefectReport[]
+  statusReads     BranchInventoryRead[]
 
   @@unique([serialNumberId])
   @@index([branchId, serialNumberId])
   @@index([tenantId, branchId, statusCodeId])
+  @@index([tenantId, branchId, statusUpdatedAt])
   @@index([warehouseLocationId])
   @@map("branch_inventories")
+}
+
+/// Set to now() the first time this user asks for new-status counts. Units changed at or before this instant start as already seen.
+model BranchInventorySeenCursor {
+  userId        String   @id @map("user_id")
+  seenThroughAt DateTime @map("seen_through_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("branch_inventory_seen_cursors")
+}
+
+/// When this user last opened a unit. A later BranchInventory.statusUpdatedAt makes that unit new again.
+model BranchInventoryRead {
+  id                String   @id @default(cuid())
+  userId            String   @map("user_id")
+  branchInventoryId String   @map("branch_inventory_id")
+  readAt            DateTime @default(now()) @map("read_at")
+
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branchInventory BranchInventory @relation(fields: [branchInventoryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, branchInventoryId])
+  @@index([userId])
+  @@index([branchInventoryId])
+  @@map("branch_inventory_reads")
 }
 
 model BranchDefectReport {
@@ -1864,7 +1945,7 @@ model BranchPlanogram {
   maxQty        Int       @default(0) @map("calculated_max_qty")
   /// Inputs of the last calculation (`MaxQtyCalc`). Null until the first forecast upload.
   maxQtyCalc     Json?     @map("max_qty_calc")
-  /// Set by a manual edit or planogram upload. The next forecast upload clears it.
+  /// Set when a person enters the value. The next forecast upload clears it.
   maxQtyEditedAt DateTime? @map("max_qty_edited_at")
   /// The old Shelf max, left untouched for traceability. The app must not read or write it.
   /// Null on rows created after the change. See "Planogram Max Qty" in README.md.
@@ -2389,6 +2470,8 @@ model BranchTransferLine {
   /// Receiving branch outcome. Pending until that branch accepts or rejects the serial.
   decision          String    @default("pending")
   remarks           String?
+  /// Requester's remark for this serial. `remarks` is the receiving branch's rejection reason.
+  requestRemarks    String?   @map("request_remarks")
   decidedAt         DateTime? @map("decided_at")
   decidedById       String?   @map("decided_by_id")
 
@@ -2408,13 +2491,15 @@ model BranchPullout {
   id                  String    @id @default(cuid())
   tenantId            String    @map("tenant_id")
   branchId            String    @map("branch_id")
-  warehouseId         String    @map("warehouse_id")
+  /// Destination warehouse on pull-outs made before receiving was dropped. New pull-outs leave it null.
+  warehouseId         String?   @map("warehouse_id")
   warehouseLocationId String?   @map("warehouse_location_id")
   pulloutNo           String    @map("pullout_no")
   statusCodeId        String    @map("status_code_id")
   reasonStatusId      String?   @map("reason_status_id")
   reasonStatusCodeId  String?   @map("reason_status_code_id")
   waybillNo           String?   @map("waybill_no")
+  courierName         String?   @map("courier_name")
   scheduledAt         DateTime? @map("scheduled_at")
   actualScheduledDate DateTime? @map("actual_scheduled_date")
   scheduledById       String?   @map("scheduled_by_id")
@@ -2426,7 +2511,7 @@ model BranchPullout {
 
   tenant            Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branch            Branch                       @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  warehouse         Warehouse                    @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  warehouse         Warehouse?                   @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
   warehouseLocation WarehouseLocation?           @relation(fields: [warehouseLocationId], references: [id], onDelete: SetNull)
   statusCode        ReasonStatusCode             @relation("PulloutWorkflowStatus", fields: [statusCodeId], references: [id])
   reasonStatus      ReasonStatus?                @relation("PulloutReasonStatus", fields: [reasonStatusId], references: [id], onDelete: SetNull)
@@ -2435,6 +2520,7 @@ model BranchPullout {
   createdBy         User?                        @relation("BranchPulloutCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   lines             BranchPulloutLine[]
   approvalLevels    BranchPulloutApprovalLevel[]
+  attachments       BranchPulloutAttachment[]
 
   @@unique([tenantId, pulloutNo])
   @@index([tenantId, branchId, statusCodeId])
@@ -2447,17 +2533,73 @@ model BranchPulloutLine {
   serialNumberId          String  @map("serial_number_id")
   /// Inventory code before this pull-out held the unit. Null on rows created before the hold.
   priorStatusCodeId       String? @map("prior_status_code_id")
+  /// Team Lead's call on this unit: pending, then accepted. A declined unit's line is deleted.
+  decision                String    @default("pending")
+  decidedAt               DateTime? @map("decided_at")
+  decidedById             String?   @map("decided_by_id")
+  remarks                 String?
+  /// Pull-out reason. A defective unit is always the DEF reason, with problem descriptions saying why.
+  reasonCodeId            String? @map("reason_code_id")
+  /// Set when the warehouse receives the unit. ISMS only: pull-outs do not post to SAP.
+  receivedAt              DateTime? @map("received_at")
+  receivedById            String?   @map("received_by_id")
+  receivedLocationId      String?   @map("received_location_id")
+  /// Set when the unit is refused while in transit. It goes back to the branch as STK or DEF.
+  rejectedAt              DateTime? @map("rejected_at")
+  rejectedById            String?   @map("rejected_by_id")
+  rejectionRemarks        String?   @map("rejection_remarks")
+  /// Optional link to the IT or Return a user created by hand in SAP after the pull-out was sent.
+  /// Checked against SAP when linked: the document exists, is not cancelled, and lists this serial.
+  /// One SAP document can cover units from several pull-outs.
+  sapDocType              PulloutSapDocType? @map("sap_doc_type")
+  sapDocEntry             Int?      @map("sap_doc_entry")
+  sapDocNum               Int?      @map("sap_doc_num")
+  sapDocDate              DateTime? @map("sap_doc_date") @db.Date
+  sapDocLinkedAt          DateTime? @map("sap_doc_linked_at")
+  sapDocLinkedById        String?   @map("sap_doc_linked_by_id")
 
   pullout                 BranchPullout                           @relation(fields: [pulloutId], references: [id], onDelete: Cascade)
   serialNumber            SerialNumber                            @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
   priorStatusCode         ReasonStatusCode?                       @relation("PulloutLinePriorStatus", fields: [priorStatusCodeId], references: [id], onDelete: SetNull)
+  decidedBy               User?                                   @relation("BranchPulloutLineDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+  receivedBy              User?                                   @relation("BranchPulloutLineReceivedBy", fields: [receivedById], references: [id], onDelete: SetNull)
+  receivedLocation        WarehouseLocation?                      @relation("BranchPulloutLineReceivedLocation", fields: [receivedLocationId], references: [id], onDelete: SetNull)
+  reasonCode              ReasonStatusCode?                       @relation("PulloutLineReason", fields: [reasonCodeId], references: [id], onDelete: SetNull)
+  rejectedBy              User?                                   @relation("BranchPulloutLineRejectedBy", fields: [rejectedById], references: [id], onDelete: SetNull)
+  sapDocLinkedBy          User?                                   @relation("BranchPulloutLineSapDocLinkedBy", fields: [sapDocLinkedById], references: [id], onDelete: SetNull)
   classifications         BranchPulloutLineClassification[]
+  problemDescriptions     BranchPulloutLineProblemDescription[]
   packingConditions       BranchPulloutLinePackingCondition[]
   accessoryCompletenesses BranchPulloutLineAccessoryCompleteness[]
 
   @@unique([pulloutId, serialNumberId])
   @@index([priorStatusCodeId])
+  @@index([decidedById])
+  @@index([receivedById])
+  @@index([receivedLocationId])
+  @@index([reasonCodeId])
+  @@index([rejectedById])
+  @@index([sapDocLinkedById])
+  @@index([sapDocType, sapDocNum])
   @@map("branch_pullout_lines")
+}
+
+/// File the requestor attached to a pull-out. The file itself is in object storage.
+model BranchPulloutAttachment {
+  id           String   @id @default(cuid())
+  pulloutId    String   @map("pullout_id")
+  fileName     String   @map("file_name")
+  storagePath  String   @map("storage_path")
+  mimeType     String   @map("mime_type")
+  sizeBytes    Int      @map("size_bytes")
+  uploadedById String   @map("uploaded_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  pullout    BranchPullout @relation(fields: [pulloutId], references: [id], onDelete: Cascade)
+  uploadedBy User          @relation("BranchPulloutAttachmentUploadedBy", fields: [uploadedById], references: [id])
+
+  @@index([pulloutId])
+  @@map("branch_pullout_attachments")
 }
 
 /// One classification on a pull-out line. Removing the line or the lookup deletes this row, not the pull-out.
@@ -2472,6 +2614,20 @@ model BranchPulloutLineClassification {
   @@unique([pulloutLineId, pulloutClassificationId])
   @@index([pulloutClassificationId])
   @@map("branch_pullout_line_classifications")
+}
+
+/// One problem on a defective pull-out line, from the list returns use. Removing the line or the lookup deletes this row, not the pull-out.
+model BranchPulloutLineProblemDescription {
+  id                   String @id @default(cuid())
+  pulloutLineId        String @map("pullout_line_id")
+  problemDescriptionId String @map("problem_description_id")
+
+  pulloutLine        BranchPulloutLine  @relation(fields: [pulloutLineId], references: [id], onDelete: Cascade)
+  problemDescription ProblemDescription @relation(fields: [problemDescriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([pulloutLineId, problemDescriptionId])
+  @@index([problemDescriptionId])
+  @@map("branch_pullout_line_problem_descriptions")
 }
 
 /// One packing condition on a pull-out line. Removing the line or the lookup deletes this row, not the pull-out.
@@ -3231,6 +3387,42 @@ model SerialNumberHistory {
 
   @@index([tenantId, serialNumberId, createdAt])
   @@map("serial_number_histories")
+}
+
+/// One unit at one approval step of one document: pending when requested, then decided.
+/// Read-only for traceability. No workflow reads it, so it never drives a decision.
+/// sourceId has no foreign key because it points at one of several document tables, and the
+/// row has to outlive a document line that a workflow deletes.
+model InventoryApproval {
+  id                 String                  @id @default(cuid())
+  tenantId           String                  @map("tenant_id")
+  serialNumberId     String                  @map("serial_number_id")
+  sourceType         InventoryApprovalSource @map("source_type")
+  sourceId           String                  @map("source_id")
+  /// Document number at the time. Null for defect reports, which have none.
+  sourceNo           String?                 @map("source_no")
+  step               InventoryApprovalStep
+  status             InventoryApprovalStatus @default(PENDING)
+  requestedById      String?                 @map("requested_by_id")
+  decidedById        String?                 @map("decided_by_id")
+  decidedAt          DateTime?               @map("decided_at")
+  remarks            String?
+  problemDescription String?                 @map("problem_description")
+  createdAt          DateTime                @default(now()) @map("created_at")
+  updatedAt          DateTime                @updatedAt @map("updated_at")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  serialNumber SerialNumber @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
+  requestedBy  User?        @relation("InventoryApprovalRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  decidedBy    User?        @relation("InventoryApprovalDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, sourceType, sourceId, step, serialNumberId], map: "inventory_approvals_document_unit_key")
+  @@index([tenantId, updatedAt])
+  @@index([tenantId, status, updatedAt])
+  @@index([serialNumberId])
+  @@index([requestedById])
+  @@index([decidedById])
+  @@map("inventory_approvals")
 }
 
 model BranchQuota {

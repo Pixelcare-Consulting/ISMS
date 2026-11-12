@@ -8,6 +8,7 @@ import { seedRegionsAndProvincesForAllTenants } from "./seed-ph-geo";
 import { seedPsgBranchesForAllTenants } from "./seed-psg-branches";
 import { seedPsgModelAndOutgoing } from "./seed-psg";
 import { seedReasonStatusesForTenant } from "./seed-reason-status";
+import { seedTestAccountAors } from "./seed-test-accounts";
 import { cleanupDemoStock } from "./seed-cleanup-demo-stock";
 import { seedWarehouseInventoryDemo } from "./seed-warehouse-inventory";
 
@@ -95,6 +96,13 @@ async function runProfile(profile: SeedProfile) {
     const { demoTenant, usersByEmail } = await loadDemoContext();
     await seedDemoNotifications(prisma, demoTenant.id, usersByEmail);
     console.log(`Seed [notifications] done in ${Date.now() - started}ms`);
+    return;
+  }
+
+  if (profile === "test-accounts") {
+    const { demoTenant, usersByEmail } = await loadDemoContext();
+    await seedTestAccountAors(prisma, demoTenant.id, usersByEmail);
+    console.log(`Seed [test-accounts] done in ${Date.now() - started}ms`);
     return;
   }
 

@@ -70,6 +70,8 @@ describe("SETUP_PERMISSION_SLUGS", () => {
       "aors.manage",
       "branches.view",
       "branches.manage",
+      "branch_quotas.view",
+      "branch_quotas.manage",
       "warehouses.manage",
       "service_centers.manage",
       "dealers.manage",

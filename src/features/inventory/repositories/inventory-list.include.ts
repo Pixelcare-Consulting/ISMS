@@ -23,6 +23,7 @@ export type InventoryListRow = {
   branchId: string;
   serialNumberId: string;
   statusCodeId: string;
+  statusUpdatedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   branch: { id: string; name: string; sapCode: string };

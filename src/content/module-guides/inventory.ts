@@ -6,7 +6,19 @@ export const INVENTORY_MODULE_GUIDE: ModuleGuideContent = {
     "Serialized branch stock scoped by your areas of responsibility. Look up units, spot off-planogram exceptions, and open a serial for detail.",
   /** Kept for Help. Stock units renders status counts in the guide instead of these chips. */
   tips: [
-    { label: "Lists Stock (STK) units only — sold and other statuses live in Sales / Logistics" },
+    {
+      label:
+        "All serials lists stock, display units, and defective units. Sold, reserved, and in-transit units stay in Sales and Logistics",
+    },
+    {
+      label:
+        "Change stock to a display unit right away, or put a display unit back to stock. Display units are not counted as stock you can sell",
+    },
+    {
+      label:
+        "Marking a unit defective asks for the problem and waits for that branch’s team leader. The unit stays as it is until they approve. A defective unit cannot be changed here",
+    },
+    { label: "Series summary and the stock count still count stock only" },
     { label: "Series summary groups QTY and value by the model's series — click to expand" },
     {
       label:

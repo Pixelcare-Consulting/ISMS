@@ -124,10 +124,16 @@ const serialTraceabilityInclude = {
     orderBy: { transfer: { createdAt: "desc" } },
     select: {
       id: true,
+      decision: true,
+      decidedAt: true,
+      remarks: true,
+      requestRemarks: true,
       transfer: {
         select: {
           id: true,
           transferNo: true,
+          rsNo: true,
+          drNo: true,
           createdAt: true,
           fromBranch: { select: { id: true, name: true, sapCode: true } },
           toBranch: { select: { id: true, name: true, sapCode: true } },
@@ -140,6 +146,11 @@ const serialTraceabilityInclude = {
     orderBy: { pullout: { createdAt: "desc" } },
     select: {
       id: true,
+      receivedAt: true,
+      receivedLocation: { select: { code: true } },
+      rejectedAt: true,
+      rejectionRemarks: true,
+      priorStatusCode: { select: { code: true } },
       pullout: {
         select: {
           id: true,
@@ -808,7 +819,7 @@ const OPEN_PULLOUT_CODES = [
 const OPEN_ATR_STATUSES = ["open", "reserve"] as const;
 const OPEN_RETURN_STATUSES = ["pending_cs", "pending_tl", "approved"] as const;
 /** Branch stock that is mid-move, not resting stock or a finished sale. */
-const IN_FLIGHT_INVENTORY_CODES = ["DIT", "RSV", "FPO", "FW"] as const;
+const IN_FLIGHT_INVENTORY_CODES = ["DIT", "RSV", "FPO", "FTR", "FW"] as const;
 
 /**
  * In-progress validation work that must keep the serial: an open stock count
@@ -832,7 +843,11 @@ function inFlightSerialWorkflow(): Prisma.SerialNumberWhereInput {
       },
       {
         pulloutLines: {
-          some: { pullout: { statusCode: { code: { in: [...OPEN_PULLOUT_CODES] } } } },
+          some: {
+            receivedAt: null,
+            rejectedAt: null,
+            pullout: { statusCode: { code: { in: [...OPEN_PULLOUT_CODES] } } },
+          },
         },
       },
       {

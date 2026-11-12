@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { BRANCH_QUOTA_MANAGE } from "@/features/branch-quotas/constants/branch-quota-permissions";
 import type {
   BranchQuotaImportChunkProgress,
   BranchQuotaImportPreview,
@@ -46,7 +47,7 @@ function parseOffset(raw: FormDataEntryValue | null): number {
 
 /** Returns the workbook base64-encoded — server action results must be serializable. */
 export async function downloadBranchQuotaImportTemplateAction(): Promise<string> {
-  const session = await requirePermission("branches.manage");
+  const session = await requirePermission(BRANCH_QUOTA_MANAGE);
   const workbook = await branchQuotaImportService.buildTemplate(session.user.tenantId);
   return workbook.toString("base64");
 }
@@ -55,7 +56,7 @@ export async function downloadBranchQuotaImportTemplateAction(): Promise<string>
 export async function previewBranchQuotaImportAction(
   formData: FormData,
 ): Promise<{ preview: BranchQuotaImportPreview } | { error: string }> {
-  const session = await requirePermission("branches.manage");
+  const session = await requirePermission(BRANCH_QUOTA_MANAGE);
   try {
     const file = await readUpload(formData);
     const { preview, planKey } = await branchQuotaImportService.buildPlan(
@@ -79,7 +80,7 @@ export async function previewBranchQuotaImportAction(
 export async function applyBranchQuotaImportChunkAction(
   formData: FormData,
 ): Promise<BranchQuotaImportChunkProgress | { error: string }> {
-  const session = await requirePermission("branches.manage");
+  const session = await requirePermission(BRANCH_QUOTA_MANAGE);
   try {
     const file = await readOptionalUpload(formData);
     const planKey = parsePlanKey(formData.get("planKey"));
@@ -110,7 +111,7 @@ export async function applyBranchQuotaImportChunkAction(
 export async function applyBranchQuotaImportAction(
   formData: FormData,
 ): Promise<{ success: true; result: BranchQuotaImportResult } | { error: string }> {
-  const session = await requirePermission("branches.manage");
+  const session = await requirePermission(BRANCH_QUOTA_MANAGE);
   try {
     const file = await readUpload(formData);
     const result = await branchQuotaImportService.apply({

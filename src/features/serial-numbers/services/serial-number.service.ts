@@ -19,6 +19,10 @@ import {
   loadWarehouseNames,
   warehouseCodesMissingNames,
 } from "@/features/serial-numbers/services/serial-location-names";
+import {
+  transferDecisionLedgerText,
+  transferReferenceLines,
+} from "@/features/serial-activity/lib/transfer-reference";
 import { prisma } from "@/lib/database/client";
 import { decimalToNumberOrNull } from "@/lib/database/decimal";
 
@@ -211,6 +215,15 @@ export function stockUnitsBranchHref(branchId: string): string {
   return `/inventory?branch=${encodeURIComponent(branchId)}`;
 }
 
+/** Branch → warehouse on older pull-outs. Newer ones end in transit and name no warehouse. */
+function pulloutRouteLabel(
+  branch: { name: string } | null | undefined,
+  warehouse: { name: string } | null | undefined,
+): string {
+  const from = branch?.name ?? "—";
+  return warehouse ? `${from} → ${warehouse.name}` : from;
+}
+
 function buildTimeline(row: SerialTraceabilityRow): SerialTimelineEvent[] {
   const events: SerialTimelineEvent[] = [];
 
@@ -283,6 +296,26 @@ function buildTimeline(row: SerialTraceabilityRow): SerialTimelineEvent[] {
         .join(" · "),
       href: `/logistics/transfers?q=${encodeURIComponent(transfer.transferNo)}`,
     });
+    if (line.decidedAt && (line.decision === "accepted" || line.decision === "rejected")) {
+      events.push({
+        id: `transfer-decided-${line.id}`,
+        type: "transfer",
+        label: line.decision === "accepted" ? "Transfer accepted" : "Transfer rejected",
+        at: line.decidedAt,
+        branch: null,
+        status: null,
+        detail:
+          transferDecisionLedgerText(transfer.transferNo, line.decision, row.history) ??
+          transferReferenceLines({
+            rsNo: transfer.rsNo,
+            drNo: transfer.drNo,
+            decision: line.decision,
+            remarks: line.remarks,
+            requestRemarks: line.requestRemarks,
+          }).join(" · "),
+        href: `/logistics/transfers?q=${encodeURIComponent(transfer.transferNo)}`,
+      });
+    }
   }
 
   for (const line of row.pulloutLines) {
@@ -295,13 +328,47 @@ function buildTimeline(row: SerialTraceabilityRow): SerialTimelineEvent[] {
       branch: pullout.branch?.name ?? null,
       status: statusBadge(pullout.statusCode),
       detail: [
-        `${pullout.branch?.name ?? "—"} → ${pullout.warehouse?.name ?? "—"}`,
+        pulloutRouteLabel(pullout.branch, pullout.warehouse),
         pullout.pulloutNo,
       ]
         .filter(Boolean)
         .join(" · "),
       href: `/logistics/pickups?q=${encodeURIComponent(pullout.pulloutNo)}`,
     });
+    if (line.receivedAt) {
+      events.push({
+        id: `pullout-received-${line.id}`,
+        type: "pullout",
+        label: "Received at warehouse",
+        at: line.receivedAt,
+        branch: null,
+        status: null,
+        detail: [
+          line.receivedLocation
+            ? `${pullout.warehouse?.name ?? "—"} / ${line.receivedLocation.code}`
+            : pullout.warehouse?.name,
+          line.priorStatusCode?.code,
+          pullout.pulloutNo,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        href: `/logistics/pickups?q=${encodeURIComponent(pullout.pulloutNo)}`,
+      });
+    }
+    if (line.rejectedAt) {
+      events.push({
+        id: `pullout-rejected-${line.id}`,
+        type: "pullout",
+        label: "Rejected, back at branch",
+        at: line.rejectedAt,
+        branch: pullout.branch?.name ?? null,
+        status: null,
+        detail: [line.rejectionRemarks, line.priorStatusCode?.code, pullout.pulloutNo]
+          .filter(Boolean)
+          .join(" · "),
+        href: `/logistics/pickups?q=${encodeURIComponent(pullout.pulloutNo)}`,
+      });
+    }
   }
 
   for (const line of row.deliveryLines) {
@@ -470,7 +537,7 @@ function buildRelatedLinks(
       id: `pullout-${line.pullout.id}`,
       kind: "pullout",
       label: line.pullout.pulloutNo,
-      detail: `${line.pullout.branch?.name ?? "—"} → ${line.pullout.warehouse?.name ?? "—"}`,
+      detail: pulloutRouteLabel(line.pullout.branch, line.pullout.warehouse),
       href: `/logistics/pickups?q=${encodeURIComponent(line.pullout.pulloutNo)}`,
     });
   }

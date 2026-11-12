@@ -140,6 +140,7 @@ export interface DataTableProps<TData extends RowData> {
   footer?: ReactNode;
   pagination?: GlobalDataTableProps["pagination"];
   itemLabel?: string;
+  getRowClassName?: (row: TData) => string | undefined;
 }
 
 function applyUpdater<T>(updater: Updater<T>, current: T): T {
@@ -269,6 +270,7 @@ export function DataTable<TData extends RowData>({
   footer,
   pagination,
   itemLabel = "row",
+  getRowClassName,
 }: DataTableProps<TData>) {
   const sortingIsManual = manualSorting || Boolean(sorting?.onSort);
   const paginationIsManual = manualPagination || Boolean(pagination);
@@ -588,6 +590,7 @@ export function DataTable<TData extends RowData>({
                 showRowDetails={showRowDetails}
                 detailColumns={detailColumns}
                 onToggleDetail={() => toggleDetail(row.id)}
+                rowClassName={getRowClassName?.(row.original)}
                 expandedContent={
                   enableExpansion && row.getIsExpanded() && renderExpandedRow
                     ? renderExpandedRow(row.original)
@@ -699,6 +702,7 @@ function DataTableBodyRows<TData extends RowData>({
   showRowDetails,
   detailColumns,
   onToggleDetail,
+  rowClassName,
   expandedContent,
 }: {
   row: Row<DataTableFeatures, TData>;
@@ -709,11 +713,15 @@ function DataTableBodyRows<TData extends RowData>({
   showRowDetails: boolean;
   detailColumns: Column<DataTableFeatures, TData>[];
   onToggleDetail: () => void;
+  rowClassName?: string;
   expandedContent: ReactNode;
 }) {
   return (
     <>
-      <TableRow data-state={row.getIsSelected() ? "selected" : undefined}>
+      <TableRow
+        data-state={row.getIsSelected() ? "selected" : undefined}
+        className={rowClassName}
+      >
         {row.getVisibleCells().map((cell) => {
           const meta = columnMeta(cell.column);
           return (
@@ -778,7 +786,13 @@ function DataTableBodyRows<TData extends RowData>({
       {expandedContent ? (
         <TableRow className="hover:bg-transparent">
           <TableCell colSpan={colSpan} className="p-0">
-            <div className="w-0 min-w-full">{expandedContent}</div>
+            <div
+              className="w-0 min-w-full"
+              onClick={(event) => event.stopPropagation()}
+              onPointerDown={(event) => event.stopPropagation()}
+            >
+              {expandedContent}
+            </div>
           </TableCell>
         </TableRow>
       ) : null}

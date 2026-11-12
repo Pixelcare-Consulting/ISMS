@@ -416,7 +416,7 @@ function AutoReplenishCreateOrderDialog({
           <DialogTitle>Create branch order</DialogTitle>
           <DialogDescription>
             Review branch stock and suggested quantities, then enter quantities for this
-            request. SUG is shelf gap from planogram Max Qty, not forecast.
+            request. SUG is the shelf gap to Max Qty, not the forecast.
           </DialogDescription>
         </DialogHeader>
 

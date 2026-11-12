@@ -209,7 +209,7 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
       {
         id: "logistics",
         role: "Logistics",
-        nodeIds: ["sched", "dispatch"],
+        nodeIds: ["dispatch"],
       },
       {
         id: "branch",
@@ -218,13 +218,11 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
       },
     ],
     nodes: [
-      { id: "sched", label: "Set schedule & waybill" },
       { id: "dispatch", label: "Copy To IT / DR in SAP" },
       { id: "receive", label: "Accept in Operations" },
       { id: "resolve", label: "Resolve shortage / damage" },
     ],
     edges: [
-      { from: "sched", to: "dispatch" },
       { from: "dispatch", to: "receive" },
       { from: "receive", to: "resolve" },
     ],
@@ -240,13 +238,13 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
     title: "Transfers",
     tabLabel: "Transfers",
     summary:
-      "Requesting branch asks for stock; Team Leader approves; releasing branch sends units; requesting branch receives them on hand.",
+      "Releasing branch asks to move units; its Team Leader approves, which sends them in transit; the receiving branch accepts or rejects each serial.",
     kind: "swimlane",
     lanes: [
       {
-        id: "requesting",
-        role: "Requesting branch",
-        nodeIds: ["create_req", "receive_xfer"],
+        id: "releasing",
+        role: "Releasing branch",
+        nodeIds: ["create_req"],
       },
       {
         id: "tl",
@@ -254,33 +252,31 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
         nodeIds: ["approve_xfer"],
       },
       {
-        id: "releasing",
-        role: "Releasing branch",
-        nodeIds: ["release_xfer"],
+        id: "receiving",
+        role: "Receiving branch",
+        nodeIds: ["receive_xfer"],
       },
     ],
     nodes: [
       {
         id: "create_req",
         label: "Create transfer request",
-        hint: "Syncs transfer request to SAP when connected",
+        hint: "Units are reserved",
       },
-      { id: "approve_xfer", label: "Approve or cancel request" },
       {
-        id: "release_xfer",
-        label: "Mark For Transfer / release",
-        hint: "Syncs transfer document to SAP when connected",
+        id: "approve_xfer",
+        label: "Approve or reject request",
+        hint: "Approval sends the units in transit",
       },
-      { id: "receive_xfer", label: "Receive stock → On hand" },
+      { id: "receive_xfer", label: "Accept or reject each serial → Stock" },
     ],
     edges: [
       { from: "create_req", to: "approve_xfer" },
-      { from: "approve_xfer", to: "release_xfer" },
-      { from: "release_xfer", to: "receive_xfer" },
+      { from: "approve_xfer", to: "receive_xfer" },
     ],
     callouts: [
-      "Who can create, approve, release, or receive depends on your role setup.",
-      "SAP sync may be queued or pending depending on your tenant integration.",
+      "Who can create, approve, or receive depends on your role setup.",
+      "There is no Logistics release step: approval moves the units to the receiving branch as in transit.",
     ],
   },
   {
@@ -288,12 +284,12 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
     title: "Pull-outs",
     tabLabel: "Pull-outs",
     summary:
-      "Bring stock back from a branch through logistics to the warehouse.",
+      "Take units out of a branch. The pull-out ends when Logistics sends it.",
     kind: "swimlane",
     lanes: [
       {
-        id: "ps",
-        role: "Product Specialist",
+        id: "branch",
+        role: "Branch",
         nodeIds: ["request"],
       },
       {
@@ -304,31 +300,19 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
       {
         id: "logistics",
         role: "Logistics",
-        nodeIds: ["pickup"],
-      },
-      {
-        id: "branch",
-        role: "Branch",
-        nodeIds: ["release_po"],
-      },
-      {
-        id: "wh",
-        role: "Warehouse",
-        nodeIds: ["validate"],
+        nodeIds: ["list", "send"],
       },
     ],
     nodes: [
-      { id: "request", label: "Create pull-out" },
-      { id: "approve", label: "Approve request" },
-      { id: "pickup", label: "Schedule pickup" },
-      { id: "release_po", label: "Release goods" },
-      { id: "validate", label: "Validate receipt" },
+      { id: "request", label: "Submit request (Reserved)" },
+      { id: "approve", label: "Approve (For pull-out)" },
+      { id: "list", label: "Save pull-out list" },
+      { id: "send", label: "Send (Pull-out in transit)" },
     ],
     edges: [
       { from: "request", to: "approve" },
-      { from: "approve", to: "pickup" },
-      { from: "pickup", to: "release_po" },
-      { from: "release_po", to: "validate" },
+      { from: "approve", to: "list" },
+      { from: "list", to: "send" },
     ],
   },
   {

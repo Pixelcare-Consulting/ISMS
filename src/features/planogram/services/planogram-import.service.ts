@@ -11,7 +11,6 @@ import {
   type PlanogramImportRowError,
   type PlanogramImportRowPlan,
 } from "@/features/planogram/schemas/planogram-import.schema";
-import { parsePlanogramShelfMax } from "@/features/planogram/services/planogram-import.validation";
 import {
   buildPlanogramTemplateWorkbook,
   readPlanogramImportWorkbook,
@@ -109,7 +108,6 @@ async function loadTemplateRows(actor: PlanogramImportActor): Promise<PlanogramT
       model: { status: "active" },
     },
     select: {
-      maxQty: true,
       branch: { select: { name: true } },
       model: { select: { skuCode: true } },
     },
@@ -119,7 +117,6 @@ async function loadTemplateRows(actor: PlanogramImportActor): Promise<PlanogramT
   return entries.map((entry) => ({
     branchName: entry.branch.name,
     sku: entry.model.skuCode,
-    maxQty: entry.maxQty,
   }));
 }
 
@@ -140,8 +137,7 @@ async function buildPlan(
   for (const row of sheet.rows) {
     const branchName = row.values.branch_name?.trim() ?? "";
     const sku = row.values.sku?.trim() ?? "";
-    const shelfMaxRaw = row.values.shelf_max?.trim() ?? "";
-    if (isBlankOrDash(branchName) && isBlankOrDash(sku) && isBlankOrDash(shelfMaxRaw)) {
+    if (isBlankOrDash(branchName) && isBlankOrDash(sku)) {
       continue;
     }
     const pairKey = `${lookupKey(branchName)}::${lookupKey(sku)}`;
@@ -186,7 +182,7 @@ async function buildPlan(
       ? []
       : await prisma.branchPlanogram.findMany({
           where: { tenantId: actor.tenantId, branchId: { in: candidateBranchIds } },
-          select: { id: true, branchId: true, modelId: true, maxQty: true },
+          select: { branchId: true, modelId: true },
         });
   const existingAllowed =
     candidateBranchIds.length === 0
@@ -207,8 +203,7 @@ async function buildPlan(
   for (const row of sheet.rows) {
     const branchName = row.values.branch_name?.trim() ?? "";
     const sku = row.values.sku?.trim() ?? "";
-    const shelfMaxRaw = row.values.shelf_max?.trim() ?? "";
-    if (isBlankOrDash(branchName) && isBlankOrDash(sku) && isBlankOrDash(shelfMaxRaw)) {
+    if (isBlankOrDash(branchName) && isBlankOrDash(sku)) {
       continue;
     }
 
@@ -233,12 +228,6 @@ async function buildPlan(
 
     const pairFileKey = `${lookupKey(branchName)}::${lookupKey(sku)}`;
     if (seenPairs.get(pairFileKey) !== row.rowNumber) {
-      continue;
-    }
-
-    const shelfMax = parsePlanogramShelfMax(shelfMaxRaw);
-    if ("error" in shelfMax) {
-      pushError(shelfMax.error);
       continue;
     }
 
@@ -280,18 +269,13 @@ async function buildPlan(
     if (willAddAllowedModel) {
       pushChange(changes, "allowedModel", null, "add");
     }
-    if (existing && existing.maxQty !== shelfMax.maxQty) {
-      pushChange(changes, "maxQty", existing.maxQty, shelfMax.maxQty);
-    }
 
-    const maxQtyChanged = existing != null && existing.maxQty !== shelfMax.maxQty;
-    const action = !existing ? "create" : willAddAllowedModel || maxQtyChanged ? "update" : "skip";
+    const action = !existing ? "create" : willAddAllowedModel ? "update" : "skip";
     const planned: RowPlanInternal = {
       rowNumber: row.rowNumber,
       sapCode: branch.sapCode,
       sku: model.skuCode,
       branchName: branch.name,
-      maxQty: shelfMax.maxQty,
       milDays: PLANOGRAM_DEFAULT_MIL_DAYS,
       action,
       changes,
@@ -363,12 +347,8 @@ async function applyWriteSlice(
         tenantId,
         branchId: row.branchId,
         modelId: row.modelId,
-        maxQty: row.maxQty,
-        maxQtyEditedAt: new Date(),
       },
-      update: row.changes.some((change) => change.field === "maxQty")
-        ? { maxQty: row.maxQty, maxQtyEditedAt: new Date() }
-        : {},
+      update: {},
     });
 
     if (row.action === "create") {
@@ -391,28 +371,11 @@ async function applyWriteSlice(
         metadata: {
           branchId: row.branchId,
           modelId: row.modelId,
-          maxQty: row.maxQty,
           milDays: row.milDays,
           source: "planogram-import",
         },
       });
       return { created: 1, updated: 0, allowedModelsAdded: allowedAdded, audits };
-    }
-
-    if (row.changes.some((change) => change.field === "maxQty")) {
-      audits.push({
-        tenantId,
-        userId: actorUserId,
-        action: "planogram.max_qty_updated",
-        entityType: "BranchPlanogram",
-        entityId: entry.id,
-        metadata: {
-          branchId: row.branchId,
-          modelId: row.modelId,
-          maxQty: row.maxQty,
-          source: "planogram-import",
-        },
-      });
     }
 
     return { created: 0, updated: 1, allowedModelsAdded: allowedAdded, audits };
