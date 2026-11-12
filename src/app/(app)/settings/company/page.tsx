@@ -8,6 +8,7 @@ import { resolveTenantTagline } from "@/features/tenants/types/tenant-branding";
 import { COMPANY_PAGE_TUTORIAL } from "@/content/page-tutorials/company";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import { CompanySettingsForm } from "@/features/settings/components/company-settings-form";
+import { DocumentHeaderForm } from "@/features/settings/components/document-header-form";
 import { SettingsSection } from "@/features/settings/components/settings-section";
 
 export default async function CompanySettingsPage() {
@@ -24,7 +25,7 @@ export default async function CompanySettingsPage() {
       <PageHeader
         title="Company Settings"
         tutorial={COMPANY_PAGE_TUTORIAL}
-        description="Customize your organization logo, name, and ISMS tagline shown in the sidebar."
+        description="Customize your organization logo, name, ISMS tagline, and the header on printed documents."
       />
       <SettingsSection
         title="Sidebar branding"
@@ -37,6 +38,15 @@ export default async function CompanySettingsPage() {
             logo: tenant?.logo ?? null,
           }}
           slug={tenant?.slug ?? ""}
+          canEdit={canEdit}
+        />
+      </SettingsSection>
+      <SettingsSection
+        title="Printed documents"
+        description="The company logo above and these lines form the header on printed slips."
+      >
+        <DocumentHeaderForm
+          initialValue={tenant?.documentHeader ?? ""}
           canEdit={canEdit}
         />
       </SettingsSection>

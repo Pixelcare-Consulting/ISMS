@@ -41,6 +41,7 @@ import {
 import { canApproveTransferAt } from "@/features/logistics/lib/transfer-approver";
 import { nextTransferNo } from "@/features/logistics/lib/transfer-number";
 import { printTransferSlips } from "@/features/logistics/lib/transfer-slip-print";
+import { loadPrintLetterhead } from "@/features/settings/lib/load-print-letterhead";
 import type {
   TransferDetail,
   TransferInventoryStatus,
@@ -899,17 +900,20 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
       }
       const slip = action.type === "approve" ? approvedSlip(result) : null;
       if (slip) {
-        printTransferSlips({
-          transferNo: slip.transferNo || detail.transferNo,
-          rsNo: slip.rsNo,
-          drNo: slip.drNo,
-          fromBranch: detail.fromBranch.name,
-          toBranch: detail.toBranch.name,
-          lines: detail.lines.map((line) => ({
-            serialNo: line.serialNo,
-            model: modelLabel({ skuCode: line.skuCode, name: line.modelName }),
-          })),
-        });
+        printTransferSlips(
+          {
+            transferNo: slip.transferNo || detail.transferNo,
+            rsNo: slip.rsNo,
+            drNo: slip.drNo,
+            fromBranch: detail.fromBranch.name,
+            toBranch: detail.toBranch.name,
+            lines: detail.lines.map((line) => ({
+              serialNo: line.serialNo,
+              model: modelLabel({ skuCode: line.skuCode, name: line.modelName }),
+            })),
+          },
+          await loadPrintLetterhead(),
+        );
       }
       toast.success(successMessage(action));
       setPendingConfirm(null);
@@ -1066,7 +1070,7 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
           canReceive={canReceive}
           pending={pending}
           workflowStatuses={workflowStatuses}
-          onPrintSlips={detail.rsNo && detail.drNo ? () => printCurrentSlips(detail) : null}
+          onPrintSlips={detail.rsNo && detail.drNo ? () => void printCurrentSlips(detail) : null}
           onAccept={(line) =>
             setPendingConfirm({
               type: "receive",
@@ -1415,19 +1419,22 @@ function approvedSlip(result: object): { rsNo: string; drNo: string; transferNo:
   };
 }
 
-function printCurrentSlips(detail: TransferDetail) {
+async function printCurrentSlips(detail: TransferDetail) {
   if (!detail.rsNo || !detail.drNo) return;
-  printTransferSlips({
-    transferNo: detail.transferNo,
-    rsNo: detail.rsNo,
-    drNo: detail.drNo,
-    fromBranch: detail.fromBranch.name,
-    toBranch: detail.toBranch.name,
-    lines: detail.lines.map((line) => ({
-      serialNo: line.serialNo,
-      model: modelLabel({ skuCode: line.skuCode, name: line.modelName }),
-    })),
-  });
+  printTransferSlips(
+    {
+      transferNo: detail.transferNo,
+      rsNo: detail.rsNo,
+      drNo: detail.drNo,
+      fromBranch: detail.fromBranch.name,
+      toBranch: detail.toBranch.name,
+      lines: detail.lines.map((line) => ({
+        serialNo: line.serialNo,
+        model: modelLabel({ skuCode: line.skuCode, name: line.modelName }),
+      })),
+    },
+    await loadPrintLetterhead(),
+  );
 }
 
 function runTransferAction(id: string, action: PendingConfirm, remarks: string) {

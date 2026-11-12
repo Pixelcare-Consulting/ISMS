@@ -254,6 +254,8 @@ model Tenant {
   slug       String    @unique
   tagline    String?
   logo       String?
+  /// Address and contact lines printed beside the logo on slips, one per line.
+  documentHeader String? @map("document_header")
   /// Reserved home tenant for platform operators (Pixelcare). Never listed as a customer.
   isPlatform Boolean   @default(false) @map("is_platform")
   createdAt  DateTime  @default(now()) @map("created_at")

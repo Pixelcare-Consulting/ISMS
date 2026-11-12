@@ -13,6 +13,9 @@ import type { PulloutDetail } from "@/features/logistics/services/pullout-postin
 
 jest.mock("sonner", () => ({ toast: { error: jest.fn(), success: jest.fn() } }));
 jest.mock("next/navigation", () => ({ useRouter: () => ({ refresh: jest.fn() }) }));
+jest.mock("@/features/settings/lib/load-print-letterhead", () => ({
+  loadPrintLetterhead: jest.fn().mockResolvedValue(null),
+}));
 jest.mock("@/features/logistics/actions/logistics.actions", () => ({
   listWarehousesForLogisticsAction: jest.fn(async () => []),
   listPulloutSerialsAction: jest.fn(),

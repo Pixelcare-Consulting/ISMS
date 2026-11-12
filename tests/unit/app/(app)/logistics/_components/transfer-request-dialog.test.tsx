@@ -18,6 +18,9 @@ jest.mock("sonner", () => ({
   toast: { error: jest.fn(), success: jest.fn(), message: jest.fn() },
 }));
 
+jest.mock("@/features/settings/lib/load-print-letterhead", () => ({
+  loadPrintLetterhead: jest.fn().mockResolvedValue(null),
+}));
 jest.mock("@/features/logistics/actions/logistics.actions", () => ({
   approveTransferAction: jest.fn(),
   executeTransferAction: jest.fn(),

@@ -9,7 +9,8 @@ const ALLOWED_IMAGE_TYPES = new Set([
 const ALLOWED_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp"]);
 
 export const BRAND_LOGO_MAX_BYTES = 512 * 1024;
-export const BRAND_LOGO_MAX_DIMENSION = 128;
+/** Large enough to stay sharp at letterhead size on paper; the sidebar scales it down. */
+export const BRAND_LOGO_MAX_DIMENSION = 600;
 
 export function isAllowedBrandImage(file: File) {
   if (ALLOWED_IMAGE_TYPES.has(file.type)) {
