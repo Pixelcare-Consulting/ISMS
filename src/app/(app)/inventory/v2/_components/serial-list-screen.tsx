@@ -43,6 +43,7 @@ import {
   branchInventoryUnitTotal,
   branchSerialLabel,
   branchSerialSelectionBlock,
+  isBranchInventoryV2HiddenStatus,
   type BranchChangeableStatus,
   type BranchSerialSelectionBlock,
 } from "@/features/inventory/utils/branch-inventory-v2";
@@ -258,10 +259,14 @@ function SerialListBody({
     [result.items],
   );
   const statusMenu = useMemo(() => {
-    const byId = new Map(statusOptions.map((option) => [option.id, option]));
+    const byId = new Map(
+      statusOptions
+        .filter((option) => !isBranchInventoryV2HiddenStatus(option.code))
+        .map((option) => [option.id, option]),
+    );
     for (const item of result.items) {
       const status = item.statusCode;
-      if (byId.has(status.id)) continue;
+      if (isBranchInventoryV2HiddenStatus(status.code) || byId.has(status.id)) continue;
       byId.set(status.id, { id: status.id, code: status.code, name: status.name });
     }
     return [...byId.values()];

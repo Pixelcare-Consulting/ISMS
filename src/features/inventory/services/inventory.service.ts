@@ -20,6 +20,11 @@ import {
   type InventoryListSort,
   type InventoryListSortDir,
 } from "@/features/inventory/repositories/inventory.repository";
+import { isBranchInventoryV2HiddenStatus } from "@/features/inventory/utils/branch-inventory-v2";
+import {
+  sumBranchInventoryV2CardAmounts,
+  type BranchInventoryV2CardAmounts,
+} from "@/features/inventory/utils/branch-inventory-v2-card-amounts";
 import { groupStockByModelSeries } from "@/features/inventory/utils/group-stock-by-model-series";
 import {
   inventoryGroupStatusesFromCounts,
@@ -27,9 +32,10 @@ import {
   type InventoryGroupCountParts,
 } from "@/features/inventory/utils/stock-units-group-aggregates";
 import { wholeDaysBetween } from "@/features/inventory/utils/sku-series";
+import { formatPeriodDate } from "@/features/master-data/types/client-price-list";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import { hasPermission } from "@/lib/auth/permissions";
-import { decimalToNumber } from "@/lib/database/decimal";
+import { decimalToNumber, decimalToNumberOrNull } from "@/lib/database/decimal";
 import { logger } from "@/lib/shared/logger";
 import {
   resolvePagination,
@@ -48,6 +54,8 @@ export interface InventoryKpis {
   totalUnits: number;
   statuses: InventoryStatusKpi[];
 }
+
+export type { BranchInventoryV2CardAmounts };
 
 export interface InventorySeriesRow {
   series: string;
@@ -638,6 +646,62 @@ export const inventoryService = {
         count: countByCodeId.get(c.id) ?? 0,
       })),
     };
+  },
+
+  /**
+   * Peso totals for the four Branch Inventory v2 home cards.
+   * Sold and Official Sold are left out. Each amount is quantity times the
+   * display price list (or the model SRP when the model has no price list).
+   */
+  async getBranchInventoryV2CardAmounts(
+    tenantId: string,
+    userId: string,
+    isUnrestricted: boolean,
+  ): Promise<BranchInventoryV2CardAmounts> {
+    const empty: BranchInventoryV2CardAmounts = {
+      total: 0,
+      inStock: 0,
+      defective: 0,
+      offPlanogram: 0,
+    };
+    const [branchIds, statusCodes] = await Promise.all([
+      resolveBranchIds(tenantId, userId, isUnrestricted),
+      loadInventoryStatusCodes(tenantId),
+    ]);
+    const visibleStatusIds = statusCodes
+      .filter((status) => !isBranchInventoryV2HiddenStatus(status.code))
+      .map((status) => status.id);
+    if (branchIds.length === 0 || visibleStatusIds.length === 0) return empty;
+
+    const qtyRows = await inventoryRepository.aggregateBranchInventoryV2ModelQty(
+      tenantId,
+      branchIds,
+      visibleStatusIds,
+    );
+    if (qtyRows.length === 0) return empty;
+
+    const priceLists = await inventoryRepository.listModelPriceListRows(
+      tenantId,
+      qtyRows.map((row) => row.modelId),
+    );
+
+    return sumBranchInventoryV2CardAmounts(
+      qtyRows.map((row) => ({
+        modelId: row.modelId,
+        srp: decimalToNumberOrNull(row.srp),
+        totalQty: row.totalQty,
+        inStockQty: row.inStockQty,
+        defectiveQty: row.defectiveQty,
+        offPlanogramQty: row.offPlanogramQty,
+      })),
+      priceLists.map((row) => ({
+        modelId: row.modelId,
+        amount: decimalToNumber(row.amount),
+        periodStart: formatPeriodDate(row.periodStart),
+        periodEnd: formatPeriodDate(row.periodEnd),
+        packageTypeId: row.packageTypeId,
+      })),
+    );
   },
 
   async updateStatus(input: {

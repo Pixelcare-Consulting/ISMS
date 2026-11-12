@@ -66,6 +66,30 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.89.0",
+    date: "2026-11-12",
+    releasedAt: "2026-11-12T10:00:00+08:00",
+    title: "Branch Inventory — checklist, value, and a clearer stock view",
+    highlights: [
+      "Reporting a defect uses a problem checklist, and the team leader sees the items you tick.",
+      "The inventory summary cards show the peso value as well as the quantity.",
+      "Sold and Official Sold no longer appear on the inventory screen.",
+      "Branch Inventory opens the newer inventory view.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "When you mark a unit defective, you tick the problem from the checklist. At least one item is required, and those names are what the team leader reviews. The four inventory summary cards now show the peso value under the quantity, using the latest price for each model.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sold and Official Sold stay on the sales screens and no longer appear in inventory totals, status columns, or the unit list. Branch Inventory in the menu opens the newer inventory view.",
+      },
+    ],
+  },
+  {
     version: "0.88.0",
     date: "2026-11-10",
     releasedAt: "2026-11-10T19:20:00+08:00",

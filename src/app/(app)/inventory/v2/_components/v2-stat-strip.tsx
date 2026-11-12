@@ -1,4 +1,5 @@
 import { SidebarNavCountBadge } from "@/app/(app)/_components/sidebar-nav-count-badge";
+import { isBranchInventoryV2HiddenStatus } from "@/features/inventory/utils/branch-inventory-v2";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { cn } from "@/utils/cn";
 
@@ -21,7 +22,9 @@ export function V2StatStrip({
   className,
   maxStatusCards = 6,
 }: V2StatStripProps) {
-  const visible = statuses.slice(0, maxStatusCards);
+  const visible = statuses
+    .filter((status) => !isBranchInventoryV2HiddenStatus(status.code))
+    .slice(0, maxStatusCards);
   const showTotal = totalUnits != null;
   if (!showTotal && visible.length === 0 && offPlanogramCount === 0) return null;
 

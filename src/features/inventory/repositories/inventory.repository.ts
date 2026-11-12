@@ -668,6 +668,21 @@ export const inventoryRepository = {
     });
   },
 
+  /** Price-list periods for the models on the v2 summary cards. */
+  listModelPriceListRows(tenantId: string, modelIds: readonly string[]) {
+    if (modelIds.length === 0) return Promise.resolve([]);
+    return prisma.priceList.findMany({
+      where: { tenantId, modelId: { in: [...modelIds] } },
+      select: {
+        modelId: true,
+        amount: true,
+        periodStart: true,
+        periodEnd: true,
+        packageTypeId: true,
+      },
+    });
+  },
+
   ...inventoryGroupRepository,
 };
 

@@ -6,6 +6,7 @@ import { BRANCH_INVENTORY_V2_PAGE_SIZE } from "@/app/(app)/inventory/v2/links";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import {
   getBranchInventoryUnreadAction,
+  getBranchInventoryV2CardAmountsAction,
   getInventoryKpisAction,
   getInventorySeriesSummaryAction,
   listInventoryAction,
@@ -18,7 +19,12 @@ import {
 } from "@/features/inventory/actions/inventory.actions";
 import { InventorySeriesSummaryPanel } from "@/features/inventory/components/inventory-series-summary";
 import { defectApprovalBranchIds } from "@/features/inventory/lib/defect-approver";
-import { branchInventoryUnitTotal } from "@/features/inventory/utils/branch-inventory-v2";
+import type { BranchInventoryV2CardAmounts } from "@/features/inventory/services/inventory.service";
+import {
+  branchInventoryUnitTotal,
+  isBranchInventoryV2HiddenStatus,
+  omitBranchInventoryV2HiddenStatusCounts,
+} from "@/features/inventory/utils/branch-inventory-v2";
 import { requirePermission } from "@/lib/auth/permissions";
 import type { PaginatedResult } from "@/lib/shared/pagination";
 
@@ -51,13 +57,17 @@ function branchGroups(
   );
 }
 
-/** Every SKU that has units at this branch, independent of the serial-list filters. */
+/** Every SKU that still has units at this branch after Sold and Official Sold are hidden. */
 function modelOptionsForBranch(
   groups: PaginatedResult<InventoryGroupBranchItemDto | InventoryGroupModelItemDto>,
 ): { sku: string; name: string }[] {
   const bySku = new Map<string, string>();
   for (const item of groups.items) {
     if (!("model" in item)) continue;
+    const visibleUnits = branchInventoryUnitTotal(
+      omitBranchInventoryV2HiddenStatusCounts(item.counts),
+    );
+    if (visibleUnits <= 0) continue;
     if (!bySku.has(item.model.sku)) {
       bySku.set(item.model.sku, item.model.name);
     }
@@ -76,20 +86,34 @@ function statusOptionsForBranch(
   branch: InventoryGroupBranchItemDto | null,
   selectedStatusId?: string,
 ) {
-  if (!branch) return options;
+  const visibleOptions = options.filter(
+    (option) => !isBranchInventoryV2HiddenStatus(option.code),
+  );
+  if (!branch) return visibleOptions;
   const present = new Set<string>();
   for (const status of branch.counts.statuses) {
-    if (status.count > 0) present.add(status.code);
+    if (status.count > 0 && !isBranchInventoryV2HiddenStatus(status.code)) {
+      present.add(status.code);
+    }
   }
   for (const [code, count] of Object.entries(branch.counts.statusCounts)) {
-    if (count > 0) present.add(code);
+    if (count > 0 && !isBranchInventoryV2HiddenStatus(code)) present.add(code);
   }
   if (branch.counts.notStockedIn > 0) present.add("STK");
-  if (present.size === 0) return options;
-  const filtered = options.filter(
+  if (present.size === 0) return visibleOptions;
+  const filtered = visibleOptions.filter(
     (option) => present.has(option.code) || option.id === selectedStatusId,
   );
-  return filtered.length > 0 ? filtered : options;
+  return filtered.length > 0 ? filtered : visibleOptions;
+}
+
+function withoutSoldBranchRows(
+  rows: InventoryGroupBranchItemDto[],
+): InventoryGroupBranchItemDto[] {
+  return rows.map((row) => ({
+    ...row,
+    counts: omitBranchInventoryV2HiddenStatusCounts(row.counts),
+  }));
 }
 
 export default async function BranchInventoryV2Page({
@@ -105,7 +129,7 @@ export default async function BranchInventoryV2Page({
   const offPlanogram = params.offPlanogram === "1";
   const sku = params.sku?.trim() || undefined;
 
-  const [kpis, seriesSummary, groupResult, offPlanogramResult, approvalBranchIds, unread] =
+  const [kpis, seriesSummary, groupResult, offPlanogramResult, approvalBranchIds, unread, cardAmounts] =
     await Promise.all([
       getInventoryKpisAction(),
       getInventorySeriesSummaryAction(
@@ -121,10 +145,13 @@ export default async function BranchInventoryV2Page({
       getBranchInventoryUnreadAction(
         screen.kind === "branch" ? { branchId: screen.branchId } : undefined,
       ),
+      screen.kind === "all"
+        ? getBranchInventoryV2CardAmountsAction()
+        : Promise.resolve(null),
     ]);
 
-  const branches = branchGroups(groupResult);
-  const offPlanogramBranches = branchGroups(offPlanogramResult);
+  const branches = withoutSoldBranchRows(branchGroups(groupResult));
+  const offPlanogramBranches = withoutSoldBranchRows(branchGroups(offPlanogramResult));
   const singleBranch = branches.length === 1 || session.user.roleSlugs.includes("ps");
   const seriesPanel = <InventorySeriesSummaryPanel summary={seriesSummary} />;
 
@@ -135,7 +162,10 @@ export default async function BranchInventoryV2Page({
         branches,
         offPlanogramBranches,
         totalUnits: kpis.totalUnits,
-        statusCodes: kpis.statuses.map((status) => status.code),
+        statusCodes: kpis.statuses
+          .map((status) => status.code)
+          .filter((code) => !isBranchInventoryV2HiddenStatus(code)),
+        cardAmounts,
         page,
         limit,
         q,
@@ -157,6 +187,7 @@ async function renderScreen(input: {
   offPlanogramBranches: InventoryGroupBranchItemDto[];
   totalUnits: number;
   statusCodes: string[];
+  cardAmounts: BranchInventoryV2CardAmounts | null;
   page: number;
   limit: number;
   q: string;
@@ -175,6 +206,14 @@ async function renderScreen(input: {
         <BranchInventoryAllBranchesScreen
           branches={input.branches}
           offPlanogramBranches={input.offPlanogramBranches}
+          cardAmounts={
+            input.cardAmounts ?? {
+              total: 0,
+              inStock: 0,
+              defective: 0,
+              offPlanogram: 0,
+            }
+          }
           initialOffPlanogram={input.offPlanogram}
           unreadByCode={input.unreadByCode}
           seriesSummary={input.seriesSummary}
@@ -182,17 +221,7 @@ async function renderScreen(input: {
       );
     case "branch": {
       const branchId = screen.branchId;
-      const [result, statusOptions, modelGroups] = await Promise.all([
-        listInventoryAction({
-          page: input.page,
-          limit: input.limit,
-          branchId,
-          statusCodes: input.statusCodes,
-          statusCodeId: input.statusCodeId,
-          q: input.q,
-          sku: input.sku,
-          offPlanogram: input.offPlanogram,
-        }),
+      const [statusOptions, modelGroups] = await Promise.all([
         listInventoryStatusOptionsAction({ includeDefective: true }),
         listInventoryGroupsAction({
           groupBy: "by-model",
@@ -200,6 +229,23 @@ async function renderScreen(input: {
           all: true,
         }),
       ]);
+      const statusCodeId = statusOptions.some(
+        (option) =>
+          option.id === input.statusCodeId &&
+          isBranchInventoryV2HiddenStatus(option.code),
+      )
+        ? undefined
+        : input.statusCodeId;
+      const result = await listInventoryAction({
+        page: input.page,
+        limit: input.limit,
+        branchId,
+        statusCodes: input.statusCodes,
+        statusCodeId,
+        q: input.q,
+        sku: input.sku,
+        offPlanogram: input.offPlanogram,
+      });
       const branch = input.branches.find((row) => row.branch.id === branchId) ?? null;
       const offPlanogramRow =
         input.offPlanogramBranches.find((row) => row.branch.id === branchId) ?? null;
@@ -211,14 +257,14 @@ async function renderScreen(input: {
       );
       return (
         <BranchInventorySerialScreen
-          key={`${branchId}:${input.statusCodeId ?? ""}:${input.sku ?? ""}:${input.offPlanogram ? "1" : "0"}`}
+          key={`${branchId}:${statusCodeId ?? ""}:${input.sku ?? ""}:${input.offPlanogram ? "1" : "0"}`}
           branchId={branchId}
           branch={branch}
           result={result}
-          statusOptions={statusOptionsForBranch(statusOptions, branch, input.statusCodeId)}
+          statusOptions={statusOptionsForBranch(statusOptions, branch, statusCodeId)}
           modelOptions={modelOptionsForBranch(modelGroups)}
           q={input.q}
-          statusCodeId={input.statusCodeId}
+          statusCodeId={statusCodeId}
           sku={input.sku}
           initialOffPlanogram={input.offPlanogram}
           limit={input.limit}

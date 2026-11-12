@@ -379,6 +379,17 @@ export async function getInventoryKpisAction() {
   );
 }
 
+/** Peso lines for the four Branch Inventory v2 home cards. Counts stay on the page. */
+export async function getBranchInventoryV2CardAmountsAction() {
+  const session = await requirePermission("inventory.view");
+  const unrestricted = isUnrestricted(session.user.permissions);
+  return inventoryService.getBranchInventoryV2CardAmounts(
+    session.user.tenantId,
+    session.user.id,
+    unrestricted,
+  );
+}
+
 /** Sidebar badge: live STK qty in the caller's Stock units scope (0 when unauthorized). */
 export async function countStockUnitsStkAction(): Promise<number> {
   const session = await requireAuth();

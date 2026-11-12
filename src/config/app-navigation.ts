@@ -341,16 +341,8 @@ export const appNavigation: NavEntry[] = [
         icon: Package,
         items: [
           {
-            href: "/inventory",
-            label: "Branch Inventory",
-            icon: Package,
-            exact: true,
-            permission: "inventory.view",
-            countBadgeKey: "stockUnitsStk",
-          },
-          {
             href: "/inventory/v2",
-            label: "Branch Inventory v2",
+            label: "Branch Inventory",
             icon: ClipboardCheck,
             permission: "inventory.view",
             countBadgeKey: "branchInventoryV2Updates",

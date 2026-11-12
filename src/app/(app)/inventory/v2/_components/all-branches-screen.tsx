@@ -19,7 +19,10 @@ import { useClientTablePagination } from "@/components/data-table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import type { InventoryGroupBranchItemDto } from "@/features/inventory/actions/inventory.actions";
-import { branchInventoryUnitTotal } from "@/features/inventory/utils/branch-inventory-v2";
+import {
+  branchInventoryUnitTotal,
+  isBranchInventoryV2HiddenStatus,
+} from "@/features/inventory/utils/branch-inventory-v2";
 import type { InventoryGroupStatusCount } from "@/features/inventory/utils/stock-units-group-aggregates";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { DataTable, type DataTableColumn, type DataTableFeatures } from "@/lib/data-table";
@@ -27,6 +30,13 @@ import { DataTable, type DataTableColumn, type DataTableFeatures } from "@/lib/d
 interface AllBranchesScreenProps {
   branches: InventoryGroupBranchItemDto[];
   offPlanogramBranches: InventoryGroupBranchItemDto[];
+  /** Peso value of each card's quantity. Computed on the server. */
+  cardAmounts: {
+    total: number;
+    inStock: number;
+    defective: number;
+    offPlanogram: number;
+  };
   initialOffPlanogram?: boolean;
   /** Unread units per status code. Hidden when a status has none. */
   unreadByCode?: Record<string, number>;
@@ -37,7 +47,9 @@ const branchColumn = createColumnHelper<DataTableFeatures, InventoryGroupBranchI
 
 function statusColumns(branches: InventoryGroupBranchItemDto[]): InventoryGroupStatusCount[] {
   const withStatuses = branches.find((row) => (row.counts.statuses?.length ?? 0) > 0);
-  return withStatuses?.counts.statuses ?? [];
+  return (withStatuses?.counts.statuses ?? []).filter(
+    (status) => !isBranchInventoryV2HiddenStatus(status.code),
+  );
 }
 
 function countForStatus(
@@ -50,6 +62,7 @@ function countForStatus(
 export function BranchInventoryAllBranchesScreen({
   branches,
   offPlanogramBranches,
+  cardAmounts,
   initialOffPlanogram = false,
   unreadByCode = {},
   seriesSummary,
@@ -231,6 +244,7 @@ export function BranchInventoryAllBranchesScreen({
           variant="white"
           label="Total inventory"
           value={aggregates.totalUnits}
+          amount={cardAmounts.total}
           subtext={`Across ${aggregates.branchCount.toLocaleString()} ${
             aggregates.branchCount === 1 ? "branch" : "branches"
           }`}
@@ -239,12 +253,14 @@ export function BranchInventoryAllBranchesScreen({
           variant="white"
           label="In stock (STK)"
           value={aggregates.stk}
+          amount={cardAmounts.inStock}
           subtext="Available across branches"
         />
         <V2MetricCard
           variant="rose"
           label="Defective"
           value={aggregates.defectiveTotal}
+          amount={cardAmounts.defective}
           subtext={
             topDefectiveBranch && aggregates.defectiveTotal > 0
               ? `Most at ${topDefectiveBranch.branch.name}`
@@ -255,6 +271,7 @@ export function BranchInventoryAllBranchesScreen({
           variant="amber"
           label="Off planogram"
           value={offPlanogramTotal}
+          amount={cardAmounts.offPlanogram}
           subtext={
             topOffBranch && offPlanogramTotal > 0
               ? `Most at ${topOffBranch.branch.name}`

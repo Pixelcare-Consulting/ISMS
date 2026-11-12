@@ -84,6 +84,24 @@ type ModelGroupAggRaw = {
   status_counts?: unknown;
 };
 
+export type BranchInventoryV2ModelQtyRow = {
+  modelId: string;
+  srp: { toString(): string } | number | null;
+  totalQty: number;
+  inStockQty: number;
+  defectiveQty: number;
+  offPlanogramQty: number;
+};
+
+type BranchInventoryV2ModelQtyRaw = {
+  model_id: string;
+  srp: { toString(): string } | number | null;
+  total_qty: number | bigint;
+  stk_qty: number | bigint;
+  def_qty: number | bigint;
+  off_planogram_qty: number | bigint;
+};
+
 type ModelBranchSubgroupRaw = {
   branch_id: string;
   branch_name: string;
@@ -674,5 +692,56 @@ export const inventoryGroupRepository = {
     ]);
 
     return toPaginatedResult(items as InventoryListRow[], total, page, limit);
+  },
+
+  /**
+   * One row per model for the v2 home cards.
+   * `statusCodeIds` must already omit Sold and Official Sold.
+   * In-stock qty is stocked-in STK, matching the STK column. Total includes every
+   * remaining status, including STK that is not stocked in. Off planogram is that
+   * same set where the model is not on the branch planogram.
+   */
+  async aggregateBranchInventoryV2ModelQty(
+    tenantId: string,
+    branchIds: string[],
+    statusCodeIds: readonly string[],
+  ): Promise<BranchInventoryV2ModelQtyRow[]> {
+    if (branchIds.length === 0 || statusCodeIds.length === 0) return [];
+
+    const stockedIn = stockedInSql();
+    const rows = await prisma.$queryRaw<BranchInventoryV2ModelQtyRaw[]>`
+      SELECT
+        pm.id AS model_id,
+        pm.srp AS srp,
+        COUNT(*)::int AS total_qty,
+        COUNT(*) FILTER (WHERE rsc.code = 'STK' AND ${stockedIn})::int AS stk_qty,
+        COUNT(*) FILTER (WHERE rsc.code = 'DEF')::int AS def_qty,
+        COUNT(*) FILTER (
+          WHERE NOT EXISTS (
+            SELECT 1
+            FROM branch_planograms bp
+            WHERE bp.branch_id = bi.branch_id
+              AND bp.model_id = sn.model_id
+          )
+        )::int AS off_planogram_qty
+      FROM branch_inventories bi
+      INNER JOIN serial_numbers sn ON sn.id = bi.serial_number_id
+      INNER JOIN product_models pm ON pm.id = sn.model_id
+      INNER JOIN reason_status_codes rsc ON rsc.id = bi.status_code_id
+      WHERE bi.tenant_id = ${tenantId}
+        AND bi.branch_id IN (${Prisma.join(branchIds)})
+        AND bi.status_code_id IN (${Prisma.join([...statusCodeIds])})
+        AND NOT ${sentOnPulloutSql()}
+      GROUP BY pm.id, pm.srp
+    `;
+
+    return rows.map((row) => ({
+      modelId: row.model_id,
+      srp: row.srp,
+      totalQty: Number(row.total_qty),
+      inStockQty: Number(row.stk_qty),
+      defectiveQty: Number(row.def_qty),
+      offPlanogramQty: Number(row.off_planogram_qty),
+    }));
   },
 };

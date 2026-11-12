@@ -4,6 +4,10 @@ import "@testing-library/jest-dom";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 
+import {
+  listActiveProblemDescriptionsAction,
+  reportInventoryDefectAction,
+} from "@/features/inventory/actions/defect.actions";
 import { InventoryUnitStatusCell } from "@/features/inventory/components/inventory-unit-status-cell";
 import {
   InventoryListRefreshProvider,
@@ -30,7 +34,11 @@ jest.mock("@/features/inventory/actions/defect.actions", () => ({
   reportInventoryDefectAction: jest.fn(),
   approveInventoryDefectAction: jest.fn(),
   rejectInventoryDefectAction: jest.fn(),
+  listActiveProblemDescriptionsAction: jest.fn(),
 }));
+
+const listProblems = jest.mocked(listActiveProblemDescriptionsAction);
+const reportDefect = jest.mocked(reportInventoryDefectAction);
 
 const updateStatus = jest.mocked(updateInventoryStatusAction);
 
@@ -61,6 +69,8 @@ describe("InventoryUnitStatusCell", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     updateStatus.mockResolvedValue({ success: true });
+    listProblems.mockResolvedValue({ items: [] });
+    reportDefect.mockResolvedValue({ success: true, reportId: "rep-1" });
   });
 
   it("shows Stock on the same row after a display unit is returned to stock", async () => {
@@ -91,16 +101,49 @@ describe("InventoryUnitStatusCell", () => {
     ]);
   });
 
-  it("opens the defect dialog and leaves the status on display unit", () => {
+  it("opens the defect dialog and leaves the status on display unit", async () => {
     render(<CollapsingRow />);
 
     fireEvent.click(screen.getByRole("button", { name: "Defective" }));
 
     expect(screen.getByRole("dialog", { name: /report a defect/i })).toBeInTheDocument();
-    expect(screen.getByLabelText("Problem description")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Problem description" })).toBeInTheDocument();
+    expect(await screen.findByText(/no active problem descriptions/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send for approval" })).toBeDisabled();
     expect(screen.getByText("Display unit")).toBeInTheDocument();
     expect(screen.queryByText("Row collapsed")).not.toBeInTheDocument();
     expect(updateStatus).not.toHaveBeenCalled();
+    expect(reportDefect).not.toHaveBeenCalled();
+  });
+
+  it("saves the checked problem names on the defect report", async () => {
+    listProblems.mockResolvedValue({
+      items: [
+        { id: "p1", name: "Cracked panel" },
+        { id: "p2", name: "No power" },
+      ],
+    });
+
+    render(
+      <InventoryListRefreshProvider>
+        <InventoryUnitStatusCell unit={displayUnit} />
+      </InventoryListRefreshProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Defective" }));
+    const send = screen.getByRole("button", { name: "Send for approval" });
+    expect(send).toBeDisabled();
+
+    fireEvent.click(await screen.findByRole("checkbox", { name: "No power" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Cracked panel" }));
+    expect(send).toBeEnabled();
+    fireEvent.click(send);
+
+    await waitFor(() => {
+      expect(reportDefect).toHaveBeenCalledWith({
+        branchInventoryId: "inv-1",
+        reason: "Cracked panel; No power",
+      });
+    });
   });
 });
