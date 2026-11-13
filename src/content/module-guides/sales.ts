@@ -3,7 +3,7 @@ import type { ModuleGuideContent } from "@/content/module-guides/types";
 export const SALES_MODULE_GUIDE: ModuleGuideContent = {
   title: "Sales",
   description:
-    "Encode and list branch sales (view/create). Start Process Return from View details; track evaluate → approve → restore or replacement under Returns / Replacement.",
+    "Encode and list branch sales (view/create). Start Process Return from View details. Dealer Initiated returns wait for Team Leader; other types are approved when requested. Finish restore or replacement under Returns / Replacement.",
   tips: [
     { label: "New transaction → add package details, then verify totals before save" },
     { label: "RSV reserves stock instead of marking it sold" },

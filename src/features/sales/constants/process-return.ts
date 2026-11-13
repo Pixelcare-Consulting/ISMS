@@ -6,7 +6,7 @@ export const SERVICE_DOCUMENT_TYPE_NAMES = [
   "service replacements",
 ] as const;
 
-/** Document Type names that require Team Leader approve after CS evaluate. */
+/** Document Type names that wait for Team Leader approval. */
 export const DEALER_INITIATED_DOCUMENT_TYPE_NAMES = [
   "dealer initiated return",
   "dealer initiated returns",
@@ -24,7 +24,7 @@ export function isServiceDocumentTypeName(
   );
 }
 
-/** Dealer Initiated Return / Replacement — CS evaluate goes to pending_tl. */
+/** Dealer Initiated Return / Replacement — the request opens at pending_tl. */
 export function isDealerInitiatedDocumentTypeName(
   name: string | null | undefined,
 ): boolean {

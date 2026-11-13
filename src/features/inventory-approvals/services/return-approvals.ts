@@ -26,9 +26,10 @@ export async function recordReturnRequested(
   db: LedgerDb,
   ref: ReturnApprovalRef,
   request: { requestedById: string; remarks?: string | null; problemDescription?: string | null },
+  step: "CS_EVALUATION" | "TL_APPROVAL" = "CS_EVALUATION",
 ) {
   if (!ref.serialNumberId) return;
-  await inventoryApprovalLedger.recordRequested(db, stepDocument(ref, "CS_EVALUATION"), {
+  await inventoryApprovalLedger.recordRequested(db, stepDocument(ref, step), {
     requestedById: request.requestedById,
     units: [
       {

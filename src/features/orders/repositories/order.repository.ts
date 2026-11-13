@@ -269,6 +269,7 @@ export const orderRepository = {
         status: true,
         branchId: true,
         notes: true,
+        attachments: true,
         sapDocType: true,
         sapDocNum: true,
         reviewSnapshot: true,
@@ -410,6 +411,7 @@ export const orderRepository = {
       orderType: BranchOrderType;
       createdById: string;
       notes?: string;
+      attachments?: string[];
       brandId?: string | null;
       /** Override of the dealer's mode of payment; null follows the dealer. */
       modeOfPaymentId?: string | null;
@@ -445,6 +447,7 @@ export const orderRepository = {
               status: initialStatus,
               createdById: data.createdById,
               notes: data.notes,
+              attachments: data.attachments ?? [],
               brandId: data.brandId ?? null,
               modeOfPaymentId: data.modeOfPaymentId ?? null,
               details: {

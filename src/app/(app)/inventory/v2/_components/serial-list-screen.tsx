@@ -61,6 +61,8 @@ interface SerialListScreenProps {
   q: string;
   statusCodeId?: string;
   sku?: string;
+  /** Series chosen on the branch list. This screen does not show its own series menu. */
+  seriesId?: string;
   initialOffPlanogram?: boolean;
   limit: number;
   approvalBranchIds: string[] | null;
@@ -188,6 +190,7 @@ function SerialListBody({
   q,
   statusCodeId,
   sku,
+  seriesId,
   initialOffPlanogram = false,
   limit,
   singleBranch = false,
@@ -302,8 +305,9 @@ function SerialListBody({
         page: next.page,
         limit: next.limit ?? limit,
         offPlanogram: next.offPlanogram ?? offPlanogramOnly,
+        series: seriesId,
       }),
-    [branchId, limit, offPlanogramOnly],
+    [branchId, limit, offPlanogramOnly, seriesId],
   );
 
   useEffect(() => {
@@ -802,7 +806,11 @@ function SerialListBody({
         }
        
         empty={result.items.length === 0}
-        emptyMessage="No units match this branch."
+        emptyMessage={
+          seriesId
+            ? "No units in this series match this branch."
+            : "No units match this branch."
+        }
         pagination={{
           total: result.total,
           page: result.page,

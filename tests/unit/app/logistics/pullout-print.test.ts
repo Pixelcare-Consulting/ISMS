@@ -12,6 +12,9 @@ const line = (overrides: Partial<PulloutDetail["lines"][number]> = {}) =>
     priorCode: "STK",
     reasonName: "Overstock",
     problemDescriptionNames: [],
+    classificationNames: [],
+    unitPackingConditionNames: [],
+    accessoryCompletenessNames: [],
     remarks: "Box dented",
     rejectedAt: null,
     ...overrides,
@@ -40,7 +43,7 @@ describe("pulloutPrintDocument", () => {
       customer: "Branch A",
       date: "Nov 5, 2026",
       address: "",
-      items: [{ modelCode: "SKU1", serialNo: "SN1", note: "OVERSTOCK / Remarks: Box dented" }],
+      items: [{ modelCode: "SKU1", serialNo: "SN1", notes: ["Reason: Overstock", "Remarks: Box dented"] }],
       copyLegend: ["PAGE 1: BRANCH COPY", "PAGE 2: ACCOUNTING COPY"],
       copiesPerPage: 2,
     });
@@ -66,22 +69,30 @@ describe("pulloutPrintDocument", () => {
     expect(document?.items).toHaveLength(1);
   });
 
-  it("prints a defective unit's reason and problems like the client's slip", () => {
+  it("prints every checklist field recorded on the unit, one labelled line each", () => {
     const document = pulloutPrintDocument(
       detail({
         lines: [
           line({
             priorCode: "DEF",
             reasonName: "Defective unit",
-            problemDescriptionNames: ["With line on screen"],
+            problemDescriptionNames: ["With line on screen", "No power"],
+            classificationNames: ["Class A"],
+            unitPackingConditionNames: ["Sealed box"],
+            accessoryCompletenessNames: ["Complete", " "],
             remarks: "Horizontal Bars on Screen",
           }),
         ],
       }),
     );
-    expect(document?.items[0]?.note).toBe(
-      "DEFECTIVE UNIT / WITH LINE ON SCREEN / Remarks: Horizontal Bars on Screen",
-    );
+    expect(document?.items[0]?.notes).toEqual([
+      "Reason: Defective unit",
+      "Problem: With line on screen, No power",
+      "Classification: Class A",
+      "Unit packing: Sealed box",
+      "Acc completeness: Complete",
+      "Remarks: Horizontal Bars on Screen",
+    ]);
   });
 
   it("falls back to an older pull-out's header reason, and prints no note when nothing was recorded", () => {
@@ -92,8 +103,8 @@ describe("pulloutPrintDocument", () => {
       }),
     );
     const blank = pulloutPrintDocument(detail({ lines: [line({ reasonName: null, remarks: "  " })] }));
-    expect(older?.items[0]?.note).toBe("OVERSTOCK");
-    expect(blank?.items[0]?.note).toBe("");
+    expect(older?.items[0]?.notes).toEqual(["Reason: Overstock"]);
+    expect(blank?.items[0]?.notes).toEqual([]);
   });
 
   it("has no slip for a cancelled pull-out", () => {

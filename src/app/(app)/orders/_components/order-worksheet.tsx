@@ -628,10 +628,10 @@ function CreateLineHeader({
       <span className="text-right">Max Qty</span>
       <span className="text-right">Suggest</span>
       <span className="text-center">Qty</span>
-      <span className="sr-only">Note</span>
+      <span />
       <span className="text-right">CBM</span>
-      <span className="sr-only">Details</span>
-      <span className="sr-only">Remove</span>
+      <span />
+      <span />
     </div>
   );
 }

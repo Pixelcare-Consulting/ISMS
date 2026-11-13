@@ -15,7 +15,7 @@ export const SALE_RETURN_CONFIRM_COPY: Record<
   request: {
     title: "Are you sure you want to request a return?",
     description:
-      "This starts an ATR return for this sale and sends it for CS evaluation.",
+      "Dealer Initiated Return / Replacement waits for Team Leader. Every other sales-return type is approved now, under your name.",
     confirmLabel: "Request return",
     successMessage: "Return request submitted",
   },
