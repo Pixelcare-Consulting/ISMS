@@ -19,6 +19,7 @@ import type {
   InventoryListSort,
   InventoryListSortDir,
 } from "@/features/inventory/repositories/inventory.repository";
+import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import {
   hasPermission,
@@ -111,13 +112,16 @@ function toGroupListOptions(input?: {
   statusCodeId?: string;
   offPlanogram?: boolean;
   q?: string;
+  seriesId?: string;
 }): InventoryGroupListOptions {
+  const seriesId = input?.seriesId?.trim();
   return {
     branchId: input?.branchId,
     skuCode: input?.sku,
     statusCodeId: input?.statusCodeId,
     offPlanogramOnly: input?.offPlanogram === true,
     q: input?.q,
+    ...(seriesId ? { seriesId } : {}),
   };
 }
 
@@ -195,6 +199,7 @@ export async function listInventoryAction(input?: {
   branchId?: string;
   sku?: string;
   statusCodeId?: string;
+  seriesId?: string;
   offPlanogram?: boolean;
   /** Omit to keep All serials on STK, DU, and DEF. */
   statusCodes?: readonly string[];
@@ -207,11 +212,13 @@ export async function listInventoryAction(input?: {
   const unrestricted = isUnrestricted(session.user.permissions);
   const limit = parseTablePageSize(input?.limit);
   const q = input?.q?.trim();
+  const seriesId = input?.seriesId?.trim();
   const filters: InventoryListOptions = {
     branchId: input?.branchId,
     skuCode: input?.sku,
     statusCodeId: input?.statusCodeId,
     offPlanogramOnly: input?.offPlanogram === true,
+    ...(seriesId ? { seriesId } : {}),
     ...(input?.statusCodes !== undefined ? { statusCodes: input.statusCodes } : {}),
     ...(q ? { q } : {}),
     sort: parseSort(input?.sort),
@@ -237,6 +244,7 @@ export async function listInventoryGroupsAction(input: {
   branchId?: string;
   sku?: string;
   statusCodeId?: string;
+  seriesId?: string;
   offPlanogram?: boolean;
   q?: string;
   /** Return every group so the table can filter the full list while typing. */
@@ -348,14 +356,30 @@ export async function listInventoryStatusOptionsAction(input?: {
   }));
 }
 
+export type BranchInventorySeriesOption = {
+  id: string;
+  name: string;
+};
+
+/** Active series from Master data, for the Branch Inventory series menu. */
+export async function listBranchInventorySeriesOptionsAction(): Promise<
+  BranchInventorySeriesOption[]
+> {
+  const session = await requirePermission("inventory.view");
+  const rows = await masterDataRepository.listSeries(session.user.tenantId);
+  return rows.map((row) => ({ id: row.id, name: row.name }));
+}
+
 export async function getInventorySeriesSummaryAction(input?: {
   branchId?: string;
   sku?: string;
   statusCodeId?: string;
+  seriesId?: string;
   offPlanogram?: boolean;
 }) {
   const session = await requirePermission("inventory.view");
   const unrestricted = isUnrestricted(session.user.permissions);
+  const seriesId = input?.seriesId?.trim();
   return inventoryService.getSeriesSummary(
     session.user.tenantId,
     session.user.id,
@@ -365,6 +389,7 @@ export async function getInventorySeriesSummaryAction(input?: {
       skuCode: input?.sku,
       statusCodeId: input?.statusCodeId,
       offPlanogramOnly: input?.offPlanogram === true,
+      ...(seriesId ? { seriesId } : {}),
     },
   );
 }
@@ -380,18 +405,22 @@ export async function getInventoryKpisAction() {
 }
 
 /** Peso lines for the four Branch Inventory v2 home cards. Counts stay on the page. */
-export async function getBranchInventoryV2CardAmountsAction() {
+export async function getBranchInventoryV2CardAmountsAction(seriesId?: string) {
   const session = await requirePermission("inventory.view");
   const unrestricted = isUnrestricted(session.user.permissions);
   return inventoryService.getBranchInventoryV2CardAmounts(
     session.user.tenantId,
     session.user.id,
     unrestricted,
+    seriesId,
   );
 }
 
 /** Peso lines for one branch's status cards. Counts stay on the page. */
-export async function getBranchInventoryV2StatusAmountsAction(branchId: string) {
+export async function getBranchInventoryV2StatusAmountsAction(
+  branchId: string,
+  seriesId?: string,
+) {
   const session = await requirePermission("inventory.view");
   const unrestricted = isUnrestricted(session.user.permissions);
   return inventoryService.getBranchInventoryV2StatusAmounts(
@@ -399,6 +428,7 @@ export async function getBranchInventoryV2StatusAmountsAction(branchId: string) 
     session.user.id,
     unrestricted,
     branchId,
+    seriesId,
   );
 }
 

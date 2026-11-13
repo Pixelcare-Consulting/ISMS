@@ -320,18 +320,13 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
     title: "Sales and returns",
     tabLabel: "Sales & returns",
     summary:
-      "Encode the sale under Sales. Request a return from the sale details, then track evaluate → approve → restore under Returns / Replacement. Accounting can mark units Official Sold via Official Sales.",
+      "Encode the sale under Sales. Request a return from the sale details. Dealer Initiated Return / Replacement waits for Team Leader. Every other sales return is approved when it is requested. Then restore or finish the replacement under Returns / Replacement. Accounting can mark units Official Sold via Official Sales.",
     kind: "swimlane",
     lanes: [
       {
         id: "sales",
         role: "Sales / Branch",
         nodeIds: ["encode", "request_atr"],
-      },
-      {
-        id: "cs",
-        role: "Customer service",
-        nodeIds: ["evaluate"],
       },
       {
         id: "tl",
@@ -351,9 +346,12 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
     ],
     nodes: [
       { id: "encode", label: "Encode sale" },
-      { id: "request_atr", label: "Request return" },
-      { id: "evaluate", label: "Evaluate request" },
-      { id: "tl_approve", label: "Approve return" },
+      {
+        id: "request_atr",
+        label: "Request return",
+        hint: "Other types are approved now",
+      },
+      { id: "tl_approve", label: "Approve dealer-initiated return" },
       { id: "restore", label: "Restore to on hand" },
       {
         id: "make_ofs",
@@ -363,16 +361,17 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
     ],
     edges: [
       { from: "encode", to: "request_atr" },
-      { from: "request_atr", to: "evaluate" },
-      { from: "evaluate", to: "tl_approve" },
+      { from: "request_atr", to: "tl_approve", label: "Dealer Initiated" },
+      { from: "request_atr", to: "restore", label: "Other types" },
       { from: "tl_approve", to: "restore" },
       { from: "encode", to: "make_ofs" },
     ],
     callouts: [
+      "Dealer Initiated Return / Replacement waits for Team Leader. Every other sales-return document type is approved when requested, under the person who requested it.",
+      "Service center returns are still evaluated by Customer Service before Team Leader.",
       "Sold (or reserved) units return to On hand after a successful restore.",
-      "Who can request, evaluate, approve, or restore depends on your role setup.",
+      "Who can request, approve, or restore depends on your role setup.",
       "Official Sold is not a customer return — use Official Sales to mark sold; DEL there restores On hand without Returns / Replacement.",
-      "After a sale, customer returns go through Returns / Replacement (Branch, Service, or Approvals).",
     ],
   },
   {

@@ -68,6 +68,8 @@ export type InventoryListFilters = {
   branchId?: string;
   skuCode?: string;
   statusCodeId?: string;
+  /** Active series on the model. Omitted keeps models with no series. */
+  seriesId?: string;
   offPlanogramOnly?: boolean;
   /**
    * When omitted, the list stays on STK, DU, and DEF.
@@ -177,6 +179,10 @@ async function buildInventoryWhere(
 
   if (filters?.skuCode) {
     and.push({ serialNumber: { model: { skuCode: filters.skuCode } } });
+  }
+  const seriesId = filters?.seriesId?.trim();
+  if (seriesId) {
+    and.push({ serialNumber: { model: { seriesId } } });
   }
 
   const q = filters?.q?.trim();
@@ -539,6 +545,10 @@ export const inventoryRepository = {
 
     if (filters?.skuCode) {
       conditions.push(Prisma.sql`pm.sku_code = ${filters.skuCode}`);
+    }
+    const seriesId = filters?.seriesId?.trim();
+    if (seriesId) {
+      conditions.push(Prisma.sql`pm.series_id = ${seriesId}`);
     }
     conditions.push(
       Prisma.sql`rsc.code IN (${Prisma.join([

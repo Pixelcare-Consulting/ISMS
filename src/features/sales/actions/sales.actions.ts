@@ -81,6 +81,7 @@ import {
 import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
 import { saleHasOfficialSoldLine } from "@/features/sales/utils/sale-header-edit";
 import { isSaleTransactionNo } from "@/features/sales/utils/sale-transaction-no";
+import { resolveSaleTransactionDate } from "@/features/sales/utils/transaction-date";
 import {
   resolveModelPriceForSales,
   type ResolvedModelPrice,
@@ -1022,14 +1023,9 @@ export async function createSaleAction(input: unknown) {
     return { error: e instanceof Error ? e.message : "Access denied" };
   }
 
-  let transactionDate: Date | null = null;
-  if (parsed.data.transactionDate) {
-    const d = new Date(parsed.data.transactionDate);
-    if (Number.isNaN(d.getTime())) {
-      return { error: "Invalid transaction date" };
-    }
-    transactionDate = d;
-  }
+  const resolvedDate = resolveSaleTransactionDate(parsed.data.transactionDate);
+  if ("error" in resolvedDate) return { error: resolvedDate.error };
+  const transactionDate = resolvedDate.date;
 
   // Re-resolve model prices from master lists so clients cannot override.
   const details = await Promise.all(
@@ -1551,6 +1547,8 @@ export async function requestReturnAction(
   }
 
   const summaryNote = `[${data.actionType === "replacement" ? "Replacement" : "Return"} requested] ${documentType.name} · ${data.stockStatusCode} · ${problemDescriptionText}`;
+  const needsTeamLeader = isDealerInitiatedDocumentTypeName(documentType.name);
+  const requestedAt = new Date();
 
   const created = await prisma.$transaction(async (tx) => {
     const returnRequest = await tx.branchReturnRequest.create({
@@ -1559,6 +1557,13 @@ export async function requestReturnAction(
         saleId,
         saleDetailId: targetDetail.id,
         requestedById: session.user.id,
+        ...(needsTeamLeader
+          ? { status: "pending_tl" as const }
+          : {
+              status: "approved" as const,
+              approvedById: session.user.id,
+              approvedAt: requestedAt,
+            }),
         actionType: data.actionType,
         stockStatusCode: data.stockStatusCode,
         documentTypeId: documentType.id,
@@ -1591,17 +1596,20 @@ export async function requestReturnAction(
         notes: [sale.notes, summaryNote].filter(Boolean).join("\n"),
       },
     });
-    await recordReturnRequested(
-      tx,
-      {
-        tenantId: session.user.tenantId,
-        sourceType: "SALES_RETURN",
-        sourceId: returnRequest.id,
-        sourceNo: sale.transactionNo,
-        serialNumberId: targetDetail.serialNumberId,
-      },
-      { requestedById: session.user.id, problemDescription: problemDescriptionText },
-    );
+    if (needsTeamLeader) {
+      await recordReturnRequested(
+        tx,
+        {
+          tenantId: session.user.tenantId,
+          sourceType: "SALES_RETURN",
+          sourceId: returnRequest.id,
+          sourceNo: sale.transactionNo,
+          serialNumberId: targetDetail.serialNumberId,
+        },
+        { requestedById: session.user.id, problemDescription: problemDescriptionText },
+        "TL_APPROVAL",
+      );
+    }
 
     return returnRequest;
   });
@@ -2727,6 +2735,7 @@ export async function updateSaleHeaderAction(input: unknown) {
       branchId: true,
       alternateBranchId: true,
       transactionNo: true,
+      transactionDate: true,
       details: {
         select: {
           id: true,
@@ -2772,14 +2781,12 @@ export async function updateSaleHeaderAction(input: unknown) {
     };
   }
 
-  let transactionDate: Date | null = null;
-  if (data.transactionDate) {
-    const d = new Date(data.transactionDate);
-    if (Number.isNaN(d.getTime())) {
-      return { error: "Invalid transaction date" as const };
-    }
-    transactionDate = d;
-  }
+  const resolvedDate = resolveSaleTransactionDate(
+    data.transactionDate,
+    toDateInputValue(sale.transactionDate),
+  );
+  if ("error" in resolvedDate) return { error: resolvedDate.error };
+  const transactionDate = resolvedDate.date;
 
   if (data.transactionNo !== sale.transactionNo) {
     const taken = await prisma.branchSalesTransaction.findFirst({

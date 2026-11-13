@@ -311,7 +311,7 @@ export const HELP_WORKFLOW_GUIDES: HelpWorkflowGuide[] = [
     id: "sales-atr",
     title: "Customer return after a sale",
     summary:
-      "Submit Process Return from the sale, then evaluate, approve, and restore or complete a replacement under Returns / Replacement.",
+      "Submit Process Return from the sale. Dealer Initiated Return / Replacement waits for Team Leader. Other sales returns are approved when requested. Service center returns are still evaluated by Customer Service.",
     audience: "Sales · CS · TL · Inventory",
     href: "/returns",
     steps: [
@@ -325,19 +325,19 @@ export const HELP_WORKFLOW_GUIDES: HelpWorkflowGuide[] = [
       },
       {
         label:
-          "Track the request in Returns / Replacement (Branch, Service, or Approvals) and download ATR/ODRF when available.",
+          "Dealer Initiated Return / Replacement waits for Team Leader. Every other sales-return type is approved when you submit, under your name.",
       },
       {
         label:
-          "Customer service evaluates the request (accept to continue, or reject to stop).",
+          "Service center returns are still evaluated by Customer Service, then approved by Team Leader.",
       },
       {
         label:
-          "Team Leader approves; then restore stock (Return) or finish Same/New Invoice (Replacement).",
+          "When the request is approved, restore stock (Return) or finish Same/New Invoice (Replacement). Download ATR/ODRF from Returns / Replacement when you need it.",
       },
     ],
     tips: [
-      "Who can request, evaluate, approve, or complete depends on your role setup.",
+      "Who can request, approve, or complete depends on your role setup. Customer Service still evaluates service center returns.",
       "Reserved (RSV) sales follow the same return path when returns are allowed.",
       "Official Sold is not a customer return — Accounting uses Official Sales to mark sold; DEL there restores On hand without this return path.",
     ],

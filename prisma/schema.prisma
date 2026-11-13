@@ -2264,6 +2264,8 @@ model BranchOrder {
   status          BranchOrderStatus @default(pending_tl)
   orderNumber     String            @map("order_number")
   notes            String?
+  /// Image and PDF paths uploaded before the order is saved. Optional.
+  attachments      String[]          @default([])
   spaRemarks       String?           @map("spa_remarks")
   reviewSnapshot   Json?             @map("review_snapshot")
   reviewSnapshotAt DateTime?         @map("review_snapshot_at")
@@ -2294,7 +2296,7 @@ model BranchOrder {
   approvalLevels           BranchOrderApprovalLevel[]
   deliveries               BranchDelivery[]
   aiReplenishmentProposals AiReplenishmentProposal[]
-  attachments              BranchOrderAttachment[]
+  attachmentRecords        BranchOrderAttachment[]
 
   @@unique([tenantId, orderNumber])
   @@index([tenantId, branchId, status])
