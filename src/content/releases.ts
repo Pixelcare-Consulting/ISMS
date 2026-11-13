@@ -66,6 +66,45 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.94.0",
+    date: "2026-11-13",
+    releasedAt: "2026-11-13T12:16:00+08:00",
+    title: "Pull-outs: Check SAP and the client slip layout",
+    highlights: [
+      "Check SAP on a pull-out finds the IT or Return that carries the pull-out number and marks those units Pulled out.",
+      "A DR copied from that Return comes back to the branch as a new delivery to accept.",
+      "Pull-out and transfer slips print in your company's slip layout.",
+      "Create forms for transfers and pull-outs list only your own branches.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Check SAP replaces linking an SAP document by hand. In SAP, put the pull-out number in the IT or Return row field \"Pull Out Number Generated in ISMS\", then press Check SAP on the pull-out. The units it lists become Pulled out (PO) and no longer show in Branch Inventory. When every unit is found, the pull-out itself is Pulled out, and the pull-out history records each step.",
+      },
+      {
+        type: "feature",
+        description:
+          "When a DR in SAP is copied from that Return (or carries the pull-out number), the same Check SAP picks it up: its units go in transit (DIT) on a new delivery for the branch to accept.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Pull-outs print as a Pull-out Slip with a branch copy and an accounting copy. Transfers print a Transfer Release Slip and a Transfer Delivery Slip with branch, accounting and demand copies. Each slip lists the model and serial of every unit with its condition or remarks, and has Approved by and Received by signature lines.",
+      },
+      {
+        type: "improvement",
+        description:
+          "When you create a transfer or a pull-out, the branch lists show only the branches assigned to you.",
+      },
+      {
+        type: "fix",
+        description:
+          "Creating and approving transfers no longer fails when the For transfer status is missing from your status settings.",
+      },
+    ],
+  },
+  {
     version: "0.93.0",
     date: "2026-11-13",
     releasedAt: "2026-11-13T12:00:00+08:00",
@@ -110,7 +149,7 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "feature",
         description:
-          "When you create an order, you can attach images or PDFs. Those files stay on the order so you can review them later.",
+          "When you create an order, you can attach up to 5 images or PDFs, 4 MB each. Those files stay on the order so you can open them later. If a file cannot be attached, the order is still submitted and you are told which file failed.",
       },
     ],
   },
