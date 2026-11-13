@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { DocumentDetailBand } from "@/app/(app)/logistics/_components/logistics-detail-ui";
-import { ShipmentPrintButton } from "@/app/(app)/logistics/_components/shipment-print-button";
+import { SlipPrintButton } from "@/app/(app)/logistics/_components/shipment-print-button";
 import {
   hasTransferDocumentAction,
   TransferDocumentActionButtons,
@@ -63,7 +63,7 @@ export function TransferDetailView({
                 onAction={(action) => formRef.current?.openDocumentAction(action)}
               />
             ) : null}
-            <ShipmentPrintButton document={transferPrintDocument(detail)} />
+            <SlipPrintButton slips={transferPrintDocument(detail)} />
           </>
         }
       />

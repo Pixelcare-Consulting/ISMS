@@ -16,7 +16,7 @@ import {
   DocumentDetailBand,
   LogisticsHistoryBody,
 } from "@/app/(app)/logistics/_components/logistics-detail-ui";
-import { ShipmentPrintButton } from "@/app/(app)/logistics/_components/shipment-print-button";
+import { SlipPrintButton } from "@/app/(app)/logistics/_components/shipment-print-button";
 import {
   EMPTY_CHECKLIST_OPTIONS,
   PULLOUT_LINE_FIELDS,
@@ -844,7 +844,7 @@ export function PulloutDetailView({
   const inTransit = detail.status.code === PULLOUT_WORKFLOW_CODE.in_transit;
   // Receipts and in-transit rejections only exist on pull-outs from before receiving was dropped.
   const showReceipts = detail.lines.some((line) => line.receivedAt || line.rejectedAt);
-  const printDocument = pulloutPrintDocument(detail);
+  const returnSlip = pulloutPrintDocument(detail);
   const canCheckSap =
     detail.canCheckSap && capabilities.canManage && inScope(branchScope, detail.branch.id);
   const showSapDocument =
@@ -1012,7 +1012,7 @@ export function PulloutDetailView({
     if (detail.status.code === PULLOUT_WORKFLOW_CODE.pending_logistics) {
       return (
         <p className="text-sm text-muted-foreground">
-          {printDocument
+          {returnSlip
             ? "Sending puts the units in transit and ends the pull-out."
             : "Save the waybill, courier and schedule to print the slip. Sending puts the units in transit and ends the pull-out."}
         </p>
@@ -1221,7 +1221,7 @@ export function PulloutDetailView({
         actions={
           <>
             {headerActions()}
-            <ShipmentPrintButton document={printDocument} />
+            <SlipPrintButton slips={returnSlip ? [returnSlip] : null} />
           </>
         }
       />

@@ -1,5 +1,4 @@
 import { letterheadHtml, printDocumentHtml } from "@/utils/print-document";
-import { transferSlipsHtml } from "@/features/logistics/lib/transfer-slip-print";
 import { splitDocumentHeader } from "@/features/tenants/types/tenant-branding";
 
 const letterhead = {
@@ -33,23 +32,6 @@ describe("printDocumentHtml", () => {
     expect(html).toContain("family=Ubuntu");
     expect(html).toContain('font-family: "Ubuntu", Arial, Helvetica, sans-serif');
     expect(html).not.toContain("Georgia");
-  });
-});
-
-describe("transferSlipsHtml", () => {
-  it("puts the header on both the release slip and the delivery receipt", () => {
-    const html = transferSlipsHtml(
-      {
-        transferNo: "XFR-1",
-        rsNo: "RS-1",
-        drNo: "DR-1",
-        fromBranch: "Branch A",
-        toBranch: "Branch B",
-        lines: [{ serialNo: "SN1", model: "SKU1 Model" }],
-      },
-      letterhead,
-    );
-    expect(html.match(/class="letterhead"/g)).toHaveLength(2);
   });
 });
 
