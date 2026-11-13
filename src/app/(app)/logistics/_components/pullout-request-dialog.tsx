@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition, type ChangeEvent, type ReactNode } from "react";
+import { useEffect, useState, useTransition, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import {
@@ -10,11 +10,6 @@ import {
   type PulloutChecklistOptions,
   uploadPulloutAttachmentAction,
 } from "@/features/logistics/actions/logistics.actions";
-import {
-  PULLOUT_ATTACHMENT_ACCEPT,
-  PULLOUT_ATTACHMENT_MAX_FILES,
-  pulloutAttachmentError,
-} from "@/features/logistics/constants/pullout-attachments";
 import { pulloutCondition } from "@/features/logistics/services/pullout-posting.planner";
 import type {
   PulloutCreateInput,
@@ -33,6 +28,7 @@ import {
 import { RecordedProblemCell } from "@/app/(app)/logistics/_components/recorded-problem-cell";
 import { PulloutConditionBadge } from "@/features/logistics/components/pullout-condition-badge";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
+import { DocumentAttachmentPicker } from "@/components/document-attachment-picker";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -286,25 +282,6 @@ export function PulloutRequestDialog({
     resetUnits();
   }
 
-  function addFiles(event: ChangeEvent<HTMLInputElement>) {
-    const picked = [...(event.target.files ?? [])];
-    event.target.value = "";
-    const next = [...files];
-    for (const file of picked) {
-      const refused = pulloutAttachmentError({
-        mimeType: file.type,
-        sizeBytes: file.size,
-        attachedCount: next.length,
-      });
-      if (refused) {
-        toast.error(`${file.name}: ${refused}`);
-        continue;
-      }
-      next.push(file);
-    }
-    setFiles(next);
-  }
-
   function submit() {
     if (!ready) return;
     startTransition(async () => {
@@ -389,43 +366,12 @@ export function PulloutRequestDialog({
                 <Field label="Created Date">{createdOn}</Field>
                 <Field label="Pull-out Status">New</Field>
                 <Field label="Attachments" htmlFor="pullout-attachments" wide>
-                  <div className="space-y-2 pt-1">
-                    <Input
-                      id="pullout-attachments"
-                      type="file"
-                      multiple
-                      accept={PULLOUT_ATTACHMENT_ACCEPT}
-                      disabled={pending || files.length >= PULLOUT_ATTACHMENT_MAX_FILES}
-                      onChange={addFiles}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Up to {PULLOUT_ATTACHMENT_MAX_FILES} PDF or image files, 4 MB each.
-                    </p>
-                    {files.length > 0 ? (
-                      <ul className="space-y-1">
-                        {files.map((file, index) => (
-                          <li
-                            key={`${file.name}-${index}`}
-                            className="flex items-center justify-between gap-2"
-                          >
-                            <span className="min-w-0 truncate">{file.name}</span>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              disabled={pending}
-                              aria-label={`Remove ${file.name}`}
-                              onClick={() =>
-                                setFiles((current) => current.filter((_, at) => at !== index))
-                              }
-                            >
-                              Remove
-                            </Button>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-                  </div>
+                  <DocumentAttachmentPicker
+                    id="pullout-attachments"
+                    files={files}
+                    onFilesChange={setFiles}
+                    disabled={pending}
+                  />
                 </Field>
               </dl>
             </section>

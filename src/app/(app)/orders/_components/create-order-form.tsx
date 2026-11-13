@@ -31,6 +31,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { DocumentAttachmentPicker } from "@/components/document-attachment-picker";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -51,6 +52,7 @@ import {
   listActiveDealersForOrderAction,
   listBranchesForOrderAction,
   listModesOfPaymentForOrderAction,
+  uploadOrderAttachmentAction,
 } from "@/features/orders/actions/order.actions";
 import {
   getOrderWorksheetAction,
@@ -138,6 +140,21 @@ function listHrefFor(orderType: CreatableOrderType): string {
   return `/orders/manual?type=${orderType}`;
 }
 
+/** Uploads one file per request. Returns the first failure, or null when all were attached. */
+async function uploadOrderAttachments(
+  orderId: string,
+  files: readonly File[],
+): Promise<string | null> {
+  for (const file of files) {
+    const formData = new FormData();
+    formData.set("orderId", orderId);
+    formData.set("file", file);
+    const result = await uploadOrderAttachmentAction(formData);
+    if ("error" in result) return `${file.name}: ${result.error}`;
+  }
+  return null;
+}
+
 function OrderReadout({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
@@ -207,6 +224,7 @@ export function CreateOrderForm({
   const [dealerId, setDealerId] = useState(startReady ? (prefill?.dealerId ?? "") : "");
   const [branchId, setBranchId] = useState(startReady ? (prefill?.branchId ?? "") : "");
   const [notes, setNotes] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [worksheet, setWorksheet] = useState<OrderWorksheetPayload | null>(null);
   const [worksheetError, setWorksheetError] = useState<string | null>(null);
@@ -641,6 +659,12 @@ export function CreateOrderForm({
         toast.error(result.error);
         return;
       }
+      const attachError = result.orderId
+        ? await uploadOrderAttachments(result.orderId, files)
+        : null;
+      if (attachError) {
+        toast.error(`The order was submitted, but a file was not attached. ${attachError}`);
+      }
       allowLeave.current = true;
       router.push(`/orders/manual/submitted/${result.orderId}`);
       router.refresh();
@@ -780,6 +804,20 @@ export function CreateOrderForm({
                     rows={3}
                     className="mt-1.5 min-h-24 resize-none rounded-lg border-transparent bg-muted/70 shadow-none"
                     aria-label="Note for this order"
+                    disabled={noteDisabled}
+                  />
+                </div>
+                <div className="min-w-0 sm:col-span-2">
+                  <label htmlFor="create-order-attachments" className="text-sm text-muted-foreground">
+                    Attachments
+                  </label>
+                  <DocumentAttachmentPicker
+                    id="create-order-attachments"
+                    files={files}
+                    onFilesChange={(next) => {
+                      setTouched(true);
+                      setFiles(next);
+                    }}
                     disabled={noteDisabled}
                   />
                 </div>

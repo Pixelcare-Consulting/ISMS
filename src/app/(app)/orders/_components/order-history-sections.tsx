@@ -32,6 +32,10 @@ import { worksheetOrderTotals } from "@/features/orders/lib/order-worksheet-filt
 import { formatWorksheetCbm, worksheetLineCbm } from "@/features/orders/lib/order-worksheet-metrics";
 import type { OrderTrackerNode } from "@/features/orders/lib/order-history-tracker";
 import type { OrderSapDocumentFields } from "@/features/orders/constants/order-sap-doc-type";
+import {
+  orderAttachmentHref,
+  type OrderAttachmentSummary,
+} from "@/features/orders/constants/order-attachments";
 import type {
   OrderWorksheetLine,
   OrderWorksheetSummary,
@@ -53,6 +57,26 @@ export interface OrderRecordLine {
 export interface OrderOpenDeliveryLink {
   href: string;
   label: string;
+}
+
+function OrderAttachmentLinks({ attachments }: { attachments: OrderAttachmentSummary[] }) {
+  if (attachments.length === 0) return <span className="text-muted-foreground">No files attached.</span>;
+  return (
+    <ul className="space-y-1">
+      {attachments.map((attachment) => (
+        <li key={attachment.id} className="min-w-0 truncate">
+          <a
+            href={orderAttachmentHref(attachment.id)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary underline-offset-4 hover:underline"
+          >
+            {attachment.fileName}
+          </a>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 interface OrderFigure {
@@ -77,6 +101,7 @@ export function OrderRecordPage({
   sapDocument,
   createdByName,
   notes,
+  attachments,
   deliveryDueLabel = null,
   reviewSnapshot,
   steps,
@@ -98,6 +123,7 @@ export function OrderRecordPage({
   sapDocument: OrderSapDocumentFields;
   createdByName: string;
   notes: string | null;
+  attachments: OrderAttachmentSummary[];
   deliveryDueLabel?: string | null;
   reviewSnapshot: unknown;
   steps: OrderTrackerNode[];
@@ -181,6 +207,11 @@ export function OrderRecordPage({
               wide
               multiline
               value={note || "No order notes."}
+            />
+            <RecordReadout
+              label="Attachments"
+              wide
+              value={<OrderAttachmentLinks attachments={attachments} />}
             />
             {figures.map((figure) => (
               <RecordReadout

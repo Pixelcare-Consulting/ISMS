@@ -426,6 +426,7 @@ model User {
   branchPulloutLinesRejected         BranchPulloutLine[]           @relation("BranchPulloutLineRejectedBy")
   branchPulloutLinesSapDocLinked     BranchPulloutLine[]           @relation("BranchPulloutLineSapDocLinkedBy")
   branchPulloutAttachmentsUploaded   BranchPulloutAttachment[]     @relation("BranchPulloutAttachmentUploadedBy")
+  branchOrderAttachmentsUploaded     BranchOrderAttachment[]       @relation("BranchOrderAttachmentUploadedBy")
   branchPulloutsCreated              BranchPullout[]               @relation("BranchPulloutCreatedBy")
   serialNumbersCreated               SerialNumber[]                @relation("SerialNumberCreatedBy")
   branchTransfersCreated             BranchTransfer[]              @relation("BranchTransferCreatedBy")
@@ -2293,11 +2294,31 @@ model BranchOrder {
   approvalLevels           BranchOrderApprovalLevel[]
   deliveries               BranchDelivery[]
   aiReplenishmentProposals AiReplenishmentProposal[]
+  attachments              BranchOrderAttachment[]
 
   @@unique([tenantId, orderNumber])
   @@index([tenantId, branchId, status])
   @@index([tenantId, processedAt])
   @@map("branch_orders")
+}
+
+/// File the requestor attached to an order. The file itself is in object storage.
+model BranchOrderAttachment {
+  id           String   @id @default(cuid())
+  orderId      String   @map("order_id")
+  fileName     String   @map("file_name")
+  storagePath  String   @map("storage_path")
+  mimeType     String   @map("mime_type")
+  sizeBytes    Int      @map("size_bytes")
+  uploadedById String   @map("uploaded_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  order      BranchOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  uploadedBy User        @relation("BranchOrderAttachmentUploadedBy", fields: [uploadedById], references: [id])
+
+  @@index([orderId])
+  @@index([uploadedById])
+  @@map("branch_order_attachments")
 }
 
 model BranchOrderDetail {

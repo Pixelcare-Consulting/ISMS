@@ -7,6 +7,7 @@ import {
   type OrderApprovalLineAdjustment,
 } from "@/features/orders/services/order.service";
 import { suggestionApplyService } from "@/features/orders/services/suggestion-apply.service";
+import { orderAttachmentService } from "@/features/orders/services/order-attachment.service";
 import { orderRepository } from "@/features/orders/repositories/order.repository";
 import type {
   OrderListSort,
@@ -435,6 +436,26 @@ export async function createOrderAction(input: {
     return { success: true as const, orderId: order.id };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to create order" };
+  }
+}
+
+/** One file per call: each request stays under the function body limit. */
+export async function uploadOrderAttachmentAction(formData: FormData) {
+  const session = await requireAnyPermission(anyOrderTypePermissions("create"));
+  const orderId = formData.get("orderId");
+  const file = formData.get("file");
+  if (typeof orderId !== "string" || !orderId) return { error: "Missing order reference" };
+  if (!(file instanceof File)) return { error: "No file selected" };
+  try {
+    const { orderType } = await orderAttachmentService.add(
+      { tenantId: session.user.tenantId, userId: session.user.id },
+      orderId,
+      file,
+    );
+    revalidateOrderPaths(orderType);
+    return { success: true as const };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to attach the file" };
   }
 }
 
