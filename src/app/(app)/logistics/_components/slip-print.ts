@@ -11,8 +11,8 @@ export interface SlipItem {
   /** Model code, printed letter-spaced the way the client's forms show it. */
   modelCode: string;
   serialNo: string;
-  /** Small line under the serial: condition, problems, remarks. Empty prints nothing. */
-  note: string;
+  /** Small lines under the serial, one per entry (reason, problems, remarks...). Empty prints nothing. */
+  notes: readonly string[];
 }
 
 export interface SlipDocument {
@@ -36,7 +36,7 @@ function field(label: string, value: string, className = ""): string {
 }
 
 function itemHtml(item: SlipItem): string {
-  const note = item.note ? `<div class="item-note">${escapeHtml(item.note)}</div>` : "";
+  const note = item.notes.map((entry) => `<div class="item-note">${escapeHtml(entry)}</div>`).join("");
   return `<li class="item">
         <div class="item-model">${escapeHtml(item.modelCode)}</div>
         <div>Serial No.: ${escapeHtml(item.serialNo)}</div>
