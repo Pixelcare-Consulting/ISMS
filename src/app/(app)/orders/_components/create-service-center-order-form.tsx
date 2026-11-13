@@ -16,6 +16,7 @@ import { LoadingModal } from "@/components/ui/loading-modal";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Textarea } from "@/components/ui/textarea";
 import { MODE_OF_PAYMENT_KIND_LABELS } from "@/features/lookups/constants/mode-of-payment-kind";
+import { parseQtyInput, qtyInputValue } from "@/features/orders/lib/qty-input";
 import { listSapProjectsForScOrderAction } from "@/features/service-center-ordering/actions/sc-ordering-settings.actions";
 import {
   SC_ORDER_PO_NUMBER_MAX,
@@ -416,10 +417,11 @@ export function CreateServiceCenterOrderForm({
                                   inputMode="numeric"
                                   min={0}
                                   max={line.available}
-                                  value={quantities[line.modelId] ?? 0}
+                                  value={qtyInputValue(quantities[line.modelId])}
+                                  placeholder="0"
                                   aria-label={`Quantity for ${line.skuCode}`}
                                   onChange={(event) =>
-                                    setQuantity(line, event.target.valueAsNumber)
+                                    setQuantity(line, parseQtyInput(event.target.value))
                                   }
                                   disabled={pending}
                                   className="h-9 tabular-nums"
