@@ -20,7 +20,9 @@ export const PULLOUTS_PAGE_TUTORIAL: PageTutorialContent = {
         "Choose Stock (STK) or Defective (DEF), then add the units and their details.",
         "Team Lead approves or deletes each unit, or approves them all.",
         "After approval, Logistics enters the waybill and schedule and saves the list.",
-        "Send puts every unit in transit (DIT) and ends the pull-out. Sent units no longer count in Branch Inventory.",
+        "Send puts every unit in transit (DIT). Sent units no longer count in Branch Inventory.",
+        "In SAP, put the pull-out number in the IT or Return row field \"Pull Out Number Generated in ISMS\". Then Check SAP on the pull-out marks those units Pulled out (PO). When every unit is in SAP, the pull-out is Pulled out.",
+        "A DR copied from that Return (or carrying the pull-out number) is found by the same Check SAP: its units become DIT on a new delivery for the branch to accept.",
       ],
     },
     {

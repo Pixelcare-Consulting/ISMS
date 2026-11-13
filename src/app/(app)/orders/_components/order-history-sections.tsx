@@ -9,6 +9,7 @@ import {
   LogisticsHistoryBody,
   type LogisticsActivity,
 } from "@/app/(app)/logistics/_components/logistics-detail-ui";
+import { OrderAttachmentReview } from "@/app/(app)/orders/_components/order-attachment-review";
 import { OrderHistoryLinesTable } from "@/app/(app)/orders/_components/order-history-lines-table";
 import { OrderHistoryTracker } from "@/app/(app)/orders/_components/order-history-tracker";
 import { useOrderWorksheet } from "@/app/(app)/orders/_components/use-order-worksheet";
@@ -77,6 +78,7 @@ export function OrderRecordPage({
   sapDocument,
   createdByName,
   notes,
+  attachments,
   deliveryDueLabel = null,
   reviewSnapshot,
   steps,
@@ -98,6 +100,7 @@ export function OrderRecordPage({
   sapDocument: OrderSapDocumentFields;
   createdByName: string;
   notes: string | null;
+  attachments: string[];
   deliveryDueLabel?: string | null;
   reviewSnapshot: unknown;
   steps: OrderTrackerNode[];
@@ -181,6 +184,11 @@ export function OrderRecordPage({
               wide
               multiline
               value={note || "No order notes."}
+            />
+            <RecordReadout
+              label="Attachments"
+              wide
+              value={<OrderAttachmentReview orderId={orderId} paths={attachments} />}
             />
             {figures.map((figure) => (
               <RecordReadout

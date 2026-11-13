@@ -1,4 +1,5 @@
 import { formatScheduleDate, shipmentIsReady, type LogisticsShipment } from "@/features/logistics/lib/shipment";
+import { escapeHtml, letterheadHtml, printDocumentHtml, type PrintLetterhead } from "@/utils/print-document";
 import { printHtml } from "@/utils/print-html";
 
 export interface ShipmentPrintLine {
@@ -19,14 +20,6 @@ export interface ShipmentPrintDocument {
   lines: ShipmentPrintLine[];
   lineHeaders: { model: string; detail: string };
   extraHeaders?: string[];
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
 }
 
 export function shipmentPrintDocument(input: {
@@ -56,7 +49,10 @@ export function shipmentPrintDocument(input: {
   return { ...base, waybillNo, courierName, scheduleDate };
 }
 
-export function shipmentPrintHtml(document: ShipmentPrintDocument): string {
+export function shipmentPrintHtml(
+  document: ShipmentPrintDocument,
+  letterhead: PrintLetterhead | null = null,
+): string {
   const shipmentFields =
     document.waybillNo && document.courierName && document.scheduleDate
       ? [
@@ -86,36 +82,31 @@ export function shipmentPrintHtml(document: ShipmentPrintDocument): string {
           .join("")
       : `<tr><td colspan="${headers.length}">No units on this ${escapeHtml(document.title.toLowerCase())}.</td></tr>`;
 
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>${escapeHtml(document.title)} ${escapeHtml(document.documentNo)}</title>
-  <style>
-    body { font-family: Georgia, "Times New Roman", serif; color: #111; margin: 24px; }
+  return printDocumentHtml({
+    title: `${document.title} ${document.documentNo}`,
+    styles: `
     h1 { font-size: 22px; margin: 0 0 4px; }
     .sub { margin: 0 0 20px; color: #444; }
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; margin-bottom: 24px; }
     .label { font-size: 12px; color: #555; }
     table { width: 100%; border-collapse: collapse; }
     th, td { text-align: left; border-bottom: 1px solid #ccc; padding: 6px 8px; font-size: 14px; }
-    th { font-size: 12px; color: #555; }
-    @media print { body { margin: 12px; } }
-  </style>
-</head>
-<body>
+    th { font-size: 12px; color: #555; }`,
+    body: `${letterheadHtml(letterhead)}
   <h1>${escapeHtml(document.title)}</h1>
   <p class="sub">${escapeHtml(document.documentNo)}</p>
   <div class="grid">${fields}</div>
   <table>
     <thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead>
     <tbody>${rows}</tbody>
-  </table>
-</body>
-</html>`;
+  </table>`,
+  });
 }
 
 /** Opens the browser print dialog for the slip. */
-export function printShipmentDocument(document: ShipmentPrintDocument): void {
-  printHtml(shipmentPrintHtml(document));
+export function printShipmentDocument(
+  document: ShipmentPrintDocument,
+  letterhead: PrintLetterhead | null,
+): void {
+  printHtml(shipmentPrintHtml(document, letterhead));
 }

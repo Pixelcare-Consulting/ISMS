@@ -148,10 +148,16 @@ function openPendingDefectReportExistsSql(): Prisma.Sql {
  * the unit still DIT on its branch row, which stays so the SAP serial sync does not
  * re-create it as branch stock, so Branch Inventory leaves it out. A row changed after
  * the send (a later delivery of the same serial, say) is not the sent unit any more and
- * shows again.
+ * shows again. A unit Check SAP marked PO (Pulled out) is always left out; its row stays
+ * for the same reason until a SAP redelivery moves it.
  */
 export function sentOnPulloutSql(): Prisma.Sql {
-  return Prisma.sql`EXISTS (
+  return Prisma.sql`(EXISTS (
+    SELECT 1
+    FROM reason_status_codes pulled
+    WHERE pulled.id = bi.status_code_id
+      AND pulled.code = 'PO'
+  ) OR EXISTS (
     SELECT 1
     FROM branch_pullout_lines bpl
     INNER JOIN branch_pullouts bp ON bp.id = bpl.pullout_id
@@ -164,8 +170,9 @@ export function sentOnPulloutSql(): Prisma.Sql {
       AND isc.code = 'DIT'
       AND bpl.received_at IS NULL
       AND bpl.rejected_at IS NULL
+      AND bpl.redelivery_delivery_id IS NULL
       AND bi.updated_at <= bp.updated_at
-  )`;
+  ))`;
 }
 
 /** Branch inventory ids of the units sent on a pull-out, for Prisma-built queries. */
@@ -223,6 +230,13 @@ function stockedInSql(): Prisma.Sql {
   )`;
 }
 
+/** Models with no series stay in All series and drop out once a series is chosen. */
+function seriesMatchSql(seriesId?: string): Prisma.Sql {
+  const id = seriesId?.trim();
+  if (!id) return Prisma.empty;
+  return Prisma.sql`AND pm.series_id = ${id}`;
+}
+
 function groupAggregateSelectSql(
   statusCodes: readonly InventoryGroupStatusCodeRef[],
 ): Prisma.Sql {
@@ -264,6 +278,10 @@ async function buildGroupInventoryConditions(
   }
   if (filters?.skuCode) {
     conditions.push(Prisma.sql`pm.sku_code = ${filters.skuCode}`);
+  }
+  const seriesId = filters?.seriesId?.trim();
+  if (seriesId) {
+    conditions.push(Prisma.sql`pm.series_id = ${seriesId}`);
   }
   if (filters?.statusCodeId) {
     conditions.push(Prisma.sql`bi.status_code_id = ${filters.statusCodeId}`);
@@ -652,6 +670,11 @@ export const inventoryGroupRepository = {
     }
 
     const q = filters.q?.trim();
+    const seriesId = filters.seriesId?.trim();
+    const modelWhere: Prisma.ProductModelWhereInput = {
+      ...(filters.skuCode ? { skuCode: filters.skuCode } : {}),
+      ...(seriesId ? { seriesId } : {}),
+    };
     const hiddenIds = await findSentOnPulloutInventoryIds(tenantId, filters.branchId, [filters.modelId]);
     const andParts: Prisma.BranchInventoryWhereInput[] = [
       {
@@ -660,7 +683,7 @@ export const inventoryGroupRepository = {
         branchId: filters.branchId,
         serialNumber: {
           modelId: filters.modelId,
-          ...(filters.skuCode ? { model: { skuCode: filters.skuCode } } : {}),
+          ...(Object.keys(modelWhere).length > 0 ? { model: modelWhere } : {}),
         },
         statusCodeId: filters.statusCodeId ?? { in: statusCodeIds },
       },
@@ -723,10 +746,12 @@ export const inventoryGroupRepository = {
     tenantId: string,
     branchIds: string[],
     statusCodeIds: readonly string[],
+    seriesId?: string,
   ): Promise<BranchInventoryV2ModelQtyRow[]> {
     if (branchIds.length === 0 || statusCodeIds.length === 0) return [];
 
     const stockedIn = stockedInSql();
+    const seriesSql = seriesMatchSql(seriesId);
     const rows = await prisma.$queryRaw<BranchInventoryV2ModelQtyRaw[]>`
       SELECT
         pm.id AS model_id,
@@ -750,6 +775,7 @@ export const inventoryGroupRepository = {
         AND bi.branch_id IN (${Prisma.join(branchIds)})
         AND bi.status_code_id IN (${Prisma.join([...statusCodeIds])})
         AND NOT ${sentOnPulloutSql()}
+        ${seriesSql}
       GROUP BY pm.id, pm.srp
     `;
 
@@ -774,10 +800,12 @@ export const inventoryGroupRepository = {
     tenantId: string,
     branchId: string,
     statusCodes: readonly InventoryGroupStatusCodeRef[],
+    seriesId?: string,
   ): Promise<BranchInventoryV2StatusModelQtyRow[]> {
     if (!branchId || statusCodes.length === 0) return [];
 
     const stockedIn = stockedInSql();
+    const seriesSql = seriesMatchSql(seriesId);
     const statusCountArgs = statusCodes.flatMap((status) => [
       Prisma.sql`CAST(${status.code} AS text)`,
       status.code === "STK"
@@ -805,6 +833,7 @@ export const inventoryGroupRepository = {
         AND bi.branch_id = ${branchId}
         AND bi.status_code_id IN (${Prisma.join(statusCodes.map((status) => status.id))})
         AND NOT ${sentOnPulloutSql()}
+        ${seriesSql}
       GROUP BY pm.id, pm.srp
     `;
 

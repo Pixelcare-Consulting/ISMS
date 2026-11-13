@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   useEffect,
@@ -15,7 +16,7 @@ import {
   DocumentDetailBand,
   LogisticsHistoryBody,
 } from "@/app/(app)/logistics/_components/logistics-detail-ui";
-import { ShipmentPrintButton } from "@/app/(app)/logistics/_components/shipment-print-button";
+import { SlipPrintButton } from "@/app/(app)/logistics/_components/shipment-print-button";
 import {
   EMPTY_CHECKLIST_OPTIONS,
   PULLOUT_LINE_FIELDS,
@@ -27,6 +28,7 @@ import {
   type PulloutLineChoice,
 } from "@/app/(app)/logistics/_components/pullout-line-fields";
 import { pulloutPrintDocument } from "@/app/(app)/logistics/_components/pullout-print";
+import { RecordedProblemCell } from "@/app/(app)/logistics/_components/recorded-problem-cell";
 import { pulloutAuditLabel, PulloutTracker } from "@/app/(app)/logistics/_components/pullout-tracker";
 import {
   CompactLineTable,
@@ -67,6 +69,7 @@ import {
 import {
   approvePulloutLineAction,
   approvePulloutTlAction,
+  checkPulloutSapAction,
   deletePulloutLineAction,
   listPulloutChecklistOptionsAction,
   listPulloutSerialsAction,
@@ -80,8 +83,13 @@ import {
   manilaDateTimeInputValue,
   scheduleDateInputValue,
 } from "@/features/logistics/lib/shipment";
+import {
+  formatPulloutSapDoc,
+  type PulloutSapCheckResult,
+} from "@/features/logistics/lib/pullout-sap-document";
 import { PULLOUT_LINE_DECISION } from "@/features/logistics/services/pullout-posting.planner";
 import type { PulloutDetail } from "@/features/logistics/services/pullout-posting.service";
+
 import { PulloutConditionBadge } from "@/features/logistics/components/pullout-condition-badge";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 
@@ -95,6 +103,7 @@ interface ExtraSerial {
   skuCode: string;
   modelName: string;
   inventoryCode: "STK" | "DEF";
+  recordedProblem: string | null;
 }
 
 type ExtraSerialLoad = "idle" | "loading" | "ready" | "error";
@@ -220,9 +229,59 @@ function ReceivedCell({ row }: { row: ItemRow }) {
   );
 }
 
+function SapDocumentCell({ row }: { row: ItemRow }) {
+  const doc = row.sapDocument;
+  const redelivery = row.redelivery;
+  if (!doc && !redelivery) return <span className="text-muted-foreground">Not in SAP yet</span>;
+  const date = doc ? formatWhen(doc.docDate, false) : null;
+  return (
+    <div>
+      {doc ? <p className="font-mono">{formatPulloutSapDoc(doc.type, doc.docNum)}</p> : null}
+      {date ? <p className="text-xs text-muted-foreground">{date}</p> : null}
+      {redelivery ? (
+        <p className="text-xs">
+          {`Redelivered${redelivery.drNo ? ` on DR ${redelivery.drNo}` : ""} to ${redelivery.branchName}: `}
+          <Link
+            href={`/logistics/deliveries/${redelivery.deliveryId}`}
+            className="font-mono font-medium hover:underline"
+          >
+            {redelivery.deliveryNo}
+          </Link>
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/** Toast text for a Check SAP result. */
+function sapCheckSummary(result: PulloutSapCheckResult): { found: boolean; message: string } {
+  const parts: string[] = [];
+  if (result.linkedDocuments.length > 0) {
+    parts.push(`Found ${result.linkedDocuments.join(", ")}`);
+  }
+  if (result.pulledOutCount > 0) {
+    parts.push(`${result.pulledOutCount} ${result.pulledOutCount === 1 ? "unit" : "units"} pulled out`);
+  }
+  for (const redelivery of result.redeliveries) {
+    parts.push(`DR ${redelivery.drNo} redelivered ${redelivery.unitCount} on ${redelivery.deliveryNo}`);
+  }
+  if (parts.length > 0) {
+    const waiting = result.waitingCount > 0 ? `. ${result.waitingCount} not in SAP yet` : "";
+    return { found: true, message: `${parts.join(". ")}${waiting}.` };
+  }
+  return {
+    found: false,
+    message:
+      result.waitingCount > 0
+        ? `SAP has no IT or Return for ${result.waitingCount === 1 ? "this unit" : `these ${result.waitingCount} units`} yet.`
+        : "Nothing new in SAP for this pull-out.",
+  };
+}
+
 function pulloutItemColumns(
   renderAction: ((row: ItemRow) => ReactNode) | null,
   renderReceived: ((row: ItemRow) => ReactNode) | null,
+  showSapDocument: boolean,
 ): CompactLineColumn<ItemRow>[] {
   const columns: CompactLineColumn<ItemRow>[] = [
     {
@@ -273,6 +332,14 @@ function pulloutItemColumns(
       cell: (row) => textOrDash(row.remarks),
     },
   ];
+  if (showSapDocument) {
+    columns.push({
+      id: "sapDocument",
+      header: "SAP document",
+      className: "min-w-32",
+      cell: (row) => <SapDocumentCell row={row} />,
+    });
+  }
   if (renderReceived) {
     columns.push({
       id: "received",
@@ -552,6 +619,12 @@ function extraSerialColumns(
         return prior ? <StatusCodeBadge code={prior} name={prior} /> : <Dash />;
       },
     },
+    {
+      id: "recordedProblem",
+      header: "Problem description",
+      className: "min-w-44",
+      cell: (row) => <RecordedProblemCell problem={row.recordedProblem} />,
+    },
     ...PULLOUT_LINE_FIELDS.map(
       ({ field, header }): CompactLineColumn<ExtraSerial> => ({
         id: field,
@@ -594,12 +667,18 @@ function ExtraSerialsTable({
         rows={rows}
         getRowId={(row) => row.serialNumberId}
         columns={extraSerialColumns(pending, selected, onToggle, details)}
-        searchText={(row) => [row.skuCode, row.modelName, row.serialNo, row.inventoryCode]}
+        searchText={(row) => [
+          row.skuCode,
+          row.modelName,
+          row.serialNo,
+          row.inventoryCode,
+          row.recordedProblem,
+        ]}
         searchPlaceholder="Search serials…"
         itemLabel="serial"
         emptyMessage="No other free serials at this branch."
         noMatchMessage="No matching serials."
-        minWidth="86rem"
+        minWidth="96rem"
       />
     </div>
   );
@@ -696,6 +775,7 @@ export function PulloutDetailView({
             skuCode: serial.skuCode,
             modelName: serial.modelName,
             inventoryCode: serial.inventoryCode,
+            recordedProblem: serial.recordedProblem,
           })),
         );
         setExtrasState("ready");
@@ -764,7 +844,11 @@ export function PulloutDetailView({
   const inTransit = detail.status.code === PULLOUT_WORKFLOW_CODE.in_transit;
   // Receipts and in-transit rejections only exist on pull-outs from before receiving was dropped.
   const showReceipts = detail.lines.some((line) => line.receivedAt || line.rejectedAt);
-  const printDocument = pulloutPrintDocument(detail);
+  const returnSlip = pulloutPrintDocument(detail);
+  const canCheckSap =
+    detail.canCheckSap && capabilities.canManage && inScope(branchScope, detail.branch.id);
+  const showSapDocument =
+    detail.canCheckSap || detail.lines.some((line) => Boolean(line.sapDocument || line.redelivery));
   const canAttach =
     capabilities.canCreate &&
     inScope(branchScope, detail.branch.id) &&
@@ -835,6 +919,21 @@ export function PulloutDetailView({
     const { serialNumberId } = deleteTarget;
     setDeleteTarget(null);
     run(() => deletePulloutLineAction(detail.id, serialNumberId), "Unit rejected from this pull-out");
+  }
+
+  function checkSap() {
+    startTransition(async () => {
+      const response = await checkPulloutSapAction(detail.id);
+      if ("error" in response) {
+        toast.error(response.error);
+        return;
+      }
+      const summary = sapCheckSummary(response.result);
+      if (summary.found) toast.success(summary.message);
+      else toast.info(summary.message);
+      for (const note of response.result.notes) toast.warning(note);
+      router.refresh();
+    });
   }
 
   function reserveLineAction(row: ItemRow) {
@@ -913,7 +1012,7 @@ export function PulloutDetailView({
     if (detail.status.code === PULLOUT_WORKFLOW_CODE.pending_logistics) {
       return (
         <p className="text-sm text-muted-foreground">
-          {printDocument
+          {returnSlip
             ? "Sending puts the units in transit and ends the pull-out."
             : "Save the waybill, courier and schedule to print the slip. Sending puts the units in transit and ends the pull-out."}
         </p>
@@ -922,7 +1021,7 @@ export function PulloutDetailView({
     if (!inTransit) return null;
     return (
       <p className="text-sm text-muted-foreground">
-        {`These units left ${detail.branch.name} and no longer count in its branch inventory.`}
+        {`These units left ${detail.branch.name} and no longer count in its branch inventory. In SAP, put ${detail.pulloutNo} in the "Pull Out Number Generated in ISMS" row field of the IT or Return, then use Check SAP: the units it lists become Pulled out. A DR copied from that Return later is picked up the same way.`}
       </p>
     );
   }
@@ -1023,6 +1122,7 @@ export function PulloutDetailView({
           columns={pulloutItemColumns(
             lineActionRenderer(),
             showReceipts ? (row) => <ReceivedCell row={row} /> : null,
+            showSapDocument,
           )}
           searchText={(row) => [
             row.skuCode,
@@ -1038,6 +1138,9 @@ export function PulloutDetailView({
             ...row.classificationNames,
             ...row.unitPackingConditionNames,
             ...row.accessoryCompletenessNames,
+            row.sapDocument ? formatPulloutSapDoc(row.sapDocument.type, row.sapDocument.docNum) : null,
+            row.redelivery?.drNo,
+            row.redelivery?.deliveryNo,
           ]}
           searchPlaceholder="Search serials…"
           itemLabel="unit"
@@ -1054,9 +1157,18 @@ export function PulloutDetailView({
               >
                 {addOpen ? "Hide serials" : "Add serials"}
               </Button>
+            ) : canCheckSap ? (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={pending || detail.lines.length === 0}
+                onClick={checkSap}
+              >
+                {pending ? "Checking SAP…" : "Check SAP"}
+              </Button>
             ) : undefined
           }
-          minWidth={showReceipts ? "96rem" : "82rem"}
+          minWidth={`${82 + (showReceipts ? 14 : 0) + (showSapDocument ? 10 : 0)}rem`}
         />
         {canEditList && addOpen ? (
           <AddSerialsPanel
@@ -1109,7 +1221,7 @@ export function PulloutDetailView({
         actions={
           <>
             {headerActions()}
-            <ShipmentPrintButton document={printDocument} />
+            <SlipPrintButton slips={returnSlip ? [returnSlip] : null} />
           </>
         }
       />

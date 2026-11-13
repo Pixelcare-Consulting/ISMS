@@ -66,6 +66,150 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.94.0",
+    date: "2026-11-13",
+    releasedAt: "2026-11-13T12:16:00+08:00",
+    title: "Pull-outs: Check SAP and the client slip layout",
+    highlights: [
+      "Check SAP on a pull-out finds the IT or Return that carries the pull-out number and marks those units Pulled out.",
+      "A DR copied from that Return comes back to the branch as a new delivery to accept.",
+      "Pull-out and transfer slips print in your company's slip layout.",
+      "Create forms for transfers and pull-outs list only your own branches.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Check SAP replaces linking an SAP document by hand. In SAP, put the pull-out number in the IT or Return row field \"Pull Out Number Generated in ISMS\", then press Check SAP on the pull-out. The units it lists become Pulled out (PO) and no longer show in Branch Inventory. When every unit is found, the pull-out itself is Pulled out, and the pull-out history records each step.",
+      },
+      {
+        type: "feature",
+        description:
+          "When a DR in SAP is copied from that Return (or carries the pull-out number), the same Check SAP picks it up: its units go in transit (DIT) on a new delivery for the branch to accept.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Pull-outs print as a Pull-out Slip with a branch copy and an accounting copy. Transfers print a Transfer Release Slip and a Transfer Delivery Slip with branch, accounting and demand copies. Each slip lists the model and serial of every unit with its condition or remarks, and has Approved by and Received by signature lines.",
+      },
+      {
+        type: "improvement",
+        description:
+          "When you create a transfer or a pull-out, the branch lists show only the branches assigned to you.",
+      },
+      {
+        type: "fix",
+        description:
+          "Creating and approving transfers no longer fails when the For transfer status is missing from your status settings.",
+      },
+    ],
+  },
+  {
+    version: "0.93.0",
+    date: "2026-11-13",
+    releasedAt: "2026-11-13T12:00:00+08:00",
+    title: "Filter branch inventory by series",
+    highlights: [
+      "Filter the branch inventory list by series, and that series stays selected when you open a branch.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "On Branch Inventory, you can filter the list by series. Opening a branch keeps that series, so the stock you see matches the filter you chose.",
+      },
+    ],
+  },
+  {
+    version: "0.92.0",
+    date: "2026-11-13",
+    releasedAt: "2026-11-13T11:56:00+08:00",
+    title: "Sales returns no longer wait for Customer Service",
+    highlights: [
+      "A return started by a dealer goes to the Team Leader.",
+      "Other sales returns are approved when they are requested.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Sales returns no longer wait for Customer Service. A return started by a dealer goes to the Team Leader. Any other sales return is approved when it is requested.",
+      },
+    ],
+  },
+  {
+    version: "0.91.0",
+    date: "2026-11-13",
+    releasedAt: "2026-11-13T11:52:00+08:00",
+    title: "Attach files to a new order",
+    highlights: [
+      "Add images or PDFs when you create an order, and open them again later on that order.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "When you create an order, you can attach up to 5 images or PDFs, 4 MB each. Those files stay on the order so you can open them later. If a file cannot be attached, the order is still submitted and you are told which file failed.",
+      },
+    ],
+  },
+  {
+    version: "0.90.1",
+    date: "2026-11-13",
+    releasedAt: "2026-11-13T11:48:00+08:00",
+    title: "Create Order columns and sale dates",
+    highlights: [
+      "On Create Order, the CBM heading lines up with the CBM numbers, and the note stays in its own column.",
+      "A new sale starts with a blank transaction date, and only today or a future date can be used.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "On Create Order, the CBM heading lines up with the CBM numbers, and the note stays in its own column.",
+      },
+      {
+        type: "fix",
+        description:
+          "A new sale starts with a blank transaction date. You can choose today or a future date only.",
+      },
+    ],
+  },
+  {
+    version: "0.90.0",
+    date: "2026-11-12",
+    releasedAt: "2026-11-12T17:00:00+08:00",
+    title: "Logistics: faster transfers, clearer pull-outs, branded slips",
+    highlights: [
+      "When the team leader approves a transfer, the units go in transit to the receiving branch right away.",
+      "Picking pull-out units shows the problem already recorded for each unit.",
+      "You can link a pull-out unit to the IT or Return you made in SAP.",
+      "Pull-out, transfer, release slip and delivery receipt print-outs carry your company logo and address.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "On a pull-out, Link SAP document lets you enter the IT or Return number you created in SAP and pick the units it covers. ISMS checks that the document exists and lists those serials before saving the link. Nothing is posted to SAP, and the pull-out history shows when a link is added or removed.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Transfers no longer wait for a separate release step. The releasing branch's team leader approves or rejects the request, and approval sends the units in transit. The receiving branch then accepts or rejects each serial; rejected units go back to the releasing branch as stock. Help and the Transfers workflow chart describe the new steps.",
+      },
+      {
+        type: "improvement",
+        description:
+          "When picking units for a pull-out, a Problem description column shows the problem recorded from an approved defect report or a sales return, and search also matches it.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Company Settings has a document header for your address and contact lines. It prints beside the company logo on pull-out, transfer, release slip and delivery receipt print-outs, which now use the Ubuntu font.",
+      },
+    ],
+  },
+  {
     version: "0.89.0",
     date: "2026-11-12",
     releasedAt: "2026-11-12T10:00:00+08:00",

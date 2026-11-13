@@ -189,8 +189,8 @@ export function CompanySettingsForm({
           ) : null}
         </div>
         <p className="text-xs text-muted-foreground">
-          Shown in the sidebar for your organization only. JPEG, PNG, or WebP up
-          to 512 KB.
+          Shown in the sidebar and on printed documents for your organization
+          only. JPEG, PNG, or WebP up to 512 KB.
         </p>
       </div>
 

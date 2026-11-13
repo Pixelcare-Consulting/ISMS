@@ -36,15 +36,22 @@ import {
 } from "@/features/logistics/services/delivery-transfer.service";
 import { PULLOUT_DEFECTIVE_REASON_CODE } from "@/features/logistics/services/pullout-posting.planner";
 import { pulloutPostingService } from "@/features/logistics/services/pullout-posting.service";
+import { checkPulloutInSap } from "@/features/logistics/services/pullout-sap-check.service";
 import { transferPostingService } from "@/features/logistics/services/transfer-posting.service";
-import type { PostingActor } from "@/features/logistics/services/posting-support";
+import {
+  resolveCreateBranchScope,
+  type PostingActor,
+} from "@/features/logistics/services/posting-support";
 import type {
   DeliveryListSort,
   LogisticsListSortDir,
   PulloutListSort,
   TransferListSort,
 } from "@/features/logistics/repositories/logistics.repository";
-import { DELIVERY_WORKFLOW_CODE } from "@/features/logistics/constants/workflow-codes";
+import {
+  DELIVERY_WORKFLOW_CODE,
+  TRANSFER_LEGACY_RELEASE_CODES,
+} from "@/features/logistics/constants/workflow-codes";
 import {
   resolveLogisticsBranchScope,
   transferListWhere,
@@ -248,12 +255,19 @@ export async function getTransferKpisAction(): Promise<LogisticsKpis> {
       permissions: session.user.permissions,
     }),
   );
-  return buildLogisticsKpis(
+  const kpis = await buildLogisticsKpis(
     tid,
     "transfer_workflow",
     () => logisticsRepository.countTransfersByStatus(tid, where),
     () => logisticsRepository.countAllTransfers(tid, where),
   );
+  // Approval sends units in transit; the old release steps only count while a transfer waits there.
+  return {
+    ...kpis,
+    statuses: kpis.statuses.filter(
+      (status) => status.count > 0 || !TRANSFER_LEGACY_RELEASE_CODES.includes(status.code),
+    ),
+  };
 }
 
 export async function getPulloutKpisAction(): Promise<LogisticsKpis> {
@@ -784,10 +798,33 @@ export async function releasePulloutAction(id: string) {
   }
 }
 
+/**
+ * Looks up the IT/Return SAP users made for a sent pull-out (row UDF `ISMS_Pullout_Number`),
+ * links the units and marks them Pulled out, then follows any DR that redelivered them.
+ */
+export async function checkPulloutSapAction(id: string) {
+  const session = await requirePermission(LOGISTICS_MANAGE);
+  if (!id) return { error: "Choose a pull-out" };
+  try {
+    const result = await checkPulloutInSap(postingActor(session), id);
+    revalidatePullout(id);
+    if (result.redeliveries.length > 0) revalidatePath("/logistics/deliveries");
+    return { success: true as const, result };
+  } catch (error) {
+    return actionError(error, "Failed to check SAP");
+  }
+}
+
+/** Branches for the create forms: only the person's area-of-responsibility branches, all when they have none. */
 export async function listBranchesForLogisticsAction() {
   const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
+  const scope = await resolveCreateBranchScope(session.user.tenantId, session.user.id);
   return prisma.branch.findMany({
-    where: { tenantId: session.user.tenantId, deletedAt: null },
+    where: {
+      tenantId: session.user.tenantId,
+      deletedAt: null,
+      ...(scope === null ? {} : { id: { in: scope } }),
+    },
     orderBy: { name: "asc" },
     select: { id: true, name: true, dealerId: true },
   });

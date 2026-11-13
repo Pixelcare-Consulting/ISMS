@@ -57,6 +57,11 @@ export function parseManilaDateTime(value: string): Date | null {
   return date;
 }
 
+/** Manila calendar date of an instant, printed like a schedule date ("Nov 6, 2026"). */
+export function formatManilaDate(iso: string | null): string {
+  return formatScheduleDate(manilaDateTimeInputValue(iso).slice(0, 10) || null);
+}
+
 export function formatScheduleDate(iso: string | null): string {
   if (!iso) return "—";
   const date = new Date(iso);

@@ -3,6 +3,7 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "company.updated": "Company settings updated",
   "company.logo.updated": "Company logo updated",
   "company.logo.removed": "Company logo removed",
+  "company.document_header.updated": "Document header updated",
   "user.created": "User invited",
   "user.updated": "User updated",
   "user.deleted": "User removed",

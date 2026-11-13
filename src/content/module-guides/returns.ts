@@ -3,7 +3,7 @@ import type { ModuleGuideContent } from "@/content/module-guides/types";
 export const RETURNS_MODULE_GUIDE: ModuleGuideContent = {
   title: "Returns / Replacement",
   description:
-    "Finish customer returns and replacements after a sale. Start Process Return from Sales details, then evaluate → approve → restore or complete replacement here.",
+    "Finish customer returns and replacements after a sale. Start Process Return from Sales details. Dealer Initiated Return / Replacement waits for Team Leader. Other sales returns are approved when requested. Service center returns are still evaluated by Customer Service.",
   tips: [
     {
       label:
@@ -23,7 +23,7 @@ export const RETURNS_MODULE_GUIDE: ModuleGuideContent = {
     },
     {
       label:
-        "Approvals — combined queue for returns waiting on CS, TL, or stock restore / replacement",
+        "Approvals — Dealer Initiated sales returns waiting on Team Leader, service center returns waiting on Customer Service, and approved rows ready to restore or replace",
     },
     {
       label:

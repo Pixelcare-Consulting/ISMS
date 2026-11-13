@@ -19,7 +19,7 @@ function compareDisplayPriceRows(
  * Returns null if no row is active today.
  * Sales encode uses a separate server resolver that also falls back to the latest prior period. */
 export function pickActivePriceListRow<T>(
-  rows: T[],
+  rows: readonly T[],
   getPeriod: (row: T) => PriceListPeriodFields,
   today: string = new Date().toISOString().slice(0, 10),
 ): T | null {
@@ -39,7 +39,7 @@ export function pickActivePriceListRow<T>(
  * Prefers a generic row (no package type) over a package-specific one.
  */
 export function pickDisplayPriceListRow<T>(
-  rows: T[],
+  rows: readonly T[],
   getPeriod: (row: T) => PriceListPeriodFields,
   today: string = new Date().toISOString().slice(0, 10),
 ): T | null {

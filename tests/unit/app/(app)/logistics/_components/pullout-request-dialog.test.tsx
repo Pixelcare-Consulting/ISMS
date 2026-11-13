@@ -30,6 +30,7 @@ const listSerials = jest.mocked(listPulloutSerialsAction);
 function serial(
   serialNumberId: string,
   inventoryCode: PulloutSerialOption["inventoryCode"] = "STK",
+  recordedProblem: string | null = null,
 ): PulloutSerialOption {
   return {
     serialNumberId,
@@ -38,6 +39,7 @@ function serial(
     skuCode: "SKU-1",
     modelName: "Model One",
     inventoryCode,
+    recordedProblem,
   };
 }
 
@@ -154,6 +156,25 @@ describe("PulloutRequestDialog units", () => {
 
     expect(await screen.findByText("BRANCH-A-STK")).toBeInTheDocument();
     expect(screen.getByText("BRANCH-A-DEF")).toBeInTheDocument();
+  });
+
+  it("shows each unit's recorded problem description, read-only", async () => {
+    listSerials.mockImplementation(async (branchId) => ({
+      success: true,
+      serials: [
+        serial(`${branchId}-def`, "DEF", "No power; Cracked screen"),
+        serial(`${branchId}-stk`),
+      ],
+    }));
+    renderDialog();
+    await formShown();
+    await chooseBranch("Branch A");
+
+    expect(await screen.findByRole("columnheader", { name: "Problem description" })).toBeInTheDocument();
+    const defRow = unitRow("BRANCH-A-DEF");
+    expect(within(defRow).getByText("No power; Cracked screen")).toBeInTheDocument();
+    expect(within(defRow).queryByRole("textbox", { name: /recorded/i })).not.toBeInTheDocument();
+    expect(within(unitRow("BRANCH-A-STK")).getByText("None recorded")).toBeInTheDocument();
   });
 
   it("keeps the classification column and asks for it on stock units only", async () => {

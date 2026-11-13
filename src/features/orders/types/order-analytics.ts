@@ -288,4 +288,5 @@ export interface OrderHistoryDetail extends Omit<OrderHistoryRow, "lines" | "sta
   lines: OrderHistoryDetailLine[];
   /** Null when this order has no delivery. Not an overall fulfillment status. */
   delivery: OrderHistoryLinkedDelivery | null;
+  attachments: string[];
 }

@@ -5,6 +5,8 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useState, useT
 import { toast } from "sonner";
 
 import { LogisticsHistoryBody } from "@/app/(app)/logistics/_components/logistics-detail-ui";
+import { printSlips } from "@/app/(app)/logistics/_components/slip-print";
+import { transferSlipDocuments } from "@/app/(app)/logistics/_components/transfer-print";
 import { transferAuditLabel, TransferTracker } from "@/app/(app)/logistics/_components/transfer-tracker";
 import {
   CompactLineTable,
@@ -40,7 +42,7 @@ import {
 } from "@/features/logistics/lib/transfer-line-remarks";
 import { canApproveTransferAt } from "@/features/logistics/lib/transfer-approver";
 import { nextTransferNo } from "@/features/logistics/lib/transfer-number";
-import { printTransferSlips } from "@/features/logistics/lib/transfer-slip-print";
+import { loadPrintLetterhead } from "@/features/settings/lib/load-print-letterhead";
 import type {
   TransferDetail,
   TransferInventoryStatus,
@@ -141,8 +143,9 @@ type PendingConfirm =
   | { type: "reject-serial"; serialNumberId: string; serialNo: string };
 
 const APPROVE_NOTE =
-  "Team Lead approval sets the units to For transfer and sends the request to the releasing branch. Stock at the receiving branch does not increase.";
+  "Approval sends these units in transit to the receiving branch. They leave the releasing branch's stock, and the receiving branch's stock does not increase until each serial is accepted.";
 const REJECT_NOTE = "Rejected requests release only the units reserved on this transfer.";
+/** Only transfers approved before approval sent units in transit still need a release. */
 const RELEASE_NOTE =
   "Release sends these units in transit. Stock at the receiving branch does not increase until they are accepted.";
 const RECEIVE_NOTE =
@@ -222,7 +225,7 @@ function confirmNote(type: PendingConfirm["type"]): string {
 function successMessage(confirm: PendingConfirm): string {
   switch (confirm.type) {
     case "approve":
-      return "Transfer approved for release";
+      return "Transfer approved. Units are in transit";
     case "reject":
       return "Transfer rejected";
     case "release":
@@ -899,17 +902,7 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
       }
       const slip = action.type === "approve" ? approvedSlip(result) : null;
       if (slip) {
-        printTransferSlips({
-          transferNo: slip.transferNo || detail.transferNo,
-          rsNo: slip.rsNo,
-          drNo: slip.drNo,
-          fromBranch: detail.fromBranch.name,
-          toBranch: detail.toBranch.name,
-          lines: detail.lines.map((line) => ({
-            serialNo: line.serialNo,
-            model: modelLabel({ skuCode: line.skuCode, name: line.modelName }),
-          })),
-        });
+        printSlips(transferSlipDocuments(detail, slip), await loadPrintLetterhead());
       }
       toast.success(successMessage(action));
       setPendingConfirm(null);
@@ -1066,7 +1059,7 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
           canReceive={canReceive}
           pending={pending}
           workflowStatuses={workflowStatuses}
-          onPrintSlips={detail.rsNo && detail.drNo ? () => printCurrentSlips(detail) : null}
+          onPrintSlips={detail.rsNo && detail.drNo ? () => void printCurrentSlips(detail) : null}
           onAccept={(line) =>
             setPendingConfirm({
               type: "receive",
@@ -1405,29 +1398,15 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
   },
 );
 
-function approvedSlip(result: object): { rsNo: string; drNo: string; transferNo: string } | null {
-  const row = result as { rsNo?: unknown; drNo?: unknown; transferNo?: unknown };
+function approvedSlip(result: object): { rsNo: string; drNo: string } | null {
+  const row = result as { rsNo?: unknown; drNo?: unknown };
   if (typeof row.rsNo !== "string" || typeof row.drNo !== "string") return null;
-  return {
-    rsNo: row.rsNo,
-    drNo: row.drNo,
-    transferNo: typeof row.transferNo === "string" ? row.transferNo : "",
-  };
+  return { rsNo: row.rsNo, drNo: row.drNo };
 }
 
-function printCurrentSlips(detail: TransferDetail) {
+async function printCurrentSlips(detail: TransferDetail) {
   if (!detail.rsNo || !detail.drNo) return;
-  printTransferSlips({
-    transferNo: detail.transferNo,
-    rsNo: detail.rsNo,
-    drNo: detail.drNo,
-    fromBranch: detail.fromBranch.name,
-    toBranch: detail.toBranch.name,
-    lines: detail.lines.map((line) => ({
-      serialNo: line.serialNo,
-      model: modelLabel({ skuCode: line.skuCode, name: line.modelName }),
-    })),
-  });
+  printSlips(transferSlipDocuments(detail), await loadPrintLetterhead());
 }
 
 function runTransferAction(id: string, action: PendingConfirm, remarks: string) {

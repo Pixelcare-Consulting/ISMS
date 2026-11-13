@@ -32,7 +32,12 @@ type PulloutAuditAction =
   | "pullout.finalized"
   | "pullout.received"
   | "pullout.line_rejected"
-  | "pullout.completed";
+  | "pullout.completed"
+  | "pullout.sap_document_linked"
+  | "pullout.sap_document_unlinked"
+  | "pullout.sap_checked"
+  | "pullout.pulled_out"
+  | "pullout.redelivered";
 
 const PULLOUT_ICONS: Readonly<Record<string, ProgressStageIcon>> = {
   [PULLOUT_WORKFLOW_CODE.requested]: "approval",
@@ -58,6 +63,11 @@ function asPulloutAuditAction(action: string): PulloutAuditAction | null {
     case "pullout.received":
     case "pullout.line_rejected":
     case "pullout.completed":
+    case "pullout.sap_document_linked":
+    case "pullout.sap_document_unlinked":
+    case "pullout.sap_checked":
+    case "pullout.pulled_out":
+    case "pullout.redelivered":
       return action;
     default:
       return null;
@@ -90,6 +100,16 @@ export function pulloutAuditLabel(action: string): string {
       return "Unit rejected";
     case "pullout.completed":
       return "Received — completed";
+    case "pullout.sap_document_linked":
+      return "SAP document linked";
+    case "pullout.sap_document_unlinked":
+      return "SAP document unlinked";
+    case "pullout.sap_checked":
+      return "Found in SAP";
+    case "pullout.pulled_out":
+      return "Pulled out in SAP";
+    case "pullout.redelivered":
+      return "Redelivered in SAP";
     default: {
       const unreachable: never = known;
       return unreachable;
@@ -110,8 +130,9 @@ function historyAction(code: string): string | null {
     case PULLOUT_WORKFLOW_CODE.pending_logistics:
       return "pullout.list_saved";
     case PULLOUT_WORKFLOW_CODE.in_transit:
-    case PULLOUT_WORKFLOW_CODE.pulled_out:
       return "pullout.finalized";
+    case PULLOUT_WORKFLOW_CODE.pulled_out:
+      return "pullout.pulled_out";
     case PULLOUT_WORKFLOW_CODE.completed:
       return "pullout.completed";
     default:
@@ -147,11 +168,14 @@ export function buildPulloutTracker(
   history: readonly ProgressAuditRow[],
   catalog: readonly WorkflowStatusOption[],
 ) {
-  const reachedLegacyStep = PULLOUT_LEGACY_AFTER_TRANSIT_CODES.includes(status.code);
+  // Steps after In transit show up to the one reached: Check SAP ends a pull-out at Pulled out.
+  const reached = PULLOUT_LEGACY_AFTER_TRANSIT_CODES.indexOf(status.code);
+  const shownAfterTransit = PULLOUT_LEGACY_AFTER_TRANSIT_CODES.slice(0, reached + 1);
   return buildCatalogProgress({
-    catalog: reachedLegacyStep
-      ? catalog
-      : catalog.filter((row) => !PULLOUT_LEGACY_AFTER_TRANSIT_CODES.includes(row.code)),
+    catalog: catalog.filter(
+      (row) =>
+        !PULLOUT_LEGACY_AFTER_TRANSIT_CODES.includes(row.code) || shownAfterTransit.includes(row.code),
+    ),
     status,
     stopCodes: PULLOUT_STOP_CODES,
     settledCodes: PULLOUT_SETTLED_CODES,

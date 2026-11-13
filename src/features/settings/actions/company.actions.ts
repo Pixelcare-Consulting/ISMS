@@ -7,9 +7,13 @@ import {
   aiAssistantPolicyInputSchema,
   saveAiAssistantPolicy,
 } from "@/features/ai/services/assistant-policy.service";
-import { companySettingsSchema } from "@/features/settings/schemas/company-settings.schema";
+import {
+  companySettingsSchema,
+  documentHeaderSchema,
+} from "@/features/settings/schemas/company-settings.schema";
 import { tenantService } from "@/features/tenants/services/tenant.service";
-import { requireCompanyManage } from "@/lib/auth/permissions";
+import { requireAuth, requireCompanyManage } from "@/lib/auth/permissions";
+import type { PrintLetterhead } from "@/utils/print-document";
 
 export async function updateCompanySettingsAction(input: {
   name: string;
@@ -40,6 +44,35 @@ export async function updateCompanySettingsAction(input: {
       error: e instanceof Error ? e.message : "Failed to update company settings",
     };
   }
+}
+
+export async function updateDocumentHeaderAction(input: { documentHeader: string }) {
+  const session = await requireCompanyManage();
+  const parsed = documentHeaderSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+
+  try {
+    await tenantService.updateDocumentHeader(
+      session.user.tenantId,
+      session.user.id,
+      parsed.data.documentHeader,
+    );
+    revalidatePath("/settings/company");
+    return { success: true as const };
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e.message : "Failed to update document header",
+    };
+  }
+}
+
+/** Any signed-in user who can open a slip can print it, so this only needs a session. */
+export async function getPrintLetterheadAction(): Promise<PrintLetterhead | null> {
+  const session = await requireAuth();
+  return tenantService.getPrintLetterhead(session.user.tenantId);
 }
 
 export async function updateAiAssistantPolicyAction(input: unknown) {

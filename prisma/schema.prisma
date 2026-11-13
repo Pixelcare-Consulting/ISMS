@@ -144,6 +144,12 @@ enum SapOrderDocType {
   SO
 }
 
+/// SAP document a user creates by hand for a sent pull-out unit: Inventory Transfer or Return.
+enum PulloutSapDocType {
+  IT
+  RETURN
+}
+
 enum DeliveryReturnStatus {
   PENDING_APPROVAL
   APPROVED
@@ -254,6 +260,8 @@ model Tenant {
   slug       String    @unique
   tagline    String?
   logo       String?
+  /// Address and contact lines printed beside the logo on slips, one per line.
+  documentHeader String? @map("document_header")
   /// Reserved home tenant for platform operators (Pixelcare). Never listed as a customer.
   isPlatform Boolean   @default(false) @map("is_platform")
   createdAt  DateTime  @default(now()) @map("created_at")
@@ -416,7 +424,9 @@ model User {
   branchPulloutLinesDecided          BranchPulloutLine[]           @relation("BranchPulloutLineDecidedBy")
   branchPulloutLinesReceived         BranchPulloutLine[]           @relation("BranchPulloutLineReceivedBy")
   branchPulloutLinesRejected         BranchPulloutLine[]           @relation("BranchPulloutLineRejectedBy")
+  branchPulloutLinesSapDocLinked     BranchPulloutLine[]           @relation("BranchPulloutLineSapDocLinkedBy")
   branchPulloutAttachmentsUploaded   BranchPulloutAttachment[]     @relation("BranchPulloutAttachmentUploadedBy")
+  branchOrderAttachmentsUploaded     BranchOrderAttachment[]       @relation("BranchOrderAttachmentUploadedBy")
   branchPulloutsCreated              BranchPullout[]               @relation("BranchPulloutCreatedBy")
   serialNumbersCreated               SerialNumber[]                @relation("SerialNumberCreatedBy")
   branchTransfersCreated             BranchTransfer[]              @relation("BranchTransferCreatedBy")
@@ -2254,6 +2264,8 @@ model BranchOrder {
   status          BranchOrderStatus @default(pending_tl)
   orderNumber     String            @map("order_number")
   notes            String?
+  /// Image and PDF paths uploaded before the order is saved. Optional.
+  attachments      String[]          @default([])
   spaRemarks       String?           @map("spa_remarks")
   reviewSnapshot   Json?             @map("review_snapshot")
   reviewSnapshotAt DateTime?         @map("review_snapshot_at")
@@ -2284,11 +2296,31 @@ model BranchOrder {
   approvalLevels           BranchOrderApprovalLevel[]
   deliveries               BranchDelivery[]
   aiReplenishmentProposals AiReplenishmentProposal[]
+  attachmentRecords        BranchOrderAttachment[]
 
   @@unique([tenantId, orderNumber])
   @@index([tenantId, branchId, status])
   @@index([tenantId, processedAt])
   @@map("branch_orders")
+}
+
+/// File the requestor attached to an order. The file itself is in object storage.
+model BranchOrderAttachment {
+  id           String   @id @default(cuid())
+  orderId      String   @map("order_id")
+  fileName     String   @map("file_name")
+  storagePath  String   @map("storage_path")
+  mimeType     String   @map("mime_type")
+  sizeBytes    Int      @map("size_bytes")
+  uploadedById String   @map("uploaded_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  order      BranchOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  uploadedBy User        @relation("BranchOrderAttachmentUploadedBy", fields: [uploadedById], references: [id])
+
+  @@index([orderId])
+  @@index([uploadedById])
+  @@map("branch_order_attachments")
 }
 
 model BranchOrderDetail {
@@ -2403,6 +2435,7 @@ model BranchDelivery {
   backloads  BranchBackload[]
   returnRequests DeliveryReturnRequest[]
   transfers  DeliveryTransfer[]
+  redeliveredPulloutLines BranchPulloutLine[] @relation("BranchPulloutLineRedelivery")
 
   @@unique([tenantId, deliveryNo])
   @@unique([tenantId, orderId])
@@ -2539,6 +2572,18 @@ model BranchPulloutLine {
   rejectedAt              DateTime? @map("rejected_at")
   rejectedById            String?   @map("rejected_by_id")
   rejectionRemarks        String?   @map("rejection_remarks")
+  /// Optional link to the IT or Return a user created by hand in SAP after the pull-out was sent.
+  /// Checked against SAP when linked: the document exists, is not cancelled, and lists this serial.
+  /// One SAP document can cover units from several pull-outs.
+  sapDocType              PulloutSapDocType? @map("sap_doc_type")
+  sapDocEntry             Int?      @map("sap_doc_entry")
+  sapDocNum               Int?      @map("sap_doc_num")
+  sapDocDate              DateTime? @map("sap_doc_date") @db.Date
+  sapDocLinkedAt          DateTime? @map("sap_doc_linked_at")
+  sapDocLinkedById        String?   @map("sap_doc_linked_by_id")
+  /// ISMS delivery made when SAP redelivered this pulled-out unit (a DR copied from its Return,
+  /// or carrying the pull-out number). The unit went PO → DIT at that delivery\'s branch.
+  redeliveryDeliveryId    String?   @map("redelivery_delivery_id")
 
   pullout                 BranchPullout                           @relation(fields: [pulloutId], references: [id], onDelete: Cascade)
   serialNumber            SerialNumber                            @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
@@ -2548,6 +2593,8 @@ model BranchPulloutLine {
   receivedLocation        WarehouseLocation?                      @relation("BranchPulloutLineReceivedLocation", fields: [receivedLocationId], references: [id], onDelete: SetNull)
   reasonCode              ReasonStatusCode?                       @relation("PulloutLineReason", fields: [reasonCodeId], references: [id], onDelete: SetNull)
   rejectedBy              User?                                   @relation("BranchPulloutLineRejectedBy", fields: [rejectedById], references: [id], onDelete: SetNull)
+  sapDocLinkedBy          User?                                   @relation("BranchPulloutLineSapDocLinkedBy", fields: [sapDocLinkedById], references: [id], onDelete: SetNull)
+  redeliveryDelivery      BranchDelivery?                         @relation("BranchPulloutLineRedelivery", fields: [redeliveryDeliveryId], references: [id], onDelete: SetNull)
   classifications         BranchPulloutLineClassification[]
   problemDescriptions     BranchPulloutLineProblemDescription[]
   packingConditions       BranchPulloutLinePackingCondition[]
@@ -2560,6 +2607,9 @@ model BranchPulloutLine {
   @@index([receivedLocationId])
   @@index([reasonCodeId])
   @@index([rejectedById])
+  @@index([sapDocLinkedById])
+  @@index([sapDocType, sapDocNum])
+  @@index([redeliveryDeliveryId])
   @@map("branch_pullout_lines")
 }
 

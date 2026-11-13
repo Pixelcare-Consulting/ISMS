@@ -26,6 +26,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { manilaTodayIso } from "@/features/orders/utils/manila-calendar";
 import {
   createSaleAction,
   listStockSourceBranchesForSalesAction,
@@ -61,14 +62,6 @@ interface NewSalesTransactionFormProps {
   brands: LookupOption[];
 }
 
-function todayInputValue(): string {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
 export function NewSalesTransactionForm({
   branches,
   autoResolveBranch,
@@ -98,7 +91,7 @@ export function NewSalesTransactionForm({
   const [customerDeliveryMethodId, setCustomerDeliveryMethodId] = useState("");
   const [proofs, setProofs] = useState<ProofAttachment[]>([]);
   const [proofUploading, setProofUploading] = useState(false);
-  const [transactionDate, setTransactionDate] = useState(todayInputValue);
+  const [transactionDate, setTransactionDate] = useState("");
   const [reserved, setReserved] = useState(false);
   const [details, setDetails] = useState<DraftSaleDetail[]>([]);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -424,6 +417,7 @@ export function NewSalesTransactionForm({
             <Input
               id="sale-date"
               type="date"
+              min={manilaTodayIso()}
               value={transactionDate}
               onChange={(e) => setTransactionDate(e.target.value)}
             />

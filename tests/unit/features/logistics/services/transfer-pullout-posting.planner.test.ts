@@ -76,7 +76,7 @@ function decidedLine(overrides: Partial<PulloutDecisionLineView> = {}): PulloutD
 }
 
 describe("transfer posting planner", () => {
-  it("walks a stock unit from branch A to branch B without adding stock on approval", () => {
+  it("sends a stock unit in transit on approval, with no release step, without adding stock", () => {
     const created = planTransferCreate({
       fromBranchId: "branch-a",
       toBranchId: "branch-b",
@@ -95,18 +95,9 @@ describe("transfer posting planner", () => {
     });
     expect(approved.ok).toBe(true);
     if (!approved.ok) return;
-    expect(approved.nextStatus).toBe("for_transfer");
+    expect(approved.nextStatus).toBe("in_transit");
     expect(approved.destinationStockAdded).toBe(false);
     expect(approved.moves).toEqual([{ serialNumberId: "s1", fromCode: "RSV", priorCode: "STK" }]);
-
-    const released = planTransferRelease({
-      status: "for_transfer",
-      lines: [transferLine({ inventoryCode: "FTR" })],
-    });
-    expect(released.ok).toBe(true);
-    if (!released.ok) return;
-    expect(released.nextStatus).toBe("in_transit");
-    expect(released.moves).toEqual([{ serialNumberId: "s1", fromCode: "FTR" }]);
 
     const received = planTransferReceive({
       status: "in_transit",
@@ -123,7 +114,7 @@ describe("transfer posting planner", () => {
     ]);
   });
 
-  it("moves a legacy unit that was never reserved to For transfer on approval", () => {
+  it("sends a legacy unit that was never reserved in transit on approval", () => {
     const plan = planTransferApprove({
       status: "pending_tl",
       lines: [transferLine({ priorCode: null, inventoryCode: "DEF" })],
@@ -142,12 +133,40 @@ describe("transfer posting planner", () => {
     expect(plan).toEqual({ ok: false, error: "A serial on this transfer is no longer reserved" });
   });
 
-  it("treats a repeated approval as done once every unit is For transfer", () => {
+  it("treats a repeated approval as done once the transfer is in transit", () => {
+    const plan = planTransferApprove({
+      status: "in_transit",
+      lines: [transferLine({ inventoryCode: "DIT", branchId: "branch-b" })],
+    });
+    expect(plan).toMatchObject({ ok: true, nextStatus: "in_transit", idempotent: true, moves: [] });
+  });
+
+  it("does not re-approve a legacy transfer still waiting for release", () => {
     const plan = planTransferApprove({
       status: "for_transfer",
       lines: [transferLine({ inventoryCode: "FTR" })],
     });
     expect(plan).toMatchObject({ ok: true, idempotent: true, moves: [] });
+  });
+
+  it("still releases a legacy For transfer transfer", () => {
+    const plan = planTransferRelease({
+      status: "for_transfer",
+      lines: [transferLine({ inventoryCode: "FTR" })],
+    });
+    expect(plan).toMatchObject({
+      ok: true,
+      nextStatus: "in_transit",
+      moves: [{ serialNumberId: "s1", fromCode: "FTR" }],
+    });
+  });
+
+  it("refuses to release a transfer that is waiting for Team Lead", () => {
+    const plan = planTransferRelease({
+      status: "pending_tl",
+      lines: [transferLine()],
+    });
+    expect(plan).toEqual({ ok: false, error: "Only a transfer waiting for release can be released" });
   });
 
   it("releases a transfer approved before For transfer existed", () => {
@@ -301,7 +320,7 @@ describe("transfer posting planner", () => {
   });
 
   it.each(["for_transfer", "approved"] as const)(
-    "refuses to accept a serial until Logistics releases the transfer (%s)",
+    "refuses to accept a serial on a legacy transfer still waiting for release (%s)",
     (status) => {
       const plan = planTransferReceive({
         status,
@@ -312,13 +331,13 @@ describe("transfer posting planner", () => {
       });
       expect(plan).toEqual({
         ok: false,
-        error: "Accept serials only after Logistics releases this transfer",
+        error: "Accept serials only once this transfer is in transit",
       });
     },
   );
 
   it.each(["for_transfer", "approved"] as const)(
-    "refuses to reject a serial until Logistics releases the transfer (%s)",
+    "refuses to reject a serial on a legacy transfer still waiting for release (%s)",
     (status) => {
       const plan = planTransferSerialReject({
         status,
@@ -330,7 +349,7 @@ describe("transfer posting planner", () => {
       });
       expect(plan).toEqual({
         ok: false,
-        error: "Reject serials only after Logistics releases this transfer",
+        error: "Reject serials only once this transfer is in transit",
       });
     },
   );

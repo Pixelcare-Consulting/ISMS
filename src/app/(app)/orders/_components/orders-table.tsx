@@ -80,6 +80,7 @@ interface OrderRow {
   branchId: string;
   brandId?: string | null;
   notes?: string | null;
+  attachments?: string[];
   spaRemarks?: string | null;
   updatedAt?: string | Date | null;
   createdAt?: string | Date | null;
@@ -838,6 +839,7 @@ export function OrdersTable({
           branchName={detailsOrder.branch.name}
           status={detailsOrder.status as BranchOrderStatus}
           notes={detailsOrder.notes}
+          attachments={detailsOrder.attachments ?? []}
           deliveryDueDate={detailsOrder.deliveryDueDate}
           createdByName={detailsOrder.createdBy.name ?? detailsOrder.createdBy.email}
           reviewSnapshot={detailsOrder.reviewSnapshot}

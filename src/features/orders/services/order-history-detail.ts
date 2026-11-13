@@ -16,6 +16,12 @@ import {
 } from "@/features/orders/constants/order-permissions";
 import { mayViewOrderAsProductSpecialist } from "@/features/orders/constants/order-workflow";
 import { orderRepository } from "@/features/orders/repositories/order.repository";
+import { orderAttachmentStoragePrefix } from "@/features/orders/utils/order-attachment-paths";
+import {
+  parseSaleProofPaths,
+  saleProofFileName,
+  saleProofMimeType,
+} from "@/features/sales/utils/sale-proof";
 import type {
   OrderHistoryDetail,
   OrderHistoryLinkedDelivery,
@@ -126,6 +132,7 @@ export async function getOrderHistoryDetail(
   }
 
   const delivery = await findLinkedDelivery(session.user.tenantId, order.id, branchScope);
+  const attachments = parseSaleProofPaths(order.attachments);
 
   let orderQty = 0;
   let appQty = 0;
@@ -175,6 +182,7 @@ export async function getOrderHistoryDetail(
     branchName: order.branch.name,
     brandId: order.brandId,
     notes: order.notes,
+    attachments,
     deliveryDueDate: order.deliveryDueDate?.toISOString() ?? null,
     createdByName: order.createdBy.name?.trim() || order.createdBy.email,
     reviewSnapshot: order.reviewSnapshot,
@@ -229,6 +237,7 @@ export interface SubmittedOrderSummary {
   /** Resolved payment name, or null when the order has none. */
   paymentLabel: string | null;
   notes: string | null;
+  attachments: string[];
   sapDocType: OrderSapDocType | null;
   sapDocNum: number | null;
   reviewSnapshot: unknown;
@@ -278,6 +287,7 @@ export async function getSubmittedOrderSummary(
     return null;
   }
 
+  const attachments = parseSaleProofPaths(order.attachments);
   const orderPayment = order.modeOfPayment?.name?.trim() || null;
   const dealerPayment = order.branch.dealer?.modeOfPayment?.name?.trim() || null;
   const paymentLabel =
@@ -298,6 +308,7 @@ export async function getSubmittedOrderSummary(
     branchName: order.branch.name,
     paymentLabel: paymentLabel === "—" ? null : paymentLabel,
     notes: order.notes,
+    attachments,
     sapDocType: order.sapDocType,
     sapDocNum: order.sapDocNum,
     reviewSnapshot: order.reviewSnapshot,
@@ -321,5 +332,95 @@ export async function getSubmittedOrderSummary(
       rejectedAt: level.rejectedAt?.toISOString() ?? null,
       actorName: level.approvedBy?.name?.trim() || level.approvedBy?.email || null,
     })),
+  };
+}
+
+/**
+ * Stored file of an order attachment, for the download route.
+ * Same access as opening the order: type permission, branch scope, and the Product
+ * Specialist own-orders rule. Null when the viewer cannot open that order.
+ */
+export async function findViewableOrderAttachment(
+  viewer: { tenantId: string; userId: string; permissions: string[]; roleSlugs: string[] },
+  attachmentId: string,
+): Promise<{ fileName: string; storagePath: string; mimeType: string } | null> {
+  const attachment = await prisma.branchOrderAttachment.findFirst({
+    where: { id: attachmentId, order: { tenantId: viewer.tenantId } },
+    select: {
+      fileName: true,
+      storagePath: true,
+      mimeType: true,
+      order: { select: { orderType: true, branchId: true, createdById: true } },
+    },
+  });
+  if (!attachment) return null;
+  const { order } = attachment;
+  if (!canAccessOrderType(viewer.permissions, order.orderType)) return null;
+  const branchScope = await resolveOrderBranchScope(
+    viewer.tenantId,
+    viewer.userId,
+    viewer.permissions,
+  );
+  if (branchScope !== null && !branchScope.includes(order.branchId)) return null;
+  if (
+    order.orderType !== "auto_replenish" &&
+    !mayViewOrderAsProductSpecialist({
+      roleSlugs: viewer.roleSlugs,
+      viewerUserId: viewer.userId,
+      createdById: order.createdById,
+    })
+  ) {
+    return null;
+  }
+  return {
+    fileName: attachment.fileName,
+    storagePath: attachment.storagePath,
+    mimeType: attachment.mimeType,
+  };
+}
+
+/**
+ * One path on the order, for the preview route.
+ * Same access as opening the order. Null when the index is missing or out of scope.
+ */
+export async function findViewableOrderAttachmentFile(
+  viewer: { tenantId: string; userId: string; permissions: string[]; roleSlugs: string[] },
+  orderId: string,
+  index: number,
+): Promise<{ fileName: string; storagePath: string; mimeType: string } | null> {
+  if (!Number.isInteger(index) || index < 0) return null;
+  const order = await prisma.branchOrder.findFirst({
+    where: { id: orderId, tenantId: viewer.tenantId },
+    select: {
+      attachments: true,
+      orderType: true,
+      branchId: true,
+      createdById: true,
+    },
+  });
+  if (!order) return null;
+  if (!canAccessOrderType(viewer.permissions, order.orderType)) return null;
+  const branchScope = await resolveOrderBranchScope(
+    viewer.tenantId,
+    viewer.userId,
+    viewer.permissions,
+  );
+  if (branchScope !== null && !branchScope.includes(order.branchId)) return null;
+  if (
+    order.orderType !== "auto_replenish" &&
+    !mayViewOrderAsProductSpecialist({
+      roleSlugs: viewer.roleSlugs,
+      viewerUserId: viewer.userId,
+      createdById: order.createdById,
+    })
+  ) {
+    return null;
+  }
+  const storagePath = parseSaleProofPaths(order.attachments)[index];
+  if (!storagePath?.startsWith(orderAttachmentStoragePrefix(viewer.tenantId))) return null;
+  return {
+    fileName: saleProofFileName(storagePath),
+    storagePath,
+    mimeType: saleProofMimeType(storagePath),
   };
 }

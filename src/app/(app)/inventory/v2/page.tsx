@@ -10,10 +10,12 @@ import {
   getBranchInventoryV2StatusAmountsAction,
   getInventoryKpisAction,
   getInventorySeriesSummaryAction,
+  listBranchInventorySeriesOptionsAction,
   listInventoryAction,
   listInventoryGroupsAction,
   listInventoryStatusOptionsAction,
   listUnreadBranchInventoryIdsAction,
+  type BranchInventorySeriesOption,
   type InventoryGroupBranchItemDto,
   type InventoryGroupModelItemDto,
   type InventoryStatusOption,
@@ -42,6 +44,7 @@ interface BranchInventoryV2PageProps {
     limit?: string;
     offPlanogram?: string;
     sku?: string;
+    series?: string;
   }>;
 }
 
@@ -132,15 +135,26 @@ export default async function BranchInventoryV2Page({
   const statusCodeId = params.status?.trim() || undefined;
   const offPlanogram = params.offPlanogram === "1";
   const sku = params.sku?.trim() || undefined;
+  const seriesOptions = await listBranchInventorySeriesOptionsAction();
+  const requestedSeriesId = params.series?.trim() ?? "";
+  const seriesId = seriesOptions.some((option) => option.id === requestedSeriesId)
+    ? requestedSeriesId
+    : undefined;
 
   const [kpis, seriesSummary, groupResult, offPlanogramResult, approvalBranchIds, unread, cardAmounts, statusAmounts] =
     await Promise.all([
       getInventoryKpisAction(),
-      getInventorySeriesSummaryAction(
-        screen.kind === "branch" ? { branchId: screen.branchId } : undefined,
-      ),
-      listInventoryGroupsAction({ groupBy: "by-branch", all: true }),
-      listInventoryGroupsAction({ groupBy: "by-branch", all: true, offPlanogram: true }),
+      getInventorySeriesSummaryAction({
+        ...(screen.kind === "branch" ? { branchId: screen.branchId } : {}),
+        ...(seriesId ? { seriesId } : {}),
+      }),
+      listInventoryGroupsAction({ groupBy: "by-branch", all: true, seriesId }),
+      listInventoryGroupsAction({
+        groupBy: "by-branch",
+        all: true,
+        offPlanogram: true,
+        seriesId,
+      }),
       defectApprovalBranchIds(
         session.user.tenantId,
         session.user.id,
@@ -150,10 +164,10 @@ export default async function BranchInventoryV2Page({
         screen.kind === "branch" ? { branchId: screen.branchId } : undefined,
       ),
       screen.kind === "all"
-        ? getBranchInventoryV2CardAmountsAction()
+        ? getBranchInventoryV2CardAmountsAction(seriesId)
         : Promise.resolve(null),
       screen.kind === "branch"
-        ? getBranchInventoryV2StatusAmountsAction(screen.branchId)
+        ? getBranchInventoryV2StatusAmountsAction(screen.branchId, seriesId)
         : Promise.resolve(null),
     ]);
 
@@ -180,6 +194,8 @@ export default async function BranchInventoryV2Page({
         statusCodeId,
         offPlanogram,
         sku,
+        seriesId,
+        seriesOptions,
         singleBranch,
         approvalBranchIds,
         unreadByCode: unread.byCode,
@@ -204,6 +220,8 @@ async function renderScreen(input: {
   statusCodeId?: string;
   offPlanogram: boolean;
   sku?: string;
+  seriesId?: string;
+  seriesOptions: BranchInventorySeriesOption[];
   singleBranch: boolean;
   approvalBranchIds: string[] | null;
   unreadByCode: Record<string, number>;
@@ -226,6 +244,8 @@ async function renderScreen(input: {
             }
           }
           initialOffPlanogram={input.offPlanogram}
+          seriesId={input.seriesId}
+          seriesOptions={input.seriesOptions}
           unreadByBranchCode={input.unreadByBranchCode}
           seriesSummary={input.seriesSummary}
         />
@@ -238,6 +258,7 @@ async function renderScreen(input: {
           groupBy: "by-model",
           branchId,
           all: true,
+          seriesId: input.seriesId,
         }),
       ]);
       const statusCodeId = statusOptions.some(
@@ -255,6 +276,7 @@ async function renderScreen(input: {
         statusCodeId,
         q: input.q,
         sku: input.sku,
+        seriesId: input.seriesId,
         offPlanogram: input.offPlanogram,
       });
       const branch = input.branches.find((row) => row.branch.id === branchId) ?? null;
@@ -268,7 +290,7 @@ async function renderScreen(input: {
       );
       return (
         <BranchInventorySerialScreen
-          key={`${branchId}:${statusCodeId ?? ""}:${input.sku ?? ""}:${input.offPlanogram ? "1" : "0"}`}
+          key={`${branchId}:${statusCodeId ?? ""}:${input.sku ?? ""}:${input.seriesId ?? ""}:${input.offPlanogram ? "1" : "0"}`}
           branchId={branchId}
           branch={branch}
           result={result}
@@ -277,6 +299,7 @@ async function renderScreen(input: {
           q={input.q}
           statusCodeId={statusCodeId}
           sku={input.sku}
+          seriesId={input.seriesId}
           initialOffPlanogram={input.offPlanogram}
           limit={input.limit}
           approvalBranchIds={input.approvalBranchIds}

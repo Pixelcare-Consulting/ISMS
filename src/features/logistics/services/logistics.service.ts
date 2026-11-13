@@ -7,7 +7,7 @@ import { prisma } from "@/lib/database/client";
 
 type DbClient = Pick<typeof prisma, "branchDelivery">;
 
-function nextDeliveryNo() {
+export function nextDeliveryNo() {
   return `DLV-${Date.now().toString(36).toUpperCase()}`;
 }
 

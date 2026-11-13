@@ -19,7 +19,7 @@ export const SALES_PAGE_TUTORIAL: PageTutorialContent = {
       bullets: [
         "Click New transaction, fill the header (stock branch shows area locations with sellable serials), then Add Detail (package qty expands into N sets with model + serial; Model price comes from the price list when available).",
         "Status on each row uses your inventory status colors (TO FOLLOW when a serial is still pending). Open View details to fill a TO-FOLLOW serial, preview proof, or Request return (Process Return). Accounting can Edit the transaction header when allowed.",
-        "Process Return asks for document type, STK or DEF, problem descriptions, and Return or Replacement — then open Returns / Replacement to evaluate, approve, restore, or finish replacement.",
+        "Process Return asks for document type, STK or DEF, problem descriptions, and Return or Replacement. Dealer Initiated types wait for Team Leader; other sales returns are approved when you submit. Finish restore or replacement under Returns / Replacement.",
         "Verify the details total before Save; RSV moves stock to reserved instead of sold.",
       ],
     },

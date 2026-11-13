@@ -75,6 +75,8 @@ export type InventoryListOptions = {
   branchId?: string;
   skuCode?: string;
   statusCodeId?: string;
+  /** Active series on the model. Omitted keeps models with no series. */
+  seriesId?: string;
   offPlanogramOnly?: boolean;
   statusCodes?: readonly string[];
   q?: string;
@@ -86,6 +88,8 @@ export type InventoryGroupListOptions = {
   branchId?: string;
   skuCode?: string;
   statusCodeId?: string;
+  /** Active series on the model. Omitted keeps models with no series. */
+  seriesId?: string;
   offPlanogramOnly?: boolean;
   q?: string;
 };
@@ -194,11 +198,17 @@ async function scopedBranchIds(
   return branchIds.filter((id) => id === branchId);
 }
 
+function trimmedSeriesId(seriesId?: string): string | undefined {
+  const id = seriesId?.trim();
+  return id ? id : undefined;
+}
+
 function toListFilters(filters?: InventoryListOptions): InventoryListFilters {
   return {
     branchId: filters?.branchId,
     skuCode: filters?.skuCode,
     statusCodeId: filters?.statusCodeId,
+    seriesId: trimmedSeriesId(filters?.seriesId),
     offPlanogramOnly: filters?.offPlanogramOnly,
     statusCodes: filters?.statusCodes,
     q: filters?.q,
@@ -212,6 +222,7 @@ function toGroupListFilters(
     branchId: filters?.branchId,
     skuCode: filters?.skuCode,
     statusCodeId: filters?.statusCodeId,
+    seriesId: trimmedSeriesId(filters?.seriesId),
     offPlanogramOnly: filters?.offPlanogramOnly,
     q: filters?.q,
   };
@@ -659,6 +670,7 @@ export const inventoryService = {
     tenantId: string,
     userId: string,
     isUnrestricted: boolean,
+    seriesId?: string,
   ): Promise<BranchInventoryV2CardAmounts> {
     const empty: BranchInventoryV2CardAmounts = {
       total: 0,
@@ -679,6 +691,7 @@ export const inventoryService = {
       tenantId,
       branchIds,
       visibleStatusIds,
+      trimmedSeriesId(seriesId),
     );
     if (qtyRows.length === 0) return empty;
 
@@ -716,6 +729,7 @@ export const inventoryService = {
     userId: string,
     isUnrestricted: boolean,
     branchId: string,
+    seriesId?: string,
   ): Promise<BranchInventoryV2StatusAmounts> {
     const empty: BranchInventoryV2StatusAmounts = {
       total: 0,
@@ -739,6 +753,7 @@ export const inventoryService = {
       tenantId,
       branchInScope,
       toStatusCodeRefs(visibleStatuses),
+      trimmedSeriesId(seriesId),
     );
     if (qtyRows.length === 0) return empty;
 

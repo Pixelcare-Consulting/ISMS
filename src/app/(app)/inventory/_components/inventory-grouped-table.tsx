@@ -37,6 +37,7 @@ import {
 } from "@/features/inventory/constants/stock-units-group";
 import type { StockUnitsView } from "@/features/inventory/constants/stock-units-view";
 import { SerialSapSyncDialog } from "@/features/serial-numbers/components/serial-sap-sync-dialog";
+import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { TablePagination } from "@/components/data-table/table-pagination";
 import { useClientTablePagination } from "@/components/data-table/use-client-table-pagination";
 import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
@@ -553,7 +554,7 @@ export function InventoryGroupedTable({
           current={currentView}
           hrefForView={(view) =>
             stockUnitsHrefForView(view, {
-              pageSize,
+              pageSize: parseTablePageSize(pageSize),
               offPlanogram: offPlanogramOnly,
               q: query.trim() || undefined,
               filters: urlFilters,

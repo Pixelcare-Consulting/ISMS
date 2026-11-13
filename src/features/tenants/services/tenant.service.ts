@@ -2,8 +2,10 @@ import { auditService } from "@/features/audit/services/audit.service";
 import { tenantRepository } from "@/features/tenants/repositories/tenant.repository";
 import {
   resolveTenantTagline,
+  splitDocumentHeader,
   type TenantBranding,
 } from "@/features/tenants/types/tenant-branding";
+import type { PrintLetterhead } from "@/utils/print-document";
 
 function slugify(value: string) {
   return value
@@ -112,6 +114,42 @@ export const tenantService = {
       tagline: resolveTenantTagline(tenant.tagline),
       logo: tenant.logo,
     };
+  },
+
+  /** Header for printed slips. Lines come from Company Settings, blank ones dropped. */
+  async getPrintLetterhead(tenantId: string): Promise<PrintLetterhead | null> {
+    const tenant = await tenantRepository.findById(tenantId);
+    if (!tenant) return null;
+
+    return {
+      logo: tenant.logo,
+      companyName: tenant.name,
+      lines: splitDocumentHeader(tenant.documentHeader),
+    };
+  },
+
+  async updateDocumentHeader(
+    tenantId: string,
+    actorUserId: string,
+    documentHeader: string,
+  ) {
+    const before = await tenantRepository.findById(tenantId);
+    if (!before) {
+      throw new Error("Tenant not found");
+    }
+
+    const next = splitDocumentHeader(documentHeader).join("\n") || null;
+    if (next === before.documentHeader) return;
+
+    await tenantRepository.updateDocumentHeader(tenantId, next);
+    await auditService.log({
+      tenantId,
+      userId: actorUserId,
+      action: "company.document_header.updated",
+      entityType: "Tenant",
+      entityId: tenantId,
+      metadata: { documentHeader: next },
+    });
   },
 
   async updateBranding(

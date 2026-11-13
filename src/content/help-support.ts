@@ -248,24 +248,19 @@ export const HELP_WORKFLOW_GUIDES: HelpWorkflowGuide[] = [
     steps: [
       {
         label:
-          "Requesting branch creates a transfer request (syncs to SAP as a transfer request when connected).",
+          "Releasing branch creates a transfer request to a branch of the same dealer. The units are reserved.",
       },
       {
         label:
-          "Team Leader approves the request — or cancels it if it should not proceed.",
+          "The releasing branch's Team Leader approves or rejects it. Approval sends the units in transit to the receiving branch; there is no separate release step.",
       },
       {
         label:
-          "Releasing branch marks units For Transfer and releases them (syncs the transfer document to SAP when connected).",
-      },
-      {
-        label:
-          "Requesting branch receives stock in Operations; units move to On hand. Use the Transfers report to reconcile open moves.",
+          "Receiving branch accepts or rejects each serial. Accepted units become stock there; rejected units go back to the releasing branch as stock.",
       },
     ],
     tips: [
-      "Who can create, approve, release, or receive depends on your role setup.",
-      "SAP sync may be queued or pending depending on your tenant integration.",
+      "Who can create, approve, or receive depends on your role setup.",
     ],
   },
   {
@@ -316,7 +311,7 @@ export const HELP_WORKFLOW_GUIDES: HelpWorkflowGuide[] = [
     id: "sales-atr",
     title: "Customer return after a sale",
     summary:
-      "Submit Process Return from the sale, then evaluate, approve, and restore or complete a replacement under Returns / Replacement.",
+      "Submit Process Return from the sale. Dealer Initiated Return / Replacement waits for Team Leader. Other sales returns are approved when requested. Service center returns are still evaluated by Customer Service.",
     audience: "Sales · CS · TL · Inventory",
     href: "/returns",
     steps: [
@@ -330,19 +325,19 @@ export const HELP_WORKFLOW_GUIDES: HelpWorkflowGuide[] = [
       },
       {
         label:
-          "Track the request in Returns / Replacement (Branch, Service, or Approvals) and download ATR/ODRF when available.",
+          "Dealer Initiated Return / Replacement waits for Team Leader. Every other sales-return type is approved when you submit, under your name.",
       },
       {
         label:
-          "Customer service evaluates the request (accept to continue, or reject to stop).",
+          "Service center returns are still evaluated by Customer Service, then approved by Team Leader.",
       },
       {
         label:
-          "Team Leader approves; then restore stock (Return) or finish Same/New Invoice (Replacement).",
+          "When the request is approved, restore stock (Return) or finish Same/New Invoice (Replacement). Download ATR/ODRF from Returns / Replacement when you need it.",
       },
     ],
     tips: [
-      "Who can request, evaluate, approve, or complete depends on your role setup.",
+      "Who can request, approve, or complete depends on your role setup. Customer Service still evaluates service center returns.",
       "Reserved (RSV) sales follow the same return path when returns are allowed.",
       "Official Sold is not a customer return — Accounting uses Official Sales to mark sold; DEL there restores On hand without this return path.",
     ],

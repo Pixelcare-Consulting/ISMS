@@ -11,9 +11,12 @@ import {
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import {
   asWorkflowCode,
+  PULLOUT_SETTLED_CODES,
   PULLOUT_WORKFLOW_CODE,
   type PulloutWorkflowCodeKey,
 } from "@/features/logistics/constants/workflow-codes";
+import type { PulloutSapDocType } from "@/features/logistics/lib/pullout-sap-document";
+import { recordedProblemsBySerial } from "@/features/logistics/services/pullout-recorded-problems";
 import type { AllocatableSerial, HoldCode } from "@/features/logistics/services/posting-planner-types";
 import {
   planPulloutApprove,
@@ -36,6 +39,7 @@ import {
   asHoldCode,
   asInventoryCode,
   assertMovable,
+  authorizeCreateBranches,
   authorizePosting,
   claimHeader,
   claimInventory,
@@ -61,6 +65,26 @@ export interface PulloutSerialOption {
   skuCode: string;
   modelName: string;
   inventoryCode: "STK" | "DEF";
+  /** Problem already recorded on a defect tag or sales return. Read-only on the pull-out. */
+  recordedProblem: string | null;
+}
+
+/** The IT or Return SAP shows for a sent unit (found by Check SAP, or linked by hand before). */
+export interface PulloutLineSapDocument {
+  type: PulloutSapDocType;
+  docNum: number;
+  /** YYYY-MM-DD */
+  docDate: string | null;
+  linkedAt: string | null;
+  linkedByName: string | null;
+}
+
+/** The ISMS delivery made when SAP redelivered a pulled-out unit. */
+export interface PulloutLineRedelivery {
+  deliveryId: string;
+  deliveryNo: string;
+  drNo: string | null;
+  branchName: string;
 }
 
 /**
@@ -129,8 +153,20 @@ export interface PulloutDetail {
     rejectedAt: string | null;
     rejectedByName: string | null;
     rejectionRemarks: string | null;
+    sapDocument: PulloutLineSapDocument | null;
+    redelivery: PulloutLineRedelivery | null;
   }[];
+  /** Sent: Logistics may check SAP for the IT or Return made by hand, and for redeliveries. */
+  canCheckSap: boolean;
   history: { id: string; action: string; at: string; userName: string | null }[];
+}
+
+function dateOnly(value: Date | null): string | null {
+  return value ? value.toISOString().slice(0, 10) : null;
+}
+
+function isSettledPullout(code: string): boolean {
+  return (PULLOUT_SETTLED_CODES as readonly string[]).includes(code);
 }
 
 function asPulloutStatus(code: string): PulloutStatus | null {
@@ -250,14 +286,16 @@ async function loadPullout(db: PostingDb | typeof prisma, tenantId: string, pull
   return { ...pullout, status, lines };
 }
 
-async function writeHistory(
+/** Serial history rows for pull-out events. Shared with the SAP check. */
+export async function writePulloutHistory(
   tx: PostingDb,
   input: {
     tenantId: string;
     userId: string;
     pulloutNo: string;
     serialNumberIds: string[];
-    status: string;
+    /** Null when the event does not change the unit's status. */
+    status: string | null;
     details: string;
   },
 ) {
@@ -548,7 +586,7 @@ async function approveInTx(
     status: "APPROVED",
     decidedById: actor.userId,
   });
-  await writeHistory(tx, {
+  await writePulloutHistory(tx, {
     tenantId: actor.tenantId,
     userId: actor.userId,
     pulloutNo: fresh.pulloutNo,
@@ -601,10 +639,11 @@ export const pulloutPostingService = {
       orderBy: { serialNumber: { serialNo: "asc" } },
       take: 300,
     });
-    const openDocs = await openDocumentIdsBySerial(
-      actor.tenantId,
-      rows.map((row) => row.serialNumberId),
-    );
+    const serialIds = rows.map((row) => row.serialNumberId);
+    const [openDocs, problems] = await Promise.all([
+      openDocumentIdsBySerial(actor.tenantId, serialIds),
+      recordedProblemsBySerial(actor.tenantId, serialIds),
+    ]);
     return rows.flatMap((row) => {
       if ((openDocs.get(row.serialNumberId) ?? []).length > 0) return [];
       const code = asHoldCode(row.statusCode.code);
@@ -617,6 +656,7 @@ export const pulloutPostingService = {
           skuCode: row.serialNumber.model.skuCode,
           modelName: row.serialNumber.model.name,
           inventoryCode: code,
+          recordedProblem: problems.get(row.serialNumberId) ?? null,
         },
       ];
     });
@@ -656,6 +696,14 @@ export const pulloutPostingService = {
             rejectedAt: true,
             rejectedBy: { select: { name: true } },
             rejectionRemarks: true,
+            sapDocType: true,
+            sapDocNum: true,
+            sapDocDate: true,
+            sapDocLinkedAt: true,
+            sapDocLinkedBy: { select: { name: true } },
+            redeliveryDelivery: {
+              select: { id: true, deliveryNo: true, drNo: true, branch: { select: { name: true } } },
+            },
             priorStatusCode: { select: { code: true } },
             reasonCode: { select: { name: true } },
             problemDescriptions: {
@@ -751,7 +799,26 @@ export const pulloutPostingService = {
         rejectedAt: line.rejectedAt?.toISOString() ?? null,
         rejectedByName: displayName(line.rejectedBy?.name),
         rejectionRemarks: line.rejectionRemarks,
+        sapDocument:
+          line.sapDocType && line.sapDocNum != null
+            ? {
+                type: line.sapDocType,
+                docNum: line.sapDocNum,
+                docDate: dateOnly(line.sapDocDate),
+                linkedAt: line.sapDocLinkedAt?.toISOString() ?? null,
+                linkedByName: displayName(line.sapDocLinkedBy?.name),
+              }
+            : null,
+        redelivery: line.redeliveryDelivery
+          ? {
+              deliveryId: line.redeliveryDelivery.id,
+              deliveryNo: line.redeliveryDelivery.deliveryNo,
+              drNo: line.redeliveryDelivery.drNo,
+              branchName: line.redeliveryDelivery.branch.name,
+            }
+          : null,
       })),
+      canCheckSap: isSettledPullout(pullout.statusCode.code),
       history: history.map((row) => ({
         id: row.id,
         action: row.action,
@@ -763,6 +830,7 @@ export const pulloutPostingService = {
 
   async create(actor: PostingActor, input: PulloutCreateInput) {
     await authorizePosting(actor, "pullout.create", input.branchId);
+    await authorizeCreateBranches(actor, [input.branchId]);
     const checklist = checklistBySerial(input.lines);
     const problemNames = await assertActiveChecklist(actor.tenantId, input.lines);
 
@@ -814,7 +882,7 @@ export const pulloutPostingService = {
           },
           select: { id: true, pulloutNo: true },
         });
-        await writeHistory(tx, {
+        await writePulloutHistory(tx, {
           tenantId: actor.tenantId,
           userId: actor.userId,
           pulloutNo: row.pulloutNo,
@@ -960,7 +1028,7 @@ export const pulloutPostingService = {
             userId: actor.userId,
             message: "A reserved serial on this pull-out could not be restored",
           });
-          await writeHistory(tx, {
+          await writePulloutHistory(tx, {
             tenantId: actor.tenantId,
             userId: actor.userId,
             pulloutNo: fresh.pulloutNo,
@@ -1119,7 +1187,7 @@ export const pulloutPostingService = {
           decidedById: actor.userId,
         });
         for (const prior of ["STK", "DEF"] as const) {
-          await writeHistory(tx, {
+          await writePulloutHistory(tx, {
             tenantId: actor.tenantId,
             userId: actor.userId,
             pulloutNo: fresh.pulloutNo,
@@ -1294,7 +1362,7 @@ export const pulloutPostingService = {
                 }),
           },
         });
-        await writeHistory(tx, {
+        await writePulloutHistory(tx, {
           tenantId: actor.tenantId,
           userId: actor.userId,
           pulloutNo: fresh.pulloutNo,
@@ -1368,7 +1436,7 @@ export const pulloutPostingService = {
             toStatusCodeId: nextStatusId,
             message: "This pull-out was updated by someone else",
           });
-          await writeHistory(tx, {
+          await writePulloutHistory(tx, {
             tenantId: actor.tenantId,
             userId: actor.userId,
             pulloutNo: fresh.pulloutNo,

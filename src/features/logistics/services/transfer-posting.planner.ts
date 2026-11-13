@@ -1,13 +1,14 @@
 /**
  * Branch transfer rules. A request reserves the units (RSV). Team leader approval
- * moves them to For transfer (FTR) on the same branch row and does not add
- * destination stock. Release puts them in transit (DIT) and moves the row to the
- * receiving branch, so the unit leaves the releasing branch's inventory and shows
- * as incoming at the receiver. The receiving branch then accepts each serial into
- * its stock (STK) or rejects it back to the releasing branch as STK. The releasing
- * team leader's whole-request reject still restores the code the line stored.
- * Transfers approved before FTR existed still hold RSV, so release takes RSV too,
- * and transfers released before the row moved keep DIT on the releasing branch.
+ * puts them in transit (DIT) and moves the row to the receiving branch, so the unit
+ * leaves the releasing branch's inventory and shows as incoming at the receiver.
+ * There is no Logistics release step. The receiving branch then accepts each serial
+ * into its stock (STK) or rejects it back to the releasing branch as STK. The
+ * releasing team leader's whole-request reject still restores the code the line stored.
+ *
+ * Legacy: transfers approved while Logistics still released them sit at For transfer
+ * (FTR units, or RSV from before FTR existed). Release still takes those, so they are
+ * not stuck. Transfers released before the row moved keep DIT on the releasing branch.
  */
 
 import type { TransferWorkflowCodeKey } from "@/features/logistics/constants/workflow-codes";
@@ -42,10 +43,11 @@ export interface TransferCreatePlan {
 
 export interface TransferApprovePlan {
   ok: true;
-  nextStatus: "for_transfer";
+  nextStatus: "in_transit";
   /**
-   * Every unit moves to FTR. fromCode is RSV for a normal request, or STK/DEF on
-   * legacy rows that were never reserved. priorCode is what the line records.
+   * Every unit moves to DIT at the receiving branch. fromCode is RSV for a normal
+   * request, or STK/DEF on legacy rows that were never reserved. priorCode is what
+   * the line records.
    */
   moves: { serialNumberId: string; fromCode: HoldCode | "RSV"; priorCode: HoldCode }[];
   idempotent: boolean;
@@ -59,7 +61,7 @@ export interface TransferRejectPlan {
   idempotent: boolean;
 }
 
-/** FTR after approval. RSV on transfers approved before FTR existed. */
+/** Legacy release only: FTR, or RSV on transfers approved before FTR existed. */
 export type TransferReleaseFromCode = "FTR" | "RSV";
 
 export interface TransferReleasePlan {
@@ -71,7 +73,7 @@ export interface TransferReleasePlan {
 
 export interface TransferReceivePlan {
   ok: true;
-  nextStatus: "for_transfer" | "in_transit" | "accepted" | "rejected" | "completed";
+  nextStatus: TransferHeaderAfterLines;
   /**
    * Every decided unit becomes STK. fromCode is the hold being cleared and
    * atBranchId the branch that holds the row now (releasing or receiving).
@@ -81,14 +83,14 @@ export interface TransferReceivePlan {
 }
 
 export type TransferHeaderAfterLines =
-  | "for_transfer"
   | "in_transit"
   | "accepted"
   | "rejected"
   | "completed";
 
 const APPROVABLE: readonly TransferStatus[] = ["pending_tl", "requested"];
-const RELEASABLE: readonly TransferStatus[] = ["for_transfer", "approved"];
+/** Approved while Logistics still released transfers. New approvals never land here. */
+const LEGACY_RELEASABLE: readonly TransferStatus[] = ["for_transfer", "approved"];
 
 function missingPrior(serialNumberId: string): PlanFailure {
   return {
@@ -153,13 +155,11 @@ export function planTransferApprove(input: {
     return { ok: false, error: "This transfer has no serials to approve" };
   }
 
-  if (input.status === "for_transfer") {
-    if (!input.lines.every((line) => isApprovedHold(line.inventoryCode))) {
-      return { ok: false, error: "Units on this transfer have changed since approval" };
-    }
+  // Already approved: a repeated approve only reprints the slips.
+  if (input.status === "in_transit" || LEGACY_RELEASABLE.includes(input.status)) {
     return {
       ok: true,
-      nextStatus: "for_transfer",
+      nextStatus: "in_transit",
       moves: [],
       idempotent: true,
       destinationStockAdded: false,
@@ -190,14 +190,14 @@ export function planTransferApprove(input: {
 
   return {
     ok: true,
-    nextStatus: "for_transfer",
+    nextStatus: "in_transit",
     moves,
     idempotent: false,
     destinationStockAdded: false,
   };
 }
 
-/** Approval holds every unit, so a held code at release means it was approved. */
+/** A legacy approval held every unit, so a held code at release means it was approved. */
 function isApprovedHold(code: InventoryCode | null): code is TransferReleaseFromCode {
   return code === "FTR" || code === "RSV";
 }
@@ -223,7 +223,7 @@ export function planTransferReject(input: {
   return { ok: true, nextStatus: "rejected", restores, idempotent: false };
 }
 
-/** The receiving branch decides only after Logistics releases the transfer. */
+/** The receiving branch decides only once the transfer is in transit (after TL approval). */
 const RECEIVABLE: readonly TransferStatus[] = ["in_transit"];
 
 function openLines<T extends { decision?: TransferLineDecision }>(lines: readonly T[]): T[] {
@@ -254,13 +254,14 @@ export function headerAfterLineDecisions(
       }
     }
   }
-  if (pending > 0) return accepted + rejected > 0 ? "in_transit" : "for_transfer";
+  if (pending > 0) return "in_transit";
   if (accepted > 0 && rejected > 0) return "completed";
   if (accepted > 0) return "accepted";
   if (rejected > 0) return "rejected";
-  return "for_transfer";
+  return "in_transit";
 }
 
+/** Legacy only: moves a transfer approved before TL approval sent units in transit. */
 export function planTransferRelease(input: {
   status: TransferStatus;
   lines: readonly Pick<TransferLineView, "serialNumberId" | "priorCode" | "inventoryCode" | "decision">[];
@@ -282,8 +283,8 @@ export function planTransferRelease(input: {
     return { ok: true, nextStatus: "in_transit", moves: [], idempotent: true };
   }
 
-  if (!RELEASABLE.includes(input.status)) {
-    return { ok: false, error: "Release the transfer only after Team Lead approval" };
+  if (!LEGACY_RELEASABLE.includes(input.status)) {
+    return { ok: false, error: "Only a transfer waiting for release can be released" };
   }
 
   const moves: TransferReleasePlan["moves"] = [];
@@ -312,7 +313,7 @@ function lineIsAccepted(line: TransferLineView, toBranchId: string): boolean {
  * The hold a pending line clears when the receiving branch decides it, with the
  * branch holding the row. DIT sits at the receiving branch, or at the releasing
  * branch on transfers released before the row moved. RSV only remains at the
- * releasing branch, from transfers part-decided before release was required.
+ * releasing branch, from transfers part-decided before receiving required transit.
  */
 function awaitingDecision(
   line: Pick<TransferLineView, "inventoryCode" | "branchId">,
@@ -376,7 +377,7 @@ export function planTransferReceive(input: {
   }
 
   if (!RECEIVABLE.includes(input.status)) {
-    return { ok: false, error: "Accept serials only after Logistics releases this transfer" };
+    return { ok: false, error: "Accept serials only once this transfer is in transit" };
   }
 
   const moves: TransferReceivePlan["moves"] = [];
@@ -429,7 +430,7 @@ export function planTransferSerialReject(input: {
     return { ok: false, error: "This transfer has no serials to reject" };
   }
   if (!RECEIVABLE.includes(input.status)) {
-    return { ok: false, error: "Reject serials only after Logistics releases this transfer" };
+    return { ok: false, error: "Reject serials only once this transfer is in transit" };
   }
   const line = input.lines.find((row) => row.serialNumberId === input.serialNumberId);
   if (!line) return { ok: false, error: "That serial is not on this transfer" };
