@@ -34,6 +34,7 @@ jest.mock("@/lib/auth/permissions", () => ({
 jest.mock("@/features/logistics/services/posting-support", () => ({
   ...jest.requireActual("@/features/logistics/services/posting-support"),
   authorizePosting: jest.fn(),
+  authorizeCreateBranches: jest.fn(),
   lockSerialsThenInventoryRows: jest.fn(),
   openDocumentIdsBySerial: jest.fn(async () => new Map()),
   assertMovable: jest.fn(),

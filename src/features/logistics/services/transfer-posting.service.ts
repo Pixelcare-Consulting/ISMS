@@ -39,6 +39,7 @@ import {
   asInventoryCode,
   assertMovable,
   authorizeBranchScope,
+  authorizeCreateBranches,
   authorizePosting,
   claimHeader,
   claimInventory,
@@ -275,14 +276,25 @@ function freshTransferNo(previous?: string): string {
 }
 
 async function inventoryIds(tenantId: string) {
-  const [stk, def, rsv, dit, ftr] = await Promise.all([
+  const [stk, def, rsv, dit] = await Promise.all([
     reasonStatusService.requireCodeId(tenantId, "inventory_system", "STK"),
     reasonStatusService.requireCodeId(tenantId, "inventory_system", "DEF"),
     reasonStatusService.requireCodeId(tenantId, "inventory_system", "RSV"),
     reasonStatusService.requireCodeId(tenantId, "inventory_system", "DIT"),
-    reasonStatusService.requireCodeId(tenantId, "inventory_system", "FTR"),
   ]);
-  return { STK: stk, DEF: def, RSV: rsv, DIT: dit, FTR: ftr };
+  return { STK: stk, DEF: def, RSV: rsv, DIT: dit };
+}
+
+/**
+ * FTR is only read by the legacy release. Nothing writes it since approval sends units in
+ * transit, so a tenant whose status settings lack it has no FTR units and must not be blocked.
+ */
+async function legacyReleaseCodeIds(tenantId: string) {
+  const [codes, ftr] = await Promise.all([
+    inventoryIds(tenantId),
+    reasonStatusService.findCodeId(tenantId, "inventory_system", "FTR"),
+  ]);
+  return { ...codes, FTR: ftr };
 }
 
 async function workflowId(tenantId: string, code: TransferWorkflowCodeKey) {
@@ -861,6 +873,7 @@ export const transferPostingService = {
     },
   ) {
     await authorizePosting(actor, "transfer.create", input.fromBranchId);
+    await authorizeCreateBranches(actor, [input.fromBranchId, input.toBranchId]);
     await assertSameDealerGroup(actor.tenantId, input.fromBranchId, input.toBranchId);
     const serials = await loadAllocatable(actor.tenantId, input.fromBranchId, input.serialNumberIds);
     const plan = planTransferCreate({
@@ -990,7 +1003,7 @@ export const transferPostingService = {
       };
     }
 
-    const codes = await inventoryIds(actor.tenantId);
+    const codes = await legacyReleaseCodeIds(actor.tenantId);
     const nextStatusId = await workflowId(actor.tenantId, "in_transit");
     const fromIds = await Promise.all(
       (["pending_tl", "requested"] as const).map((code) => workflowId(actor.tenantId, code)),
@@ -1188,7 +1201,7 @@ export const transferPostingService = {
     if (!preview.ok) throw new Error(preview.error);
     if (preview.idempotent) return { id: current.id, idempotent: true, movedCount: 0 };
 
-    const codes = await inventoryIds(actor.tenantId);
+    const codes = await legacyReleaseCodeIds(actor.tenantId);
     const nextStatusId = await workflowId(actor.tenantId, "in_transit");
     const fromIds = await Promise.all(
       (["for_transfer", "approved"] as const).map((code) => workflowId(actor.tenantId, code)),
@@ -1212,11 +1225,13 @@ export const transferPostingService = {
         // The row moves to the receiving branch, so the unit shows there as incoming
         // and no longer counts at the releasing branch.
         for (const from of ["FTR", "RSV"] as const) {
+          const fromStatusCodeId = codes[from];
+          if (!fromStatusCodeId) continue;
           await claimInventory(tx, {
             tenantId: actor.tenantId,
             branchId: fresh.fromBranchId,
             serialNumberIds: plan.moves.filter((move) => move.fromCode === from).map((move) => move.serialNumberId),
-            fromStatusCodeId: codes[from],
+            fromStatusCodeId,
             toStatusCodeId: codes.DIT,
             userId: actor.userId,
             message: "Some serials are not approved for transfer",

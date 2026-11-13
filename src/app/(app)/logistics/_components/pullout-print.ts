@@ -1,44 +1,44 @@
-import { shipmentPrintDocument } from "@/app/(app)/logistics/_components/shipment-print";
+import type { SlipDocument } from "@/app/(app)/logistics/_components/slip-print";
 import { PULLOUT_WORKFLOW_CODE } from "@/features/logistics/constants/workflow-codes";
-import { manilaDateTimeInputValue } from "@/features/logistics/lib/shipment";
+import { formatManilaDate, shipmentIsReady } from "@/features/logistics/lib/shipment";
 import type { PulloutDetail } from "@/features/logistics/services/pullout-posting.service";
 
 type PrintedLine = PulloutDetail["lines"][number];
 
-/** Older pull-outs hold one reason on the header instead of one per unit. */
-function reasonText(line: PrintedLine, headerReason: string | undefined): string {
+const RETURN_SLIP_LEGEND = ["PAGE 1: BRANCH COPY", "PAGE 2: ACCOUNTING COPY"] as const;
+
+/**
+ * "DEFECTIVE UNIT / WITH LINE ON SCREEN / Remarks: Horizontal Bars on Screen". Older pull-outs
+ * hold one reason on the header instead of one per unit.
+ */
+function itemNote(line: PrintedLine, headerReason: string | undefined): string {
   const reason = line.reasonName ?? headerReason;
-  const problems = line.problemDescriptionNames.join(", ");
-  return [reason, problems].filter(Boolean).join(": ") || "—";
+  const condition = [reason, ...line.problemDescriptionNames]
+    .map((part) => part?.trim().toUpperCase())
+    .filter(Boolean);
+  const remarks = line.remarks?.trim();
+  return [...condition, ...(remarks ? [`Remarks: ${remarks}`] : [])].join(" / ");
 }
 
-/** Null until the waybill, courier and schedule are saved, so the slip uses saved values only. */
-export function pulloutPrintDocument(detail: PulloutDetail) {
+/** Pull-out slip. Null until the waybill, courier and schedule are saved, and on cancelled pull-outs. */
+export function pulloutPrintDocument(detail: PulloutDetail): SlipDocument | null {
   if (detail.status.code === PULLOUT_WORKFLOW_CODE.cancelled) return null;
-  return shipmentPrintDocument({
-    title: "Pull-out",
-    documentNo: detail.pulloutNo,
-    shipment: {
-      waybillNo: detail.waybillNo,
-      courierName: detail.courierName,
-      // Print shows a calendar date, so take the Manila date rather than the UTC one.
-      scheduledAt: manilaDateTimeInputValue(detail.scheduledAt).slice(0, 10) || null,
-      scheduledByName: detail.scheduledByName,
-    },
-    fields: [
-      { label: "Branch", value: detail.branch.name },
-      ...(detail.warehouse
-        ? [{ label: "Destination warehouse", value: `${detail.warehouse.name} (${detail.warehouse.code})` }]
-        : []),
-    ],
-    lines: detail.lines
+  if (!shipmentIsReady(detail)) return null;
+  return {
+    title: "PULL-OUT SLIP",
+    number: detail.pulloutNo,
+    customer: detail.branch.name,
+    // The slip shows a calendar date, so take the Manila date rather than the UTC one.
+    date: formatManilaDate(detail.scheduledAt),
+    address: "",
+    items: detail.lines
       .filter((line) => !line.rejectedAt)
       .map((line) => ({
-        model: `${line.skuCode} ${line.modelName}`,
-        detail: [line.serialNo, line.priorCode].filter(Boolean).join(" · "),
-        extras: [reasonText(line, detail.reason?.name), line.remarks?.trim() || "—"],
+        modelCode: line.skuCode,
+        serialNo: line.serialNo,
+        note: itemNote(line, detail.reason?.name),
       })),
-    lineHeaders: { model: "Model", detail: "Serial number" },
-    extraHeaders: ["Reason", "Remarks"],
-  });
+    copyLegend: RETURN_SLIP_LEGEND,
+    copiesPerPage: 2,
+  };
 }

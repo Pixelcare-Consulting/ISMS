@@ -36,8 +36,12 @@ import {
 } from "@/features/logistics/services/delivery-transfer.service";
 import { PULLOUT_DEFECTIVE_REASON_CODE } from "@/features/logistics/services/pullout-posting.planner";
 import { pulloutPostingService } from "@/features/logistics/services/pullout-posting.service";
+import { checkPulloutInSap } from "@/features/logistics/services/pullout-sap-check.service";
 import { transferPostingService } from "@/features/logistics/services/transfer-posting.service";
-import type { PostingActor } from "@/features/logistics/services/posting-support";
+import {
+  resolveCreateBranchScope,
+  type PostingActor,
+} from "@/features/logistics/services/posting-support";
 import type {
   DeliveryListSort,
   LogisticsListSortDir,
@@ -59,7 +63,6 @@ import {
   pulloutSchema,
 } from "@/features/logistics/schemas/pullout.schema";
 import { transferLineRemarksSchema } from "@/features/logistics/lib/transfer-line-remarks";
-import { parseSapDocNum, PULLOUT_SAP_DOC_TYPES } from "@/features/logistics/lib/pullout-sap-document";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
@@ -795,51 +798,33 @@ export async function releasePulloutAction(id: string) {
   }
 }
 
-const pulloutSapDocumentLinkSchema = z.object({
-  serialNumberIds: z.array(z.string().min(1)).min(1, "Select the units this SAP document covers").max(500),
-  docType: z.enum(PULLOUT_SAP_DOC_TYPES),
-  docNum: z.string().transform((value, ctx) => {
-    const parsed = parseSapDocNum(value);
-    if (parsed == null) {
-      ctx.addIssue({ code: "custom", message: "Enter the SAP document number (digits only)" });
-      return z.NEVER;
-    }
-    return parsed;
-  }),
-});
-
-/** Links sent pull-out units to the IT or Return a user created by hand in SAP. */
-export async function linkPulloutSapDocumentAction(id: string, input: unknown) {
+/**
+ * Looks up the IT/Return SAP users made for a sent pull-out (row UDF `ISMS_Pullout_Number`),
+ * links the units and marks them Pulled out, then follows any DR that redelivered them.
+ */
+export async function checkPulloutSapAction(id: string) {
   const session = await requirePermission(LOGISTICS_MANAGE);
-  const parsed = pulloutSapDocumentLinkSchema.safeParse(input);
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid SAP document" };
-  }
+  if (!id) return { error: "Choose a pull-out" };
   try {
-    const result = await pulloutPostingService.linkSapDocument(postingActor(session), id, parsed.data);
+    const result = await checkPulloutInSap(postingActor(session), id);
     revalidatePullout(id);
-    return { success: true as const, label: result.label, linkedCount: result.linkedCount };
+    if (result.redeliveries.length > 0) revalidatePath("/logistics/deliveries");
+    return { success: true as const, result };
   } catch (error) {
-    return actionError(error, "Failed to link the SAP document");
+    return actionError(error, "Failed to check SAP");
   }
 }
 
-export async function unlinkPulloutSapDocumentAction(id: string, serialNumberId: string) {
-  const session = await requirePermission(LOGISTICS_MANAGE);
-  if (!serialNumberId) return { error: "Choose a unit" };
-  try {
-    await pulloutPostingService.unlinkSapDocument(postingActor(session), id, serialNumberId);
-    revalidatePullout(id);
-    return { success: true as const };
-  } catch (error) {
-    return actionError(error, "Failed to unlink the SAP document");
-  }
-}
-
+/** Branches for the create forms: only the person's area-of-responsibility branches, all when they have none. */
 export async function listBranchesForLogisticsAction() {
   const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
+  const scope = await resolveCreateBranchScope(session.user.tenantId, session.user.id);
   return prisma.branch.findMany({
-    where: { tenantId: session.user.tenantId, deletedAt: null },
+    where: {
+      tenantId: session.user.tenantId,
+      deletedAt: null,
+      ...(scope === null ? {} : { id: { in: scope } }),
+    },
     orderBy: { name: "asc" },
     select: { id: true, name: true, dealerId: true },
   });

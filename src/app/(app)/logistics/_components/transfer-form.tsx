@@ -5,6 +5,8 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useState, useT
 import { toast } from "sonner";
 
 import { LogisticsHistoryBody } from "@/app/(app)/logistics/_components/logistics-detail-ui";
+import { printSlips } from "@/app/(app)/logistics/_components/slip-print";
+import { transferSlipDocuments } from "@/app/(app)/logistics/_components/transfer-print";
 import { transferAuditLabel, TransferTracker } from "@/app/(app)/logistics/_components/transfer-tracker";
 import {
   CompactLineTable,
@@ -40,7 +42,6 @@ import {
 } from "@/features/logistics/lib/transfer-line-remarks";
 import { canApproveTransferAt } from "@/features/logistics/lib/transfer-approver";
 import { nextTransferNo } from "@/features/logistics/lib/transfer-number";
-import { printTransferSlips } from "@/features/logistics/lib/transfer-slip-print";
 import { loadPrintLetterhead } from "@/features/settings/lib/load-print-letterhead";
 import type {
   TransferDetail,
@@ -901,20 +902,7 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
       }
       const slip = action.type === "approve" ? approvedSlip(result) : null;
       if (slip) {
-        printTransferSlips(
-          {
-            transferNo: slip.transferNo || detail.transferNo,
-            rsNo: slip.rsNo,
-            drNo: slip.drNo,
-            fromBranch: detail.fromBranch.name,
-            toBranch: detail.toBranch.name,
-            lines: detail.lines.map((line) => ({
-              serialNo: line.serialNo,
-              model: modelLabel({ skuCode: line.skuCode, name: line.modelName }),
-            })),
-          },
-          await loadPrintLetterhead(),
-        );
+        printSlips(transferSlipDocuments(detail, slip), await loadPrintLetterhead());
       }
       toast.success(successMessage(action));
       setPendingConfirm(null);
@@ -1410,32 +1398,15 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
   },
 );
 
-function approvedSlip(result: object): { rsNo: string; drNo: string; transferNo: string } | null {
-  const row = result as { rsNo?: unknown; drNo?: unknown; transferNo?: unknown };
+function approvedSlip(result: object): { rsNo: string; drNo: string } | null {
+  const row = result as { rsNo?: unknown; drNo?: unknown };
   if (typeof row.rsNo !== "string" || typeof row.drNo !== "string") return null;
-  return {
-    rsNo: row.rsNo,
-    drNo: row.drNo,
-    transferNo: typeof row.transferNo === "string" ? row.transferNo : "",
-  };
+  return { rsNo: row.rsNo, drNo: row.drNo };
 }
 
 async function printCurrentSlips(detail: TransferDetail) {
   if (!detail.rsNo || !detail.drNo) return;
-  printTransferSlips(
-    {
-      transferNo: detail.transferNo,
-      rsNo: detail.rsNo,
-      drNo: detail.drNo,
-      fromBranch: detail.fromBranch.name,
-      toBranch: detail.toBranch.name,
-      lines: detail.lines.map((line) => ({
-        serialNo: line.serialNo,
-        model: modelLabel({ skuCode: line.skuCode, name: line.modelName }),
-      })),
-    },
-    await loadPrintLetterhead(),
-  );
+  printSlips(transferSlipDocuments(detail), await loadPrintLetterhead());
 }
 
 function runTransferAction(id: string, action: PendingConfirm, remarks: string) {

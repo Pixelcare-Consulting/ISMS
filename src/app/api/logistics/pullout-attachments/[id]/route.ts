@@ -7,6 +7,7 @@ import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/auth/permissions";
 import { toAppSession } from "@/lib/auth/session";
 import { getObjectStorage } from "@/lib/storage";
+import { inlineContentDisposition } from "@/lib/storage/document-attachment-rules";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -29,11 +30,10 @@ export async function GET(_request: Request, context: RouteContext) {
 
   try {
     const { buffer } = await getObjectStorage().download(attachment.storagePath);
-    const encodedName = encodeURIComponent(attachment.fileName).replace(/['()*]/g, escape);
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
         "Content-Type": attachment.mimeType,
-        "Content-Disposition": `inline; filename*=UTF-8''${encodedName}`,
+        "Content-Disposition": inlineContentDisposition(attachment.fileName),
         "X-Content-Type-Options": "nosniff",
         "Cache-Control": "private, no-store",
       },

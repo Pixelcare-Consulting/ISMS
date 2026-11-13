@@ -4,7 +4,7 @@ import {
 } from "@/features/logistics/constants/workflow-codes";
 
 /** Closed inventory codes from the seeded inventory system list. */
-export type InventoryCode = "DIT" | "STK" | "SLD" | "OFS" | "RSV" | "DEF" | "FPO" | "FTR" | "FW";
+export type InventoryCode = "DIT" | "STK" | "SLD" | "OFS" | "RSV" | "DEF" | "FPO" | "FTR" | "FW" | "PO";
 
 /** Codes a transfer or pull-out may hold and later restore. */
 export type HoldCode = "STK" | "DEF";
@@ -72,6 +72,8 @@ function blockedInventoryMessage(code: Exclude<InventoryCode, HoldCode>): string
       return "is already approved for transfer";
     case "FW":
       return "is marked to follow";
+    case "PO":
+      return "was pulled out";
     default: {
       const unreachable: never = code;
       return unreachable;
@@ -107,6 +109,7 @@ export function classifyAllocation(serial: AllocatableSerial): { ok: true; prior
     case "FPO":
     case "FTR":
     case "FW":
+    case "PO":
       return { ok: false, error: `${label} ${blockedInventoryMessage(code)} and cannot be allocated` };
     default: {
       const unreachable: never = code;

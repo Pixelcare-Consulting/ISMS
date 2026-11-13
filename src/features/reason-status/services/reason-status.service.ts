@@ -11,6 +11,12 @@ export const reasonStatusService = {
     return reasonStatusRepository.listActiveCodesByCategory(tenantId, category);
   },
 
+  /** The code's id, or null when this tenant's status settings do not have it. */
+  async findCodeId(tenantId: string, category: ReasonStatusCategory, code: string) {
+    const row = await reasonStatusRepository.findCodeId(tenantId, category, code);
+    return row?.id ?? null;
+  },
+
   async requireCodeId(tenantId: string, category: ReasonStatusCategory, code: string) {
     const row = await reasonStatusRepository.findCodeId(tenantId, category, code);
     if (!row) {

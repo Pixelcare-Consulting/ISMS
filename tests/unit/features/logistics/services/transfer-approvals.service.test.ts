@@ -35,6 +35,7 @@ jest.mock("@/features/notifications/services/notification.service", () => ({
 jest.mock("@/features/logistics/services/posting-support", () => ({
   ...jest.requireActual("@/features/logistics/services/posting-support"),
   authorizePosting: jest.fn(),
+  authorizeCreateBranches: jest.fn(),
   authorizeBranchScope: jest.fn(),
   assertMovable: jest.fn(),
   claimInventory: jest.fn(),
@@ -51,11 +52,15 @@ jest.mock("@/features/reason-status/services/reason-status.service", () => ({
     requireCodeId: jest.fn(
       async (_tenantId: string, category: string, code: string) => `${category}-${code}`,
     ),
+    findCodeId: jest.fn(
+      async (_tenantId: string, category: string, code: string) => `${category}-${code}`,
+    ),
   },
 }));
 
 import * as dbClient from "@/lib/database/client";
-import { claimInventory } from "@/features/logistics/services/posting-support";
+import { authorizeCreateBranches, claimInventory } from "@/features/logistics/services/posting-support";
+import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { aorRepository } from "@/features/aors/repositories/aor.repository";
 import { transferPostingService } from "@/features/logistics/services/transfer-posting.service";
 import { notificationService } from "@/features/notifications/services/notification.service";
@@ -339,6 +344,25 @@ describe("serial status through the transfer", () => {
         toStatusCodeId: "inventory_system-RSV",
       }),
     );
+  });
+
+  it("creates the request when the tenant's status settings have no FTR code", async () => {
+    const requireCodeId = jest.mocked(reasonStatusService.requireCodeId);
+    requireCodeId.mockImplementation(async (_tenantId, category, code) => {
+      if (code === "FTR") throw new Error("Status code not configured: inventory_system/FTR");
+      return `${category}-${code}`;
+    });
+
+    await requestTransfer();
+
+    expect(requireCodeId).not.toHaveBeenCalledWith(expect.anything(), "inventory_system", "FTR");
+    expect(claim).toHaveBeenCalled();
+  });
+
+  it("checks both branches against the requester's area of responsibility", async () => {
+    await requestTransfer();
+
+    expect(authorizeCreateBranches).toHaveBeenCalledWith(actor, ["b1", "b2"]);
   });
 
   it("moves reserved units in transit to the receiving branch on approval", async () => {

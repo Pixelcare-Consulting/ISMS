@@ -26,7 +26,7 @@ export const TRANSFERS_MODULE_GUIDE: ModuleGuideContent = {
 export const PULLOUTS_MODULE_GUIDE: ModuleGuideContent = {
   title: "Pull-outs",
   description:
-    "Take units out of a branch. Branch requests (units reserved) → TL approves (For pull-out) → Logistics saves the list and sends it (Pull-out in transit). The pull-out ends there.",
+    "Take units out of a branch. Branch requests (units reserved) → TL approves (For pull-out) → Logistics saves the list and sends it (Pull-out in transit) → Check SAP finds the IT or Return by the pull-out number and marks the units Pulled out.",
   tips: [
     { label: "One pull-out can hold stock and defective units. Stock units need a reason and classification, defective units a problem description" },
     { label: "A rejected request releases the units back to their branch status" },

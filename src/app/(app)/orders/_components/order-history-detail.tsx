@@ -105,6 +105,7 @@ export function OrderHistoryDetailView({ order }: { order: OrderHistoryDetail })
       sapDocument={orderSapDocumentFields({ sapDocType: order.sapDocType, sapDocNum: order.sapDocNum })}
       createdByName={order.createdByName}
       notes={order.notes}
+      attachments={order.attachments}
       deliveryDueLabel={formatOrderHistoryWhen(order.deliveryDueDate)}
       reviewSnapshot={order.reviewSnapshot}
       steps={steps}

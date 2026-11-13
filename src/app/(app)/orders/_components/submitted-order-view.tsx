@@ -85,6 +85,7 @@ export function SubmittedOrderView({ order }: { order: SubmittedOrderSummary }) 
       })}
       createdByName={order.createdByName}
       notes={order.notes}
+      attachments={order.attachments}
       reviewSnapshot={order.reviewSnapshot}
       steps={steps}
       lines={submittedLines(order)}

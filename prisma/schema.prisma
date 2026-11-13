@@ -426,6 +426,7 @@ model User {
   branchPulloutLinesRejected         BranchPulloutLine[]           @relation("BranchPulloutLineRejectedBy")
   branchPulloutLinesSapDocLinked     BranchPulloutLine[]           @relation("BranchPulloutLineSapDocLinkedBy")
   branchPulloutAttachmentsUploaded   BranchPulloutAttachment[]     @relation("BranchPulloutAttachmentUploadedBy")
+  branchOrderAttachmentsUploaded     BranchOrderAttachment[]       @relation("BranchOrderAttachmentUploadedBy")
   branchPulloutsCreated              BranchPullout[]               @relation("BranchPulloutCreatedBy")
   serialNumbersCreated               SerialNumber[]                @relation("SerialNumberCreatedBy")
   branchTransfersCreated             BranchTransfer[]              @relation("BranchTransferCreatedBy")
@@ -2293,11 +2294,31 @@ model BranchOrder {
   approvalLevels           BranchOrderApprovalLevel[]
   deliveries               BranchDelivery[]
   aiReplenishmentProposals AiReplenishmentProposal[]
+  attachments              BranchOrderAttachment[]
 
   @@unique([tenantId, orderNumber])
   @@index([tenantId, branchId, status])
   @@index([tenantId, processedAt])
   @@map("branch_orders")
+}
+
+/// File the requestor attached to an order. The file itself is in object storage.
+model BranchOrderAttachment {
+  id           String   @id @default(cuid())
+  orderId      String   @map("order_id")
+  fileName     String   @map("file_name")
+  storagePath  String   @map("storage_path")
+  mimeType     String   @map("mime_type")
+  sizeBytes    Int      @map("size_bytes")
+  uploadedById String   @map("uploaded_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  order      BranchOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  uploadedBy User        @relation("BranchOrderAttachmentUploadedBy", fields: [uploadedById], references: [id])
+
+  @@index([orderId])
+  @@index([uploadedById])
+  @@map("branch_order_attachments")
 }
 
 model BranchOrderDetail {
@@ -2412,6 +2433,7 @@ model BranchDelivery {
   backloads  BranchBackload[]
   returnRequests DeliveryReturnRequest[]
   transfers  DeliveryTransfer[]
+  redeliveredPulloutLines BranchPulloutLine[] @relation("BranchPulloutLineRedelivery")
 
   @@unique([tenantId, deliveryNo])
   @@unique([tenantId, orderId])
@@ -2557,6 +2579,9 @@ model BranchPulloutLine {
   sapDocDate              DateTime? @map("sap_doc_date") @db.Date
   sapDocLinkedAt          DateTime? @map("sap_doc_linked_at")
   sapDocLinkedById        String?   @map("sap_doc_linked_by_id")
+  /// ISMS delivery made when SAP redelivered this pulled-out unit (a DR copied from its Return,
+  /// or carrying the pull-out number). The unit went PO → DIT at that delivery\'s branch.
+  redeliveryDeliveryId    String?   @map("redelivery_delivery_id")
 
   pullout                 BranchPullout                           @relation(fields: [pulloutId], references: [id], onDelete: Cascade)
   serialNumber            SerialNumber                            @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
@@ -2567,6 +2592,7 @@ model BranchPulloutLine {
   reasonCode              ReasonStatusCode?                       @relation("PulloutLineReason", fields: [reasonCodeId], references: [id], onDelete: SetNull)
   rejectedBy              User?                                   @relation("BranchPulloutLineRejectedBy", fields: [rejectedById], references: [id], onDelete: SetNull)
   sapDocLinkedBy          User?                                   @relation("BranchPulloutLineSapDocLinkedBy", fields: [sapDocLinkedById], references: [id], onDelete: SetNull)
+  redeliveryDelivery      BranchDelivery?                         @relation("BranchPulloutLineRedelivery", fields: [redeliveryDeliveryId], references: [id], onDelete: SetNull)
   classifications         BranchPulloutLineClassification[]
   problemDescriptions     BranchPulloutLineProblemDescription[]
   packingConditions       BranchPulloutLinePackingCondition[]
@@ -2581,6 +2607,7 @@ model BranchPulloutLine {
   @@index([rejectedById])
   @@index([sapDocLinkedById])
   @@index([sapDocType, sapDocNum])
+  @@index([redeliveryDeliveryId])
   @@map("branch_pullout_lines")
 }
 
