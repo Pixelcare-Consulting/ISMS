@@ -13,6 +13,10 @@ import {
   rejectScReturnAction,
 } from "@/features/service-center-ops/actions/sc-sales.actions";
 import type { ReturnsActionCapabilities } from "@/features/returns/constants/returns-permissions";
+import {
+  isReturnHistoryStatus,
+  SERVICE_RETURNED_REPLACED_STATUS,
+} from "@/features/sales/constants/return-history-status";
 import { useClientTablePagination } from "@/components/data-table";
 import {
   DataTable,
@@ -50,7 +54,9 @@ export function ScReturnsPanel({
           row.serviceCenter.name,
           row.serialNumber?.serialNo ?? "",
           row.atrStatus,
-          row.returnRequest?.status ?? "",
+          row.returnRequest && isReturnHistoryStatus(row.returnRequest.status)
+            ? SERVICE_RETURNED_REPLACED_STATUS
+            : (row.returnRequest?.status ?? ""),
           row.returnRequest?.requestNotes ?? "",
         ]),
       ),
@@ -61,7 +67,10 @@ export function ScReturnsPanel({
     txn: (row) => row.transactionNo,
     center: (row) => row.serviceCenter.name,
     atr: (row) => row.atrStatus,
-    status: (row) => row.returnRequest?.status ?? "",
+    status: (row) =>
+      row.returnRequest && isReturnHistoryStatus(row.returnRequest.status)
+        ? SERVICE_RETURNED_REPLACED_STATUS
+        : (row.returnRequest?.status ?? ""),
   });
   const {
     page,
@@ -145,7 +154,11 @@ export function ScReturnsPanel({
         enableSorting: true,
         cell: ({ row }) =>
           row.original.returnRequest ? (
-            <Badge variant="outline">{row.original.returnRequest.status}</Badge>
+            <Badge variant="outline">
+              {isReturnHistoryStatus(row.original.returnRequest.status)
+                ? SERVICE_RETURNED_REPLACED_STATUS
+                : row.original.returnRequest.status.replaceAll("_", " ")}
+            </Badge>
           ) : (
             "—"
           ),

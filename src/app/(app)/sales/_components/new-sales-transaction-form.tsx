@@ -26,7 +26,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { manilaTodayIso } from "@/features/orders/utils/manila-calendar";
 import {
   createSaleAction,
   listStockSourceBranchesForSalesAction,
@@ -35,6 +34,7 @@ import {
 import { isToFollowSerial } from "@/features/sales/constants/to-follow-serial";
 import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
 import { SALE_PROOF_MAX_FILES } from "@/features/sales/utils/sale-proof";
+import { earliestSaleTransactionIso } from "@/features/sales/utils/transaction-date";
 import { formatPeso } from "@/utils/format-currency";
 
 interface SalesBranchOption {
@@ -417,7 +417,7 @@ export function NewSalesTransactionForm({
             <Input
               id="sale-date"
               type="date"
-              min={manilaTodayIso()}
+              min={earliestSaleTransactionIso()}
               value={transactionDate}
               onChange={(e) => setTransactionDate(e.target.value)}
             />

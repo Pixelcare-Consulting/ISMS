@@ -55,6 +55,12 @@ import {
   isDealerInitiatedDocumentTypeName,
   isServiceDocumentTypeName,
 } from "@/features/sales/constants/process-return";
+import {
+  isReturnHistoryStatus,
+  returnHistoryStatusLabel,
+  returnHistoryStatusRef,
+  returnRequestAppliesToLine,
+} from "@/features/sales/constants/return-history-status";
 import { generateAndStoreAtrOdrfPdf } from "@/features/sales/services/atr-odrf-pdf";
 import {
   SALES_ACCESS_PERMISSIONS,
@@ -172,13 +178,13 @@ function resolveSalesAtrStatusCode(
 
 /**
  * List/details STATUS preference (never live inventory):
- * 1) Active ATR return workflow (pending CS/TL/approved/rejected) — details / returns only
- * 2) Closed ATR header
+ * 1) Returned/Replaced or Service Returned/Replaced while a return is open or finished
+ * 2) Closed ATR header (no return history status)
  * 3) Frozen detail.statusCode (FW / SLD / RSV / OFS)
  * 4) Legacy derive from serial + atrStatus
  *
- * Sales list passes returnStatus=null and filters to SLD/OFS/FW so return badges
- * never appear there (see salesListDetailWhere).
+ * The product return status stays through request, approval, and completion.
+ * Rejected requests fall through so the sale shows its inventory status again.
  */
 function resolveLineStatusCode(
   detail: {
@@ -189,12 +195,17 @@ function resolveLineStatusCode(
   toFollowStatus: SaleStatusCodeRef,
   salesAtrCodes: Map<string, SaleStatusCodeRef>,
   returnStatus?: string | null,
+  documentTypeName?: string | null,
+  /**
+   * Another line on this sale is Returned/Replaced. Keep this line's own
+   * Sold / TO FOLLOW status instead of flipping it to Closed.
+   */
+  keepFrozenStatus?: boolean,
 ): SaleStatusCodeRef | null {
-  if (returnStatus && returnStatus !== "completed") {
-    return resolveSalesAtrStatusCode(returnStatus, salesAtrCodes);
-  }
+  const historyStatus = returnHistoryStatusRef(returnStatus, documentTypeName);
+  if (historyStatus) return historyStatus;
 
-  if (atrStatus === "closed") {
+  if (atrStatus === "closed" && !keepFrozenStatus) {
     return resolveSalesAtrStatusCode("closed", salesAtrCodes);
   }
 
@@ -494,13 +505,21 @@ export async function listSalesAction(input?: {
         serialNumber: detail.serialNumber
           ? { id: detail.serialNumber.id, serialNo: detail.serialNumber.serialNo }
           : null,
-        // Sales list never overlays return workflow badges (those live on Returns).
         statusCode: resolveLineStatusCode(
           detail,
           sale.atrStatus,
           toFollowStatus,
           salesAtrCodes,
-          null,
+          sale.returnRequest &&
+            returnRequestAppliesToLine(sale.returnRequest.saleDetailId, detail.id)
+            ? sale.returnRequest.status
+            : null,
+          sale.returnRequest?.documentType?.name,
+          Boolean(
+            sale.returnRequest &&
+              isReturnHistoryStatus(sale.returnRequest.status) &&
+              !returnRequestAppliesToLine(sale.returnRequest.saleDetailId, detail.id),
+          ),
         ),
         returnRequest: sale.returnRequest
           ? { id: sale.returnRequest.id, status: sale.returnRequest.status }
@@ -593,7 +612,9 @@ export async function listSalesReturnsAction(input?: {
         atrStatus: sale.atrStatus,
         atrStatusCode: resolveSalesAtrStatusCode(sale.atrStatus, salesAtrCodes),
         returnStatus: row.status,
-        returnStatusCode: resolveSalesAtrStatusCode(row.status, salesAtrCodes),
+        returnStatusCode:
+          returnHistoryStatusRef(row.status, row.documentType?.name) ??
+          resolveSalesAtrStatusCode(row.status, salesAtrCodes),
         actionType: row.actionType ?? "return",
         stockStatusCode: row.stockStatusCode ?? "STK",
         documentTypeName: row.documentType?.name ?? null,
@@ -635,7 +656,10 @@ export async function getSaleDetailsAction(saleId: string) {
   const proofPaths = parseSaleProofPaths(sale.proof);
   const atrStatusCode = resolveSalesAtrStatusCode(sale.atrStatus, salesAtrCodes);
   const returnStatusCode = sale.returnRequest
-    ? resolveSalesAtrStatusCode(sale.returnRequest.status, salesAtrCodes)
+    ? (returnHistoryStatusRef(
+        sale.returnRequest.status,
+        sale.returnRequest.documentType?.name,
+      ) ?? resolveSalesAtrStatusCode(sale.returnRequest.status, salesAtrCodes))
     : null;
 
   const realSerialDetails = sale.details.filter((d) => d.serialNumberId);
@@ -712,7 +736,16 @@ export async function getSaleDetailsAction(saleId: string) {
           sale.atrStatus,
           toFollowStatus,
           salesAtrCodes,
-          sale.returnRequest?.status,
+          sale.returnRequest &&
+            returnRequestAppliesToLine(sale.returnRequest.saleDetailId, detail.id)
+            ? sale.returnRequest.status
+            : null,
+          sale.returnRequest?.documentType?.name,
+          Boolean(
+            sale.returnRequest &&
+              isReturnHistoryStatus(sale.returnRequest.status) &&
+              !returnRequestAppliesToLine(sale.returnRequest.saleDetailId, detail.id),
+          ),
         ),
       };
     }),
@@ -1611,6 +1644,20 @@ export async function requestReturnAction(
       );
     }
 
+    if (targetDetail.serialNumberId) {
+      const actionLabel = data.actionType === "replacement" ? "Replacement" : "Return";
+      await tx.serialNumberHistory.create({
+        data: {
+          tenantId: session.user.tenantId,
+          serialNumberId: targetDetail.serialNumberId,
+          txnType: data.actionType === "replacement" ? "replacement" : "return",
+          details: `${actionLabel} ${sale.transactionNo} (request ${returnRequest.id})`,
+          status: returnHistoryStatusLabel(serviceReturn),
+          createdById: session.user.id,
+        },
+      });
+    }
+
     return returnRequest;
   });
 
@@ -1755,6 +1802,8 @@ async function restoreOriginalSerialsAtBranchSold(
     soldStatusCodeIds: string[];
     historyTxnType: "return" | "replacement";
     historyDetails: string;
+    /** Kept as Returned/Replaced (or the service label). Not the stock code. */
+    historyStatus: string;
   },
 ): Promise<number> {
   const now = new Date();
@@ -1819,7 +1868,7 @@ async function restoreOriginalSerialsAtBranchSold(
       serialNumberId,
       txnType: input.historyTxnType,
       details: input.historyDetails,
-      status: input.restoreStatusCode,
+      status: input.historyStatus,
       createdById: input.userId,
       createdAt: now,
     });
@@ -1846,6 +1895,7 @@ async function restoreReturnInventory(input: {
   };
   /** When set, restore only this sale line's serial (legacy null → first serial). */
   saleDetailId?: string | null;
+  historyStatus: string;
 }) {
   const statusCode = input.stockStatusCode === "DEF" ? "DEF" : "STK";
   const statusCodeId = await reasonStatusService.requireCodeId(
@@ -1902,6 +1952,7 @@ async function restoreReturnInventory(input: {
       soldStatusCodeIds: [sldCodeId, rsvCodeId, ofsCodeId],
       historyTxnType: "return",
       historyDetails: `Return ${input.sale.transactionNo} → ${statusCode} at branch sold (request ${input.returnRequestId})`,
+      historyStatus: input.historyStatus,
     });
     await tx.branchReturnRequest.update({
       where: { id: input.returnRequestId },
@@ -2117,6 +2168,7 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
       actionType: true,
       stockStatusCode: true,
       saleDetailId: true,
+      documentType: { select: { name: true } },
       sale: {
         select: {
           id: true,
@@ -2149,6 +2201,9 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
     stockStatusCode,
     sale: row.sale,
     saleDetailId: row.saleDetailId,
+    historyStatus: returnHistoryStatusLabel(
+      isServiceDocumentTypeName(row.documentType?.name),
+    ),
   });
   if ("error" in restored) return restored;
 
@@ -2218,6 +2273,7 @@ async function completeReplacementCore(input: {
       actionType: true,
       stockStatusCode: true,
       saleDetailId: true,
+      documentType: { select: { name: true } },
       sale: {
         select: {
           id: true,
@@ -2435,6 +2491,9 @@ async function completeReplacementCore(input: {
         soldStatusCodeIds: [sldCodeId, rsvCodeId, ofsCodeId],
         historyTxnType: "replacement",
         historyDetails: `Replacement ${row.sale.transactionNo} → ${stockStatusCode} at branch sold (request ${input.returnRequestId})`,
+        historyStatus: returnHistoryStatusLabel(
+          isServiceDocumentTypeName(row.documentType?.name),
+        ),
       });
 
       const replacementInvoiceNo =

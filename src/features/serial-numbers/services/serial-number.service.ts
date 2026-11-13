@@ -3,6 +3,10 @@ import type { LookupRecordStatus, SkuStatus } from "@prisma/client";
 import { auditService } from "@/features/audit/services/audit.service";
 import { inventoryRepository } from "@/features/inventory/repositories/inventory.repository";
 import {
+  returnHistoryStatusRef,
+  returnRequestAppliesToLine,
+} from "@/features/sales/constants/return-history-status";
+import {
   serialStatusSchema,
   serialWriteSchema,
 } from "@/features/serial-numbers/schemas/serial-number.schema";
@@ -226,6 +230,7 @@ function pulloutRouteLabel(
 
 function buildTimeline(row: SerialTraceabilityRow): SerialTimelineEvent[] {
   const events: SerialTimelineEvent[] = [];
+  const seenReturnIds = new Set<string>();
 
   for (const inv of row.branchInventories) {
     events.push({
@@ -263,17 +268,26 @@ function buildTimeline(row: SerialTraceabilityRow): SerialTimelineEvent[] {
       href: `/sales?q=${encodeURIComponent(sale.transactionNo)}`,
     });
 
-    if (sale.returnRequest) {
+    if (
+      sale.returnRequest &&
+      returnRequestAppliesToLine(sale.returnRequest.saleDetailId, detail.id) &&
+      !seenReturnIds.has(sale.returnRequest.id)
+    ) {
+      seenReturnIds.add(sale.returnRequest.id);
       const action =
         sale.returnRequest.actionType === "replacement" ? "Replacement" : "Return";
+      const historyStatus = returnHistoryStatusRef(
+        sale.returnRequest.status,
+        sale.returnRequest.documentType?.name,
+      );
       events.push({
         id: `return-${sale.returnRequest.id}`,
         type: "return",
-        label: `${action} requested`,
+        label: historyStatus?.name ?? `${action} requested`,
         at: sale.returnRequest.createdAt,
         branch: sale.branch?.name ?? null,
-        status: null,
-        detail: `${action} · ${sale.returnRequest.status}`,
+        status: historyStatus,
+        detail: historyStatus ? action : `${action} · ${sale.returnRequest.status}`,
         href: "/returns",
       });
     }

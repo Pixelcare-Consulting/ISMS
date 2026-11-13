@@ -66,6 +66,28 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.94.1",
+    date: "2026-11-13",
+    releasedAt: "2026-11-13T16:30:00+08:00",
+    title: "Backdated sales and return status",
+    highlights: [
+      "A sale can be dated up to 30 days in the past, and today or a later date still works.",
+      "A returned or replaced sale keeps Returned/Replaced, and a service return keeps Service Returned/Replaced.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "When you record a sale, the transaction date still starts blank. You can choose today, a future date, or a past date up to 30 days ago. A date older than that is not accepted, unless that sale was already saved with it.",
+      },
+      {
+        type: "fix",
+        description:
+          "After a return or replacement, the sale keeps the status Returned/Replaced. A service return or replacement keeps Service Returned/Replaced. That status stays while the request is reviewed, approved, and finished.",
+      },
+    ],
+  },
+  {
     version: "0.94.0",
     date: "2026-11-13",
     releasedAt: "2026-11-13T12:16:00+08:00",

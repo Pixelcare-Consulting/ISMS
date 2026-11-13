@@ -28,17 +28,10 @@ import {
   uploadSaleProofAction,
 } from "@/features/sales/actions/sales.actions";
 import { SALE_PROOF_MAX_FILES } from "@/features/sales/utils/sale-proof";
+import { earliestSaleTransactionIso } from "@/features/sales/utils/transaction-date";
 
 type LookupOption = { id: string; name: string };
 type ProofAttachment = { path: string; name: string };
-
-function todayInputValue(): string {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
 
 function EditSaleHeaderFormSkeleton() {
   return (
@@ -93,8 +86,13 @@ export function EditSaleHeaderDialog({
     sale.alternateBranchId,
   );
   const [transactionDate, setTransactionDate] = useState(
-    sale.transactionDateInput ?? todayInputValue(),
+    sale.transactionDateInput ?? "",
   );
+  const earliestTransactionDate = earliestSaleTransactionIso();
+  const transactionDateMin =
+    transactionDate && transactionDate < earliestTransactionDate
+      ? transactionDate
+      : earliestTransactionDate;
   const [customerName, setCustomerName] = useState(sale.customerName ?? "");
   const [contactNo, setContactNo] = useState(sale.contactNo ?? "");
   const [infoSlipVsoRrReleased, setInfoSlipVsoRrReleased] = useState(
@@ -327,6 +325,7 @@ export function EditSaleHeaderDialog({
                   <Input
                     id="edit-sale-date"
                     type="date"
+                    min={transactionDateMin}
                     value={transactionDate}
                     onChange={(e) => setTransactionDate(e.target.value)}
                   />

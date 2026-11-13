@@ -12,6 +12,10 @@ import {
   returnSapFailedMessage,
 } from "@/features/logistics/constants/delivery-workflow-labels";
 import {
+  returnHistoryStatusRef,
+  returnRequestAppliesToLine,
+} from "@/features/sales/constants/return-history-status";
+import {
   SERIAL_ACTIVITY_LABELS,
   SERIAL_ACTIVITY_TYPES,
   type SerialActivityEvent,
@@ -470,6 +474,13 @@ async function soldSource(
             amount: true,
             branch: { select: { name: true } },
             createdBy: userSelect,
+            returnRequest: {
+              select: {
+                status: true,
+                saleDetailId: true,
+                documentType: { select: { name: true } },
+              },
+            },
           },
         },
         // Reserved sales have no sale.reserved flag — createSaleAction sets
@@ -496,6 +507,11 @@ async function soldSource(
       if (!serial) return [];
       const inventoryCode =
         r.serialNumber?.branchInventories[0]?.statusCode.code ?? null;
+      const request = r.sale.returnRequest;
+      const historyStatus =
+        request && returnRequestAppliesToLine(request.saleDetailId, r.id)
+          ? returnHistoryStatusRef(request.status, request.documentType?.name)
+          : null;
       return [
         {
           id: `sold:${r.id}`,
@@ -515,9 +531,8 @@ async function soldSource(
               : null,
           ),
           status:
-            inventoryCode === "RSV"
-              ? "Inventory: Reserved"
-              : "Inventory: Sold",
+            historyStatus?.name ??
+            (inventoryCode === "RSV" ? "Inventory: Reserved" : "Inventory: Sold"),
           performedBy: performedByLabel(r.sale.createdBy),
         },
       ];

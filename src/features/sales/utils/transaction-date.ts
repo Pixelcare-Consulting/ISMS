@@ -1,9 +1,38 @@
 import { manilaDayWindow, manilaTodayIso } from "@/features/orders/utils/manila-calendar";
 
 const INVALID_TRANSACTION_DATE = "Invalid transaction date";
-const PAST_TRANSACTION_DATE = "Transaction date cannot be before today";
+const PAST_TRANSACTION_DATE =
+  "Transaction date cannot be more than 30 days before today";
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** Furthest Manila calendar day a new or changed sale date may go back. */
+export const SALE_TRANSACTION_LOOKBACK_DAYS = 30;
+
+/** YYYY-MM-DD shifted by whole calendar days. */
+export function shiftCalendarIso(iso: string, days: number): string | null {
+  const match = ISO_DATE.exec(iso);
+  if (!match) return null;
+  const shifted = new Date(
+    Date.UTC(
+      Number(match[1]),
+      Number(match[2]) - 1,
+      Number(match[3]) + days,
+    ),
+  );
+  const year = shifted.getUTCFullYear();
+  const month = String(shifted.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(shifted.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/** Earliest transaction date the picker and server accept (today minus 30 Manila days). */
+export function earliestSaleTransactionIso(now: Date = new Date()): string {
+  return (
+    shiftCalendarIso(manilaTodayIso(now), -SALE_TRANSACTION_LOOKBACK_DAYS) ??
+    manilaTodayIso(now)
+  );
+}
 
 export type SaleTransactionDateResult =
   | { date: Date | null }
@@ -11,7 +40,8 @@ export type SaleTransactionDateResult =
 
 /**
  * Optional sale header date. A YYYY-MM-DD value is that Manila calendar day.
- * A date before today is rejected unless it is the date already stored.
+ * Today, future dates, and past dates back to 30 Manila days are accepted.
+ * An older date already stored may stay; a different date before that floor is rejected.
  */
 export function resolveSaleTransactionDate(
   value: string | undefined,
@@ -26,7 +56,7 @@ export function resolveSaleTransactionDate(
 
   const keepingExisting =
     existingCalendarDate != null && existingCalendarDate === calendar;
-  if (!keepingExisting && calendar < manilaTodayIso(now)) {
+  if (!keepingExisting && calendar < earliestSaleTransactionIso(now)) {
     return { error: PAST_TRANSACTION_DATE };
   }
 
