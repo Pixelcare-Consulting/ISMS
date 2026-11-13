@@ -7,17 +7,28 @@ type PrintedLine = PulloutDetail["lines"][number];
 
 const RETURN_SLIP_LEGEND = ["PAGE 1: BRANCH COPY", "PAGE 2: ACCOUNTING COPY"] as const;
 
+function labelled(label: string, values: readonly (string | null | undefined)[]): string[] {
+  const text = values
+    .map((value) => value?.trim())
+    .filter(Boolean)
+    .join(", ");
+  return text ? [`${label}: ${text}`] : [];
+}
+
 /**
- * "DEFECTIVE UNIT / WITH LINE ON SCREEN / Remarks: Horizontal Bars on Screen". Older pull-outs
- * hold one reason on the header instead of one per unit.
+ * One labelled line per checklist field the unit was pulled out with, in the detail table's
+ * column order; fields left blank print nothing. Older pull-outs hold one reason on the header
+ * instead of one per unit.
  */
-function itemNote(line: PrintedLine, headerReason: string | undefined): string {
-  const reason = line.reasonName ?? headerReason;
-  const condition = [reason, ...line.problemDescriptionNames]
-    .map((part) => part?.trim().toUpperCase())
-    .filter(Boolean);
-  const remarks = line.remarks?.trim();
-  return [...condition, ...(remarks ? [`Remarks: ${remarks}`] : [])].join(" / ");
+function itemNotes(line: PrintedLine, headerReason: string | undefined): string[] {
+  return [
+    ...labelled("Reason", [line.reasonName ?? headerReason]),
+    ...labelled("Problem", line.problemDescriptionNames),
+    ...labelled("Classification", line.classificationNames),
+    ...labelled("Unit packing", line.unitPackingConditionNames),
+    ...labelled("Acc completeness", line.accessoryCompletenessNames),
+    ...labelled("Remarks", [line.remarks]),
+  ];
 }
 
 /** Pull-out slip. Null until the waybill, courier and schedule are saved, and on cancelled pull-outs. */
@@ -36,7 +47,7 @@ export function pulloutPrintDocument(detail: PulloutDetail): SlipDocument | null
       .map((line) => ({
         modelCode: line.skuCode,
         serialNo: line.serialNo,
-        note: itemNote(line, detail.reason?.name),
+        notes: itemNotes(line, detail.reason?.name),
       })),
     copyLegend: RETURN_SLIP_LEGEND,
     copiesPerPage: 2,
