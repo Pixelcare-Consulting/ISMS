@@ -16,7 +16,7 @@ export const orderAttachmentService = {
         orderType: true,
         status: true,
         createdById: true,
-        _count: { select: { attachments: true } },
+        _count: { select: { attachmentRecords: true } },
       },
     });
     if (!order) throw new Error("Order not found");
@@ -29,7 +29,7 @@ export const orderAttachmentService = {
     const refused = documentAttachmentError({
       mimeType: file.type,
       sizeBytes: file.size,
-      attachedCount: order._count.attachments,
+      attachedCount: order._count.attachmentRecords,
     });
     if (refused) throw new Error(refused);
 

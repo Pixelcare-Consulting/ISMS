@@ -54,6 +54,7 @@ import { resolveActiveOrderPrice } from "@/features/master-data/utils/resolve-ac
 import { getUserBranchIds } from "@/lib/aor/scope";
 import { resolvePagination, toPaginatedResult } from "@/lib/shared/pagination";
 import { resolveDeliveryDueDate } from "@/features/orders/utils/delivery-schedule";
+import { normalizeCreateOrderAttachments } from "@/features/orders/utils/order-attachment-paths";
 import { assertOrderingAllowed } from "@/features/orders/utils/order-window";
 import { branchRepository } from "@/features/branches/repositories/branch.repository";
 import { orderingPolicyService } from "@/features/ordering/services/ordering-policy.service";
@@ -481,6 +482,8 @@ export const orderService = {
       branchId: string;
       orderType: BranchOrderType;
       notes?: string;
+      /** Storage paths from the create-order upload. Omitted means none. */
+      attachments?: string[];
       brandId?: string | null;
       /** Mode of payment picked for this order; kept only when it differs from the dealer's. */
       modeOfPaymentId?: string | null;
@@ -576,12 +579,15 @@ export const orderService = {
       throw new Error(noBranchBpCode(choice.branch));
     }
 
+    const attachments = normalizeCreateOrderAttachments(tenantId, data.attachments);
+
     const order = await orderRepository.create(tenantId, {
       branchId: data.branchId,
       orderType: data.orderType,
       brandId: data.brandId,
       modeOfPaymentId: modeOfPaymentOverride,
       notes,
+      attachments,
       details,
       createdById: userId,
     });
@@ -595,6 +601,7 @@ export const orderService = {
       metadata: {
         ...orderAuditMetadata(order),
         offPlanogram: offPlanogramSkus,
+        attachmentCount: attachments.length,
       },
     });
 

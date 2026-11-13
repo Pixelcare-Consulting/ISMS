@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -31,8 +31,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { DocumentAttachmentPicker } from "@/components/document-attachment-picker";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -52,8 +52,9 @@ import {
   listActiveDealersForOrderAction,
   listBranchesForOrderAction,
   listModesOfPaymentForOrderAction,
-  uploadOrderAttachmentAction,
+  uploadCreateOrderAttachmentsAction,
 } from "@/features/orders/actions/order.actions";
+import { SALE_PROOF_MAX_FILES } from "@/features/sales/utils/sale-proof";
 import {
   getOrderWorksheetAction,
   listSpecialOrderModelsAction,
@@ -140,19 +141,9 @@ function listHrefFor(orderType: CreatableOrderType): string {
   return `/orders/manual?type=${orderType}`;
 }
 
-/** Uploads one file per request. Returns the first failure, or null when all were attached. */
-async function uploadOrderAttachments(
-  orderId: string,
-  files: readonly File[],
-): Promise<string | null> {
-  for (const file of files) {
-    const formData = new FormData();
-    formData.set("orderId", orderId);
-    formData.set("file", file);
-    const result = await uploadOrderAttachmentAction(formData);
-    if ("error" in result) return `${file.name}: ${result.error}`;
-  }
-  return null;
+interface CreateOrderAttachment {
+  path: string;
+  name: string;
 }
 
 function OrderReadout({ label, value }: { label: string; value: string }) {
@@ -174,7 +165,7 @@ function confirmCopy(pending: PendingConfirm): { title: string; description: str
       return {
         title: "Clear the lines on this order?",
         description:
-          "Changing the mode of payment, dealer, or branch clears quantities and extra items. The note for this order stays.",
+          "Changing the mode of payment, dealer, or branch clears quantities and extra items. The note and attachments for this order stay.",
         action: "Continue",
       };
     case "leave":
@@ -224,7 +215,8 @@ export function CreateOrderForm({
   const [dealerId, setDealerId] = useState(startReady ? (prefill?.dealerId ?? "") : "");
   const [branchId, setBranchId] = useState(startReady ? (prefill?.branchId ?? "") : "");
   const [notes, setNotes] = useState("");
-  const [files, setFiles] = useState<File[]>([]);
+  const [attachments, setAttachments] = useState<CreateOrderAttachment[]>([]);
+  const [attachmentUploading, setAttachmentUploading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [worksheet, setWorksheet] = useState<OrderWorksheetPayload | null>(null);
   const [worksheetError, setWorksheetError] = useState<string | null>(null);
@@ -629,8 +621,44 @@ export function CreateOrderForm({
     });
   }
 
+  async function onAttachmentsSelected(fileList: FileList | null) {
+    if (!fileList?.length) return;
+    const remaining = SALE_PROOF_MAX_FILES - attachments.length;
+    if (remaining <= 0) {
+      toast.error(`You can attach up to ${SALE_PROOF_MAX_FILES} files`);
+      return;
+    }
+    const selected = Array.from(fileList).slice(0, remaining);
+    if (fileList.length > remaining) {
+      toast.message(`Only ${remaining} more file${remaining === 1 ? "" : "s"} can be added`);
+    }
+    setAttachmentUploading(true);
+    try {
+      const formData = new FormData();
+      for (const file of selected) {
+        formData.append("attachment", file);
+      }
+      const result = await uploadCreateOrderAttachmentsAction(formData);
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
+      const uploaded = result.paths.map((path, index) => ({
+        path,
+        name: selected[index]?.name ?? path.split("/").pop() ?? "attachment",
+      }));
+      setTouched(true);
+      setAttachments((prev) => [...prev, ...uploaded]);
+      toast.success(
+        uploaded.length === 1 ? "Attachment uploaded" : `${uploaded.length} attachments uploaded`,
+      );
+    } finally {
+      setAttachmentUploading(false);
+    }
+  }
+
   function submit() {
-    if (submitStarted.current || pending) return;
+    if (submitStarted.current || pending || attachmentUploading) return;
     if (!worksheet || createDetails.length === 0) return;
     submitStarted.current = true;
     const orderedIds = new Set(createDetails.map((line) => line.modelId));
@@ -650,6 +678,8 @@ export function CreateOrderForm({
         orderType,
         modeOfPaymentId: modeOfPaymentId || null,
         notes: notes.trim() || undefined,
+        attachments:
+          attachments.length > 0 ? attachments.map((file) => file.path) : undefined,
         details: createDetails,
       });
       const waitMs = CREATE_ORDER_MIN_LOADING_MS - (Date.now() - started);
@@ -658,12 +688,6 @@ export function CreateOrderForm({
         submitStarted.current = false;
         toast.error(result.error);
         return;
-      }
-      const attachError = result.orderId
-        ? await uploadOrderAttachments(result.orderId, files)
-        : null;
-      if (attachError) {
-        toast.error(`The order was submitted, but a file was not attached. ${attachError}`);
       }
       allowLeave.current = true;
       router.push(`/orders/manual/submitted/${result.orderId}`);
@@ -680,6 +704,7 @@ export function CreateOrderForm({
     (orderType === "manual" && canCreateManual) || (orderType === "special" && canCreateSpecial);
   const submitDisabled =
     pending ||
+    attachmentUploading ||
     !typeAllowed ||
     !loaded ||
     partyBlock !== null ||
@@ -789,7 +814,7 @@ export function CreateOrderForm({
                 </div>
                 <OrderReadout label={party.label} value={party.value} />
                 <OrderReadout label="Branch" value={branchName || "—"} />
-                <div className="min-w-0 sm:col-span-2">
+                <div className="min-w-0">
                   <label htmlFor="create-order-note" className="text-sm text-muted-foreground">
                     Note for this order
                   </label>
@@ -807,19 +832,58 @@ export function CreateOrderForm({
                     disabled={noteDisabled}
                   />
                 </div>
-                <div className="min-w-0 sm:col-span-2">
+                <div className="min-w-0">
                   <label htmlFor="create-order-attachments" className="text-sm text-muted-foreground">
                     Attachments
                   </label>
-                  <DocumentAttachmentPicker
+                  <Input
                     id="create-order-attachments"
-                    files={files}
-                    onFilesChange={(next) => {
-                      setTouched(true);
-                      setFiles(next);
+                    type="file"
+                    accept="image/*,.pdf"
+                    multiple
+                    className="mt-1.5"
+                    disabled={
+                      noteDisabled ||
+                      attachmentUploading ||
+                      attachments.length >= SALE_PROOF_MAX_FILES
+                    }
+                    onChange={(event) => {
+                      const picked = event.target.files;
+                      void onAttachmentsSelected(picked);
+                      event.target.value = "";
                     }}
-                    disabled={noteDisabled}
                   />
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    Optional. You can attach up to {SALE_PROOF_MAX_FILES} images or PDFs
+                    {attachments.length > 0 ? ` · ${attachments.length} attached` : ""}.
+                  </p>
+                  {attachments.length > 0 ? (
+                    <ul className="mt-2 space-y-1.5">
+                      {attachments.map((file) => (
+                        <li
+                          key={file.path}
+                          className="flex items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-xs"
+                        >
+                          <span className="min-w-0 truncate" title={file.name}>
+                            {file.name}
+                          </span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            disabled={noteDisabled || attachmentUploading}
+                            onClick={() => {
+                              setTouched(true);
+                              setAttachments((prev) => prev.filter((item) => item.path !== file.path));
+                            }}
+                            aria-label={`Remove ${file.name}`}
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </div>
               </div>
               {loaded && branches.length > 0 && partyBlock ? (

@@ -66,6 +66,77 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.93.0",
+    date: "2026-11-13",
+    releasedAt: "2026-11-13T12:00:00+08:00",
+    title: "Filter branch inventory by series",
+    highlights: [
+      "Filter the branch inventory list by series, and that series stays selected when you open a branch.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "On Branch Inventory, you can filter the list by series. Opening a branch keeps that series, so the stock you see matches the filter you chose.",
+      },
+    ],
+  },
+  {
+    version: "0.92.0",
+    date: "2026-11-13",
+    releasedAt: "2026-11-13T11:56:00+08:00",
+    title: "Sales returns no longer wait for Customer Service",
+    highlights: [
+      "A return started by a dealer goes to the Team Leader.",
+      "Other sales returns are approved when they are requested.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Sales returns no longer wait for Customer Service. A return started by a dealer goes to the Team Leader. Any other sales return is approved when it is requested.",
+      },
+    ],
+  },
+  {
+    version: "0.91.0",
+    date: "2026-11-13",
+    releasedAt: "2026-11-13T11:52:00+08:00",
+    title: "Attach files to a new order",
+    highlights: [
+      "Add images or PDFs when you create an order, and open them again later on that order.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "When you create an order, you can attach images or PDFs. Those files stay on the order so you can review them later.",
+      },
+    ],
+  },
+  {
+    version: "0.90.1",
+    date: "2026-11-13",
+    releasedAt: "2026-11-13T11:48:00+08:00",
+    title: "Create Order columns and sale dates",
+    highlights: [
+      "On Create Order, the CBM heading lines up with the CBM numbers, and the note stays in its own column.",
+      "A new sale starts with a blank transaction date, and only today or a future date can be used.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "On Create Order, the CBM heading lines up with the CBM numbers, and the note stays in its own column.",
+      },
+      {
+        type: "fix",
+        description:
+          "A new sale starts with a blank transaction date. You can choose today or a future date only.",
+      },
+    ],
+  },
+  {
     version: "0.90.0",
     date: "2026-11-12",
     releasedAt: "2026-11-12T17:00:00+08:00",

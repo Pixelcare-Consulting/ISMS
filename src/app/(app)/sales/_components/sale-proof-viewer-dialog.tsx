@@ -26,12 +26,20 @@ import {
 import { cn } from "@/utils/cn";
 
 interface SaleProofViewerDialogProps {
-  saleId: string;
+  /** Sale whose proof files are served at `/api/sales/:id/proof`. Omit when `fileHref` is set. */
+  saleId?: string;
   proofPaths: string[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Zero-based index to show when the dialog opens. */
   initialIndex?: number;
+  /** Preview URL for `proofPaths[index]`. Used instead of the sales proof route. */
+  fileHref?: (index: number) => string;
+  title?: string;
+  singleFileDescription?: string;
+  listLabel?: string;
+  previousLabel?: string;
+  nextLabel?: string;
 }
 
 function isImageMime(mime: string): boolean {
@@ -48,6 +56,12 @@ export function SaleProofViewerDialog({
   open,
   onOpenChange,
   initialIndex = 0,
+  fileHref,
+  title = "Proof attachments",
+  singleFileDescription = "Preview the proof file for this sale.",
+  listLabel = "Proof files",
+  previousLabel = "Previous proof",
+  nextLabel = "Next proof",
 }: SaleProofViewerDialogProps) {
   const maxIndex = Math.max(0, proofPaths.length - 1);
   const startIndex = Math.min(Math.max(0, initialIndex), maxIndex);
@@ -58,7 +72,11 @@ export function SaleProofViewerDialog({
   const path = proofPaths[activeIndex] ?? proofPaths[0]!;
   const fileName = saleProofFileName(path);
   const mime = saleProofMimeType(path);
-  const viewUrl = saleProofViewUrl(saleId, activeIndex);
+  const viewUrl = fileHref
+    ? fileHref(activeIndex)
+    : saleId
+      ? saleProofViewUrl(saleId, activeIndex)
+      : "";
   const canPrev = activeIndex > 0;
   const canNext = activeIndex < proofPaths.length - 1;
 
@@ -69,10 +87,10 @@ export function SaleProofViewerDialog({
         className="z-60 flex max-h-[min(92svh,56rem)] w-[min(calc(100vw-1.5rem),56rem)] max-w-4xl flex-col gap-3 overflow-hidden p-4 sm:p-5"
       >
         <DialogHeader className="shrink-0 space-y-1 pr-8 text-left">
-          <DialogTitle>Proof attachments</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
             {proofPaths.length === 1
-              ? "Preview the proof file for this sale."
+              ? singleFileDescription
               : `${activeIndex + 1} of ${proofPaths.length} · images and PDFs`}
           </DialogDescription>
         </DialogHeader>
@@ -80,7 +98,7 @@ export function SaleProofViewerDialog({
         <div className="flex min-h-0 flex-1 flex-col gap-3 sm:flex-row">
           {proofPaths.length > 1 ? (
             <nav
-              aria-label="Proof files"
+              aria-label={listLabel}
               className="flex shrink-0 gap-1 overflow-x-auto sm:w-44 sm:flex-col sm:overflow-y-auto sm:overflow-x-hidden"
             >
               {proofPaths.map((p, index) => {
@@ -131,7 +149,7 @@ export function SaleProofViewerDialog({
                       variant="outline"
                       disabled={!canPrev}
                       onClick={() => setActiveIndex((i) => Math.max(0, i - 1))}
-                      aria-label="Previous proof"
+                      aria-label={previousLabel}
                     >
                       <ChevronLeft className="size-4" />
                     </Button>
@@ -145,7 +163,7 @@ export function SaleProofViewerDialog({
                           Math.min(proofPaths.length - 1, i + 1),
                         )
                       }
-                      aria-label="Next proof"
+                      aria-label={nextLabel}
                     >
                       <ChevronRight className="size-4" />
                     </Button>

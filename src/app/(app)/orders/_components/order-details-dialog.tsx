@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { EditOrderDialog } from "@/app/(app)/orders/_components/edit-order-dialog";
+import { OrderAttachmentReview } from "@/app/(app)/orders/_components/order-attachment-review";
 import { OrderAnalyticsDialog } from "@/app/(app)/orders/_components/order-analytics-dialog";
 import { OrderApprovalTimeline } from "@/app/(app)/orders/_components/order-approval-timeline";
 import { OrderWorksheet } from "@/app/(app)/orders/_components/order-worksheet";
@@ -62,6 +63,7 @@ interface OrderDetailsDialogProps {
   branchName: string;
   status: BranchOrderStatus;
   notes?: string | null;
+  attachments?: string[];
   deliveryDueDate?: string | Date | null;
   createdByName?: string | null;
   reviewSnapshot?: unknown;
@@ -113,6 +115,7 @@ export function OrderDetailsDialog({
   branchName,
   status,
   notes,
+  attachments = [],
   deliveryDueDate,
   createdByName,
   reviewSnapshot,
@@ -242,6 +245,10 @@ export function OrderDetailsDialog({
                   rows={4}
                   className="min-h-24 resize-none"
                 />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Attachments</Label>
+                <OrderAttachmentReview orderId={orderId} paths={attachments} />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="order-details-history">Approval history</Label>
