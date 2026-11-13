@@ -1,34 +1,50 @@
 /** @jest-environment jsdom */
 import "@testing-library/jest-dom";
 
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { toast } from "sonner";
 
 import { PulloutDetailView } from "@/app/(app)/logistics/_components/pullout-detail";
-import {
-  linkPulloutSapDocumentAction,
-  unlinkPulloutSapDocumentAction,
-} from "@/features/logistics/actions/logistics.actions";
+import { checkPulloutSapAction } from "@/features/logistics/actions/logistics.actions";
 import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import type { PulloutDetail } from "@/features/logistics/services/pullout-posting.service";
 
-jest.mock("sonner", () => ({ toast: { error: jest.fn(), success: jest.fn() } }));
+jest.mock("sonner", () => ({
+  toast: { error: jest.fn(), success: jest.fn(), info: jest.fn(), warning: jest.fn() },
+}));
 jest.mock("next/navigation", () => ({ useRouter: () => ({ refresh: jest.fn() }) }));
 jest.mock("@/features/settings/lib/load-print-letterhead", () => ({
   loadPrintLetterhead: jest.fn().mockResolvedValue(null),
 }));
 jest.mock("@/features/logistics/actions/logistics.actions", () => ({
-  linkPulloutSapDocumentAction: jest.fn(async () => ({
-    success: true,
-    label: "IT: 494405",
-    linkedCount: 1,
-  })),
-  unlinkPulloutSapDocumentAction: jest.fn(async () => ({ success: true })),
+  checkPulloutSapAction: jest.fn(),
 }));
 
-const link = jest.mocked(linkPulloutSapDocumentAction);
-const unlink = jest.mocked(unlinkPulloutSapDocumentAction);
+const checkSap = jest.mocked(checkPulloutSapAction);
 
-function line(serialNumberId: string, sapDocument: PulloutDetail["lines"][number]["sapDocument"] = null) {
+function result(overrides: Record<string, unknown> = {}) {
+  return {
+    success: true as const,
+    result: {
+      id: "p1",
+      linkedDocuments: [],
+      linkedCount: 0,
+      pulledOutCount: 0,
+      redeliveries: [],
+      waitingCount: 0,
+      notes: [],
+      ...overrides,
+    },
+  };
+}
+
+type Line = PulloutDetail["lines"][number];
+
+function line(
+  serialNumberId: string,
+  sapDocument: Line["sapDocument"] = null,
+  redelivery: Line["redelivery"] = null,
+) {
   return {
     serialNumberId,
     decision: "accepted",
@@ -50,10 +66,19 @@ function line(serialNumberId: string, sapDocument: PulloutDetail["lines"][number
     rejectedByName: null,
     rejectionRemarks: null,
     sapDocument,
+    redelivery,
   };
 }
 
-function sentDetail(lines = [line("s1"), line("s2", { type: "RETURN", docNum: 14402, docDate: "2026-11-10", linkedAt: null, linkedByName: null })]) {
+const RETURN_14402 = { type: "RETURN" as const, docNum: 14402, docDate: "2026-11-10", linkedAt: null, linkedByName: null };
+
+function sentDetail(
+  lines = [
+    line("s1"),
+    line("s2", RETURN_14402),
+    line("s3", RETURN_14402, { deliveryId: "d1", deliveryNo: "DLV-9", drNo: "168206", branchName: "Branch B" }),
+  ],
+) {
   return {
     id: "p1",
     pulloutNo: "PLT-1",
@@ -73,7 +98,7 @@ function sentDetail(lines = [line("s1"), line("s2", { type: "RETURN", docNum: 14
     reason: null,
     attachments: [],
     lines,
-    canLinkSapDocuments: true,
+    canCheckSap: true,
     history: [],
   } as unknown as PulloutDetail;
 }
@@ -107,70 +132,70 @@ beforeAll(() => {
 
 beforeEach(() => jest.clearAllMocks());
 
-describe("SAP documents on a sent pull-out", () => {
-  it("shows each unit's SAP document, or that none is linked", () => {
+describe("Check SAP on a sent pull-out", () => {
+  it("shows each unit's SAP document and redelivery, or that SAP has none yet", () => {
     renderView();
 
     expect(screen.getByRole("columnheader", { name: "SAP document" })).toBeInTheDocument();
-    expect(within(rowFor("S1")).getByText("Not linked")).toBeInTheDocument();
+    expect(within(rowFor("S1")).getByText("Not in SAP yet")).toBeInTheDocument();
     expect(within(rowFor("S2")).getByText("Return: 14402")).toBeInTheDocument();
+    const redelivered = rowFor("S3");
+    expect(within(redelivered).getByText(/Redelivered on DR 168206 to Branch B/)).toBeInTheDocument();
+    expect(within(redelivered).getByRole("link", { name: "DLV-9" })).toHaveAttribute(
+      "href",
+      "/logistics/deliveries/d1",
+    );
   });
 
-  it("links the typed IT to the units without a document", async () => {
+  it("checks SAP and reports what it found", async () => {
+    checkSap.mockResolvedValueOnce(
+      result({
+        linkedDocuments: ["IT: 494405"],
+        linkedCount: 1,
+        pulledOutCount: 1,
+        redeliveries: [{ deliveryNo: "DLV-10", drNo: "555", unitCount: 1 }],
+        notes: ["Return: 1 is cancelled in SAP, so it was not used"],
+      }),
+    );
     renderView();
-    fireEvent.click(screen.getByRole("button", { name: "Link SAP document" }));
-
-    const dialog = await screen.findByRole("dialog");
-    const submit = within(dialog).getByRole("button", { name: "Link document" });
-    expect(submit).toBeDisabled();
-    fireEvent.change(within(dialog).getByLabelText("Document number"), {
-      target: { value: "494405" },
-    });
-    expect(within(dialog).getByRole("checkbox", { name: /S1/ })).toBeChecked();
-    expect(within(dialog).getByRole("checkbox", { name: /S2/ })).not.toBeChecked();
 
     await act(async () => {
-      fireEvent.click(submit);
+      fireEvent.click(screen.getByRole("button", { name: "Check SAP" }));
     });
 
-    expect(link).toHaveBeenCalledWith("p1", {
-      serialNumberIds: ["s1"],
-      docType: "IT",
-      docNum: "494405",
-    });
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(checkSap).toHaveBeenCalledWith("p1");
+    expect(toast.success).toHaveBeenCalledWith(
+      "Found IT: 494405. 1 unit pulled out. DR 555 redelivered 1 on DLV-10.",
+    );
+    expect(toast.warning).toHaveBeenCalledWith("Return: 1 is cancelled in SAP, so it was not used");
   });
 
-  it("keeps the dialog open with SAP's reason when the check fails", async () => {
-    link.mockResolvedValueOnce({ error: "SAP has no IT: 1" });
+  it("says when SAP has nothing for the units yet", async () => {
+    checkSap.mockResolvedValueOnce(result({ waitingCount: 2 }));
     renderView();
-    fireEvent.click(screen.getByRole("button", { name: "Link SAP document" }));
-    const dialog = await screen.findByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText("Document number"), { target: { value: "1" } });
 
     await act(async () => {
-      fireEvent.click(within(dialog).getByRole("button", { name: "Link document" }));
+      fireEvent.click(screen.getByRole("button", { name: "Check SAP" }));
     });
 
-    expect(within(dialog).getByRole("alert")).toHaveTextContent("SAP has no IT: 1");
+    expect(toast.info).toHaveBeenCalledWith("SAP has no IT or Return for these 2 units yet.");
   });
 
-  it("unlinks a unit after confirming", async () => {
+  it("shows SAP's error", async () => {
+    checkSap.mockResolvedValueOnce({ error: "SAP is not connected" });
     renderView();
-    fireEvent.click(screen.getByRole("button", { name: "Unlink SAP document from S2" }));
-    const confirm = await screen.findByRole("alertdialog");
+
     await act(async () => {
-      fireEvent.click(within(confirm).getByRole("button", { name: "Unlink" }));
+      fireEvent.click(screen.getByRole("button", { name: "Check SAP" }));
     });
 
-    expect(unlink).toHaveBeenCalledWith("p1", "s2");
+    expect(toast.error).toHaveBeenCalledWith("SAP is not connected");
   });
 
-  it("shows the column but no link controls to someone who cannot manage logistics", () => {
+  it("shows the column but no Check SAP to someone who cannot manage logistics", () => {
     renderView({ canManage: false } as unknown as LogisticsActionCapabilities);
 
     expect(screen.getByRole("columnheader", { name: "SAP document" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Link SAP document" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Unlink/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Check SAP" })).not.toBeInTheDocument();
   });
 });

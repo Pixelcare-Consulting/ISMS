@@ -148,10 +148,16 @@ function openPendingDefectReportExistsSql(): Prisma.Sql {
  * the unit still DIT on its branch row, which stays so the SAP serial sync does not
  * re-create it as branch stock, so Branch Inventory leaves it out. A row changed after
  * the send (a later delivery of the same serial, say) is not the sent unit any more and
- * shows again.
+ * shows again. A unit Check SAP marked PO (Pulled out) is always left out; its row stays
+ * for the same reason until a SAP redelivery moves it.
  */
 export function sentOnPulloutSql(): Prisma.Sql {
-  return Prisma.sql`EXISTS (
+  return Prisma.sql`(EXISTS (
+    SELECT 1
+    FROM reason_status_codes pulled
+    WHERE pulled.id = bi.status_code_id
+      AND pulled.code = 'PO'
+  ) OR EXISTS (
     SELECT 1
     FROM branch_pullout_lines bpl
     INNER JOIN branch_pullouts bp ON bp.id = bpl.pullout_id
@@ -164,8 +170,9 @@ export function sentOnPulloutSql(): Prisma.Sql {
       AND isc.code = 'DIT'
       AND bpl.received_at IS NULL
       AND bpl.rejected_at IS NULL
+      AND bpl.redelivery_delivery_id IS NULL
       AND bi.updated_at <= bp.updated_at
-  )`;
+  ))`;
 }
 
 /** Branch inventory ids of the units sent on a pull-out, for Prisma-built queries. */

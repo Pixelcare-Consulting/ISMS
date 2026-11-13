@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   useEffect,
@@ -27,7 +28,6 @@ import {
   type PulloutLineChoice,
 } from "@/app/(app)/logistics/_components/pullout-line-fields";
 import { pulloutPrintDocument } from "@/app/(app)/logistics/_components/pullout-print";
-import { PulloutSapDocumentDialog } from "@/app/(app)/logistics/_components/pullout-sap-document-dialog";
 import { RecordedProblemCell } from "@/app/(app)/logistics/_components/recorded-problem-cell";
 import { pulloutAuditLabel, PulloutTracker } from "@/app/(app)/logistics/_components/pullout-tracker";
 import {
@@ -69,12 +69,12 @@ import {
 import {
   approvePulloutLineAction,
   approvePulloutTlAction,
+  checkPulloutSapAction,
   deletePulloutLineAction,
   listPulloutChecklistOptionsAction,
   listPulloutSerialsAction,
   rejectPulloutAction,
   releasePulloutAction,
-  unlinkPulloutSapDocumentAction,
   updatePulloutListAction,
   uploadPulloutAttachmentAction,
   type PulloutChecklistOptions,
@@ -83,9 +83,13 @@ import {
   manilaDateTimeInputValue,
   scheduleDateInputValue,
 } from "@/features/logistics/lib/shipment";
-import { formatPulloutSapDoc } from "@/features/logistics/lib/pullout-sap-document";
+import {
+  formatPulloutSapDoc,
+  type PulloutSapCheckResult,
+} from "@/features/logistics/lib/pullout-sap-document";
 import { PULLOUT_LINE_DECISION } from "@/features/logistics/services/pullout-posting.planner";
 import type { PulloutDetail } from "@/features/logistics/services/pullout-posting.service";
+
 import { PulloutConditionBadge } from "@/features/logistics/components/pullout-condition-badge";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 
@@ -227,14 +231,51 @@ function ReceivedCell({ row }: { row: ItemRow }) {
 
 function SapDocumentCell({ row }: { row: ItemRow }) {
   const doc = row.sapDocument;
-  if (!doc) return <span className="text-muted-foreground">Not linked</span>;
-  const date = formatWhen(doc.docDate, false);
+  const redelivery = row.redelivery;
+  if (!doc && !redelivery) return <span className="text-muted-foreground">Not in SAP yet</span>;
+  const date = doc ? formatWhen(doc.docDate, false) : null;
   return (
     <div>
-      <p className="font-mono">{formatPulloutSapDoc(doc.type, doc.docNum)}</p>
+      {doc ? <p className="font-mono">{formatPulloutSapDoc(doc.type, doc.docNum)}</p> : null}
       {date ? <p className="text-xs text-muted-foreground">{date}</p> : null}
+      {redelivery ? (
+        <p className="text-xs">
+          {`Redelivered${redelivery.drNo ? ` on DR ${redelivery.drNo}` : ""} to ${redelivery.branchName}: `}
+          <Link
+            href={`/logistics/deliveries/${redelivery.deliveryId}`}
+            className="font-mono font-medium hover:underline"
+          >
+            {redelivery.deliveryNo}
+          </Link>
+        </p>
+      ) : null}
     </div>
   );
+}
+
+/** Toast text for a Check SAP result. */
+function sapCheckSummary(result: PulloutSapCheckResult): { found: boolean; message: string } {
+  const parts: string[] = [];
+  if (result.linkedDocuments.length > 0) {
+    parts.push(`Found ${result.linkedDocuments.join(", ")}`);
+  }
+  if (result.pulledOutCount > 0) {
+    parts.push(`${result.pulledOutCount} ${result.pulledOutCount === 1 ? "unit" : "units"} pulled out`);
+  }
+  for (const redelivery of result.redeliveries) {
+    parts.push(`DR ${redelivery.drNo} redelivered ${redelivery.unitCount} on ${redelivery.deliveryNo}`);
+  }
+  if (parts.length > 0) {
+    const waiting = result.waitingCount > 0 ? `. ${result.waitingCount} not in SAP yet` : "";
+    return { found: true, message: `${parts.join(". ")}${waiting}.` };
+  }
+  return {
+    found: false,
+    message:
+      result.waitingCount > 0
+        ? `SAP has no IT or Return for ${result.waitingCount === 1 ? "this unit" : `these ${result.waitingCount} units`} yet.`
+        : "Nothing new in SAP for this pull-out.",
+  };
 }
 
 function pulloutItemColumns(
@@ -721,8 +762,6 @@ export function PulloutDetailView({
   const [checklistOptions, setChecklistOptions] =
     useState<PulloutChecklistOptions>(EMPTY_CHECKLIST_OPTIONS);
   const [deleteTarget, setDeleteTarget] = useState<ItemRow | null>(null);
-  const [sapDialogOpen, setSapDialogOpen] = useState(false);
-  const [unlinkTarget, setUnlinkTarget] = useState<ItemRow | null>(null);
   useEffect(() => {
     if (!addOpen || !canEditList) return;
     let cancelled = false;
@@ -806,10 +845,10 @@ export function PulloutDetailView({
   // Receipts and in-transit rejections only exist on pull-outs from before receiving was dropped.
   const showReceipts = detail.lines.some((line) => line.receivedAt || line.rejectedAt);
   const printDocument = pulloutPrintDocument(detail);
-  const canLinkSap =
-    detail.canLinkSapDocuments && capabilities.canManage && inScope(branchScope, detail.branch.id);
+  const canCheckSap =
+    detail.canCheckSap && capabilities.canManage && inScope(branchScope, detail.branch.id);
   const showSapDocument =
-    detail.canLinkSapDocuments || detail.lines.some((line) => Boolean(line.sapDocument));
+    detail.canCheckSap || detail.lines.some((line) => Boolean(line.sapDocument || line.redelivery));
   const canAttach =
     capabilities.canCreate &&
     inScope(branchScope, detail.branch.id) &&
@@ -882,27 +921,19 @@ export function PulloutDetailView({
     run(() => deletePulloutLineAction(detail.id, serialNumberId), "Unit rejected from this pull-out");
   }
 
-  function confirmUnlink() {
-    if (!unlinkTarget) return;
-    const { serialNumberId } = unlinkTarget;
-    setUnlinkTarget(null);
-    run(() => unlinkPulloutSapDocumentAction(detail.id, serialNumberId), "SAP document unlinked");
-  }
-
-  function sapLineAction(row: ItemRow) {
-    if (!row.sapDocument) return null;
-    return (
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        disabled={pending}
-        aria-label={`Unlink SAP document from ${row.serialNo}`}
-        onClick={() => setUnlinkTarget(row)}
-      >
-        Unlink
-      </Button>
-    );
+  function checkSap() {
+    startTransition(async () => {
+      const response = await checkPulloutSapAction(detail.id);
+      if ("error" in response) {
+        toast.error(response.error);
+        return;
+      }
+      const summary = sapCheckSummary(response.result);
+      if (summary.found) toast.success(summary.message);
+      else toast.info(summary.message);
+      for (const note of response.result.notes) toast.warning(note);
+      router.refresh();
+    });
   }
 
   function reserveLineAction(row: ItemRow) {
@@ -974,7 +1005,6 @@ export function PulloutDetailView({
   function lineActionRenderer(): ((row: ItemRow) => ReactNode) | null {
     if (showApprove) return reserveLineAction;
     if (canEditList) return listLineAction;
-    if (canLinkSap && detail.lines.some((line) => line.sapDocument)) return sapLineAction;
     return null;
   }
 
@@ -991,7 +1021,7 @@ export function PulloutDetailView({
     if (!inTransit) return null;
     return (
       <p className="text-sm text-muted-foreground">
-        {`These units left ${detail.branch.name} and no longer count in its branch inventory. If you made an IT or Return for them in SAP, link it under Transfer details, or put ${detail.pulloutNo} in the SAP document's remarks.`}
+        {`These units left ${detail.branch.name} and no longer count in its branch inventory. In SAP, put ${detail.pulloutNo} in the "Pull Out Number Generated in ISMS" row field of the IT or Return, then use Check SAP: the units it lists become Pulled out. A DR copied from that Return later is picked up the same way.`}
       </p>
     );
   }
@@ -1109,6 +1139,8 @@ export function PulloutDetailView({
             ...row.unitPackingConditionNames,
             ...row.accessoryCompletenessNames,
             row.sapDocument ? formatPulloutSapDoc(row.sapDocument.type, row.sapDocument.docNum) : null,
+            row.redelivery?.drNo,
+            row.redelivery?.deliveryNo,
           ]}
           searchPlaceholder="Search serials…"
           itemLabel="unit"
@@ -1125,14 +1157,14 @@ export function PulloutDetailView({
               >
                 {addOpen ? "Hide serials" : "Add serials"}
               </Button>
-            ) : canLinkSap ? (
+            ) : canCheckSap ? (
               <Button
                 type="button"
                 variant="outline"
                 disabled={pending || detail.lines.length === 0}
-                onClick={() => setSapDialogOpen(true)}
+                onClick={checkSap}
               >
-                Link SAP document
+                {pending ? "Checking SAP…" : "Check SAP"}
               </Button>
             ) : undefined
           }
@@ -1200,36 +1232,6 @@ export function PulloutDetailView({
       ) : (
         sheet
       )}
-      {sapDialogOpen ? (
-        <PulloutSapDocumentDialog
-          open
-          onOpenChange={setSapDialogOpen}
-          pulloutId={detail.id}
-          lines={detail.lines}
-          onLinked={() => router.refresh()}
-        />
-      ) : null}
-      <AlertDialog
-        open={unlinkTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) setUnlinkTarget(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{`Unlink the SAP document from ${unlinkTarget?.serialNo ?? "this unit"}?`}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {unlinkTarget?.sapDocument
-                ? `${formatPulloutSapDoc(unlinkTarget.sapDocument.type, unlinkTarget.sapDocument.docNum)} stays in SAP. Only the link in ISMS is removed.`
-                : "Only the link in ISMS is removed."}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmUnlink}>Unlink</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
       <AlertDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {

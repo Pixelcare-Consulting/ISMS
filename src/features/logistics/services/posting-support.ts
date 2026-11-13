@@ -28,7 +28,7 @@ export interface PostingActor {
 
 export type PostingDb = Prisma.TransactionClient;
 
-const INVENTORY_CODES = ["DIT", "STK", "SLD", "OFS", "RSV", "DEF", "FPO", "FTR", "FW"] as const;
+const INVENTORY_CODES = ["DIT", "STK", "SLD", "OFS", "RSV", "DEF", "FPO", "FTR", "FW", "PO"] as const;
 
 export function postingError(error: unknown, fallback: string): Error {
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
@@ -57,6 +57,24 @@ export async function authorizeBranchScope(actor: PostingActor, branchId: string
   if (outside) throw new Error(outside);
 }
 
+/**
+ * Branches a person may start a transfer or pull-out from or to: their area-of-responsibility
+ * branches. `null` (no AOR rows) means every branch. Unlike posting scope, branches.manage does
+ * not widen this: the create forms list only the person's own branches (client, 2026-11-13).
+ */
+export function resolveCreateBranchScope(tenantId: string, userId: string): Promise<string[] | null> {
+  return getUserBranchIds(tenantId, userId);
+}
+
+/** Throws when any of these branches is outside the actor's create scope. */
+export async function authorizeCreateBranches(actor: PostingActor, branchIds: readonly string[]): Promise<void> {
+  const scope = await resolveCreateBranchScope(actor.tenantId, actor.userId);
+  for (const branchId of branchIds) {
+    const outside = branchScopeError(scope, branchId);
+    if (outside) throw new Error(outside);
+  }
+}
+
 export function asInventoryCode(code: string | null | undefined): InventoryCode | null {
   if (!code) return null;
   switch (code) {
@@ -69,6 +87,7 @@ export function asInventoryCode(code: string | null | undefined): InventoryCode 
     case "FPO":
     case "FTR":
     case "FW":
+    case "PO":
       return code;
     default:
       return null;
