@@ -34,8 +34,8 @@ describe("transferPrintDocument", () => {
   it("prints the release slip and the delivery receipt for the receiving branch", () => {
     const slips = transferPrintDocument(detail());
     expect(slips?.map((slip) => [slip.title, slip.number])).toEqual([
-      ["RELEASE SLIP", "XFR-1"],
-      ["DELIVERY RECEIPT", "DR-1"],
+      ["TRANSFER RELEASE SLIP", "XFR-1"],
+      ["TRANSFER DELIVERY SLIP", "DR-1"],
     ]);
     expect(slips?.[1]).toMatchObject({
       customer: "Branch B",

@@ -2,7 +2,7 @@ import { escapeHtml, letterheadHtml, printDocumentHtml, type PrintLetterhead } f
 import { printHtml } from "@/utils/print-html";
 
 /**
- * The client's paper slip layout (Return Slip, Delivery Receipt): number and title, customer
+ * The client's paper slip layout (pull-out and transfer slips): number and title, customer
  * block, a boxed list of units, signature lines, and the copy legend. The letterhead stays the
  * shared one.
  */

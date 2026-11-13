@@ -55,9 +55,9 @@ export function transferSlipDocuments(
     copiesPerPage: 1 as const,
   };
   const slips: SlipDocument[] = [];
-  if (numbers.rsNo) slips.push({ ...base, title: "RELEASE SLIP", number: numbers.rsNo });
+  if (numbers.rsNo) slips.push({ ...base, title: "TRANSFER RELEASE SLIP", number: numbers.rsNo });
   if (numbers.drNo) {
-    slips.push({ ...base, title: "DELIVERY RECEIPT", number: numbers.drNo, reference: { label: "Ref RTV#:", value: "" } });
+    slips.push({ ...base, title: "TRANSFER DELIVERY SLIP", number: numbers.drNo, reference: { label: "Ref RTV#:", value: "" } });
   }
   return slips;
 }

@@ -33,9 +33,9 @@ const detail = (overrides: Partial<PulloutDetail> = {}) =>
   }) as PulloutDetail;
 
 describe("pulloutPrintDocument", () => {
-  it("builds the Return Slip once the waybill, courier and schedule are saved", () => {
+  it("builds the Pull-out slip once the waybill, courier and schedule are saved", () => {
     expect(pulloutPrintDocument(detail())).toEqual({
-      title: "RETURN SLIP",
+      title: "PULL-OUT SLIP",
       number: "PLT-1",
       customer: "Branch A",
       date: "Nov 5, 2026",
@@ -105,7 +105,7 @@ describe("pulloutPrintDocument", () => {
 describe("slipsHtml", () => {
   const letterhead = { logo: null, companyName: "Acme", lines: ["Pasig City"] };
 
-  it("stacks two Return Slip copies, each with the header, split by a cut line", () => {
+  it("stacks two Pull-out slip copies, each with the header, split by a cut line", () => {
     const slip = pulloutPrintDocument(detail({ lines: [line({ remarks: "<b>Dented</b>" })] }));
     if (!slip) throw new Error("No slip");
 

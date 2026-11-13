@@ -20,12 +20,12 @@ function itemNote(line: PrintedLine, headerReason: string | undefined): string {
   return [...condition, ...(remarks ? [`Remarks: ${remarks}`] : [])].join(" / ");
 }
 
-/** Return Slip. Null until the waybill, courier and schedule are saved, and on cancelled pull-outs. */
+/** Pull-out slip. Null until the waybill, courier and schedule are saved, and on cancelled pull-outs. */
 export function pulloutPrintDocument(detail: PulloutDetail): SlipDocument | null {
   if (detail.status.code === PULLOUT_WORKFLOW_CODE.cancelled) return null;
   if (!shipmentIsReady(detail)) return null;
   return {
-    title: "RETURN SLIP",
+    title: "PULL-OUT SLIP",
     number: detail.pulloutNo,
     customer: detail.branch.name,
     // The slip shows a calendar date, so take the Manila date rather than the UTC one.
