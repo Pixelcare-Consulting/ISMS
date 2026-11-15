@@ -189,6 +189,11 @@ export const scOpsRepository = {
               model: { select: { id: true, skuCode: true, name: true } },
             },
           },
+          deliveries: {
+            where: { sapDocEntry: { not: null } },
+            select: { id: true, sapDocNo: true },
+            orderBy: { sapDocEntry: "asc" },
+          },
           _count: { select: { deliveries: true } },
         },
         orderBy: { createdAt: "desc" },
@@ -217,7 +222,13 @@ export const scOpsRepository = {
         where,
         include: {
           serviceCenter: {
-            select: { id: true, name: true, sapCode: true },
+            select: {
+              id: true,
+              name: true,
+              sapCode: true,
+              // Accept asks for one when a SAP delivery arrived without a location.
+              locations: { select: { id: true, code: true, name: true }, orderBy: { code: "asc" } },
+            },
           },
           serviceCenterLocation: {
             select: { id: true, name: true, code: true },
@@ -226,6 +237,17 @@ export const scOpsRepository = {
             select: { id: true, code: true, name: true, color: true },
           },
           order: { select: { id: true, orderNumber: true, status: true } },
+          // The SAP DR's serials; empty on deliveries made in ISMS before Check SAP.
+          lines: {
+            select: {
+              serialNumberId: true,
+              acceptedAt: true,
+              serialNumber: {
+                select: { serialNo: true, model: { select: { skuCode: true } } },
+              },
+            },
+            orderBy: { serialNumber: { serialNo: "asc" } },
+          },
           _count: { select: { backloads: true } },
         },
         orderBy: { createdAt: "desc" },

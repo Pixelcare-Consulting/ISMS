@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { SearchableMultiSelect } from "@/features/aors/components/searchable-multi-select";
 import {
   Sheet,
@@ -39,6 +40,22 @@ type DeliveryRow = Awaited<
 
 const deliveryColumn = createColumnHelper<DataTableFeatures, DeliveryRow>();
 
+/** A delivery Check SAP made from a SAP DR carries the DR's serials. */
+function isFromSap(row: DeliveryRow): boolean {
+  return row.lines.length > 0;
+}
+
+function openSapLines(row: DeliveryRow) {
+  return row.lines.filter((line) => line.acceptedAt === null);
+}
+
+function drLabel(row: DeliveryRow): string {
+  if (!row.sapDocNo) return "—";
+  return row.sapDocDate
+    ? `${row.sapDocNo} · ${new Date(row.sapDocDate).toLocaleDateString("en-PH", { timeZone: "UTC" })}`
+    : row.sapDocNo;
+}
+
 export function ScDeliveriesPanel({
   items,
   capabilities,
@@ -55,12 +72,14 @@ export function ScDeliveriesPanel({
     { id: string; label: string }[]
   >([]);
   const [selectedSerialIds, setSelectedSerialIds] = useState<string[]>([]);
+  const [locationId, setLocationId] = useState("");
 
   const filtered = useMemo(
     () =>
       items.filter((row) =>
         matchesTableSearch(query, [
           row.deliveryNo,
+          row.sapDocNo ?? "",
           row.serviceCenter.name,
           row.order?.orderNumber ?? "",
           row.statusCode?.code ?? "",
@@ -89,7 +108,9 @@ export function ScDeliveriesPanel({
 
   function openAccept(row: DeliveryRow) {
     setAccepting(row);
-    setSelectedSerialIds([]);
+    // A SAP delivery starts with every unit on the DR that is not accepted yet.
+    setSelectedSerialIds(openSapLines(row).map((line) => line.serialNumberId));
+    setLocationId("");
     setSerialQuery("");
     setSerialOptions([]);
   }
@@ -120,6 +141,7 @@ export function ScDeliveriesPanel({
     startTransition(async () => {
       const result = await acceptScDeliveryAction(accepting.id, {
         serialNumberIds: selectedSerialIds,
+        serviceCenterLocationId: locationId || null,
       });
       if (result.error) {
         toast.error(result.error);
@@ -146,6 +168,13 @@ export function ScDeliveriesPanel({
         enableSorting: true,
         meta: { className: "font-medium" },
       }),
+      deliveryColumn.display({
+        id: "dr",
+        header: "DR no.",
+        enableSorting: false,
+        cell: ({ row }) => drLabel(row.original),
+        meta: { className: "tabular-nums" },
+      }),
       deliveryColumn.accessor((row) => row.serviceCenter.name, {
         id: "center",
         header: "Center",
@@ -165,10 +194,15 @@ export function ScDeliveriesPanel({
           <Badge variant="secondary">{row.original.statusCode?.code ?? "—"}</Badge>
         ),
       }),
-      deliveryColumn.accessor((row) => row._count.backloads, {
+      deliveryColumn.display({
         id: "serials",
         header: "Serials",
         enableSorting: false,
+        // A SAP delivery shows accepted of shipped; an older one, what was received.
+        cell: ({ row }) =>
+          isFromSap(row.original)
+            ? `${row.original.lines.length - openSapLines(row.original).length} / ${row.original.lines.length} accepted`
+            : row.original._count.backloads,
         meta: { className: "tabular-nums" },
       }),
       deliveryColumn.display({
@@ -211,7 +245,7 @@ export function ScDeliveriesPanel({
         empty={pageItems.length === 0}
         emptyMessage={
           items.length === 0
-            ? "No service center deliveries yet. Create one from an approved order."
+            ? "No service center deliveries yet. Check SAP now on Orders adds the DRs SAP made."
             : "No deliveries match your search."
         }
         pageSize={{ value: pageSize, onChange: setPageSize }}
@@ -232,33 +266,76 @@ export function ScDeliveriesPanel({
           <SheetHeader className="border-b px-4 py-4 text-left">
             <SheetTitle>Accept delivery</SheetTitle>
             <SheetDescription>
-              Supply serials to receive. Each becomes a backload line and STK
-              inventory at the delivery location.
+              {accepting && isFromSap(accepting)
+                ? "Units on the SAP DR. The ones you accept become STK at the service center."
+                : "Supply serials to receive. Each becomes STK inventory at the delivery location."}
             </SheetDescription>
           </SheetHeader>
           <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
             <p className="text-sm text-muted-foreground">
-              {accepting?.deliveryNo} · {accepting?.serviceCenter.name}
+              {accepting?.deliveryNo}
+              {accepting?.sapDocNo ? ` · DR ${accepting.sapDocNo}` : ""} · {accepting?.serviceCenter.name}
             </p>
-            <div className="space-y-2">
-              <Label>Search serials</Label>
-              <Input
-                value={serialQuery}
-                onChange={(e) => searchSerials(e.target.value)}
-                placeholder="Type at least 2 characters…"
-                disabled={pending}
-              />
-            </div>
-            <SearchableMultiSelect
-              label="Serials to receive"
-              options={serialOptions}
-              selectedIds={selectedSerialIds}
-              onChange={setSelectedSerialIds}
-              placeholder="Select serials…"
-              searchPlaceholder="Filter…"
-              emptyMessage="Search to load serials."
-              disabled={pending}
-            />
+            {accepting && isFromSap(accepting) ? (
+              <>
+                {accepting.serviceCenterLocation ? (
+                  <p className="text-sm">
+                    Location: {accepting.serviceCenterLocation.code} · {accepting.serviceCenterLocation.name}
+                  </p>
+                ) : (
+                  <SearchableSelect
+                    label="Receiving location"
+                    className="w-full"
+                    options={accepting.serviceCenter.locations.map((location) => ({
+                      id: location.id,
+                      label: location.name,
+                      description: location.code,
+                    }))}
+                    value={locationId}
+                    onChange={setLocationId}
+                    placeholder="Select location…"
+                    searchPlaceholder="Search locations…"
+                    emptyMessage="This service center has no locations."
+                    disabled={pending}
+                  />
+                )}
+                <SearchableMultiSelect
+                  label="Units to accept"
+                  options={openSapLines(accepting).map((line) => ({
+                    id: line.serialNumberId,
+                    label: `${line.serialNumber.serialNo} · ${line.serialNumber.model.skuCode}`,
+                  }))}
+                  selectedIds={selectedSerialIds}
+                  onChange={setSelectedSerialIds}
+                  placeholder="Select units…"
+                  searchPlaceholder="Filter serials…"
+                  emptyMessage="Every unit on this DR is accepted."
+                  disabled={pending}
+                />
+              </>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label>Search serials</Label>
+                  <Input
+                    value={serialQuery}
+                    onChange={(e) => searchSerials(e.target.value)}
+                    placeholder="Type at least 2 characters…"
+                    disabled={pending}
+                  />
+                </div>
+                <SearchableMultiSelect
+                  label="Serials to receive"
+                  options={serialOptions}
+                  selectedIds={selectedSerialIds}
+                  onChange={setSelectedSerialIds}
+                  placeholder="Select serials…"
+                  searchPlaceholder="Filter…"
+                  emptyMessage="Search to load serials."
+                  disabled={pending}
+                />
+              </>
+            )}
           </div>
           <SheetFooter className="border-t">
             <Button
@@ -268,7 +345,14 @@ export function ScDeliveriesPanel({
             >
               Cancel
             </Button>
-            <Button onClick={submitAccept} disabled={pending}>
+            <Button
+              onClick={submitAccept}
+              disabled={
+                pending ||
+                selectedSerialIds.length === 0 ||
+                Boolean(accepting && isFromSap(accepting) && !accepting.serviceCenterLocation && !locationId)
+              }
+            >
               {pending ? "Saving…" : "Accept & stock in"}
             </Button>
           </SheetFooter>

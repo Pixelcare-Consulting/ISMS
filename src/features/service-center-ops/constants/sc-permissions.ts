@@ -31,6 +31,9 @@ export const SC_ORDERS_ACCESS = [
   SC_ORDERS_APPROVE,
 ] as const;
 
+/** Check SAP on SC orders: the people who handled SC deliveries before SAP Copy To. */
+export const SC_ORDER_SAP_CHECK_PERMISSIONS = [SC_LOGISTICS_CREATE, SC_LOGISTICS_MANAGE] as const;
+
 export const SC_LOGISTICS_ACCESS = [
   SC_LOGISTICS_VIEW,
   SC_LOGISTICS_CREATE,

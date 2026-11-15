@@ -4,8 +4,7 @@ import { listScCentersForOpsAction } from "@/features/service-center-ops/actions
 import { listScOrdersAction } from "@/features/service-center-ops/actions/sc-orders.actions";
 import {
   canAccessScOrders,
-  SC_LOGISTICS_CREATE,
-  SC_LOGISTICS_MANAGE,
+  SC_ORDER_SAP_CHECK_PERMISSIONS,
   SC_ORDERS_APPROVE,
   SC_ORDERS_CREATE,
 } from "@/features/service-center-ops/constants/sc-permissions";
@@ -48,7 +47,7 @@ export default async function ScOrdersPage({ searchParams }: PageProps) {
         title="Service center orders"
         sticky={false}
         tutorial={SC_ORDERS_PAGE_TUTORIAL}
-        description="Manual orders for service centers — approve, then create a delivery."
+        description="Approving posts the Sales Order to SAP. Once SAP copies it to a DR, Check SAP now adds that delivery to Deliveries."
       />
       <ModuleGuide {...SC_OPS_MODULE_GUIDE} />
       <ScOrdersPanel
@@ -56,10 +55,9 @@ export default async function ScOrdersPage({ searchParams }: PageProps) {
         centers={centers}
         canCreate={hasPermission(session.user.permissions, SC_ORDERS_CREATE)}
         canApprove={hasPermission(session.user.permissions, SC_ORDERS_APPROVE)}
-        canCreateDelivery={
-          hasPermission(session.user.permissions, SC_LOGISTICS_CREATE) ||
-          hasPermission(session.user.permissions, SC_LOGISTICS_MANAGE)
-        }
+        canCheckSap={SC_ORDER_SAP_CHECK_PERMISSIONS.some((permission) =>
+          hasPermission(session.user.permissions, permission),
+        )}
       />
     </div>
   );
