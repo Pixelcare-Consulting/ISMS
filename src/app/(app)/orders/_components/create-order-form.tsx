@@ -62,7 +62,8 @@ import {
 import { BRANCH_ORDER_TYPE_LABELS } from "@/features/orders/constants/order-status";
 import { buildOrderCreateDetails } from "@/features/orders/lib/order-create-details";
 import {
-  branchDealerFilter,
+  branchDealer,
+  defaultModeOfPaymentId,
   orderPartyBlock,
   type OrderBranchOption,
   type OrderDealerOption,
@@ -293,7 +294,7 @@ export function CreateOrderForm({
   const modeOfPayment = modesOfPayment.find((mode) => mode.id === modeOfPaymentId) ?? null;
   const paymentKind = modeOfPayment?.kind ?? null;
   const branch = branches.find((option) => option.id === branchId) ?? null;
-  const partyBlock = orderPartyBlock({ kind: paymentKind, dealerId, branch });
+  const partyBlock = orderPartyBlock({ kind: paymentKind, branch });
 
   const listHref = listHrefFor(orderType);
 
@@ -448,44 +449,28 @@ export function CreateOrderForm({
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const [dealerRows, modeRows] = await Promise.all([
+      const [dealerRows, modeRows, branchRows] = await Promise.all([
         listActiveDealersForOrderAction(baseType),
         listModesOfPaymentForOrderAction(baseType),
+        listBranchesForOrderAction(undefined, baseType),
       ]);
       if (cancelled) return;
       setDealers(dealerRows);
       setModesOfPayment(modeRows);
+      setBranches(branchRows);
+      // A linked branch outside the user's list is dropped, never swapped for another one.
+      if (branchIdRef.current && !branchRows.some((row) => row.id === branchIdRef.current)) {
+        setDrafts({});
+        setAdditionalIds([]);
+        setWorksheet(null);
+        setBranchId("");
+      }
       setLoaded(true);
     })();
     return () => {
       cancelled = true;
     };
   }, [baseType]);
-
-  useEffect(() => {
-    if (!loaded) return;
-    const dealerFilter = branchDealerFilter(paymentKind, dealerId);
-    if (dealerFilter === null) return;
-    let cancelled = false;
-    void listBranchesForOrderAction(dealerFilter || undefined, baseType).then((branchRows) => {
-      if (cancelled) return;
-      setBranches(branchRows);
-      const current = branchIdRef.current;
-      // A dealer's first branch is a safe fallback; for outright another branch would
-      // bill another customer, so it is never picked silently.
-      const fallback = dealerFilter ? (branchRows[0]?.id ?? "") : "";
-      const next = branchRows.some((branch) => branch.id === current) ? current : fallback;
-      if (next !== current) {
-        setDrafts({});
-        setAdditionalIds([]);
-        setWorksheet(null);
-        setBranchId(next);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [baseType, dealerId, loaded, paymentKind]);
 
   useEffect(() => {
     let cancelled = false;
@@ -731,7 +716,7 @@ export function CreateOrderForm({
       Additional item
     </Button>
   );
-  const dealerName = dealers.find((dealer) => dealer.id === dealerId)?.name ?? "";
+  const dealerName = branchDealer(branch, dealers)?.name ?? "";
   const branchName = branch?.name ?? "";
   const paymentName = modeOfPayment
     ? `${modeOfPayment.name}${paymentKind ? ` (${MODE_OF_PAYMENT_KIND_LABELS[paymentKind]})` : ""}`
@@ -944,7 +929,6 @@ export function CreateOrderForm({
         canCreateManual={canCreateManual}
         canCreateSpecial={canCreateSpecial}
         canCreateServiceCenter={canCreateServiceCenter}
-        initialDealerId={ready ? dealerId : (prefill?.dealerId ?? "")}
         initialBranchId={ready ? branchId : (prefill?.branchId ?? "")}
         initialModeOfPaymentId={ready ? modeOfPaymentId : initialModeOfPaymentId}
         onOpenChange={(open) => {
@@ -1081,7 +1065,6 @@ export function CreateOrderSetupDialog({
   canCreateSpecial,
   canCreateServiceCenter = false,
   initialOrderFor = "branch",
-  initialDealerId = "",
   initialBranchId = "",
   initialModeOfPaymentId = "",
   initialServiceCenterId = "",
@@ -1094,7 +1077,6 @@ export function CreateOrderSetupDialog({
   canCreateSpecial: boolean;
   canCreateServiceCenter?: boolean;
   initialOrderFor?: OrderFor;
-  initialDealerId?: string;
   initialBranchId?: string;
   initialModeOfPaymentId?: string;
   initialServiceCenterId?: string;
@@ -1117,20 +1099,15 @@ export function CreateOrderSetupDialog({
   // The order type is decided on the order page from its lines; lookups only need a type
   // the user may create, for their permission checks.
   const draftType: CreatableOrderType = canCreateManual ? "manual" : "special";
-  const [draftDealerId, setDraftDealerId] = useState(initialDealerId);
   const [draftBranchId, setDraftBranchId] = useState(initialBranchId);
   const [draftPaymentId, setDraftPaymentId] = useState(initialModeOfPaymentId);
   const [dealers, setDealers] = useState<OrderDealerOption[]>([]);
   const [branches, setBranches] = useState<OrderBranchOption[]>([]);
   const [modesOfPayment, setModesOfPayment] = useState<OrderModeOfPaymentOption[]>([]);
   const [loaded, setLoaded] = useState(false);
-  const branchIdRef = useRef(draftBranchId);
 
-  const paymentKind = modesOfPayment.find((mode) => mode.id === draftPaymentId)?.kind ?? null;
-
-  useEffect(() => {
-    branchIdRef.current = draftBranchId;
-  }, [draftBranchId]);
+  const modeOfPayment = modesOfPayment.find((mode) => mode.id === draftPaymentId) ?? null;
+  const paymentKind = modeOfPayment?.kind ?? null;
 
   useEffect(() => {
     if (!open) {
@@ -1140,7 +1117,6 @@ export function CreateOrderSetupDialog({
     if (wasOpen.current) return;
     wasOpen.current = true;
     setOrderFor(forOptions.includes(initialOrderFor) ? initialOrderFor : (forOptions[0] ?? "branch"));
-    setDraftDealerId(initialDealerId);
     setDraftBranchId(initialBranchId);
     setDraftPaymentId(initialModeOfPaymentId);
     setDraftServiceCenterId(initialServiceCenterId);
@@ -1150,7 +1126,6 @@ export function CreateOrderSetupDialog({
     forOptions,
     initialBranchId,
     initialCardCode,
-    initialDealerId,
     initialModeOfPaymentId,
     initialOrderFor,
     initialServiceCenterId,
@@ -1161,13 +1136,17 @@ export function CreateOrderSetupDialog({
     if (!open || !isBranch) return;
     let cancelled = false;
     void (async () => {
-      const [dealerRows, modeRows] = await Promise.all([
+      const [dealerRows, modeRows, branchRows] = await Promise.all([
         listActiveDealersForOrderAction(draftType),
         listModesOfPaymentForOrderAction(draftType),
+        listBranchesForOrderAction(undefined, draftType),
       ]);
       if (cancelled) return;
       setDealers(dealerRows);
       setModesOfPayment(modeRows);
+      setBranches(branchRows);
+      // A prefilled branch outside the user's list is dropped, not shown as a bare id.
+      setDraftBranchId((current) => (branchRows.some((row) => row.id === current) ? current : ""));
       setLoaded(true);
     })();
     return () => {
@@ -1175,28 +1154,14 @@ export function CreateOrderSetupDialog({
     };
   }, [draftType, isBranch, open]);
 
-  // Consignment lists the dealer's branches; outright lists every branch (no dealer).
-  useEffect(() => {
-    if (!open || !loaded) return;
-    const dealerFilter = branchDealerFilter(paymentKind, draftDealerId);
-    if (dealerFilter === null) return;
-    let cancelled = false;
-    void listBranchesForOrderAction(dealerFilter || undefined, draftType).then((branchRows) => {
-      if (cancelled) return;
-      setBranches(branchRows);
-      if (!branchRows.some((branch) => branch.id === branchIdRef.current)) {
-        setDraftBranchId("");
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [draftDealerId, draftType, loaded, open, paymentKind]);
-
-  // Rows from an earlier mode of payment or dealer never show while the next list loads.
-  const branchOptions = branchDealerFilter(paymentKind, draftDealerId) === null ? [] : branches;
-  const branch = branchOptions.find((option) => option.id === draftBranchId) ?? null;
-  const partyBlock = orderPartyBlock({ kind: paymentKind, dealerId: draftDealerId, branch });
+  const branch = branches.find((option) => option.id === draftBranchId) ?? null;
+  const dealer = branchDealer(branch, dealers);
+  const dealerById = useMemo(
+    () => new Map(dealers.map((row) => [row.id, row.name])),
+    [dealers],
+  );
+  const dealerDefaultPaymentId = defaultModeOfPaymentId(dealer, modesOfPayment);
+  const partyBlock = orderPartyBlock({ kind: paymentKind, branch });
   const typeAllowed = canCreateManual || canCreateSpecial;
   const scPrimary = sc.setup?.customers.find((customer) => customer.isPrimary)?.cardCode ?? "";
   const scCardCode = draftCardCode || scPrimary;
@@ -1208,7 +1173,7 @@ export function CreateOrderSetupDialog({
     if (isBranch) {
       onContinue({
         orderFor: "branch",
-        dealerId: paymentKind === "CONSIGNMENT" ? draftDealerId : "",
+        dealerId: paymentKind === "CONSIGNMENT" ? (branch?.dealerId ?? "") : "",
         branchId: draftBranchId,
         modeOfPaymentId: draftPaymentId,
       });
@@ -1221,14 +1186,25 @@ export function CreateOrderSetupDialog({
     });
   }
 
-  function changePayment(next: string) {
-    if (next === draftPaymentId) return;
-    const nextKind = modesOfPayment.find((mode) => mode.id === next)?.kind ?? null;
-    setDraftPaymentId(next);
-    if (nextKind === paymentKind) return;
-    // Outright has no dealer; the branch stays only if the new list still has it.
-    if (nextKind !== "CONSIGNMENT") setDraftDealerId("");
+  // A new branch brings its dealer's mode of payment; the user may still change it after.
+  function changeBranch(next: string) {
+    if (next === draftBranchId) return;
+    setDraftBranchId(next);
+    const nextBranch = branches.find((option) => option.id === next) ?? null;
+    setDraftPaymentId(defaultModeOfPaymentId(branchDealer(nextBranch, dealers), modesOfPayment));
   }
+
+  const paymentHint = !branch
+    ? undefined
+    : !dealerDefaultPaymentId
+      ? dealer
+        ? `${dealer.name} has no mode of payment set. Choose one for this order.`
+        : "This branch has no dealer. Choose a mode of payment for this order."
+      : draftPaymentId === dealerDefaultPaymentId
+        ? "From the dealer. You can change it for this order."
+        : `Changed for this order. The dealer's is ${
+            modesOfPayment.find((mode) => mode.id === dealerDefaultPaymentId)?.name ?? "another mode"
+          }.`;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1237,7 +1213,7 @@ export function CreateOrderSetupDialog({
           <DialogTitle>Create order</DialogTitle>
           <DialogDescription>
             {isBranch
-              ? "Choose the mode of payment, then where the order goes."
+              ? "Choose the branch. Its dealer and mode of payment fill in, and you can change the mode of payment."
               : "Choose the service center and the SAP customer the Sales Order bills."}
           </DialogDescription>
         </DialogHeader>
@@ -1280,77 +1256,56 @@ export function CreateOrderSetupDialog({
             )
           ) : null}
           {!isBranch ? null : !loaded ? (
-            <p className="text-sm text-muted-foreground">Loading modes of payment…</p>
+            <p className="text-sm text-muted-foreground">Loading branches…</p>
           ) : (
             <>
               <SearchableSelect
-                label="Mode of payment"
+                label="Branch"
                 className="w-full"
-                options={modesOfPayment.map((mode) => ({
-                  id: mode.id,
-                  label: mode.name,
-                  description: mode.kind ? MODE_OF_PAYMENT_KIND_LABELS[mode.kind] : undefined,
-                }))}
-                value={draftPaymentId}
-                onChange={changePayment}
-                placeholder="Select mode of payment…"
-                searchPlaceholder="Search modes of payment…"
-                emptyMessage="No mode of payment has a type yet. Set one in Settings, Master data."
-              />
-              {paymentKind === "CONSIGNMENT" ? (
-                dealers.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    No dealers are available for this order.
-                  </p>
-                ) : (
-                  <SearchableSelect
-                    label="Dealer"
-                    className="w-full"
-                    options={dealers.map((dealer) => ({ id: dealer.id, label: dealer.name }))}
-                    value={draftDealerId}
-                    onChange={(next) => {
-                      if (next === draftDealerId) return;
-                      setDraftDealerId(next);
-                      setDraftBranchId("");
-                      setBranches([]);
-                    }}
-                    allowClear
-                    placeholder="Select dealer…"
-                    searchPlaceholder="Search dealers…"
-                  />
-                )
-              ) : null}
-              {paymentKind ? (
-                <SearchableSelect
-                  label="Branch"
-                  className="w-full"
-                  options={branchOptions.map((option) => ({
+                options={branches.map((option) => {
+                  const dealerName = option.dealerId ? dealerById.get(option.dealerId) : undefined;
+                  return {
                     id: option.id,
                     label: option.name,
-                    description: option.sapCode,
-                  }))}
-                  value={draftBranchId}
-                  onChange={setDraftBranchId}
-                  placeholder={
-                    paymentKind === "CONSIGNMENT" && !draftDealerId
-                      ? "Select a dealer first…"
-                      : "Select branch…"
-                  }
-                  searchPlaceholder="Search branches…"
-                  disabled={paymentKind === "CONSIGNMENT" && !draftDealerId}
-                  emptyMessage={
-                    paymentKind === "CONSIGNMENT"
-                      ? "No active branches for this dealer."
-                      : "No active branches."
-                  }
-                />
-              ) : null}
-              {paymentKind === "OUTRIGHT" && branch ? (
-                branch.bpCode ? (
-                  <OrderReadout label="BP Code (SAP customer)" value={branch.bpCode} />
-                ) : (
-                  <p className={ORDER_PARTY_BLOCK_CLASS}>{partyBlock}</p>
-                )
+                    // The dealer name makes branches searchable by dealer too.
+                    description: dealerName ? `${option.sapCode} · ${dealerName}` : option.sapCode,
+                  };
+                })}
+                value={draftBranchId}
+                onChange={changeBranch}
+                placeholder="Select branch…"
+                searchPlaceholder="Search branches or dealers…"
+                emptyMessage="No active branches are available for this order."
+              />
+              {branch ? (
+                <>
+                  <OrderReadout label="Dealer" value={dealer?.name ?? "No dealer"} />
+                  <div className="space-y-1.5">
+                    <SearchableSelect
+                      label="Mode of payment"
+                      className="w-full"
+                      options={modesOfPayment.map((mode) => ({
+                        id: mode.id,
+                        label: mode.name,
+                        description: mode.kind ? MODE_OF_PAYMENT_KIND_LABELS[mode.kind] : undefined,
+                      }))}
+                      value={draftPaymentId}
+                      onChange={setDraftPaymentId}
+                      placeholder="Select mode of payment…"
+                      searchPlaceholder="Search modes of payment…"
+                      emptyMessage="No mode of payment has a type yet. Set one in Settings, Master data."
+                    />
+                    {paymentHint ? (
+                      <p className="text-xs leading-relaxed text-muted-foreground">{paymentHint}</p>
+                    ) : null}
+                  </div>
+                  {paymentKind === "OUTRIGHT" && branch.bpCode ? (
+                    <OrderReadout label="BP Code (SAP customer)" value={branch.bpCode} />
+                  ) : null}
+                  {paymentKind && partyBlock ? (
+                    <p className={ORDER_PARTY_BLOCK_CLASS}>{partyBlock}</p>
+                  ) : null}
+                </>
               ) : null}
             </>
           )}
