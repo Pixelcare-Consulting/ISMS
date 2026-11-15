@@ -7,57 +7,6 @@ import {
 import type { Prisma, ReturnRequestStatus } from "@prisma/client";
 
 export const scOpsRepository = {
-  async listInventory(
-    tenantId: string,
-    serviceCenterIds: string[] | null,
-    pagination: PaginationInput,
-    filters?: { statusCodeId?: string; serviceCenterId?: string },
-  ) {
-    const { page, limit, skip, take } = resolvePagination(pagination);
-    const where = {
-      tenantId,
-      ...(serviceCenterIds ? { serviceCenterId: { in: serviceCenterIds } } : {}),
-      ...(filters?.serviceCenterId
-        ? { serviceCenterId: filters.serviceCenterId }
-        : {}),
-      ...(filters?.statusCodeId ? { statusCodeId: filters.statusCodeId } : {}),
-    };
-
-    const [total, items] = await Promise.all([
-      prisma.serviceCenterInventory.count({ where }),
-      prisma.serviceCenterInventory.findMany({
-        where,
-        include: {
-          statusCode: {
-            select: { id: true, code: true, name: true, color: true },
-          },
-          serviceCenter: {
-            select: { id: true, name: true, sapCode: true },
-          },
-          serviceCenterLocation: {
-            select: { id: true, name: true, code: true },
-          },
-          serialNumber: {
-            include: {
-              model: {
-                select: {
-                  skuCode: true,
-                  name: true,
-                  brand: { select: { name: true } },
-                },
-              },
-            },
-          },
-        },
-        orderBy: { updatedAt: "desc" },
-        skip,
-        take,
-      }),
-    ]);
-
-    return toPaginatedResult(items, total, page, limit);
-  },
-
   async listSales(
     tenantId: string,
     serviceCenterIds: string[] | null,

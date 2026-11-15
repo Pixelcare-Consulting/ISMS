@@ -101,14 +101,6 @@ export function canAccessScLogistics(permissions: string[] | undefined): boolean
   return SC_LOGISTICS_ACCESS.some((slug) => hasPermission(permissions, slug));
 }
 
-export function canManualStockIn(permissions: string[] | undefined): boolean {
-  return (
-    hasPermission(permissions, SC_MANAGE) ||
-    hasPermission(permissions, SC_LOGISTICS_MANAGE) ||
-    hasPermission(permissions, SC_LOGISTICS_CREATE)
-  );
-}
-
 export function scReturnRejectPermissions(status: string): string[] {
   if (status === "pending_cs") {
     return ["returns.evaluate", SC_RETURN_EVALUATE, SC_SALES_CREATE];

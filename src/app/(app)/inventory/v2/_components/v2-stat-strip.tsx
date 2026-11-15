@@ -16,6 +16,8 @@ interface V2StatStripProps {
   className?: string;
   /** Show at most this many status cards (branch mockup uses ~6). */
   maxStatusCards?: number;
+  /** Service centers have no planogram, so their strip leaves this card out. */
+  showOffPlanogram?: boolean;
 }
 
 function StatAmount({ amount, className }: { amount: number; className?: string }) {
@@ -33,6 +35,7 @@ export function V2StatStrip({
   unreadByCode = {},
   className,
   maxStatusCards = 6,
+  showOffPlanogram = true,
 }: V2StatStripProps) {
   const visible = statuses
     .filter((status) => !isBranchInventoryV2HiddenStatus(status.code))
@@ -76,7 +79,7 @@ export function V2StatStrip({
           <StatAmount amount={statusAmounts.byStatus[status.code] ?? 0} />
         </div>
       ))}
-      {offPlanogramCount > 0 || showTotal ? (
+      {showOffPlanogram && (offPlanogramCount > 0 || showTotal) ? (
         <div
           className={cn(
             "rounded-xl border border-amber-200 bg-amber-50/90 px-3 py-3 shadow-sm",

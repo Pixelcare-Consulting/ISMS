@@ -3,23 +3,25 @@ import type { PageTutorialContent } from "@/components/page-tutorial/types";
 export const SC_INVENTORY_PAGE_TUTORIAL: PageTutorialContent = {
   id: "service-centers-inventory",
   triggerLabel: "Open service inventory tutorial",
-  dialogTitle: "Service center inventory — quick guide",
+  dialogTitle: "Service center inventory: quick guide",
   dialogDescription:
-    "View serialized stock at your assigned service centers and stock in units for UAT.",
+    "See serialized stock at the service centers you cover, laid out like Branch Inventory. This page is view only.",
   helpHref: "/help",
   helpLinkLabel: "Full Help & Support portal",
   sections: [
     {
       title: "What this page is for",
       description:
-        "Service center inventory is a separate stock ledger from branch inventory. Units show as STK when available to sell or pull out.",
+        "Service center stock is kept apart from branch stock. The cards show total, in stock (STK), defective and in transit (DIT) units with their peso value at the price list, else SRP. Sold units are not shown.",
     },
     {
       title: "How to use it",
       bullets: [
-        "Filter by status to focus on available (STK) or sold units.",
-        "Use Manual stock-in when a serial already exists and you need to place it at a service center location.",
-        "Your list is limited to service centers in your area of responsibility.",
+        "Pick a series to narrow the cards, the series panel and the service center list.",
+        "Open a service center to see its status totals and every unit. Filter by status, model or location, or search a serial.",
+        "Open a unit to see its location, DR number, DR date and aging (days since the DR date).",
+        "Statuses cannot be changed here. Units arrive as DIT through Check SAP on Orders, become STK when accepted under Deliveries, and leave through sales and pull-outs.",
+        "You only see service centers in your area of responsibility.",
       ],
     },
   ],
