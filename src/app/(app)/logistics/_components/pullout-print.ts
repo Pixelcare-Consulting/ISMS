@@ -7,34 +7,40 @@ type PrintedLine = PulloutDetail["lines"][number];
 
 const RETURN_SLIP_LEGEND = ["PAGE 1: BRANCH COPY", "PAGE 2: ACCOUNTING COPY"] as const;
 
-function labelled(label: string, values: readonly (string | null | undefined)[]): string[] {
-  const text = values
+function joined(values: readonly (string | null | undefined)[]): string {
+  return values
     .map((value) => value?.trim())
     .filter(Boolean)
     .join(", ");
-  return text ? [`${label}: ${text}`] : [];
 }
 
 /**
- * One labelled line per checklist field the unit was pulled out with, in the detail table's
- * column order; fields left blank print nothing. Older pull-outs hold one reason on the header
- * instead of one per unit.
+ * The checklist fields a unit was pulled out with, in the detail table's column order. Older
+ * pull-outs hold one reason on the header instead of one per unit.
  */
-function itemNotes(line: PrintedLine, headerReason: string | undefined): string[] {
-  return [
-    ...labelled("Reason", [line.reasonName ?? headerReason]),
-    ...labelled("Problem", line.problemDescriptionNames),
-    ...labelled("Classification", line.classificationNames),
-    ...labelled("Unit packing", line.unitPackingConditionNames),
-    ...labelled("Acc completeness", line.accessoryCompletenessNames),
-    ...labelled("Remarks", [line.remarks]),
-  ];
-}
+const DETAIL_COLUMNS: readonly {
+  label: string;
+  value: (line: PrintedLine, headerReason: string | undefined) => string;
+}[] = [
+  { label: "Reason", value: (line, headerReason) => joined([line.reasonName ?? headerReason]) },
+  { label: "Problem", value: (line) => joined(line.problemDescriptionNames) },
+  { label: "Classification", value: (line) => joined(line.classificationNames) },
+  { label: "Unit packing", value: (line) => joined(line.unitPackingConditionNames) },
+  { label: "Acc completeness", value: (line) => joined(line.accessoryCompletenessNames) },
+  { label: "Remarks", value: (line) => joined([line.remarks]) },
+];
 
 /** Pull-out slip. Null until the waybill, courier and schedule are saved, and on cancelled pull-outs. */
 export function pulloutPrintDocument(detail: PulloutDetail): SlipDocument | null {
   if (detail.status.code === PULLOUT_WORKFLOW_CODE.cancelled) return null;
   if (!shipmentIsReady(detail)) return null;
+  const lines = detail.lines.filter((line) => !line.rejectedAt);
+  const headerReason = detail.reason?.name;
+  const cells = lines.map((line) => DETAIL_COLUMNS.map((column) => column.value(line, headerReason)));
+  // A column no unit on this slip filled in leaves room for the rest.
+  const shown = DETAIL_COLUMNS.flatMap((_, index) =>
+    cells.some((row) => row[index]) ? [index] : [],
+  );
   return {
     title: "PULL-OUT SLIP",
     number: detail.pulloutNo,
@@ -42,13 +48,13 @@ export function pulloutPrintDocument(detail: PulloutDetail): SlipDocument | null
     // The slip shows a calendar date, so take the Manila date rather than the UTC one.
     date: formatManilaDate(detail.scheduledAt),
     address: "",
-    items: detail.lines
-      .filter((line) => !line.rejectedAt)
-      .map((line) => ({
-        modelCode: line.skuCode,
-        serialNo: line.serialNo,
-        notes: itemNotes(line, detail.reason?.name),
-      })),
+    detailColumns: shown.map((index) => DETAIL_COLUMNS[index].label),
+    items: lines.map((line, row) => ({
+      modelCode: line.skuCode,
+      serialNo: line.serialNo,
+      notes: [],
+      details: shown.map((index) => cells[row][index]),
+    })),
     copyLegend: RETURN_SLIP_LEGEND,
     copiesPerPage: 2,
   };
