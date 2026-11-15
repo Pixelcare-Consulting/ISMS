@@ -11,16 +11,7 @@ import {
   OrderWorksheetAsideSummary,
 } from "@/app/(app)/orders/_components/order-worksheet";
 import type { CreateOrderPrefill } from "@/app/(app)/orders/_components/orders-create-workspace-context";
-import {
-  ORDER_FOR_LABELS,
-  orderSetupHref,
-  scOrderSetupBlock,
-  ServiceCenterSetupFields,
-  useScOrderSetup,
-  type BranchOrderSetupChoice,
-  type OrderFor,
-  type OrderSetupChoice,
-} from "@/app/(app)/orders/_components/service-center-order-setup";
+import type { OrderSetupChoice } from "@/app/(app)/orders/_components/order-setup";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -109,7 +100,7 @@ interface SpecialModelOption {
 type PendingConfirm =
   | { kind: "dealer"; dealerId: string }
   | { kind: "branch"; branchId: string }
-  | { kind: "setup"; choice: BranchOrderSetupChoice }
+  | { kind: "setup"; choice: OrderSetupChoice }
   | { kind: "leave"; href: string };
 
 function delay(ms: number): Promise<void> {
@@ -185,14 +176,12 @@ function confirmCopy(pending: PendingConfirm): { title: string; description: str
 export function CreateOrderForm({
   canCreateManual,
   canCreateSpecial,
-  canCreateServiceCenter = false,
   prefill,
   initialReady = false,
   initialModeOfPaymentId = "",
 }: {
   canCreateManual: boolean;
   canCreateSpecial: boolean;
-  canCreateServiceCenter?: boolean;
   prefill?: CreateOrderPrefill;
   /** Set after the setup popup's Continue. A direct visit stays in the popup. */
   initialReady?: boolean;
@@ -331,7 +320,7 @@ export function CreateOrderForm({
     resetBranchWorksheet();
   }
 
-  function applySetup(choice: BranchOrderSetupChoice) {
+  function applySetup(choice: OrderSetupChoice) {
     const identityChanged = choice.dealerId !== dealerId || choice.branchId !== branchId;
     setTouched(true);
     setDealerId(choice.dealerId);
@@ -728,12 +717,6 @@ export function CreateOrderForm({
       : { label: "Dealer", value: dealerName || "—" };
 
   function continueSetup(choice: OrderSetupChoice) {
-    if (choice.orderFor === "service_center") {
-      // A service-center order is its own page; leaving this one may drop entered lines.
-      setSetupOpen(false);
-      requestConfirm({ kind: "leave", href: orderSetupHref(choice) });
-      return;
-    }
     const identityChanged = choice.dealerId !== dealerId || choice.branchId !== branchId;
     if (ready && identityChanged) {
       setSetupOpen(false);
@@ -928,7 +911,6 @@ export function CreateOrderForm({
         open={setupOpen}
         canCreateManual={canCreateManual}
         canCreateSpecial={canCreateSpecial}
-        canCreateServiceCenter={canCreateServiceCenter}
         initialBranchId={ready ? branchId : (prefill?.branchId ?? "")}
         initialModeOfPaymentId={ready ? modeOfPaymentId : initialModeOfPaymentId}
         onOpenChange={(open) => {
@@ -1063,39 +1045,20 @@ export function CreateOrderSetupDialog({
   open,
   canCreateManual,
   canCreateSpecial,
-  canCreateServiceCenter = false,
-  initialOrderFor = "branch",
   initialBranchId = "",
   initialModeOfPaymentId = "",
-  initialServiceCenterId = "",
-  initialCardCode = "",
   onOpenChange,
   onContinue,
 }: {
   open: boolean;
   canCreateManual: boolean;
   canCreateSpecial: boolean;
-  canCreateServiceCenter?: boolean;
-  initialOrderFor?: OrderFor;
   initialBranchId?: string;
   initialModeOfPaymentId?: string;
-  initialServiceCenterId?: string;
-  initialCardCode?: string;
   onOpenChange: (open: boolean) => void;
   onContinue: (choice: OrderSetupChoice) => void;
 }) {
   const wasOpen = useRef(false);
-  const forOptions = useMemo(() => {
-    const options: OrderFor[] = [];
-    if (canCreateManual || canCreateSpecial) options.push("branch");
-    if (canCreateServiceCenter) options.push("service_center");
-    return options;
-  }, [canCreateManual, canCreateServiceCenter, canCreateSpecial]);
-  const [orderFor, setOrderFor] = useState<OrderFor>(initialOrderFor);
-  const [draftServiceCenterId, setDraftServiceCenterId] = useState(initialServiceCenterId);
-  const [draftCardCode, setDraftCardCode] = useState(initialCardCode);
-  const isBranch = orderFor === "branch";
-  const sc = useScOrderSetup(open && orderFor === "service_center");
   // The order type is decided on the order page from its lines; lookups only need a type
   // the user may create, for their permission checks.
   const draftType: CreatableOrderType = canCreateManual ? "manual" : "special";
@@ -1116,24 +1079,13 @@ export function CreateOrderSetupDialog({
     }
     if (wasOpen.current) return;
     wasOpen.current = true;
-    setOrderFor(forOptions.includes(initialOrderFor) ? initialOrderFor : (forOptions[0] ?? "branch"));
     setDraftBranchId(initialBranchId);
     setDraftPaymentId(initialModeOfPaymentId);
-    setDraftServiceCenterId(initialServiceCenterId);
-    setDraftCardCode(initialCardCode);
     setLoaded(false);
-  }, [
-    forOptions,
-    initialBranchId,
-    initialCardCode,
-    initialModeOfPaymentId,
-    initialOrderFor,
-    initialServiceCenterId,
-    open,
-  ]);
+  }, [initialBranchId, initialModeOfPaymentId, open]);
 
   useEffect(() => {
-    if (!open || !isBranch) return;
+    if (!open) return;
     let cancelled = false;
     void (async () => {
       const [dealerRows, modeRows, branchRows] = await Promise.all([
@@ -1152,7 +1104,7 @@ export function CreateOrderSetupDialog({
     return () => {
       cancelled = true;
     };
-  }, [draftType, isBranch, open]);
+  }, [draftType, open]);
 
   const branch = branches.find((option) => option.id === draftBranchId) ?? null;
   const dealer = branchDealer(branch, dealers);
@@ -1163,26 +1115,13 @@ export function CreateOrderSetupDialog({
   const dealerDefaultPaymentId = defaultModeOfPaymentId(dealer, modesOfPayment);
   const partyBlock = orderPartyBlock({ kind: paymentKind, branch });
   const typeAllowed = canCreateManual || canCreateSpecial;
-  const scPrimary = sc.setup?.customers.find((customer) => customer.isPrimary)?.cardCode ?? "";
-  const scCardCode = draftCardCode || scPrimary;
-  const canContinue = isBranch
-    ? loaded && typeAllowed && partyBlock === null
-    : sc.loaded && scOrderSetupBlock(sc.setup) === null && Boolean(draftServiceCenterId && scCardCode);
+  const canContinue = loaded && typeAllowed && partyBlock === null;
 
   function continueWithChoice() {
-    if (isBranch) {
-      onContinue({
-        orderFor: "branch",
-        dealerId: paymentKind === "CONSIGNMENT" ? (branch?.dealerId ?? "") : "",
-        branchId: draftBranchId,
-        modeOfPaymentId: draftPaymentId,
-      });
-      return;
-    }
     onContinue({
-      orderFor: "service_center",
-      serviceCenterId: draftServiceCenterId,
-      cardCode: scCardCode,
+      dealerId: paymentKind === "CONSIGNMENT" ? (branch?.dealerId ?? "") : "",
+      branchId: draftBranchId,
+      modeOfPaymentId: draftPaymentId,
     });
   }
 
@@ -1212,50 +1151,12 @@ export function CreateOrderSetupDialog({
         <DialogHeader>
           <DialogTitle>Create order</DialogTitle>
           <DialogDescription>
-            {isBranch
-              ? "Choose the branch. Its dealer and mode of payment fill in, and you can change the mode of payment."
-              : "Choose the service center and the SAP customer the Sales Order bills."}
+            Choose the branch. Its dealer and mode of payment fill in, and you can change the
+            mode of payment.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
-          {forOptions.length > 1 ? (
-            <div className="space-y-2">
-              <p className="text-sm font-normal text-muted-foreground">Order for</p>
-              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Order for">
-                {forOptions.map((option) => {
-                  const selected = option === orderFor;
-                  return (
-                    <Button
-                      key={option}
-                      type="button"
-                      size="sm"
-                      variant={selected ? "default" : "outline"}
-                      role="radio"
-                      aria-checked={selected}
-                      onClick={() => setOrderFor(option)}
-                    >
-                      {ORDER_FOR_LABELS[option]}
-                    </Button>
-                  );
-                })}
-              </div>
-            </div>
-          ) : null}
-          {!isBranch ? (
-            sc.setup ? (
-              <ServiceCenterSetupFields
-                centers={sc.centers}
-                setup={sc.setup}
-                serviceCenterId={draftServiceCenterId}
-                cardCode={draftCardCode}
-                onServiceCenterChange={setDraftServiceCenterId}
-                onCardCodeChange={setDraftCardCode}
-              />
-            ) : (
-              <p className="text-sm text-muted-foreground">Loading service centers…</p>
-            )
-          ) : null}
-          {!isBranch ? null : !loaded ? (
+          {!loaded ? (
             <p className="text-sm text-muted-foreground">Loading branches…</p>
           ) : (
             <>

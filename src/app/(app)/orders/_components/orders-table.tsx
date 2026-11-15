@@ -7,7 +7,7 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { CreateOrderSetupDialog } from "@/app/(app)/orders/_components/create-order-form";
-import { orderSetupHref } from "@/app/(app)/orders/_components/service-center-order-setup";
+import { orderSetupHref } from "@/app/(app)/orders/_components/order-setup";
 import {
   adminBulkCancelOrdersAction,
   approveOrderAction,
@@ -149,8 +149,6 @@ interface OrdersTableProps {
   createHref?: string | null;
   /** Create permission per row type. Falls back to `canEdit` when omitted. */
   createByType?: Partial<Record<BranchOrderType, boolean>>;
-  /** The create popup also offers a service-center order. */
-  canCreateServiceCenter?: boolean;
   /** Offers "Check SAP now" for Sales Orders made in SAP. */
   canCheckSap?: boolean;
   /** Suggested orders dialog type. Falls back to `fixedOrderType`. */
@@ -290,7 +288,6 @@ export function OrdersTable({
   listFilter,
   createHref,
   createByType,
-  canCreateServiceCenter = false,
   suggestionOrderType,
   basePath = "/orders",
   initialSort = "",
@@ -1038,7 +1035,6 @@ export function OrdersTable({
         open={createSetupOpen}
         canCreateManual={canCreateManual}
         canCreateSpecial={canCreateSpecial}
-        canCreateServiceCenter={canCreateServiceCenter}
         onOpenChange={setCreateSetupOpen}
         onContinue={(choice) => {
           setCreateSetupOpen(false);

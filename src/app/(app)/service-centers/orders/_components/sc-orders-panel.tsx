@@ -5,6 +5,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
+import { SC_NEW_ORDER_HREF } from "@/app/(app)/service-centers/orders/new/_components/sc-order-setup";
 import { listScCentersForOpsAction } from "@/features/service-center-ops/actions/sc-inventory.actions";
 import { createScDeliveryFromOrderAction } from "@/features/service-center-ops/actions/sc-logistics.actions";
 import {
@@ -28,8 +29,6 @@ type CenterOption = Awaited<ReturnType<typeof listScCentersForOpsAction>>[number
 
 const orderColumn = createColumnHelper<DataTableFeatures, OrderRow>();
 
-/** Service-center orders are created on the shared Create Order page. */
-const NEW_SC_ORDER_HREF = "/orders/manual/new?for=service_center";
 
 export function ScOrdersPanel({
   items,
@@ -229,7 +228,7 @@ export function ScOrdersPanel({
         toolbarActions={
           canCreate ? (
             <Button
-              onClick={() => router.push(NEW_SC_ORDER_HREF)}
+              onClick={() => router.push(SC_NEW_ORDER_HREF)}
               disabled={pending || centers.length === 0}
             >
               New order
