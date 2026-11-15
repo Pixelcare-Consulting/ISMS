@@ -5,7 +5,11 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import { SC_NEW_ORDER_HREF } from "@/app/(app)/service-centers/orders/new/_components/sc-order-setup";
+import {
+  ScOrderSetupDialog,
+  scOrderSetupHref,
+  useScOrderSetup,
+} from "@/app/(app)/service-centers/orders/new/_components/sc-order-setup";
 import { listScCentersForOpsAction } from "@/features/service-center-ops/actions/sc-inventory.actions";
 import { createScDeliveryFromOrderAction } from "@/features/service-center-ops/actions/sc-logistics.actions";
 import {
@@ -46,6 +50,10 @@ export function ScOrdersPanel({
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
+  // Like branch orders: the setup popup opens over this list, and only Continue opens the
+  // create page.
+  const [setupOpen, setSetupOpen] = useState(false);
+  const scSetup = useScOrderSetup(setupOpen);
   const filtered = useMemo(
     () =>
       items.filter((row) =>
@@ -228,7 +236,7 @@ export function ScOrdersPanel({
         toolbarActions={
           canCreate ? (
             <Button
-              onClick={() => router.push(SC_NEW_ORDER_HREF)}
+              onClick={() => setSetupOpen(true)}
               disabled={pending || centers.length === 0}
             >
               New order
@@ -248,7 +256,18 @@ export function ScOrdersPanel({
           onPageChange: setPage,
         }}
       />
-
+      {canCreate ? (
+        <ScOrderSetupDialog
+          open={setupOpen}
+          centers={scSetup.centers}
+          setup={scSetup.setup}
+          onOpenChange={setSetupOpen}
+          onContinue={(choice) => {
+            setSetupOpen(false);
+            router.push(scOrderSetupHref(choice));
+          }}
+        />
+      ) : null}
     </div>
   );
 }
