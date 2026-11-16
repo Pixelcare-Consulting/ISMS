@@ -27,6 +27,8 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { resolveRouteTitle } from "@/config/route-titles";
 import { AiCopilotLauncher } from "@/features/ai/components/ai-copilot-launcher";
 import { canUseAiAssist } from "@/features/ai/constants/ai-permissions";
+import { CUSTOM_DASHBOARD_ACCESS } from "@/features/custom-dashboards/constants/custom-dashboard-permissions";
+import { customDashboardService } from "@/features/custom-dashboards/services/custom-dashboard.service";
 import { isAiConfigured } from "@/features/ai/lib/provider";
 import { readAiAssistantGate } from "@/features/ai/services/assistant-policy.service";
 import { countUnreadAnnouncementsAction } from "@/features/announcements/actions/announcement.actions";
@@ -46,6 +48,7 @@ import {
 } from "@/features/roles/constants/setup-access";
 import { SapSyncProgressModals } from "@/features/sap/components/sap-sync-progress-modal";
 import { SapSyncReportDialogs } from "@/features/sap/components/sap-sync-report-dialogs";
+import { logger } from "@/lib/shared/logger";
 import { pageMetadata } from "@/lib/shared/seo";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -78,6 +81,7 @@ export default async function AppLayout({
     unreadNotificationCount,
     assistantGate,
     operationalBadges,
+    customDashboards,
   ] = await Promise.all([
     getCachedLayoutBranding(session.user.tenantId),
     getCachedLayoutProfile(session.user.tenantId, session.user.id),
@@ -92,6 +96,15 @@ export default async function AppLayout({
           countBranchInventoryV2UpdatesAction().catch(() => 0),
           getWorkflowNavCountBadgesAction(),
         ]),
+    CUSTOM_DASHBOARD_ACCESS.some((p) => session.user.permissions.includes(p))
+      ? customDashboardService
+          .listNavItems(session.user.tenantId, session.user.id)
+          .catch((error: unknown) => {
+            // The sidebar still renders; the list page stays reachable.
+            logger.warn({ err: error, tenantId: session.user.tenantId }, "custom-dashboards: sidebar list failed");
+            return [];
+          })
+      : Promise.resolve([]),
   ]);
 
   const countBadges = operationalBadges
@@ -130,6 +143,7 @@ export default async function AppLayout({
           permissions={user.permissions}
           isPlatformOperator={user.isPlatformOperator}
           countBadges={countBadges}
+          customDashboards={customDashboards}
           secondaryPreference={secondaryPreference}
         >
           <PixelcareAwareShell

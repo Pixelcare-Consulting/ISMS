@@ -67,6 +67,8 @@ export interface NavLinkItem {
   /** Extra path prefixes that keep this item active after a route moves under it. */
   activePathPrefixes?: readonly string[];
   platformOperatorOnly?: boolean;
+  /** Left out of the sidebar while the route stays reachable by URL. */
+  hidden?: boolean;
   /** Compact sidebar badge (e.g. recently added menus) */
   badge?: "new";
   /**
@@ -176,12 +178,16 @@ export const appNavigation: NavEntry[] = [
         label: "Operations",
         icon: Activity,
         anyPermissions: OPERATIONS_DASHBOARD_PERMISSIONS,
+        // Client doesn't use it yet (2026-11-16).
+        hidden: true,
       },
       {
         href: "/dashboard/sales",
         label: "Sales",
         icon: Store,
         anyPermissions: SALES_DASHBOARD_PERMISSIONS,
+        // Client doesn't use it yet (2026-11-16).
+        hidden: true,
       },
       {
         href: "/dashboard/pcount",
@@ -783,6 +789,7 @@ export function filterNavByPermissions(
     .map((entry) => {
       switch (entry.type) {
         case "link": {
+          if (entry.hidden) return null;
           if (entry.platformOperatorOnly && !isPlatformOperator) {
             return null;
           }
@@ -793,6 +800,7 @@ export function filterNavByPermissions(
         }
         case "group": {
           const isVisible = (item: NavLinkItem) => {
+            if (item.hidden) return false;
             if (item.platformOperatorOnly && !isPlatformOperator) {
               return false;
             }
@@ -840,6 +848,38 @@ export function isNavItemActive(
   }
   if (exact) return pathname === href;
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/**
+ * Length of the href or prefix that makes this item active, 0 when inactive.
+ * Lets a list highlight only its most specific match.
+ */
+function navItemMatchLength(pathname: string, item: NavLinkItem): number {
+  let best = 0;
+  for (const prefix of item.activePathPrefixes ?? []) {
+    if (pathname === prefix || pathname.startsWith(`${prefix}/`)) {
+      best = Math.max(best, prefix.length);
+    }
+  }
+  if (isNavItemActive(pathname, item.href, item.exact)) {
+    best = Math.max(best, item.href.length);
+  }
+  return best;
+}
+
+/**
+ * Hrefs to highlight in one destination list: only the most specific match,
+ * so "/dashboard/custom" stays inactive while "/dashboard/custom/abc" is open.
+ */
+export function resolveActiveNavHrefs(
+  pathname: string,
+  items: readonly NavGroupChild[],
+): Set<string> {
+  const links = flattenNavLinks(items);
+  const lengths = links.map((item) => navItemMatchLength(pathname, item));
+  const best = Math.max(0, ...lengths);
+  if (best === 0) return new Set();
+  return new Set(links.filter((_, i) => lengths[i] === best).map((item) => item.href));
 }
 
 export function isNavGroupActive(
