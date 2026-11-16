@@ -209,14 +209,38 @@ const ORDER_CREATED_TIME = new Intl.DateTimeFormat("en-PH", {
   timeZone: "Asia/Manila",
 });
 
-function OrderCreatedAtCell({ value }: { value: string | Date | null | undefined }) {
-  if (!value) return "—";
+function orderCreatedParts(
+  value: string | Date | null | undefined,
+): { date: string; time: string } | null {
+  if (!value) return null;
   const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
+  if (Number.isNaN(date.getTime())) return null;
+  return {
+    date: ORDER_CREATED_DATE.format(date),
+    time: ORDER_CREATED_TIME.format(date),
+  };
+}
+
+/** Creator and timestamp in one narrow stack. Sorting stays on the timestamp. */
+function OrderCreatedCell({
+  createdBy,
+  value,
+}: {
+  createdBy: OrderRow["createdBy"] | null | undefined;
+  value: string | Date | null | undefined;
+}) {
+  const who = orderCreatorLabel(createdBy);
+  const when = orderCreatedParts(value);
+  const title = when ? `${who}, ${when.date} ${when.time}` : who;
   return (
-    <div className="whitespace-normal leading-tight">
-      <p>{ORDER_CREATED_DATE.format(date)}</p>
-      <p>{ORDER_CREATED_TIME.format(date)}</p>
+    <div className="leading-tight" title={title}>
+      <p className="truncate">{who}</p>
+      {when ? (
+        <>
+          <p className="text-xs tabular-nums text-muted-foreground">{when.date}</p>
+          <p className="text-xs tabular-nums text-muted-foreground">{when.time}</p>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -587,18 +611,13 @@ export function OrdersTable({
         ),
       }),
       orderColumn.display({
-        id: "createdBy",
-        header: "Created by",
-        enableSorting: false,
-        cell: ({ row }) => orderCreatorLabel(row.original.createdBy),
-        meta: { className: "max-w-40 truncate" },
-      }),
-      orderColumn.display({
         id: "createdAt",
-        header: "Created at",
+        header: "Created",
         enableSorting: true,
-        cell: ({ row }) => <OrderCreatedAtCell value={row.original.createdAt} />,
-        meta: { className: "tabular-nums" },
+        cell: ({ row }) => (
+          <OrderCreatedCell createdBy={row.original.createdBy} value={row.original.createdAt} />
+        ),
+        meta: { wrap: true, className: "w-36 max-w-36" },
       }),
       orderColumn.display({
         id: "lines",
@@ -610,12 +629,12 @@ export function OrdersTable({
             .join(", ");
           if (!label) return "—";
           return (
-            <span className="block max-w-xs truncate" title={label}>
+            <span className="block max-w-64 truncate" title={label}>
               {label}
             </span>
           );
         },
-        meta: { className: "max-w-xs" },
+        meta: { className: "max-w-64" },
       }),
       orderColumn.display({
         id: "actions",

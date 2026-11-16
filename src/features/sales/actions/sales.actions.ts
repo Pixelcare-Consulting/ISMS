@@ -94,6 +94,7 @@ import {
 } from "@/features/sales/services/model-price";
 import {
   parseSaleProofPaths,
+  SALE_PROOF_MAX_FILES,
   serializeSaleProofPaths,
 } from "@/features/sales/utils/sale-proof";
 import { hasPermission, requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
@@ -641,8 +642,19 @@ export async function listSalesReturnsAction(input?: {
   };
 }
 
+/** Who may finish an approved replacement (Same Invoice or New Invoice). */
+const REPLACEMENT_COMPLETE_PERMISSIONS = [
+  RETURNS_COMPLETE,
+  SALES_RETURN_COMPLETE,
+  "logistics.manage",
+  SALES_CREATE,
+] as const;
+
 export async function getSaleDetailsAction(saleId: string) {
-  const session = await requireAnyPermission([...SALES_ACCESS_PERMISSIONS]);
+  const session = await requireAnyPermission([
+    ...SALES_ACCESS_PERMISSIONS,
+    ...REPLACEMENT_COMPLETE_PERMISSIONS,
+  ]);
   const [sale, toFollowStatus, salesAtrCodes] = await Promise.all([
     salesRepository.findSaleDetailsForTenant(session.user.tenantId, saleId),
     resolveToFollowStatusCode(session.user.tenantId),
@@ -763,7 +775,10 @@ export async function listPackageTypesForSalesAction() {
 }
 
 export async function listPaymentTypesForSalesAction() {
-  const session = await requireAnyPermission([...SALES_LOOKUP_PERMISSIONS]);
+  const session = await requireAnyPermission([
+    ...SALES_LOOKUP_PERMISSIONS,
+    ...REPLACEMENT_COMPLETE_PERMISSIONS,
+  ]);
   return prisma.paymentType.findMany({
     where: { tenantId: session.user.tenantId, recordStatus: "active" },
     select: { id: true, name: true },
@@ -772,7 +787,10 @@ export async function listPaymentTypesForSalesAction() {
 }
 
 export async function listSaleTypesForSalesAction() {
-  const session = await requireAnyPermission([...SALES_LOOKUP_PERMISSIONS]);
+  const session = await requireAnyPermission([
+    ...SALES_LOOKUP_PERMISSIONS,
+    ...REPLACEMENT_COMPLETE_PERMISSIONS,
+  ]);
   return prisma.saleType.findMany({
     where: { tenantId: session.user.tenantId, recordStatus: "active" },
     select: { id: true, name: true },
@@ -781,7 +799,10 @@ export async function listSaleTypesForSalesAction() {
 }
 
 export async function listCustomerDeliveryMethodsForSalesAction() {
-  const session = await requireAnyPermission([...SALES_LOOKUP_PERMISSIONS]);
+  const session = await requireAnyPermission([
+    ...SALES_LOOKUP_PERMISSIONS,
+    ...REPLACEMENT_COMPLETE_PERMISSIONS,
+  ]);
   return prisma.customerDeliveryMethod.findMany({
     where: { tenantId: session.user.tenantId, recordStatus: "active" },
     select: { id: true, name: true },
@@ -999,7 +1020,10 @@ export async function listSaleableSerialsAction(
 }
 
 export async function uploadSaleProofAction(formData: FormData) {
-  const session = await requireAnyPermission([...SALES_LOOKUP_PERMISSIONS]);
+  const session = await requireAnyPermission([
+    ...SALES_LOOKUP_PERMISSIONS,
+    ...REPLACEMENT_COMPLETE_PERMISSIONS,
+  ]);
   try {
     const files = formData
       .getAll("proof")
@@ -2242,11 +2266,34 @@ const replacementSameInvoiceSchema = z.object({
 
 const replacementNewInvoiceSchema = z.object({
   returnRequestId: z.string().min(1),
-  transactionNo: z.string().trim().min(1),
-  transactionDate: z.string().min(1),
+  transactionNo: z
+    .string()
+    .trim()
+    .min(1)
+    .refine(isSaleTransactionNo, "Invalid transaction number"),
+  transactionDate: z.string().trim().optional(),
   modelId: z.string().min(1),
   replacementSerialNumberId: z.string().min(1),
+  customerName: z.string().trim().min(1),
+  contactNo: z.string().trim().max(50).optional(),
+  paymentTypeId: z.string().min(1),
+  saleTypeId: z.string().min(1),
+  customerDeliveryMethodId: z.string().min(1),
+  infoSlipVsoRrReleased: z.string().trim().optional(),
+  rrReceiveDeliver: z.string().trim().optional(),
+  proof: z.array(z.string().trim().min(1)).max(SALE_PROOF_MAX_FILES).optional(),
 });
+
+type ReplacementNewInvoiceHeader = {
+  customerName: string;
+  contactNo: string | null;
+  paymentTypeId: string;
+  saleTypeId: string;
+  customerDeliveryMethodId: string;
+  infoSlipVsoRrReleased: string | null;
+  rrReceiveDeliver: string | null;
+  proof: string[];
+};
 
 async function completeReplacementCore(input: {
   session: {
@@ -2258,6 +2305,8 @@ async function completeReplacementCore(input: {
   invoiceNo: string | null;
   invoiceDate: Date | null;
   mode: "same_invoice" | "new_invoice";
+  /** Edited header for New Invoice. Ignored for Same Invoice. */
+  newInvoiceHeader?: ReplacementNewInvoiceHeader;
 }) {
   const tenantId = input.session.user.tenantId;
   const userId = input.session.user.id;
@@ -2440,10 +2489,15 @@ async function completeReplacementCore(input: {
   );
   const replacementModelPrice = resolvedPrice?.amount ?? originalPrice;
 
+  let validatedNewHeader: ReplacementNewInvoiceHeader | null = null;
   if (input.mode === "new_invoice") {
     const newTrnNo = input.invoiceNo?.trim();
-    if (!newTrnNo || !input.invoiceDate) {
-      return { error: "New invoice requires transaction number and date" as const };
+    const header = input.newInvoiceHeader;
+    if (!newTrnNo || !header?.customerName.trim()) {
+      return { error: "New invoice requires a transaction number and customer name" as const };
+    }
+    if (!header.paymentTypeId || !header.saleTypeId || !header.customerDeliveryMethodId) {
+      return { error: "New invoice requires payment type, sale type, and delivery method" as const };
     }
     const taken = await prisma.branchSalesTransaction.findFirst({
       where: {
@@ -2459,6 +2513,33 @@ async function completeReplacementCore(input: {
           "Transaction number already used on this branch. Enter a different number." as const,
       };
     }
+    const [payment, saleType, delivery] = await Promise.all([
+      prisma.paymentType.findFirst({
+        where: { id: header.paymentTypeId, tenantId },
+        select: { id: true },
+      }),
+      prisma.saleType.findFirst({
+        where: { id: header.saleTypeId, tenantId },
+        select: { id: true },
+      }),
+      prisma.customerDeliveryMethod.findFirst({
+        where: { id: header.customerDeliveryMethodId, tenantId },
+        select: { id: true },
+      }),
+    ]);
+    if (!payment) return { error: "Payment type not found" as const };
+    if (!saleType) return { error: "Sale type not found" as const };
+    if (!delivery) return { error: "Customer delivery method not found" as const };
+    validatedNewHeader = {
+      customerName: header.customerName.trim(),
+      contactNo: header.contactNo?.trim() || null,
+      paymentTypeId: header.paymentTypeId,
+      saleTypeId: header.saleTypeId,
+      customerDeliveryMethodId: header.customerDeliveryMethodId,
+      infoSlipVsoRrReleased: header.infoSlipVsoRrReleased?.trim() || null,
+      rrReceiveDeliver: header.rrReceiveDeliver?.trim() || null,
+      proof: serializeSaleProofPaths(header.proof),
+    };
   }
 
   let newSaleId: string | null = null;
@@ -2502,7 +2583,7 @@ async function completeReplacementCore(input: {
           : row.sale.transactionNo;
       const replacementInvoiceDate =
         input.mode === "new_invoice"
-          ? (input.invoiceDate ?? new Date())
+          ? input.invoiceDate
           : (row.sale.transactionDate ?? new Date());
 
       if (input.mode === "same_invoice") {
@@ -2540,23 +2621,27 @@ async function completeReplacementCore(input: {
           },
         });
       } else {
-        // New Invoice: create a fresh sale copying header context.
+        if (!validatedNewHeader) {
+          throw new Error("New invoice header is required");
+        }
+        const header = validatedNewHeader;
+        // Branches stay on the original sale. Stock is still STK at branch sold.
         const created = await tx.branchSalesTransaction.create({
           data: {
             tenantId,
             branchId: soldBranchId,
             alternateBranchId: stockBranchId,
-            paymentTypeId: row.sale.paymentTypeId,
-            saleTypeId: row.sale.saleTypeId,
-            customerDeliveryMethodId: row.sale.customerDeliveryMethodId,
+            paymentTypeId: header.paymentTypeId,
+            saleTypeId: header.saleTypeId,
+            customerDeliveryMethodId: header.customerDeliveryMethodId,
             transactionNo: replacementInvoiceNo,
             transactionDate: replacementInvoiceDate,
-            customerName: row.sale.customerName,
-            contactNo: row.sale.contactNo,
+            customerName: header.customerName,
+            contactNo: header.contactNo,
             siTrans: replacementInvoiceNo,
-            infoSlipVsoRrReleased: row.sale.infoSlipVsoRrReleased,
-            rrReceiveDeliver: row.sale.rrReceiveDeliver,
-            proof: row.sale.proof ?? [],
+            infoSlipVsoRrReleased: header.infoSlipVsoRrReleased,
+            rrReceiveDeliver: header.rrReceiveDeliver,
+            proof: header.proof,
             amount: replacementModelPrice,
             modelPrice: replacementModelPrice,
             atrStatus: "open",
@@ -2673,12 +2758,7 @@ async function completeReplacementCore(input: {
 }
 
 export async function listReplacementLookupsAction(branchId: string, modelId?: string) {
-  const session = await requireAnyPermission([
-    RETURNS_COMPLETE,
-    SALES_RETURN_COMPLETE,
-    "logistics.manage",
-    SALES_CREATE,
-  ]);
+  const session = await requireAnyPermission([...REPLACEMENT_COMPLETE_PERMISSIONS]);
 
   const stkCodeId = await reasonStatusService.requireCodeId(
     session.user.tenantId,
@@ -2688,7 +2768,21 @@ export async function listReplacementLookupsAction(branchId: string, modelId?: s
 
   const [models, serialRows] = await Promise.all([
     prisma.productModel.findMany({
-      where: { tenantId: session.user.tenantId, status: "active" },
+      where: {
+        tenantId: session.user.tenantId,
+        status: "active",
+        serialNumbers: {
+          some: {
+            branchInventories: {
+              some: {
+                tenantId: session.user.tenantId,
+                branchId,
+                statusCodeId: stkCodeId,
+              },
+            },
+          },
+        },
+      },
       select: { id: true, skuCode: true, name: true },
       orderBy: { skuCode: "asc" },
       take: 1000,
@@ -2730,12 +2824,7 @@ export async function listReplacementLookupsAction(branchId: string, modelId?: s
 }
 
 export async function completeReplacementSameInvoiceAction(input: unknown) {
-  const session = await requireAnyPermission([
-    RETURNS_COMPLETE,
-    SALES_RETURN_COMPLETE,
-    "logistics.manage",
-    SALES_CREATE,
-  ]);
+  const session = await requireAnyPermission([...REPLACEMENT_COMPLETE_PERMISSIONS]);
   const parsed = replacementSameInvoiceSchema.safeParse(input);
   if (!parsed.success) return { error: "Invalid same-invoice replacement" as const };
 
@@ -2751,18 +2840,16 @@ export async function completeReplacementSameInvoiceAction(input: unknown) {
 }
 
 export async function completeReplacementNewInvoiceAction(input: unknown) {
-  const session = await requireAnyPermission([
-    RETURNS_COMPLETE,
-    SALES_RETURN_COMPLETE,
-    "logistics.manage",
-    SALES_CREATE,
-  ]);
+  const session = await requireAnyPermission([...REPLACEMENT_COMPLETE_PERMISSIONS]);
   const parsed = replacementNewInvoiceSchema.safeParse(input);
   if (!parsed.success) return { error: "Invalid new-invoice replacement" as const };
 
-  const invoiceDate = new Date(parsed.data.transactionDate);
-  if (Number.isNaN(invoiceDate.getTime())) {
-    return { error: "Invalid transaction date" as const };
+  const trimmedDate = parsed.data.transactionDate?.trim() ?? "";
+  let invoiceDate: Date | null = null;
+  if (trimmedDate) {
+    const resolvedDate = resolveSaleTransactionDate(trimmedDate);
+    if ("error" in resolvedDate) return { error: resolvedDate.error };
+    invoiceDate = resolvedDate.date;
   }
 
   return completeReplacementCore({
@@ -2773,6 +2860,16 @@ export async function completeReplacementNewInvoiceAction(input: unknown) {
     invoiceNo: parsed.data.transactionNo.trim(),
     invoiceDate,
     mode: "new_invoice",
+    newInvoiceHeader: {
+      customerName: parsed.data.customerName,
+      contactNo: parsed.data.contactNo?.trim() || null,
+      paymentTypeId: parsed.data.paymentTypeId,
+      saleTypeId: parsed.data.saleTypeId,
+      customerDeliveryMethodId: parsed.data.customerDeliveryMethodId,
+      infoSlipVsoRrReleased: parsed.data.infoSlipVsoRrReleased?.trim() || null,
+      rrReceiveDeliver: parsed.data.rrReceiveDeliver?.trim() || null,
+      proof: parsed.data.proof ?? [],
+    },
   });
 }
 

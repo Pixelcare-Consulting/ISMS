@@ -54,28 +54,29 @@ export function V2StatStrip({
           <StatAmount amount={statusAmounts.total} />
         </div>
       ) : null}
-      {visible.map((status) => (
-        <div
-          key={status.code}
-          className="rounded-xl border border-border/80 bg-card px-3 py-3 shadow-sm"
-        >
-          <div className="flex items-center">
+      {visible.map((status) => {
+        const unread = unreadByCode[status.code] ?? 0;
+        return (
+          <div
+            key={status.code}
+            className="rounded-xl border border-border/80 bg-card px-3 py-3 shadow-sm"
+          >
             <StatusCodeBadge
               code={status.code}
               name={status.name}
               color={status.color ?? undefined}
-              showCode
-              className="scale-90"
             />
-            <SidebarNavCountBadge
-              count={unreadByCode[status.code] ?? 0}
-              className="mt-0"
-            />
+            <p className="relative mt-2 w-fit text-xl font-semibold tabular-nums">
+              {status.count.toLocaleString()}
+              <SidebarNavCountBadge
+                count={unread}
+                className="absolute -top-2 -right-5 z-10 mt-0 ml-0"
+              />
+            </p>
+            <StatAmount amount={statusAmounts.byStatus[status.code] ?? 0} />
           </div>
-          <p className="mt-2 text-xl font-semibold tabular-nums">{status.count.toLocaleString()}</p>
-          <StatAmount amount={statusAmounts.byStatus[status.code] ?? 0} />
-        </div>
-      ))}
+        );
+      })}
       {offPlanogramCount > 0 || showTotal ? (
         <div
           className={cn(

@@ -73,12 +73,31 @@ export const RELEASES: ReleaseNote[] = [
     title: "Assistant button hides when turned off",
     highlights: [
       "The teal sparkle button stays out of the way when the assistant is turned off for your company.",
+      "On a branch’s unit list, status cards show the status name, and the red new-count marker sits on the unit total.",
+      "The orders list shows who created an order and when in one column, so the row fits on screen.",
+      "Same Invoice and New Invoice show the original sale details before you issue the replacement unit.",
+      "The replacement model list only shows models that have stock at that branch.",
     ],
     changes: [
+      {
+        type: "improvement",
+        description:
+          "When you complete a replacement, Same Invoice and New Invoice show the sale details from the original invoice. Same Invoice is locked so you can check them. New Invoice lets you change those details, and the branches stay with the original sale. You still choose the replacement model and serial. The model list only shows models that have stock at that branch.",
+      },
+      {
+        type: "improvement",
+        description:
+          "On the orders list, who created an order and when it was created sit together in one column. You can still sort by when it was created, and View details is easier to reach without scrolling sideways.",
+      },
       {
         type: "fix",
         description:
           "Turning the assistant off in company or provider settings hides the corner sparkle button and the Help assist box. They come back only after the assistant is turned on again.",
+      },
+      {
+        type: "fix",
+        description:
+          "On a branch’s unit list, each status card shows the status name only. The red marker for units you have not opened yet sits on that status total.",
       },
     ],
   },
