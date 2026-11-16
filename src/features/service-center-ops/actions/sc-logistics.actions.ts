@@ -8,7 +8,10 @@ import {
   inventoryApprovalLedger,
   type InventoryApprovalDocument,
 } from "@/features/inventory-approvals/services/inventory-approval-ledger";
-import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
+import {
+  loadCurrentPlacements,
+  lockSerialNumbers,
+} from "@/features/inventory/services/serial-placement";
 import { placeServiceCenterUnit } from "@/features/service-center-ops/services/service-center-placement";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import {
@@ -18,6 +21,11 @@ import {
   SC_ORDERS_APPROVE,
 } from "@/features/service-center-ops/constants/sc-permissions";
 import { scOpsRepository } from "@/features/service-center-ops/repositories/sc-ops.repository";
+import {
+  blockedPlacementMessage,
+  scDeliveryStatusAfterAccept,
+  scPlacementsToReplace,
+} from "@/features/service-center-ordering/lib/sc-order-sap-check";
 import {
   assertScInScope,
   resolveScIdsForUser,
@@ -70,71 +78,17 @@ export async function listScDeliveriesAction(input?: {
   });
 }
 
-export async function createScDeliveryFromOrderAction(orderId: string) {
-  const session = await requireAnyPermission([
-    SC_LOGISTICS_CREATE,
-    SC_LOGISTICS_MANAGE,
-  ]);
-  const order = await prisma.serviceCenterOrder.findFirst({
-    where: { id: orderId, tenantId: session.user.tenantId },
-    include: { deliveries: { select: { id: true } } },
-  });
-  if (!order) return { error: "Order not found" as const };
-  if (order.status !== "approved") {
-    return { error: "Order must be approved before creating a delivery" as const };
-  }
+const acceptDeliverySchema = z.object({
+  serialNumberIds: z.array(z.string().min(1)).min(1),
+  /** For a SAP DR delivery whose order named no location (the center has several). */
+  serviceCenterLocationId: z.string().min(1).optional().nullable(),
+});
 
-  const scopedIds = await resolveScIdsForUser(
-    session.user.tenantId,
-    session.user.id,
-    session.user.permissions,
-  );
-  try {
-    assertScInScope(order.serviceCenterId, scopedIds);
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "Out of scope" as const };
-  }
-
-  let pendingCodeId: string;
-  try {
-    pendingCodeId = await reasonStatusService.requireCodeId(
-      session.user.tenantId,
-      "delivery_workflow",
-      "pending",
-    );
-  } catch {
-    pendingCodeId = await reasonStatusService.requireCodeId(
-      session.user.tenantId,
-      "delivery_workflow",
-      "in_transit",
-    );
-  }
-
-  const deliveryNo = nextNo("SCD");
-  const delivery = await prisma.serviceCenterDelivery.create({
-    data: {
-      tenantId: session.user.tenantId,
-      serviceCenterId: order.serviceCenterId,
-      serviceCenterLocationId: order.serviceCenterLocationId,
-      orderId: order.id,
-      deliveryNo,
-      statusCodeId: pendingCodeId,
-    },
-  });
-
-  await auditService.log({
-    tenantId: session.user.tenantId,
-    userId: session.user.id,
-    action: "sc_delivery.created",
-    entityType: "ServiceCenterDelivery",
-    entityId: delivery.id,
-    metadata: { deliveryNo, orderNumber: order.orderNumber },
-  });
-
-  revalidateScLogistics();
-  return { success: true as const, id: delivery.id, deliveryNo };
-}
-
+/**
+ * Receives units at the service center as STK. A delivery made from a SAP DR accepts its own
+ * DR serials (DIT at the location, or still at the warehouse when no location was known).
+ * An older ISMS-made delivery has no serial list, so the user supplies the serials.
+ */
 export async function acceptScDeliveryAction(
   deliveryId: string,
   input: unknown,
@@ -143,25 +97,21 @@ export async function acceptScDeliveryAction(
     SC_LOGISTICS_CREATE,
     SC_LOGISTICS_MANAGE,
   ]);
-  const parsed = z
-    .object({
-      serialNumberIds: z.array(z.string().min(1)).min(1),
-    })
-    .safeParse(input);
+  const parsed = acceptDeliverySchema.safeParse(input);
   if (!parsed.success) {
     return { error: "Provide at least one serial number" as const };
   }
+  const tenantId = session.user.tenantId;
+  const serialNumberIds = [...new Set(parsed.data.serialNumberIds)];
 
   const delivery = await prisma.serviceCenterDelivery.findFirst({
-    where: { id: deliveryId, tenantId: session.user.tenantId },
+    where: { id: deliveryId, tenantId },
+    include: { lines: { select: { serialNumberId: true, acceptedAt: true } } },
   });
   if (!delivery) return { error: "Delivery not found" as const };
-  if (!delivery.serviceCenterLocationId) {
-    return { error: "Delivery has no service center location" as const };
-  }
 
   const scopedIds = await resolveScIdsForUser(
-    session.user.tenantId,
+    tenantId,
     session.user.id,
     session.user.permissions,
   );
@@ -171,52 +121,94 @@ export async function acceptScDeliveryAction(
     return { error: e instanceof Error ? e.message : "Out of scope" as const };
   }
 
-  const serials = await prisma.serialNumber.findMany({
-    where: {
-      id: { in: parsed.data.serialNumberIds },
-      tenantId: session.user.tenantId,
-    },
-    select: { id: true },
-  });
-  if (serials.length !== parsed.data.serialNumberIds.length) {
-    return { error: "One or more serials not found" as const };
+  const fromSap = delivery.lines.length > 0;
+  const locationId = delivery.serviceCenterLocationId ?? (fromSap ? parsed.data.serviceCenterLocationId : null);
+  if (!locationId) {
+    return {
+      error: fromSap
+        ? "Choose the service center location that receives these units"
+        : "Delivery has no service center location",
+    };
+  }
+  if (!delivery.serviceCenterLocationId) {
+    const location = await prisma.serviceCenterLocation.findFirst({
+      where: { id: locationId, serviceCenterId: delivery.serviceCenterId },
+      select: { id: true },
+    });
+    if (!location) return { error: "That location is not at this service center" as const };
   }
 
-  const acceptedCodeId = await reasonStatusService.requireCodeId(
-    session.user.tenantId,
-    "delivery_workflow",
-    "accepted",
-  );
-  const stkCodeId = await reasonStatusService.requireCodeId(
-    session.user.tenantId,
-    "inventory_system",
-    "STK",
-  );
+  if (fromSap) {
+    const open = new Set(
+      delivery.lines.filter((line) => line.acceptedAt === null).map((line) => line.serialNumberId),
+    );
+    if (serialNumberIds.some((id) => !open.has(id))) {
+      return { error: "Only serials on this SAP delivery that are not yet accepted can be accepted" as const };
+    }
+  } else {
+    const serials = await prisma.serialNumber.count({
+      where: { id: { in: serialNumberIds }, tenantId },
+    });
+    if (serials !== serialNumberIds.length) {
+      return { error: "One or more serials not found" as const };
+    }
+  }
+
+  const [acceptedCodeId, partialCodeId, stkCodeId] = await Promise.all([
+    reasonStatusService.requireCodeId(tenantId, "delivery_workflow", "accepted"),
+    reasonStatusService.requireCodeId(tenantId, "delivery_workflow", "partial"),
+    reasonStatusService.requireCodeId(tenantId, "inventory_system", "STK"),
+  ]);
 
   try {
     await prisma.$transaction(async (tx) => {
-      await lockSerialNumbers(tx, parsed.data.serialNumberIds);
-      for (const serialNumberId of parsed.data.serialNumberIds) {
+      await lockSerialNumbers(tx, serialNumberIds);
+      if (fromSap) {
+        // Units with no location at Check SAP still have ISMS's warehouse row; the DR moved
+        // them out of SAP's warehouse, so that row goes now.
+        const placements = (await loadCurrentPlacements(tx, serialNumberIds)).filter(
+          (row) => row.tenantId === tenantId,
+        );
+        const { warehouseRowIds, blocked } = scPlacementsToReplace(placements, locationId);
+        if (blocked.length > 0) throw new Error(blockedPlacementMessage(blocked));
+        if (warehouseRowIds.length > 0) {
+          await tx.warehouseInventory.deleteMany({ where: { id: { in: warehouseRowIds } } });
+        }
+      }
+      for (const serialNumberId of serialNumberIds) {
         await tx.serviceBackload.create({
           data: {
-            tenantId: session.user.tenantId,
+            tenantId,
             serviceCenterId: delivery.serviceCenterId,
-            serviceCenterLocationId: delivery.serviceCenterLocationId,
+            serviceCenterLocationId: locationId,
             deliveryId: delivery.id,
             serialNumberId,
           },
         });
         await placeServiceCenterUnit(tx, {
-          tenantId: session.user.tenantId,
+          tenantId,
           serviceCenterId: delivery.serviceCenterId,
-          serviceCenterLocationId: delivery.serviceCenterLocationId!,
+          serviceCenterLocationId: locationId,
           serialNumberId,
           statusCodeId: stkCodeId,
         });
       }
+
+      let statusCodeId = acceptedCodeId;
+      if (fromSap) {
+        await tx.serviceCenterDeliveryLine.updateMany({
+          where: { deliveryId, serialNumberId: { in: serialNumberIds }, acceptedAt: null },
+          data: { acceptedAt: new Date() },
+        });
+        const lines = await tx.serviceCenterDeliveryLine.findMany({
+          where: { deliveryId },
+          select: { acceptedAt: true },
+        });
+        statusCodeId = scDeliveryStatusAfterAccept(lines) === "accepted" ? acceptedCodeId : partialCodeId;
+      }
       await tx.serviceCenterDelivery.update({
         where: { id: deliveryId },
-        data: { statusCodeId: acceptedCodeId },
+        data: { statusCodeId, serviceCenterLocationId: locationId },
       });
     });
   } catch (e) {
@@ -226,21 +218,22 @@ export async function acceptScDeliveryAction(
   }
 
   await auditService.log({
-    tenantId: session.user.tenantId,
+    tenantId,
     userId: session.user.id,
     action: "sc_delivery.accepted",
     entityType: "ServiceCenterDelivery",
     entityId: deliveryId,
     metadata: {
       deliveryNo: delivery.deliveryNo,
-      serialCount: parsed.data.serialNumberIds.length,
+      serialCount: serialNumberIds.length,
+      drNo: delivery.sapDocNo,
     },
   });
 
   revalidateScLogistics();
   return {
     success: true as const,
-    movedCount: parsed.data.serialNumberIds.length,
+    movedCount: serialNumberIds.length,
   };
 }
 

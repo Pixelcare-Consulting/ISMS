@@ -66,6 +66,86 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.94.3",
+    date: "2026-11-16",
+    releasedAt: "2026-11-16T09:50:00+08:00",
+    audience: "internal",
+    title: "Assistant button hides when turned off",
+    highlights: [
+      "The teal sparkle button stays out of the way when the assistant is turned off for your company.",
+      "On a branch’s unit list, status cards show the status name, and the red new-count marker sits on the unit total.",
+      "The orders list shows who created an order and when in one column, so the row fits on screen.",
+      "Same Invoice and New Invoice show the original sale details before you issue the replacement unit.",
+      "The replacement model list only shows models that have stock at that branch.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "When you complete a replacement, Same Invoice and New Invoice show the sale details from the original invoice. Same Invoice is locked so you can check them. New Invoice lets you change those details, and the branches stay with the original sale. You still choose the replacement model and serial. The model list only shows models that have stock at that branch.",
+      },
+      {
+        type: "improvement",
+        description:
+          "On the orders list, who created an order and when it was created sit together in one column. You can still sort by when it was created, and View details is easier to reach without scrolling sideways.",
+      },
+      {
+        type: "fix",
+        description:
+          "Turning the assistant off in company or provider settings hides the corner sparkle button and the Help assist box. They come back only after the assistant is turned on again.",
+      },
+      {
+        type: "fix",
+        description:
+          "On a branch’s unit list, each status card shows the status name only. The red marker for units you have not opened yet sits on that status total.",
+      },
+    ],
+  },
+  {
+    version: "0.94.2",
+    date: "2026-11-13",
+    releasedAt: "2026-11-13T17:40:00+08:00",
+    title: "Series filter on the open branch",
+    highlights: [
+      "Choose a series after you open a branch. The all-branches list always includes every series.",
+      "Unit details shows the series for that model.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "View unit details shows the series saved on that model. A model with no series shows a dash.",
+      },
+      {
+        type: "fix",
+        description:
+          "The series menu sits on the branch you opened, with status and model. All series is the default. Choosing a series limits the units, models, status cards, and series summary for that branch. Totals on the all-branches list stay complete.",
+      },
+    ],
+  },
+  {
+    version: "0.94.1",
+    date: "2026-11-13",
+    releasedAt: "2026-11-13T16:30:00+08:00",
+    title: "Backdated sales and return status",
+    highlights: [
+      "A sale can be dated up to 30 days in the past, and today or a later date still works.",
+      "A returned or replaced sale keeps Returned/Replaced, and a service return keeps Service Returned/Replaced.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "When you record a sale, the transaction date still starts blank. You can choose today, a future date, or a past date up to 30 days ago. A date older than that is not accepted, unless that sale was already saved with it.",
+      },
+      {
+        type: "fix",
+        description:
+          "After a return or replacement, the sale keeps the status Returned/Replaced. A service return or replacement keeps Service Returned/Replaced. That status stays while the request is reviewed, approved, and finished.",
+      },
+    ],
+  },
+  {
     version: "0.94.0",
     date: "2026-11-13",
     releasedAt: "2026-11-13T12:16:00+08:00",

@@ -22,6 +22,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  isReturnHistoryStatus,
+  SERVICE_RETURNED_REPLACED_STATUS,
+} from "@/features/sales/constants/return-history-status";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
 type SaleRow = Awaited<ReturnType<typeof listScSalesAction>>["items"][number];
@@ -49,7 +53,9 @@ export function ScSalesPanel({
           row.serviceCenter.name,
           row.serialNumber?.serialNo ?? "",
           row.atrStatus,
-          row.returnRequest?.status ?? "",
+          row.returnRequest && isReturnHistoryStatus(row.returnRequest.status)
+            ? SERVICE_RETURNED_REPLACED_STATUS
+            : (row.returnRequest?.status ?? ""),
         ]),
       ),
     [items, query],
@@ -142,7 +148,11 @@ export function ScSalesPanel({
         enableSorting: false,
         cell: ({ row }) =>
           row.original.returnRequest ? (
-            <Badge variant="outline">{row.original.returnRequest.status}</Badge>
+            <Badge variant="outline">
+              {isReturnHistoryStatus(row.original.returnRequest.status)
+                ? SERVICE_RETURNED_REPLACED_STATUS
+                : row.original.returnRequest.status.replaceAll("_", " ")}
+            </Badge>
           ) : (
             "—"
           ),

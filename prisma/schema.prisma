@@ -1816,6 +1816,7 @@ model SerialNumber {
   serviceCenterSales           ServiceCenterSalesTransaction[]
   serviceCenterPulloutDetails  ServiceCenterPulloutDetail[]
   serviceBackloads             ServiceBackload[]
+  serviceCenterDeliveryLines   ServiceCenterDeliveryLine[]
 
   @@unique([tenantId, serialNo])
   @@index([tenantId])
@@ -3678,6 +3679,9 @@ model ServiceCenterOrder {
   sapDocRef               String?           @map("sap_doc_ref")
   sapDocEntry             Int?              @map("sap_doc_entry")
   sapDocNum               Int?              @map("sap_doc_num")
+  /// Set by Check SAP once SAP closes the SO and every DR copied from it is in ISMS;
+  /// Check SAP stops looking at the order from then on.
+  sapClosedAt             DateTime?         @map("sap_closed_at")
   createdById             String?           @map("created_by_id")
   createdAt               DateTime          @default(now()) @map("created_at")
   updatedAt               DateTime          @updatedAt @map("updated_at")
@@ -3774,19 +3778,45 @@ model ServiceCenterDelivery {
   deliveryNo              String    @map("delivery_no")
   statusCodeId            String?   @map("status_code_id")
   dueDate                 DateTime? @map("due_date")
+  /// The SAP DR (Copy To from the order's SO) Check SAP made this delivery from.
+  /// Null on deliveries made in ISMS before Check SAP.
+  sapDocEntry             Int?      @map("sap_doc_entry")
+  sapDocNum               Int?      @map("sap_doc_num")
+  /// DR number shown to users: the DR's U_DR_NUMBER, else its DocNum.
+  sapDocNo                String?   @map("sap_doc_no")
+  sapDocDate              DateTime? @map("sap_doc_date") @db.Date
   createdAt               DateTime  @default(now()) @map("created_at")
   updatedAt               DateTime  @updatedAt @map("updated_at")
 
-  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  serviceCenter         ServiceCenter          @relation(fields: [serviceCenterId], references: [id], onDelete: Cascade)
-  serviceCenterLocation ServiceCenterLocation? @relation(fields: [serviceCenterLocationId], references: [id], onDelete: SetNull)
-  order                 ServiceCenterOrder?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  statusCode            ReasonStatusCode?      @relation(fields: [statusCodeId], references: [id], onDelete: SetNull)
+  tenant                Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  serviceCenter         ServiceCenter               @relation(fields: [serviceCenterId], references: [id], onDelete: Cascade)
+  serviceCenterLocation ServiceCenterLocation?      @relation(fields: [serviceCenterLocationId], references: [id], onDelete: SetNull)
+  order                 ServiceCenterOrder?         @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  statusCode            ReasonStatusCode?           @relation(fields: [statusCodeId], references: [id], onDelete: SetNull)
   backloads             ServiceBackload[]
+  lines                 ServiceCenterDeliveryLine[]
 
   @@unique([tenantId, deliveryNo])
+  /// One ISMS delivery per SAP DR, so a repeated Check SAP never applies a DR twice.
+  @@unique([tenantId, sapDocEntry])
   @@index([tenantId, serviceCenterId])
   @@map("service_center_deliveries")
+}
+
+/// A serial a SAP DR shipped on a service-center delivery. Accept turns it DIT → STK.
+model ServiceCenterDeliveryLine {
+  id             String    @id @default(cuid())
+  deliveryId     String    @map("delivery_id")
+  serialNumberId String    @map("serial_number_id")
+  acceptedAt     DateTime? @map("accepted_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  delivery     ServiceCenterDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  serialNumber SerialNumber          @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
+
+  @@unique([deliveryId, serialNumberId])
+  @@index([serialNumberId])
+  @@map("service_center_delivery_lines")
 }
 
 model ServiceBackload {

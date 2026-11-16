@@ -8,27 +8,36 @@ describe("resolveSaleTransactionDate", () => {
     expect(resolveSaleTransactionDate("  ", null, now)).toEqual({ date: null });
   });
 
-  it("accepts today and a future Manila calendar date", () => {
+  it("accepts today, a future date, and a Manila date 15 or 30 days ago", () => {
     expect(resolveSaleTransactionDate("2026-11-13", null, now)).toEqual({
       date: new Date("2026-11-13T00:00:00.000Z"),
     });
     expect(resolveSaleTransactionDate("2026-11-20", null, now)).toEqual({
       date: new Date("2026-11-20T00:00:00.000Z"),
     });
-  });
-
-  it("rejects a Manila calendar date before today", () => {
-    expect(resolveSaleTransactionDate("2026-11-12", null, now)).toEqual({
-      error: "Transaction date cannot be before today",
+    expect(resolveSaleTransactionDate("2026-10-29", null, now)).toEqual({
+      date: new Date("2026-10-29T00:00:00.000Z"),
+    });
+    expect(resolveSaleTransactionDate("2026-10-14", null, now)).toEqual({
+      date: new Date("2026-10-14T00:00:00.000Z"),
     });
   });
 
-  it("keeps an existing past date unless a different past date is chosen", () => {
+  it("rejects a Manila calendar date more than 30 days before today", () => {
+    expect(resolveSaleTransactionDate("2026-10-13", null, now)).toEqual({
+      error: "Transaction date cannot be more than 30 days before today",
+    });
+  });
+
+  it("keeps an existing older date and still allows a different date inside the window", () => {
     expect(resolveSaleTransactionDate("2026-01-01", "2026-01-01", now)).toEqual({
       date: new Date("2026-01-01T00:00:00.000Z"),
     });
+    expect(resolveSaleTransactionDate("2026-10-29", "2026-01-01", now)).toEqual({
+      date: new Date("2026-10-29T00:00:00.000Z"),
+    });
     expect(resolveSaleTransactionDate("2026-01-02", "2026-01-01", now)).toEqual({
-      error: "Transaction date cannot be before today",
+      error: "Transaction date cannot be more than 30 days before today",
     });
   });
 

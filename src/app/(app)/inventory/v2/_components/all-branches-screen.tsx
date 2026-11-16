@@ -18,17 +18,7 @@ import { SidebarNavCountBadge } from "@/app/(app)/_components/sidebar-nav-count-
 import { useClientTablePagination } from "@/components/data-table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import type {
-  BranchInventorySeriesOption,
-  InventoryGroupBranchItemDto,
-} from "@/features/inventory/actions/inventory.actions";
+import type { InventoryGroupBranchItemDto } from "@/features/inventory/actions/inventory.actions";
 import {
   branchInventoryUnitTotal,
   isBranchInventoryV2HiddenStatus,
@@ -48,10 +38,6 @@ interface AllBranchesScreenProps {
     offPlanogram: number;
   };
   initialOffPlanogram?: boolean;
-  /** Active series from Master data. The menu defaults to All series. */
-  seriesOptions: BranchInventorySeriesOption[];
-  /** Selected series id. Omitted means All series. */
-  seriesId?: string;
   /** Unread units for each branch and status. Hidden when that branch has none. */
   unreadByBranchCode?: Record<string, Record<string, number>>;
   seriesSummary?: ReactNode;
@@ -73,11 +59,7 @@ function countForStatus(
   return (row.counts.statuses ?? []).find((item) => item.code === code)?.count ?? 0;
 }
 
-function branchListEmptyMessage(seriesId: string | undefined, offPlanogramOnly: boolean): string {
-  if (seriesId && offPlanogramOnly) {
-    return "No branches with off-planogram units in this series match your search.";
-  }
-  if (seriesId) return "No branches in this series match your search.";
+function branchListEmptyMessage(offPlanogramOnly: boolean): string {
   if (offPlanogramOnly) return "No branches with off-planogram units match your search.";
   return "No branches match your search.";
 }
@@ -87,8 +69,6 @@ export function BranchInventoryAllBranchesScreen({
   offPlanogramBranches,
   cardAmounts,
   initialOffPlanogram = false,
-  seriesOptions,
-  seriesId,
   unreadByBranchCode = {},
   seriesSummary,
 }: AllBranchesScreenProps) {
@@ -106,7 +86,7 @@ export function BranchInventoryAllBranchesScreen({
     () => topOffPlanogramBranch(offPlanogramBranches),
     [offPlanogramBranches],
   );
-  const unfilteredSearch = query.trim().length === 0 && !offPlanogramOnly && !seriesId;
+  const unfilteredSearch = query.trim().length === 0 && !offPlanogramOnly;
 
   const offPlanogramCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -142,7 +122,7 @@ export function BranchInventoryAllBranchesScreen({
     pageItems,
     indexOffset,
   } = useClientTablePagination(filtered, {
-    resetKey: `${query}:${offPlanogramOnly ? "off" : "all"}:${seriesId ?? ""}`,
+    resetKey: `${query}:${offPlanogramOnly ? "off" : "all"}`,
   });
 
   const filteredGrandTotal = filtered.reduce(
@@ -247,7 +227,6 @@ export function BranchInventoryAllBranchesScreen({
           <V2TealLink
             href={branchInventoryV2Href({
               branchId: row.original.branch.id,
-              series: seriesId,
             })}
           >
             Open branch →
@@ -258,23 +237,13 @@ export function BranchInventoryAllBranchesScreen({
     );
 
     return cols;
-  }, [indexOffset, offPlanogramCounts, seriesId, statusCols, unreadByBranchCode]);
+  }, [indexOffset, offPlanogramCounts, statusCols, unreadByBranchCode]);
 
   function toggleOffPlanogram(checked: boolean) {
     setOffPlanogramOnly(checked);
     router.push(
       branchInventoryV2Href({
         offPlanogram: checked || undefined,
-        series: seriesId,
-      }),
-    );
-  }
-
-  function selectSeries(value: string) {
-    router.push(
-      branchInventoryV2Href({
-        offPlanogram: offPlanogramOnly || undefined,
-        series: value === "all" ? undefined : value,
       }),
     );
   }
@@ -351,35 +320,20 @@ export function BranchInventoryAllBranchesScreen({
           onPageChange: setPage,
         }}
         toolbarActions={
-          <div className="flex flex-wrap items-center gap-3">
-            <Select value={seriesId ?? "all"} onValueChange={selectSeries}>
-              <SelectTrigger aria-label="Filter by series" className="w-[12rem]">
-                <SelectValue placeholder="All series" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All series</SelectItem>
-                {seriesOptions.map((series) => (
-                  <SelectItem key={series.id} value={series.id}>
-                    {series.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="v2-off-planogram"
-                checked={offPlanogramOnly}
-                aria-label="Off-planogram only"
-                onCheckedChange={(checked) => toggleOffPlanogram(checked === true)}
-              />
-              <Label htmlFor="v2-off-planogram" className="font-normal">
-                Off-planogram only
-              </Label>
-            </div>
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="v2-off-planogram"
+              checked={offPlanogramOnly}
+              aria-label="Off-planogram only"
+              onCheckedChange={(checked) => toggleOffPlanogram(checked === true)}
+            />
+            <Label htmlFor="v2-off-planogram" className="font-normal">
+              Off-planogram only
+            </Label>
           </div>
         }
         empty={filtered.length === 0}
-        emptyMessage={branchListEmptyMessage(seriesId, offPlanogramOnly)}
+        emptyMessage={branchListEmptyMessage(offPlanogramOnly)}
         footer={
           filtered.length > 0 ? (
             <footer className="space-y-2 border-t px-4 py-3 text-xs text-muted-foreground">

@@ -27,13 +27,16 @@ export const inventoryStatusSeenService = {
     tenantId: string;
     userId: string;
     branchIds: string[];
+    seriesId?: string;
   }): Promise<InventoryUnreadCounts> {
     const cursor = await inventoryStatusSeenRepository.ensureSeenThrough(input.userId);
+    const seriesId = input.seriesId?.trim();
     const rows = await inventoryStatusSeenRepository.countUnreadByStatus({
       tenantId: input.tenantId,
       userId: input.userId,
       branchIds: input.branchIds,
       seenThroughAt: cursor.seenThroughAt,
+      ...(seriesId ? { seriesId } : {}),
     });
     const byStatusCodeId: Record<string, number> = {};
     const byCode: Record<string, number> = {};

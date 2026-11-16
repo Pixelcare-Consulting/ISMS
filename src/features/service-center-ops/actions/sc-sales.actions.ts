@@ -14,6 +14,7 @@ import {
 import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
 import { placeServiceCenterUnit } from "@/features/service-center-ops/services/service-center-placement";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
+import { returnHistoryStatusLabel } from "@/features/sales/constants/return-history-status";
 import {
   SC_ORDERS_APPROVE,
   SC_RETURN_APPROVE,
@@ -314,6 +315,18 @@ export async function requestScReturnAction(saleId: string, notes?: string) {
       requestedById: session.user.id,
       remarks: reason,
     });
+    if (sale.serialNumberId) {
+      await tx.serialNumberHistory.create({
+        data: {
+          tenantId: session.user.tenantId,
+          serialNumberId: sale.serialNumberId,
+          txnType: "return",
+          details: `Service return ${sale.transactionNo} (request ${request.id})`,
+          status: returnHistoryStatusLabel(true),
+          createdById: session.user.id,
+        },
+      });
+    }
   });
 
   await auditService.log({

@@ -43,7 +43,8 @@ describe("pulloutPrintDocument", () => {
       customer: "Branch A",
       date: "Nov 5, 2026",
       address: "",
-      items: [{ modelCode: "SKU1", serialNo: "SN1", notes: ["Reason: Overstock", "Remarks: Box dented"] }],
+      detailColumns: ["Reason", "Remarks"],
+      items: [{ modelCode: "SKU1", serialNo: "SN1", notes: [], details: ["Overstock", "Box dented"] }],
       copyLegend: ["PAGE 1: BRANCH COPY", "PAGE 2: ACCOUNTING COPY"],
       copiesPerPage: 2,
     });
@@ -69,7 +70,7 @@ describe("pulloutPrintDocument", () => {
     expect(document?.items).toHaveLength(1);
   });
 
-  it("prints every checklist field recorded on the unit, one labelled line each", () => {
+  it("prints every checklist field recorded on the unit, one column each", () => {
     const document = pulloutPrintDocument(
       detail({
         lines: [
@@ -85,17 +86,38 @@ describe("pulloutPrintDocument", () => {
         ],
       }),
     );
-    expect(document?.items[0]?.notes).toEqual([
-      "Reason: Defective unit",
-      "Problem: With line on screen, No power",
-      "Classification: Class A",
-      "Unit packing: Sealed box",
-      "Acc completeness: Complete",
-      "Remarks: Horizontal Bars on Screen",
+    expect(document?.detailColumns).toEqual([
+      "Reason",
+      "Problem",
+      "Classification",
+      "Unit packing",
+      "Acc completeness",
+      "Remarks",
+    ]);
+    expect(document?.items[0]?.details).toEqual([
+      "Defective unit",
+      "With line on screen, No power",
+      "Class A",
+      "Sealed box",
+      "Complete",
+      "Horizontal Bars on Screen",
     ]);
   });
 
-  it("falls back to an older pull-out's header reason, and prints no note when nothing was recorded", () => {
+  it("keeps a column when any unit filled it in, blank for the units that did not", () => {
+    const document = pulloutPrintDocument(
+      detail({
+        lines: [line({ remarks: null }), line({ serialNo: "SN2", classificationNames: ["Class B"] })],
+      }),
+    );
+    expect(document?.detailColumns).toEqual(["Reason", "Classification", "Remarks"]);
+    expect(document?.items.map((item) => item.details)).toEqual([
+      ["Overstock", "", ""],
+      ["Overstock", "Class B", "Box dented"],
+    ]);
+  });
+
+  it("falls back to an older pull-out's header reason, and prints no columns when nothing was recorded", () => {
     const older = pulloutPrintDocument(
       detail({
         reason: { id: "r1", code: "OVR", name: "Overstock", color: null },
@@ -103,8 +125,10 @@ describe("pulloutPrintDocument", () => {
       }),
     );
     const blank = pulloutPrintDocument(detail({ lines: [line({ reasonName: null, remarks: "  " })] }));
-    expect(older?.items[0]?.notes).toEqual(["Reason: Overstock"]);
-    expect(blank?.items[0]?.notes).toEqual([]);
+    expect(older?.detailColumns).toEqual(["Reason"]);
+    expect(older?.items[0]?.details).toEqual(["Overstock"]);
+    expect(blank?.detailColumns).toEqual([]);
+    expect(blank?.items[0]?.details).toEqual([]);
   });
 
   it("has no slip for a cancelled pull-out", () => {
@@ -127,8 +151,9 @@ describe("slipsHtml", () => {
     expect(html.match(/class="cut-line"/g)).toHaveLength(2);
     expect(html).toContain("No. <strong>PLT-1</strong>");
     expect(html).toContain("DESCRIPTION OF ITEM");
+    expect(html).toContain("<tr><th>Item</th><th>Reason</th><th>Remarks</th></tr>");
     expect(html).toContain("Serial No.: SN1");
-    expect(html).toContain("Remarks: &lt;b&gt;Dented&lt;/b&gt;");
+    expect(html).toContain("<td>&lt;b&gt;Dented&lt;/b&gt;</td>");
     expect(html.match(/Signature Over Printed Name/g)).toHaveLength(4);
     expect(html).toContain("<span>PAGE 1: BRANCH COPY</span><span>PAGE 2: ACCOUNTING COPY</span>");
   });

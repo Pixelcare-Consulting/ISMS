@@ -1,17 +1,24 @@
 "use client";
 
 import { createColumnHelper } from "@tanstack/react-table";
+import { RefreshCw } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
+import {
+  ScOrderSetupDialog,
+  scOrderSetupHref,
+  useScOrderSetup,
+} from "@/app/(app)/service-centers/orders/new/_components/sc-order-setup";
 import { listScCentersForOpsAction } from "@/features/service-center-ops/actions/sc-inventory.actions";
-import { createScDeliveryFromOrderAction } from "@/features/service-center-ops/actions/sc-logistics.actions";
 import {
   approveScOrderAction,
+  checkScOrdersInSapAction,
   listScOrdersAction,
   rejectScOrderAction,
 } from "@/features/service-center-ops/actions/sc-orders.actions";
+import { summarizeScOrderSapCheck } from "@/features/service-center-ordering/lib/sc-order-sap-check";
 import { useClientTablePagination } from "@/components/data-table";
 import {
   DataTable,
@@ -28,25 +35,28 @@ type CenterOption = Awaited<ReturnType<typeof listScCentersForOpsAction>>[number
 
 const orderColumn = createColumnHelper<DataTableFeatures, OrderRow>();
 
-/** Service-center orders are created on the shared Create Order page. */
-const NEW_SC_ORDER_HREF = "/orders/manual/new?for=service_center";
 
 export function ScOrdersPanel({
   items,
   centers,
   canCreate,
   canApprove,
-  canCreateDelivery,
+  canCheckSap,
 }: {
   items: OrderRow[];
   centers: CenterOption[];
   canCreate: boolean;
   canApprove: boolean;
-  canCreateDelivery: boolean;
+  /** Offers "Check SAP now": DRs copied from these orders' SOs become SC deliveries. */
+  canCheckSap: boolean;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
+  // Like branch orders: the setup popup opens over this list, and only Continue opens the
+  // create page.
+  const [setupOpen, setSetupOpen] = useState(false);
+  const scSetup = useScOrderSetup(setupOpen);
   const filtered = useMemo(
     () =>
       items.filter((row) =>
@@ -56,6 +66,7 @@ export function ScOrdersPanel({
           row.status,
           row.poNumber ?? "",
           row.sapDocNum != null ? String(row.sapDocNum) : "",
+          ...row.deliveries.map((delivery) => delivery.sapDocNo ?? ""),
         ]),
       ),
     [items, query],
@@ -90,6 +101,19 @@ export function ScOrdersPanel({
         return;
       }
       toast.success(typeof ok === "function" ? ok(result) : ok);
+      router.refresh();
+    });
+  }
+
+  function checkSap() {
+    startTransition(async () => {
+      const result = await checkScOrdersInSapAction();
+      if ("error" in result) {
+        toast.error("Could not check SAP", { description: result.error });
+        return;
+      }
+      const summary = summarizeScOrderSapCheck(result);
+      toast[summary.tone](summary.title, { description: summary.description });
       router.refresh();
     });
   }
@@ -132,6 +156,19 @@ export function ScOrdersPanel({
         header: "SO no.",
         enableSorting: false,
         cell: ({ row }) => row.original.sapDocNum ?? "—",
+        meta: { className: "tabular-nums" },
+      }),
+      orderColumn.display({
+        id: "dr",
+        header: "DR no.",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const drNos = row.original.deliveries.map((delivery) => delivery.sapDocNo).filter(Boolean);
+          if (drNos.length > 0) return drNos.join(", ");
+          return row.original.status === "approved" && row.original.sapDocNum != null
+            ? "Waiting for SAP"
+            : "—";
+        },
         meta: { className: "tabular-nums" },
       }),
       orderColumn.display({
@@ -185,26 +222,13 @@ export function ScOrdersPanel({
                   </Button>
                 </>
               ) : null}
-              {canCreateDelivery &&
-              order.status === "approved" &&
-              order._count.deliveries === 0 ? (
-                <Button
-                  size="sm"
-                  disabled={pending}
-                  onClick={() =>
-                    run(() => createScDeliveryFromOrderAction(order.id), "Delivery created")
-                  }
-                >
-                  Create delivery
-                </Button>
-              ) : null}
             </div>
           );
         },
       }),
     ];
     return cols;
-  }, [canApprove, canCreateDelivery, indexOffset, pending]);
+  }, [canApprove, indexOffset, pending]);
 
   return (
     <div className="space-y-4">
@@ -227,13 +251,23 @@ export function ScOrdersPanel({
           placeholder: "Search order, center, PO or SO…",
         }}
         toolbarActions={
-          canCreate ? (
-            <Button
-              onClick={() => router.push(NEW_SC_ORDER_HREF)}
-              disabled={pending || centers.length === 0}
-            >
-              New order
-            </Button>
+          canCheckSap || canCreate ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {canCheckSap ? (
+                <Button type="button" variant="outline" disabled={pending} onClick={checkSap}>
+                  <RefreshCw className={`mr-1 size-4 ${pending ? "animate-spin" : ""}`} aria-hidden />
+                  Check SAP now
+                </Button>
+              ) : null}
+              {canCreate ? (
+                <Button
+                  onClick={() => setSetupOpen(true)}
+                  disabled={pending || centers.length === 0}
+                >
+                  New order
+                </Button>
+              ) : null}
+            </div>
           ) : null
         }
         empty={pageItems.length === 0}
@@ -249,7 +283,18 @@ export function ScOrdersPanel({
           onPageChange: setPage,
         }}
       />
-
+      {canCreate ? (
+        <ScOrderSetupDialog
+          open={setupOpen}
+          centers={scSetup.centers}
+          setup={scSetup.setup}
+          onOpenChange={setSetupOpen}
+          onContinue={(choice) => {
+            setSetupOpen(false);
+            router.push(scOrderSetupHref(choice));
+          }}
+        />
+      ) : null}
     </div>
   );
 }

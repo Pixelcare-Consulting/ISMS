@@ -26,6 +26,7 @@ import {
   branchSerialSelectionBlock,
   type BranchSerialSelectionBlock,
 } from "@/features/inventory/utils/branch-inventory-v2";
+import { NO_MODEL_SERIES_LABEL } from "@/features/inventory/utils/group-stock-by-model-series";
 import { cn } from "@/utils/cn";
 
 interface UnitDrawerProps {
@@ -48,6 +49,11 @@ function Detail({ label, value }: { label: string; value: string }) {
 
 function recordOrMissing(value: string | null | undefined): string {
   return value?.trim() ? value.trim() : "Not recorded";
+}
+
+function seriesOrEmpty(name: string | null | undefined): string {
+  const trimmed = name?.trim() ?? "";
+  return trimmed.length > 0 ? trimmed : NO_MODEL_SERIES_LABEL;
 }
 
 function statusChangeReason(block: BranchSerialSelectionBlock): string {
@@ -159,6 +165,7 @@ export function BranchInventoryUnitDrawer({
                   value={`${unit.branch.name} · Branch code ${unit.branch.sapCode}`}
                 />
                 <Detail label="Model" value={unit.serialNumber.model.sku} />
+                <Detail label="Series" value={seriesOrEmpty(unit.serialNumber.model.seriesName)} />
                 <Detail
                   label="Aging"
                   value={unit.agingDays === 1 ? "1 day" : `${unit.agingDays} days`}

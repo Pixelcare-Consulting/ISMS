@@ -114,6 +114,8 @@ const serialTraceabilityInclude = {
               status: true,
               createdAt: true,
               actionType: true,
+              saleDetailId: true,
+              documentType: { select: { name: true } },
             },
           },
         },

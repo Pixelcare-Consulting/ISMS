@@ -44,7 +44,13 @@ export type InventoryListItem = {
   serialNumber: {
     id: string;
     serialNo: string;
-    model: { sku: string; name: string; brand: { name: string } };
+    model: {
+      sku: string;
+      name: string;
+      brand: { name: string };
+      /** Series name from Master data. Null when the model has none. */
+      seriesName: string | null;
+    };
   };
 };
 
@@ -157,6 +163,7 @@ function mapEnrichedToListItem(
         sku: r.serialNumber.model.skuCode,
         name: r.serialNumber.model.name,
         brand: r.serialNumber.model.brand ?? { name: "—" },
+        seriesName: r.serialNumber.model.series?.name.trim() || null,
       },
     },
   };
@@ -466,9 +473,10 @@ export async function countBranchInventoryV2UpdatesAction(): Promise<number> {
 /** Unread counts for Branch Inventory v2. Pass a branch to limit the stat strip. */
 export async function getBranchInventoryUnreadAction(input?: {
   branchId?: string;
+  seriesId?: string;
 }): Promise<BranchInventoryUnreadSummary> {
   const session = await requirePermission("inventory.view");
-  return unreadSummaryForSession(session.user, input?.branchId);
+  return unreadSummaryForSession(session.user, input?.branchId, input?.seriesId);
 }
 
 /** Which of these units are still unread for the signed-in user. */
@@ -507,12 +515,14 @@ export async function markBranchInventoryStatusReadAction(
 function unreadSummaryForSession(
   user: { tenantId: string; id: string; permissions: string[] },
   branchId: string | undefined,
+  seriesId?: string,
 ): Promise<BranchInventoryUnreadSummary> {
   return inventoryService.unreadStatusSummary(
     user.tenantId,
     user.id,
     isUnrestricted(user.permissions),
     branchId,
+    seriesId,
   );
 }
 

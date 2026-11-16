@@ -160,6 +160,7 @@ export default async function AppLayout({
       <AiCopilotLauncher
         canAssist={canUseAiAssist(session.user.permissions)}
         configured={isAiConfigured() && assistantGate.ok}
+        assistantEnabled={assistantGate.ok}
         canUsePixelcareAi={canUsePixelcareAi({
           userId: session.user.id,
           email: session.user.email,

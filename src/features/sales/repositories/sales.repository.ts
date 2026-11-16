@@ -127,7 +127,8 @@ const detailStatusCodeSelect = {
 export const salesRepository = {
   /**
    * One list row per transaction detail (serial line), newest sales first by default.
-   * Only Sold / Official Sold / TO FOLLOW — return workflow rows live on Returns.
+   * Sold / Official Sold / TO FOLLOW, plus returned and replaced lines so their
+   * status can stay Returned/Replaced or Service Returned/Replaced.
    */
   async listDetailsForTenant(
     tenantId: string,
@@ -135,7 +136,7 @@ export const salesRepository = {
     sort?: { field?: SalesListSort; dir?: SalesListSortDir },
   ) {
     const { limit, page, skip } = resolvePagination(pagination);
-    const where = salesListDetailWhere(tenantId);
+    const where = salesListDetailWhere(tenantId, { includeReturnHistory: true });
     const orderBy = sort?.field
       ? [
           salesDetailPrismaOrderBy(sort.field, sort.dir ?? "desc"),
@@ -168,7 +169,14 @@ export const salesRepository = {
               alternateBranchId: true,
               branch: { select: { id: true, name: true } },
               stockSourceBranch: { select: { id: true, name: true } },
-              returnRequest: { select: { id: true, status: true } },
+              returnRequest: {
+                select: {
+                  id: true,
+                  status: true,
+                  saleDetailId: true,
+                  documentType: { select: { name: true } },
+                },
+              },
             },
           },
         },
@@ -305,6 +313,7 @@ export const salesRepository = {
           select: {
             id: true,
             status: true,
+            saleDetailId: true,
             actionType: true,
             stockStatusCode: true,
             atrOdrfPdfPath: true,

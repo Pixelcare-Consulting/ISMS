@@ -3,6 +3,12 @@
 import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import {
+  ReplacementInvoiceHeaderFields,
+  type ReplacementHeaderLookup,
+  type ReplacementInvoiceHeaderValue,
+  type ReplacementProofAttachment,
+} from "@/app/(app)/sales/_components/replacement-invoice-header-fields";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,14 +18,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   completeReplacementNewInvoiceAction,
   completeReplacementSameInvoiceAction,
+  getSaleDetailsAction,
+  listCustomerDeliveryMethodsForSalesAction,
+  listPaymentTypesForSalesAction,
   listReplacementLookupsAction,
+  listSaleTypesForSalesAction,
+  uploadSaleProofAction,
 } from "@/features/sales/actions/sales.actions";
+import { SALE_PROOF_MAX_FILES, saleProofFileName } from "@/features/sales/utils/sale-proof";
+import { earliestSaleTransactionIso } from "@/features/sales/utils/transaction-date";
 
 type ReplacementChoice = "same" | "new" | null;
 
@@ -39,13 +51,20 @@ type ReplacementFlowDialogsProps = {
   onCompleted: () => void;
 };
 
-function todayInputValue(): string {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
+const EMPTY_HEADER: ReplacementInvoiceHeaderValue = {
+  transactionNo: "",
+  branchSoldName: "",
+  alternateBranchName: "",
+  transactionDate: "",
+  customerName: "",
+  contactNo: "",
+  infoSlipVsoRrReleased: "",
+  rrReceiveDeliver: "",
+  paymentTypeId: "",
+  saleTypeId: "",
+  customerDeliveryMethodId: "",
+  proofs: [],
+};
 
 /** YYYY-MM-DD for date inputs without timezone drift. */
 function toDateInputValue(iso: string | null | undefined): string {
@@ -60,6 +79,28 @@ function toDateInputValue(iso: string | null | undefined): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function withCurrentOption(
+  options: ReplacementHeaderLookup[],
+  current: { id: string; name: string } | null | undefined,
+): ReplacementHeaderLookup[] {
+  if (!current?.id || !current.name) return options;
+  if (options.some((option) => option.id === current.id)) return options;
+  return [current, ...options];
+}
+
+function ReplacementFormSkeleton() {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2" aria-busy="true" aria-label="Loading sale">
+      {Array.from({ length: 12 }, (_, index) => (
+        <div key={index} className="space-y-2">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-9 w-full" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function ReplacementFlowDialogs({
   target,
   onClose,
@@ -71,35 +112,79 @@ export function ReplacementFlowDialogs({
   const [serials, setSerials] = useState<{ id: string; label: string }[]>([]);
   const [modelId, setModelId] = useState("");
   const [serialId, setSerialId] = useState("");
-  const [transactionNo, setTransactionNo] = useState("");
-  const [transactionDate, setTransactionDate] = useState(todayInputValue());
-  const [loadingLookups, setLoadingLookups] = useState(false);
+  const [header, setHeader] = useState<ReplacementInvoiceHeaderValue>(EMPTY_HEADER);
+  const [paymentTypes, setPaymentTypes] = useState<ReplacementHeaderLookup[]>([]);
+  const [saleTypes, setSaleTypes] = useState<ReplacementHeaderLookup[]>([]);
+  const [deliveryMethods, setDeliveryMethods] = useState<ReplacementHeaderLookup[]>([]);
+  const [headerLoading, setHeaderLoading] = useState(false);
+  const [headerReady, setHeaderReady] = useState(false);
+  const [proofUploading, setProofUploading] = useState(false);
 
   useEffect(() => {
     if (!target || !choice) return;
     let cancelled = false;
     startTransition(() => {
-      setLoadingLookups(true);
+      setHeaderLoading(true);
+      setHeaderReady(false);
+      setHeader(EMPTY_HEADER);
       setModelId("");
       setSerialId("");
       setSerials([]);
-      setTransactionNo(target.transactionNo);
-      setTransactionDate(todayInputValue());
     });
     void (async () => {
       try {
-        const lookups = await listReplacementLookupsAction(target.branchId);
+        const [lookups, sale, paymentRows, saleTypeRows, deliveryRows] =
+          await Promise.all([
+            listReplacementLookupsAction(target.branchId),
+            getSaleDetailsAction(target.saleId),
+            listPaymentTypesForSalesAction(),
+            listSaleTypesForSalesAction(),
+            listCustomerDeliveryMethodsForSalesAction(),
+          ]);
         if (cancelled) return;
-        setModels(
-          lookups.models.map((m) => ({
-            id: m.id,
-            label: m.name,
-          })),
+        if ("error" in sale) {
+          toast.error(sale.error);
+          return;
+        }
+        const nextModels = lookups.models.map((model) => ({
+          id: model.id,
+          label: model.name,
+        }));
+        setModels(nextModels);
+        setModelId((current) =>
+          current && !nextModels.some((model) => model.id === current) ? "" : current,
         );
+        setPaymentTypes(withCurrentOption(paymentRows, sale.paymentType));
+        setSaleTypes(withCurrentOption(saleTypeRows, sale.saleType));
+        setDeliveryMethods(
+          withCurrentOption(deliveryRows, sale.customerDeliveryMethod),
+        );
+        setHeader({
+          transactionNo: sale.transactionNo,
+          branchSoldName: sale.branch.name || target.branchName,
+          alternateBranchName:
+            sale.stockSourceBranch?.name ?? sale.branch.name ?? target.branchName,
+          transactionDate:
+            sale.transactionDateInput ??
+            (toDateInputValue(sale.transactionDate) ||
+              toDateInputValue(target.transactionDate)),
+          customerName: sale.customerName ?? "",
+          contactNo: sale.contactNo ?? "",
+          infoSlipVsoRrReleased: sale.infoSlipVsoRrReleased ?? "",
+          rrReceiveDeliver: sale.rrReceiveDeliver ?? "",
+          paymentTypeId: sale.paymentTypeId ?? "",
+          saleTypeId: sale.saleTypeId ?? "",
+          customerDeliveryMethodId: sale.customerDeliveryMethodId ?? "",
+          proofs: sale.proofPaths.map((path) => ({
+            path,
+            name: saleProofFileName(path),
+          })),
+        });
+        setHeaderReady(true);
       } catch {
-        if (!cancelled) toast.error("Failed to load models");
+        if (!cancelled) toast.error("Failed to load the original sale");
       } finally {
-        if (!cancelled) setLoadingLookups(false);
+        if (!cancelled) setHeaderLoading(false);
       }
     })();
     return () => {
@@ -118,9 +203,9 @@ export function ReplacementFlowDialogs({
         );
         if (cancelled) return;
         setSerials(
-          lookups.serials.map((r) => ({
-            id: r.id,
-            label: r.serialNo,
+          lookups.serials.map((row) => ({
+            id: row.id,
+            label: row.serialNo,
           })),
         );
         setSerialId("");
@@ -136,11 +221,55 @@ export function ReplacementFlowDialogs({
   function handleClose() {
     if (pending) return;
     setChoice(null);
+    setHeaderReady(false);
     onClose();
   }
 
+  function patchHeader(patch: Partial<ReplacementInvoiceHeaderValue>) {
+    setHeader((current) => ({ ...current, ...patch }));
+  }
+
+  async function onProofsSelected(fileList: FileList | null) {
+    if (!fileList?.length || choice !== "new") return;
+    const remaining = SALE_PROOF_MAX_FILES - header.proofs.length;
+    if (remaining <= 0) {
+      toast.error(`You can attach up to ${SALE_PROOF_MAX_FILES} proof files`);
+      return;
+    }
+    const selected = Array.from(fileList).slice(0, remaining);
+    setProofUploading(true);
+    try {
+      const formData = new FormData();
+      for (const file of selected) {
+        formData.append("proof", file);
+      }
+      const result = await uploadSaleProofAction(formData);
+      if (result.error || !("paths" in result) || !result.paths?.length) {
+        toast.error(result.error ?? "Failed to upload proof");
+        return;
+      }
+      const uploaded: ReplacementProofAttachment[] = result.paths.map(
+        (path, index) => ({
+          path,
+          name: selected[index]?.name ?? saleProofFileName(path),
+        }),
+      );
+      setHeader((current) => ({
+        ...current,
+        proofs: [...current.proofs, ...uploaded],
+      }));
+      toast.success(
+        uploaded.length === 1
+          ? "Proof uploaded"
+          : `${uploaded.length} proof files uploaded`,
+      );
+    } finally {
+      setProofUploading(false);
+    }
+  }
+
   function submitSame() {
-    if (!target) return;
+    if (!target || !headerReady) return;
     if (!modelId || !serialId) {
       toast.error("Model and serial are required");
       return;
@@ -162,18 +291,53 @@ export function ReplacementFlowDialogs({
   }
 
   function submitNew() {
-    if (!target) return;
-    if (!transactionNo.trim() || !transactionDate || !modelId || !serialId) {
-      toast.error("Transaction no, date, model, and serial are required");
+    if (!target || !headerReady) return;
+    if (!header.transactionNo.trim()) {
+      toast.error("Transaction number is required");
+      return;
+    }
+    if (
+      header.transactionDate &&
+      header.transactionDate < earliestSaleTransactionIso()
+    ) {
+      toast.error("Transaction date cannot be more than 30 days before today");
+      return;
+    }
+    if (!header.customerName.trim()) {
+      toast.error("Customer name is required");
+      return;
+    }
+    if (!header.paymentTypeId) {
+      toast.error("Payment type is required");
+      return;
+    }
+    if (!header.saleTypeId) {
+      toast.error("Sale type is required");
+      return;
+    }
+    if (!header.customerDeliveryMethodId) {
+      toast.error("Customer delivery method is required");
+      return;
+    }
+    if (!modelId || !serialId) {
+      toast.error("Model and serial are required");
       return;
     }
     startTransition(async () => {
       const res = await completeReplacementNewInvoiceAction({
         returnRequestId: target.returnRequestId,
-        transactionNo: transactionNo.trim(),
-        transactionDate,
+        transactionNo: header.transactionNo.trim(),
+        transactionDate: header.transactionDate || undefined,
         modelId,
         replacementSerialNumberId: serialId,
+        customerName: header.customerName.trim(),
+        contactNo: header.contactNo.trim() || undefined,
+        paymentTypeId: header.paymentTypeId,
+        saleTypeId: header.saleTypeId,
+        customerDeliveryMethodId: header.customerDeliveryMethodId,
+        infoSlipVsoRrReleased: header.infoSlipVsoRrReleased.trim() || undefined,
+        rrReceiveDeliver: header.rrReceiveDeliver.trim() || undefined,
+        proof: header.proofs.map((proof) => proof.path),
       });
       if ("error" in res && res.error) {
         toast.error(res.error);
@@ -184,6 +348,9 @@ export function ReplacementFlowDialogs({
       onCompleted();
     });
   }
+
+  const invoiceDialogClassName =
+    "z-60 flex max-h-[min(90svh,calc(100svh-2rem))] w-[min(calc(100vw-2rem),42rem)] max-w-2xl flex-col gap-0 overflow-hidden p-4 sm:p-6";
 
   return (
     <>
@@ -235,56 +402,66 @@ export function ReplacementFlowDialogs({
           if (!open && !pending) setChoice(null);
         }}
       >
-        <DialogContent className="z-60 max-w-md" overlayClassName="z-60">
-          <DialogHeader>
+        <DialogContent className={invoiceDialogClassName} overlayClassName="z-60">
+          <DialogHeader className="shrink-0 space-y-1.5 pr-8 pb-4 text-left">
             <DialogTitle>Same Invoice</DialogTitle>
             <DialogDescription>
-              Confirm the original TRN, then pick the replacement model and STK
-              serial at the sold branch.
+              These details are from the original sale and stay as they are.
+              Then pick the replacement model and serial.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-2">
-              <Label htmlFor="same-trn-no">TRN number</Label>
-              <Input
-                id="same-trn-no"
-                value={target?.transactionNo ?? ""}
-                readOnly
-                disabled
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="same-trn-date">TRN date</Label>
-              <Input
-                id="same-trn-date"
-                type="date"
-                value={toDateInputValue(target?.transactionDate)}
-                readOnly
-                disabled
-              />
-            </div>
-            <SearchableSelect
-              label="Model *"
-              options={models}
-              value={modelId}
-              onChange={setModelId}
-              placeholder={loadingLookups ? "Loading…" : "Select model…"}
-              disabled={pending || loadingLookups}
-              popoverClassName="z-70"
-            />
-            <SearchableSelect
-              label="Serial number *"
-              options={serials}
-              value={serialId}
-              onChange={setSerialId}
-              placeholder={
-                modelId ? "Select STK serial…" : "Select a model first…"
-              }
-              disabled={pending || !modelId}
-              popoverClassName="z-70"
-            />
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto py-1">
+            {headerLoading ? (
+              <ReplacementFormSkeleton />
+            ) : headerReady ? (
+              <>
+                <ReplacementInvoiceHeaderFields
+                  idPrefix="same"
+                  readOnly
+                  pending={pending}
+                  value={header}
+                  onChange={patchHeader}
+                  paymentTypes={paymentTypes}
+                  saleTypes={saleTypes}
+                  deliveryMethods={deliveryMethods}
+                  proofUploading={false}
+                  onProofsSelected={() => undefined}
+                />
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <SearchableSelect
+                    label="Model *"
+                    options={models}
+                    value={modelId}
+                    onChange={setModelId}
+                    placeholder={
+                      models.length === 0
+                        ? "No stock at this branch"
+                        : "Select model…"
+                    }
+                    emptyMessage="No stock at this branch."
+                    disabled={pending}
+                    popoverClassName="z-70"
+                  />
+                  <SearchableSelect
+                    label="Serial number *"
+                    options={serials}
+                    value={serialId}
+                    onChange={setSerialId}
+                    placeholder={
+                      modelId ? "Select STK serial…" : "Select a model first…"
+                    }
+                    disabled={pending || !modelId}
+                    popoverClassName="z-70"
+                  />
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                The original sale could not be loaded. Go back and try again.
+              </p>
+            )}
           </div>
-          <DialogFooter>
+          <DialogFooter className="mt-4 shrink-0 border-t pt-4">
             <Button
               type="button"
               variant="outline"
@@ -293,7 +470,11 @@ export function ReplacementFlowDialogs({
             >
               Back
             </Button>
-            <Button type="button" disabled={pending} onClick={submitSame}>
+            <Button
+              type="button"
+              disabled={pending || headerLoading || !headerReady}
+              onClick={submitSame}
+            >
               {pending ? "Working…" : "Confirm replacement"}
             </Button>
           </DialogFooter>
@@ -306,55 +487,69 @@ export function ReplacementFlowDialogs({
           if (!open && !pending) setChoice(null);
         }}
       >
-        <DialogContent className="z-60 max-w-md" overlayClassName="z-60">
-          <DialogHeader>
+        <DialogContent className={invoiceDialogClassName} overlayClassName="z-60">
+          <DialogHeader className="shrink-0 space-y-1.5 pr-8 pb-4 text-left">
             <DialogTitle>New Invoice</DialogTitle>
             <DialogDescription>
-              Enter the new invoice details and replacement STK serial.
+              The original sale details are filled in. You can change them,
+              except the branches stay with this sale. Then pick the replacement
+              unit.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-2">
-              <Label htmlFor="repl-trn-no">Transaction no *</Label>
-              <Input
-                id="repl-trn-no"
-                value={transactionNo}
-                onChange={(e) => setTransactionNo(e.target.value)}
-                disabled={pending}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="repl-trn-date">Date *</Label>
-              <Input
-                id="repl-trn-date"
-                type="date"
-                value={transactionDate}
-                onChange={(e) => setTransactionDate(e.target.value)}
-                disabled={pending}
-              />
-            </div>
-            <SearchableSelect
-              label="Model *"
-              options={models}
-              value={modelId}
-              onChange={setModelId}
-              placeholder={loadingLookups ? "Loading…" : "Select model…"}
-              disabled={pending || loadingLookups}
-              popoverClassName="z-70"
-            />
-            <SearchableSelect
-              label="Serial number *"
-              options={serials}
-              value={serialId}
-              onChange={setSerialId}
-              placeholder={
-                modelId ? "Select STK serial…" : "Select a model first…"
-              }
-              disabled={pending || !modelId}
-              popoverClassName="z-70"
-            />
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto py-1">
+            {headerLoading ? (
+              <ReplacementFormSkeleton />
+            ) : headerReady ? (
+              <>
+                <ReplacementInvoiceHeaderFields
+                  idPrefix="repl"
+                  readOnly={false}
+                  pending={pending}
+                  value={header}
+                  onChange={patchHeader}
+                  paymentTypes={paymentTypes}
+                  saleTypes={saleTypes}
+                  deliveryMethods={deliveryMethods}
+                  proofUploading={proofUploading}
+                  onProofsSelected={(files) => {
+                    void onProofsSelected(files);
+                  }}
+                />
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <SearchableSelect
+                    label="Model *"
+                    options={models}
+                    value={modelId}
+                    onChange={setModelId}
+                    placeholder={
+                      models.length === 0
+                        ? "No stock at this branch"
+                        : "Select model…"
+                    }
+                    emptyMessage="No stock at this branch."
+                    disabled={pending}
+                    popoverClassName="z-70"
+                  />
+                  <SearchableSelect
+                    label="Serial number *"
+                    options={serials}
+                    value={serialId}
+                    onChange={setSerialId}
+                    placeholder={
+                      modelId ? "Select STK serial…" : "Select a model first…"
+                    }
+                    disabled={pending || !modelId}
+                    popoverClassName="z-70"
+                  />
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                The original sale could not be loaded. Go back and try again.
+              </p>
+            )}
           </div>
-          <DialogFooter>
+          <DialogFooter className="mt-4 shrink-0 border-t pt-4">
             <Button
               type="button"
               variant="outline"
@@ -363,7 +558,11 @@ export function ReplacementFlowDialogs({
             >
               Back
             </Button>
-            <Button type="button" disabled={pending} onClick={submitNew}>
+            <Button
+              type="button"
+              disabled={pending || headerLoading || !headerReady || proofUploading}
+              onClick={submitNew}
+            >
               {pending ? "Working…" : "Confirm replacement"}
             </Button>
           </DialogFooter>

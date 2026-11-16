@@ -10,6 +10,7 @@ export const inventoryListInclude = {
           name: true,
           srp: true,
           brand: { select: { name: true } },
+          series: { select: { name: true } },
         },
       },
     },
@@ -37,6 +38,8 @@ export type InventoryListRow = {
       name: string;
       srp: unknown;
       brand: { name: string } | null;
+      /** Null when Master data has no series on this model. */
+      series: { name: string } | null;
     };
   };
 };

@@ -55,6 +55,12 @@ import {
   isDealerInitiatedDocumentTypeName,
   isServiceDocumentTypeName,
 } from "@/features/sales/constants/process-return";
+import {
+  isReturnHistoryStatus,
+  returnHistoryStatusLabel,
+  returnHistoryStatusRef,
+  returnRequestAppliesToLine,
+} from "@/features/sales/constants/return-history-status";
 import { generateAndStoreAtrOdrfPdf } from "@/features/sales/services/atr-odrf-pdf";
 import {
   SALES_ACCESS_PERMISSIONS,
@@ -88,6 +94,7 @@ import {
 } from "@/features/sales/services/model-price";
 import {
   parseSaleProofPaths,
+  SALE_PROOF_MAX_FILES,
   serializeSaleProofPaths,
 } from "@/features/sales/utils/sale-proof";
 import { hasPermission, requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
@@ -172,13 +179,13 @@ function resolveSalesAtrStatusCode(
 
 /**
  * List/details STATUS preference (never live inventory):
- * 1) Active ATR return workflow (pending CS/TL/approved/rejected) — details / returns only
- * 2) Closed ATR header
+ * 1) Returned/Replaced or Service Returned/Replaced while a return is open or finished
+ * 2) Closed ATR header (no return history status)
  * 3) Frozen detail.statusCode (FW / SLD / RSV / OFS)
  * 4) Legacy derive from serial + atrStatus
  *
- * Sales list passes returnStatus=null and filters to SLD/OFS/FW so return badges
- * never appear there (see salesListDetailWhere).
+ * The product return status stays through request, approval, and completion.
+ * Rejected requests fall through so the sale shows its inventory status again.
  */
 function resolveLineStatusCode(
   detail: {
@@ -189,12 +196,17 @@ function resolveLineStatusCode(
   toFollowStatus: SaleStatusCodeRef,
   salesAtrCodes: Map<string, SaleStatusCodeRef>,
   returnStatus?: string | null,
+  documentTypeName?: string | null,
+  /**
+   * Another line on this sale is Returned/Replaced. Keep this line's own
+   * Sold / TO FOLLOW status instead of flipping it to Closed.
+   */
+  keepFrozenStatus?: boolean,
 ): SaleStatusCodeRef | null {
-  if (returnStatus && returnStatus !== "completed") {
-    return resolveSalesAtrStatusCode(returnStatus, salesAtrCodes);
-  }
+  const historyStatus = returnHistoryStatusRef(returnStatus, documentTypeName);
+  if (historyStatus) return historyStatus;
 
-  if (atrStatus === "closed") {
+  if (atrStatus === "closed" && !keepFrozenStatus) {
     return resolveSalesAtrStatusCode("closed", salesAtrCodes);
   }
 
@@ -494,13 +506,21 @@ export async function listSalesAction(input?: {
         serialNumber: detail.serialNumber
           ? { id: detail.serialNumber.id, serialNo: detail.serialNumber.serialNo }
           : null,
-        // Sales list never overlays return workflow badges (those live on Returns).
         statusCode: resolveLineStatusCode(
           detail,
           sale.atrStatus,
           toFollowStatus,
           salesAtrCodes,
-          null,
+          sale.returnRequest &&
+            returnRequestAppliesToLine(sale.returnRequest.saleDetailId, detail.id)
+            ? sale.returnRequest.status
+            : null,
+          sale.returnRequest?.documentType?.name,
+          Boolean(
+            sale.returnRequest &&
+              isReturnHistoryStatus(sale.returnRequest.status) &&
+              !returnRequestAppliesToLine(sale.returnRequest.saleDetailId, detail.id),
+          ),
         ),
         returnRequest: sale.returnRequest
           ? { id: sale.returnRequest.id, status: sale.returnRequest.status }
@@ -593,7 +613,9 @@ export async function listSalesReturnsAction(input?: {
         atrStatus: sale.atrStatus,
         atrStatusCode: resolveSalesAtrStatusCode(sale.atrStatus, salesAtrCodes),
         returnStatus: row.status,
-        returnStatusCode: resolveSalesAtrStatusCode(row.status, salesAtrCodes),
+        returnStatusCode:
+          returnHistoryStatusRef(row.status, row.documentType?.name) ??
+          resolveSalesAtrStatusCode(row.status, salesAtrCodes),
         actionType: row.actionType ?? "return",
         stockStatusCode: row.stockStatusCode ?? "STK",
         documentTypeName: row.documentType?.name ?? null,
@@ -620,8 +642,19 @@ export async function listSalesReturnsAction(input?: {
   };
 }
 
+/** Who may finish an approved replacement (Same Invoice or New Invoice). */
+const REPLACEMENT_COMPLETE_PERMISSIONS = [
+  RETURNS_COMPLETE,
+  SALES_RETURN_COMPLETE,
+  "logistics.manage",
+  SALES_CREATE,
+] as const;
+
 export async function getSaleDetailsAction(saleId: string) {
-  const session = await requireAnyPermission([...SALES_ACCESS_PERMISSIONS]);
+  const session = await requireAnyPermission([
+    ...SALES_ACCESS_PERMISSIONS,
+    ...REPLACEMENT_COMPLETE_PERMISSIONS,
+  ]);
   const [sale, toFollowStatus, salesAtrCodes] = await Promise.all([
     salesRepository.findSaleDetailsForTenant(session.user.tenantId, saleId),
     resolveToFollowStatusCode(session.user.tenantId),
@@ -635,7 +668,10 @@ export async function getSaleDetailsAction(saleId: string) {
   const proofPaths = parseSaleProofPaths(sale.proof);
   const atrStatusCode = resolveSalesAtrStatusCode(sale.atrStatus, salesAtrCodes);
   const returnStatusCode = sale.returnRequest
-    ? resolveSalesAtrStatusCode(sale.returnRequest.status, salesAtrCodes)
+    ? (returnHistoryStatusRef(
+        sale.returnRequest.status,
+        sale.returnRequest.documentType?.name,
+      ) ?? resolveSalesAtrStatusCode(sale.returnRequest.status, salesAtrCodes))
     : null;
 
   const realSerialDetails = sale.details.filter((d) => d.serialNumberId);
@@ -712,7 +748,16 @@ export async function getSaleDetailsAction(saleId: string) {
           sale.atrStatus,
           toFollowStatus,
           salesAtrCodes,
-          sale.returnRequest?.status,
+          sale.returnRequest &&
+            returnRequestAppliesToLine(sale.returnRequest.saleDetailId, detail.id)
+            ? sale.returnRequest.status
+            : null,
+          sale.returnRequest?.documentType?.name,
+          Boolean(
+            sale.returnRequest &&
+              isReturnHistoryStatus(sale.returnRequest.status) &&
+              !returnRequestAppliesToLine(sale.returnRequest.saleDetailId, detail.id),
+          ),
         ),
       };
     }),
@@ -730,7 +775,10 @@ export async function listPackageTypesForSalesAction() {
 }
 
 export async function listPaymentTypesForSalesAction() {
-  const session = await requireAnyPermission([...SALES_LOOKUP_PERMISSIONS]);
+  const session = await requireAnyPermission([
+    ...SALES_LOOKUP_PERMISSIONS,
+    ...REPLACEMENT_COMPLETE_PERMISSIONS,
+  ]);
   return prisma.paymentType.findMany({
     where: { tenantId: session.user.tenantId, recordStatus: "active" },
     select: { id: true, name: true },
@@ -739,7 +787,10 @@ export async function listPaymentTypesForSalesAction() {
 }
 
 export async function listSaleTypesForSalesAction() {
-  const session = await requireAnyPermission([...SALES_LOOKUP_PERMISSIONS]);
+  const session = await requireAnyPermission([
+    ...SALES_LOOKUP_PERMISSIONS,
+    ...REPLACEMENT_COMPLETE_PERMISSIONS,
+  ]);
   return prisma.saleType.findMany({
     where: { tenantId: session.user.tenantId, recordStatus: "active" },
     select: { id: true, name: true },
@@ -748,7 +799,10 @@ export async function listSaleTypesForSalesAction() {
 }
 
 export async function listCustomerDeliveryMethodsForSalesAction() {
-  const session = await requireAnyPermission([...SALES_LOOKUP_PERMISSIONS]);
+  const session = await requireAnyPermission([
+    ...SALES_LOOKUP_PERMISSIONS,
+    ...REPLACEMENT_COMPLETE_PERMISSIONS,
+  ]);
   return prisma.customerDeliveryMethod.findMany({
     where: { tenantId: session.user.tenantId, recordStatus: "active" },
     select: { id: true, name: true },
@@ -966,7 +1020,10 @@ export async function listSaleableSerialsAction(
 }
 
 export async function uploadSaleProofAction(formData: FormData) {
-  const session = await requireAnyPermission([...SALES_LOOKUP_PERMISSIONS]);
+  const session = await requireAnyPermission([
+    ...SALES_LOOKUP_PERMISSIONS,
+    ...REPLACEMENT_COMPLETE_PERMISSIONS,
+  ]);
   try {
     const files = formData
       .getAll("proof")
@@ -1611,6 +1668,20 @@ export async function requestReturnAction(
       );
     }
 
+    if (targetDetail.serialNumberId) {
+      const actionLabel = data.actionType === "replacement" ? "Replacement" : "Return";
+      await tx.serialNumberHistory.create({
+        data: {
+          tenantId: session.user.tenantId,
+          serialNumberId: targetDetail.serialNumberId,
+          txnType: data.actionType === "replacement" ? "replacement" : "return",
+          details: `${actionLabel} ${sale.transactionNo} (request ${returnRequest.id})`,
+          status: returnHistoryStatusLabel(serviceReturn),
+          createdById: session.user.id,
+        },
+      });
+    }
+
     return returnRequest;
   });
 
@@ -1755,6 +1826,8 @@ async function restoreOriginalSerialsAtBranchSold(
     soldStatusCodeIds: string[];
     historyTxnType: "return" | "replacement";
     historyDetails: string;
+    /** Kept as Returned/Replaced (or the service label). Not the stock code. */
+    historyStatus: string;
   },
 ): Promise<number> {
   const now = new Date();
@@ -1819,7 +1892,7 @@ async function restoreOriginalSerialsAtBranchSold(
       serialNumberId,
       txnType: input.historyTxnType,
       details: input.historyDetails,
-      status: input.restoreStatusCode,
+      status: input.historyStatus,
       createdById: input.userId,
       createdAt: now,
     });
@@ -1846,6 +1919,7 @@ async function restoreReturnInventory(input: {
   };
   /** When set, restore only this sale line's serial (legacy null → first serial). */
   saleDetailId?: string | null;
+  historyStatus: string;
 }) {
   const statusCode = input.stockStatusCode === "DEF" ? "DEF" : "STK";
   const statusCodeId = await reasonStatusService.requireCodeId(
@@ -1902,6 +1976,7 @@ async function restoreReturnInventory(input: {
       soldStatusCodeIds: [sldCodeId, rsvCodeId, ofsCodeId],
       historyTxnType: "return",
       historyDetails: `Return ${input.sale.transactionNo} → ${statusCode} at branch sold (request ${input.returnRequestId})`,
+      historyStatus: input.historyStatus,
     });
     await tx.branchReturnRequest.update({
       where: { id: input.returnRequestId },
@@ -2117,6 +2192,7 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
       actionType: true,
       stockStatusCode: true,
       saleDetailId: true,
+      documentType: { select: { name: true } },
       sale: {
         select: {
           id: true,
@@ -2149,6 +2225,9 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
     stockStatusCode,
     sale: row.sale,
     saleDetailId: row.saleDetailId,
+    historyStatus: returnHistoryStatusLabel(
+      isServiceDocumentTypeName(row.documentType?.name),
+    ),
   });
   if ("error" in restored) return restored;
 
@@ -2187,11 +2266,34 @@ const replacementSameInvoiceSchema = z.object({
 
 const replacementNewInvoiceSchema = z.object({
   returnRequestId: z.string().min(1),
-  transactionNo: z.string().trim().min(1),
-  transactionDate: z.string().min(1),
+  transactionNo: z
+    .string()
+    .trim()
+    .min(1)
+    .refine(isSaleTransactionNo, "Invalid transaction number"),
+  transactionDate: z.string().trim().optional(),
   modelId: z.string().min(1),
   replacementSerialNumberId: z.string().min(1),
+  customerName: z.string().trim().min(1),
+  contactNo: z.string().trim().max(50).optional(),
+  paymentTypeId: z.string().min(1),
+  saleTypeId: z.string().min(1),
+  customerDeliveryMethodId: z.string().min(1),
+  infoSlipVsoRrReleased: z.string().trim().optional(),
+  rrReceiveDeliver: z.string().trim().optional(),
+  proof: z.array(z.string().trim().min(1)).max(SALE_PROOF_MAX_FILES).optional(),
 });
+
+type ReplacementNewInvoiceHeader = {
+  customerName: string;
+  contactNo: string | null;
+  paymentTypeId: string;
+  saleTypeId: string;
+  customerDeliveryMethodId: string;
+  infoSlipVsoRrReleased: string | null;
+  rrReceiveDeliver: string | null;
+  proof: string[];
+};
 
 async function completeReplacementCore(input: {
   session: {
@@ -2203,6 +2305,8 @@ async function completeReplacementCore(input: {
   invoiceNo: string | null;
   invoiceDate: Date | null;
   mode: "same_invoice" | "new_invoice";
+  /** Edited header for New Invoice. Ignored for Same Invoice. */
+  newInvoiceHeader?: ReplacementNewInvoiceHeader;
 }) {
   const tenantId = input.session.user.tenantId;
   const userId = input.session.user.id;
@@ -2218,6 +2322,7 @@ async function completeReplacementCore(input: {
       actionType: true,
       stockStatusCode: true,
       saleDetailId: true,
+      documentType: { select: { name: true } },
       sale: {
         select: {
           id: true,
@@ -2384,10 +2489,15 @@ async function completeReplacementCore(input: {
   );
   const replacementModelPrice = resolvedPrice?.amount ?? originalPrice;
 
+  let validatedNewHeader: ReplacementNewInvoiceHeader | null = null;
   if (input.mode === "new_invoice") {
     const newTrnNo = input.invoiceNo?.trim();
-    if (!newTrnNo || !input.invoiceDate) {
-      return { error: "New invoice requires transaction number and date" as const };
+    const header = input.newInvoiceHeader;
+    if (!newTrnNo || !header?.customerName.trim()) {
+      return { error: "New invoice requires a transaction number and customer name" as const };
+    }
+    if (!header.paymentTypeId || !header.saleTypeId || !header.customerDeliveryMethodId) {
+      return { error: "New invoice requires payment type, sale type, and delivery method" as const };
     }
     const taken = await prisma.branchSalesTransaction.findFirst({
       where: {
@@ -2403,6 +2513,33 @@ async function completeReplacementCore(input: {
           "Transaction number already used on this branch. Enter a different number." as const,
       };
     }
+    const [payment, saleType, delivery] = await Promise.all([
+      prisma.paymentType.findFirst({
+        where: { id: header.paymentTypeId, tenantId },
+        select: { id: true },
+      }),
+      prisma.saleType.findFirst({
+        where: { id: header.saleTypeId, tenantId },
+        select: { id: true },
+      }),
+      prisma.customerDeliveryMethod.findFirst({
+        where: { id: header.customerDeliveryMethodId, tenantId },
+        select: { id: true },
+      }),
+    ]);
+    if (!payment) return { error: "Payment type not found" as const };
+    if (!saleType) return { error: "Sale type not found" as const };
+    if (!delivery) return { error: "Customer delivery method not found" as const };
+    validatedNewHeader = {
+      customerName: header.customerName.trim(),
+      contactNo: header.contactNo?.trim() || null,
+      paymentTypeId: header.paymentTypeId,
+      saleTypeId: header.saleTypeId,
+      customerDeliveryMethodId: header.customerDeliveryMethodId,
+      infoSlipVsoRrReleased: header.infoSlipVsoRrReleased?.trim() || null,
+      rrReceiveDeliver: header.rrReceiveDeliver?.trim() || null,
+      proof: serializeSaleProofPaths(header.proof),
+    };
   }
 
   let newSaleId: string | null = null;
@@ -2435,6 +2572,9 @@ async function completeReplacementCore(input: {
         soldStatusCodeIds: [sldCodeId, rsvCodeId, ofsCodeId],
         historyTxnType: "replacement",
         historyDetails: `Replacement ${row.sale.transactionNo} → ${stockStatusCode} at branch sold (request ${input.returnRequestId})`,
+        historyStatus: returnHistoryStatusLabel(
+          isServiceDocumentTypeName(row.documentType?.name),
+        ),
       });
 
       const replacementInvoiceNo =
@@ -2443,7 +2583,7 @@ async function completeReplacementCore(input: {
           : row.sale.transactionNo;
       const replacementInvoiceDate =
         input.mode === "new_invoice"
-          ? (input.invoiceDate ?? new Date())
+          ? input.invoiceDate
           : (row.sale.transactionDate ?? new Date());
 
       if (input.mode === "same_invoice") {
@@ -2481,23 +2621,27 @@ async function completeReplacementCore(input: {
           },
         });
       } else {
-        // New Invoice: create a fresh sale copying header context.
+        if (!validatedNewHeader) {
+          throw new Error("New invoice header is required");
+        }
+        const header = validatedNewHeader;
+        // Branches stay on the original sale. Stock is still STK at branch sold.
         const created = await tx.branchSalesTransaction.create({
           data: {
             tenantId,
             branchId: soldBranchId,
             alternateBranchId: stockBranchId,
-            paymentTypeId: row.sale.paymentTypeId,
-            saleTypeId: row.sale.saleTypeId,
-            customerDeliveryMethodId: row.sale.customerDeliveryMethodId,
+            paymentTypeId: header.paymentTypeId,
+            saleTypeId: header.saleTypeId,
+            customerDeliveryMethodId: header.customerDeliveryMethodId,
             transactionNo: replacementInvoiceNo,
             transactionDate: replacementInvoiceDate,
-            customerName: row.sale.customerName,
-            contactNo: row.sale.contactNo,
+            customerName: header.customerName,
+            contactNo: header.contactNo,
             siTrans: replacementInvoiceNo,
-            infoSlipVsoRrReleased: row.sale.infoSlipVsoRrReleased,
-            rrReceiveDeliver: row.sale.rrReceiveDeliver,
-            proof: row.sale.proof ?? [],
+            infoSlipVsoRrReleased: header.infoSlipVsoRrReleased,
+            rrReceiveDeliver: header.rrReceiveDeliver,
+            proof: header.proof,
             amount: replacementModelPrice,
             modelPrice: replacementModelPrice,
             atrStatus: "open",
@@ -2614,12 +2758,7 @@ async function completeReplacementCore(input: {
 }
 
 export async function listReplacementLookupsAction(branchId: string, modelId?: string) {
-  const session = await requireAnyPermission([
-    RETURNS_COMPLETE,
-    SALES_RETURN_COMPLETE,
-    "logistics.manage",
-    SALES_CREATE,
-  ]);
+  const session = await requireAnyPermission([...REPLACEMENT_COMPLETE_PERMISSIONS]);
 
   const stkCodeId = await reasonStatusService.requireCodeId(
     session.user.tenantId,
@@ -2629,7 +2768,21 @@ export async function listReplacementLookupsAction(branchId: string, modelId?: s
 
   const [models, serialRows] = await Promise.all([
     prisma.productModel.findMany({
-      where: { tenantId: session.user.tenantId, status: "active" },
+      where: {
+        tenantId: session.user.tenantId,
+        status: "active",
+        serialNumbers: {
+          some: {
+            branchInventories: {
+              some: {
+                tenantId: session.user.tenantId,
+                branchId,
+                statusCodeId: stkCodeId,
+              },
+            },
+          },
+        },
+      },
       select: { id: true, skuCode: true, name: true },
       orderBy: { skuCode: "asc" },
       take: 1000,
@@ -2671,12 +2824,7 @@ export async function listReplacementLookupsAction(branchId: string, modelId?: s
 }
 
 export async function completeReplacementSameInvoiceAction(input: unknown) {
-  const session = await requireAnyPermission([
-    RETURNS_COMPLETE,
-    SALES_RETURN_COMPLETE,
-    "logistics.manage",
-    SALES_CREATE,
-  ]);
+  const session = await requireAnyPermission([...REPLACEMENT_COMPLETE_PERMISSIONS]);
   const parsed = replacementSameInvoiceSchema.safeParse(input);
   if (!parsed.success) return { error: "Invalid same-invoice replacement" as const };
 
@@ -2692,18 +2840,16 @@ export async function completeReplacementSameInvoiceAction(input: unknown) {
 }
 
 export async function completeReplacementNewInvoiceAction(input: unknown) {
-  const session = await requireAnyPermission([
-    RETURNS_COMPLETE,
-    SALES_RETURN_COMPLETE,
-    "logistics.manage",
-    SALES_CREATE,
-  ]);
+  const session = await requireAnyPermission([...REPLACEMENT_COMPLETE_PERMISSIONS]);
   const parsed = replacementNewInvoiceSchema.safeParse(input);
   if (!parsed.success) return { error: "Invalid new-invoice replacement" as const };
 
-  const invoiceDate = new Date(parsed.data.transactionDate);
-  if (Number.isNaN(invoiceDate.getTime())) {
-    return { error: "Invalid transaction date" as const };
+  const trimmedDate = parsed.data.transactionDate?.trim() ?? "";
+  let invoiceDate: Date | null = null;
+  if (trimmedDate) {
+    const resolvedDate = resolveSaleTransactionDate(trimmedDate);
+    if ("error" in resolvedDate) return { error: resolvedDate.error };
+    invoiceDate = resolvedDate.date;
   }
 
   return completeReplacementCore({
@@ -2714,6 +2860,16 @@ export async function completeReplacementNewInvoiceAction(input: unknown) {
     invoiceNo: parsed.data.transactionNo.trim(),
     invoiceDate,
     mode: "new_invoice",
+    newInvoiceHeader: {
+      customerName: parsed.data.customerName,
+      contactNo: parsed.data.contactNo?.trim() || null,
+      paymentTypeId: parsed.data.paymentTypeId,
+      saleTypeId: parsed.data.saleTypeId,
+      customerDeliveryMethodId: parsed.data.customerDeliveryMethodId,
+      infoSlipVsoRrReleased: parsed.data.infoSlipVsoRrReleased?.trim() || null,
+      rrReceiveDeliver: parsed.data.rrReceiveDeliver?.trim() || null,
+      proof: parsed.data.proof ?? [],
+    },
   });
 }
 
