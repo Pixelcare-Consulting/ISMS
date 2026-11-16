@@ -66,6 +66,23 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.94.3",
+    date: "2026-11-16",
+    releasedAt: "2026-11-16T09:50:00+08:00",
+    audience: "internal",
+    title: "Assistant button hides when turned off",
+    highlights: [
+      "The teal sparkle button stays out of the way when the assistant is turned off for your company.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Turning the assistant off in company or provider settings hides the corner sparkle button and the Help assist box. They come back only after the assistant is turned on again.",
+      },
+    ],
+  },
+  {
     version: "0.94.2",
     date: "2026-11-13",
     releasedAt: "2026-11-13T17:40:00+08:00",

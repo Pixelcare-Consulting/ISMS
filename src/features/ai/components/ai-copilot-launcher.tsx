@@ -27,15 +27,20 @@ const fabClassName = cn(
 export function AiCopilotLauncher(props: {
   canAssist: boolean;
   configured: boolean;
+  /** Tenant assistant switch (`AiAssistantPolicy.enabled`). Off hides the launcher. */
+  assistantEnabled: boolean;
   canUsePixelcareAi?: boolean;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
-  const showPixelcareShortcut = Boolean(props.canUsePixelcareAi);
-  const showAssistPopup = props.canAssist && !showPixelcareShortcut;
+  const showPixelcareShortcut =
+    props.assistantEnabled && Boolean(props.canUsePixelcareAi);
+  const showAssistPopup =
+    props.assistantEnabled && props.canAssist && !showPixelcareShortcut;
 
   if (
+    !props.assistantEnabled ||
     (!showPixelcareShortcut && !showAssistPopup) ||
     isHelpPath(pathname) ||
     isPixelcareAiWorkspacePath(pathname)
