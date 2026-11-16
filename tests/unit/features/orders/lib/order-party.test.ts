@@ -1,39 +1,62 @@
-import { branchDealerFilter, orderPartyBlock } from "@/features/orders/lib/order-party";
+import {
+  branchDealer,
+  defaultModeOfPaymentId,
+  orderPartyBlock,
+} from "@/features/orders/lib/order-party";
 
-const branch = { name: "S&R DC Paranaque", sapCode: "SNR031", bpCode: "CSNR1000" };
+const branch = {
+  name: "S&R DC Paranaque",
+  sapCode: "SNR031",
+  bpCode: "CSNR1000",
+  dealerId: "d1",
+};
+const dealers = [
+  { id: "d1", name: "S&R", modeOfPaymentId: "m1" },
+  { id: "d2", name: "No MOP", modeOfPaymentId: null },
+];
+const modes = [{ id: "m1" }, { id: "m2" }];
 
-describe("branchDealerFilter", () => {
-  it("waits for a mode of payment", () => {
-    expect(branchDealerFilter(null, "d1")).toBeNull();
+describe("branchDealer", () => {
+  it("finds the branch's dealer", () => {
+    expect(branchDealer(branch, dealers)?.name).toBe("S&R");
   });
 
-  it("consignment waits for a dealer, then filters by it", () => {
-    expect(branchDealerFilter("CONSIGNMENT", "")).toBeNull();
-    expect(branchDealerFilter("CONSIGNMENT", "d1")).toBe("d1");
+  it("is null without a branch, without a dealer, or for a dealer not in the list", () => {
+    expect(branchDealer(null, dealers)).toBeNull();
+    expect(branchDealer({ dealerId: null }, dealers)).toBeNull();
+    expect(branchDealer({ dealerId: "gone" }, dealers)).toBeNull();
+  });
+});
+
+describe("defaultModeOfPaymentId", () => {
+  it("uses the dealer's mode of payment", () => {
+    expect(defaultModeOfPaymentId(dealers[0], modes)).toBe("m1");
   });
 
-  it("outright lists every branch, whatever dealer is left in state", () => {
-    expect(branchDealerFilter("OUTRIGHT", "")).toBe("");
-    expect(branchDealerFilter("OUTRIGHT", "d1")).toBe("");
+  it("is empty when there is no dealer, no dealer mode, or the mode can't be used", () => {
+    expect(defaultModeOfPaymentId(null, modes)).toBe("");
+    expect(defaultModeOfPaymentId(dealers[1], modes)).toBe("");
+    expect(defaultModeOfPaymentId({ modeOfPaymentId: "untyped" }, modes)).toBe("");
   });
 });
 
 describe("orderPartyBlock", () => {
-  it("asks for the mode of payment first", () => {
-    expect(orderPartyBlock({ kind: null, dealerId: "d1", branch })).toBe("Select a mode of payment.");
+  it("asks for the branch first, then the mode of payment", () => {
+    expect(orderPartyBlock({ kind: null, branch: null })).toBe("Select a branch.");
+    expect(orderPartyBlock({ kind: "CONSIGNMENT", branch: null })).toBe("Select a branch.");
+    expect(orderPartyBlock({ kind: null, branch })).toBe("Select a mode of payment.");
   });
 
-  it("consignment needs a dealer and a branch", () => {
-    expect(orderPartyBlock({ kind: "CONSIGNMENT", dealerId: "", branch })).toBe("Select a dealer.");
-    expect(orderPartyBlock({ kind: "CONSIGNMENT", dealerId: "d1", branch: null })).toBe(
-      "Select a branch.",
+  it("consignment needs a branch with a dealer, not a BP Code", () => {
+    expect(orderPartyBlock({ kind: "CONSIGNMENT", branch: { ...branch, bpCode: null } })).toBeNull();
+    expect(orderPartyBlock({ kind: "CONSIGNMENT", branch: { ...branch, dealerId: null } })).toBe(
+      "S&R DC Paranaque has no dealer, so it can't take a consignment order. Set its dealer in Settings → Branches, or choose an outright mode of payment.",
     );
-    expect(orderPartyBlock({ kind: "CONSIGNMENT", dealerId: "d1", branch: { ...branch, bpCode: null } })).toBeNull();
   });
 
   it("outright needs no dealer but blocks a branch without a BP Code", () => {
-    expect(orderPartyBlock({ kind: "OUTRIGHT", dealerId: "", branch })).toBeNull();
-    expect(orderPartyBlock({ kind: "OUTRIGHT", dealerId: "", branch: { ...branch, bpCode: null } })).toBe(
+    expect(orderPartyBlock({ kind: "OUTRIGHT", branch: { ...branch, dealerId: null } })).toBeNull();
+    expect(orderPartyBlock({ kind: "OUTRIGHT", branch: { ...branch, bpCode: null } })).toBe(
       "S&R DC Paranaque has no BP Code. Set the BP Code on warehouse SNR031 in SAP, then sync branches in Settings → Branches.",
     );
   });

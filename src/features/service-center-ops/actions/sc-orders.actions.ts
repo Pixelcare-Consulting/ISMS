@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import {
+  SC_ORDER_SAP_CHECK_PERMISSIONS,
   SC_ORDERS_APPROVE,
   SC_ORDERS_CREATE,
   SC_ORDERS_VIEW,
@@ -16,6 +17,7 @@ import {
 } from "@/features/service-center-ordering/constants";
 import { loadScOrderWorksheet } from "@/features/service-center-ordering/services/sc-order-worksheet";
 import { scOrderingSettingsService } from "@/features/service-center-ordering/services/sc-ordering-settings.service";
+import { checkScOrdersInSap } from "@/features/service-center-ordering/services/sc-order-sap-check.service";
 import { scOrderService } from "@/features/service-center-ordering/services/sc-order.service";
 import {
   assertScInScope,
@@ -119,6 +121,27 @@ export async function approveScOrderAction(orderId: string) {
     select: { sapDocNum: true },
   });
   return { success: true as const, sapDocNum: posted?.sapDocNum ?? null };
+}
+
+/**
+ * Finds the DRs SAP users copied from approved SC orders' Sales Orders and makes each one an
+ * SC delivery, its serials DIT at the order's location, ready to accept.
+ */
+export async function checkScOrdersInSapAction() {
+  const session = await requireAnyPermission([...SC_ORDER_SAP_CHECK_PERMISSIONS]);
+  const scopedIds = await resolveScIdsForUser(
+    session.user.tenantId,
+    session.user.id,
+    session.user.permissions,
+  );
+  try {
+    const result = await checkScOrdersInSap(session.user.tenantId, session.user.id, scopedIds);
+    revalidateScOrders();
+    revalidatePath("/service-centers/inventory");
+    return { success: true as const, ...result };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Could not check SAP" };
+  }
 }
 
 export async function rejectScOrderAction(orderId: string, comment?: string) {

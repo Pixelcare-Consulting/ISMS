@@ -5,11 +5,12 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { CreateOrderSetupDialog } from "@/app/(app)/orders/_components/create-order-form";
 import {
-  orderSetupHref,
+  SC_ORDERS_HREF,
+  ScOrderSetupDialog,
+  scOrderSetupHref,
   useScOrderSetup,
-} from "@/app/(app)/orders/_components/service-center-order-setup";
+} from "@/app/(app)/service-centers/orders/new/_components/sc-order-setup";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LoadingModal } from "@/components/ui/loading-modal";
@@ -31,7 +32,6 @@ import {
   getScOrderWorksheetAction,
 } from "@/features/service-center-ops/actions/sc-orders.actions";
 
-const SC_ORDERS_HREF = "/service-centers/orders";
 const DEFAULT_KEYS = Object.keys(
   SC_ORDERING_DEFAULT_LABELS,
 ) as ScOrderingDefaultKey[];
@@ -51,25 +51,20 @@ function Readout({ label, value }: { label: string; value: string }) {
 }
 
 /**
- * The Create Order page for a service center: same setup popup and layout as a branch
- * order, but it bills a service-center customer, posts with the Settings defaults, and
- * lists what SAP has available in the Settings warehouse instead of a branch shelf plan.
+ * The Create Order page for a service center: it bills a service-center customer, posts
+ * with the Settings defaults, and lists what SAP has available in the Settings warehouse.
  */
-export function CreateServiceCenterOrderForm({
+export function ScCreateOrderForm({
   serviceCenterId,
   cardCode,
-  canCreateManual,
-  canCreateSpecial,
 }: {
   serviceCenterId: string;
   cardCode: string;
-  canCreateManual: boolean;
-  canCreateSpecial: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const { centers, setup } = useScOrderSetup(true);
-  // A direct visit has no service center yet: start in the setup popup, like a branch order.
+  // A direct visit has no service center yet: start in the setup popup.
   const ready = Boolean(serviceCenterId);
   const [setupOpen, setSetupOpen] = useState(!ready);
   const [locationId, setLocationId] = useState("");
@@ -444,12 +439,10 @@ export function CreateServiceCenterOrderForm({
           </div>
         </div>
       ) : null}
-      <CreateOrderSetupDialog
+      <ScOrderSetupDialog
         open={setupOpen}
-        canCreateManual={canCreateManual}
-        canCreateSpecial={canCreateSpecial}
-        canCreateServiceCenter
-        initialOrderFor="service_center"
+        centers={centers}
+        setup={setup}
         initialServiceCenterId={serviceCenterId}
         initialCardCode={cardCode}
         onOpenChange={(open) => {
@@ -467,7 +460,7 @@ export function CreateServiceCenterOrderForm({
           ) {
             return;
           }
-          router.push(orderSetupHref(choice));
+          router.push(scOrderSetupHref(choice));
         }}
       />
       <LoadingModal
