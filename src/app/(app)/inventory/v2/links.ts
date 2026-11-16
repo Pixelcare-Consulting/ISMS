@@ -9,7 +9,7 @@ export function branchInventoryV2Href(input?: {
   page?: number;
   limit?: number;
   offPlanogram?: boolean;
-  /** Active series id from Master data. Omitted means All series. */
+  /** Active series id from Master data. Used on an open branch. Omitted means All series. */
   series?: string;
 }): string {
   const params = new URLSearchParams();

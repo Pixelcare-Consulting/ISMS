@@ -852,6 +852,7 @@ export const inventoryService = {
     userId: string,
     isUnrestricted: boolean,
     branchId?: string,
+    seriesId?: string,
   ): Promise<{
     total: number;
     byCode: Record<string, number>;
@@ -859,10 +860,12 @@ export const inventoryService = {
   }> {
     try {
       const branchIds = await scopedBranchIds(tenantId, userId, isUnrestricted, branchId);
+      const trimmedSeries = seriesId?.trim();
       const counts = await inventoryStatusSeenService.unreadCounts({
         tenantId,
         userId,
         branchIds,
+        ...(trimmedSeries ? { seriesId: trimmedSeries } : {}),
       });
       return {
         total: counts.total,

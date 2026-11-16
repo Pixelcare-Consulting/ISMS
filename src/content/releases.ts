@@ -66,6 +66,28 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.94.2",
+    date: "2026-11-13",
+    releasedAt: "2026-11-13T17:40:00+08:00",
+    title: "Series filter on the open branch",
+    highlights: [
+      "Choose a series after you open a branch. The all-branches list always includes every series.",
+      "Unit details shows the series for that model.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "View unit details shows the series saved on that model. A model with no series shows a dash.",
+      },
+      {
+        type: "fix",
+        description:
+          "The series menu sits on the branch you opened, with status and model. All series is the default. Choosing a series limits the units, models, status cards, and series summary for that branch. Totals on the all-branches list stay complete.",
+      },
+    ],
+  },
+  {
     version: "0.94.1",
     date: "2026-11-13",
     releasedAt: "2026-11-13T16:30:00+08:00",
