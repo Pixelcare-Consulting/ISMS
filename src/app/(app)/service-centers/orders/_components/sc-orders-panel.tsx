@@ -1,7 +1,6 @@
 "use client";
 
 import { createColumnHelper } from "@tanstack/react-table";
-import { RefreshCw } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -14,11 +13,11 @@ import {
 import { listScCentersForOpsAction } from "@/features/service-center-ops/actions/sc-inventory.actions";
 import {
   approveScOrderAction,
-  checkScOrdersInSapAction,
   listScOrdersAction,
   rejectScOrderAction,
 } from "@/features/service-center-ops/actions/sc-orders.actions";
-import { summarizeScOrderSapCheck } from "@/features/service-center-ordering/lib/sc-order-sap-check";
+import { BRANCH_ORDER_STATUS_LABELS } from "@/features/orders/constants/order-status";
+import { isScOrderApprovable } from "@/features/service-center-ordering/constants";
 import { useClientTablePagination } from "@/components/data-table";
 import {
   DataTable,
@@ -51,14 +50,12 @@ export function ScOrdersPanel({
   centers,
   canCreate,
   canApprove,
-  canCheckSap,
 }: {
   items: OrderRow[];
   centers: CenterOption[];
   canCreate: boolean;
+  /** Supply Planning: the only approval step on SC orders. */
   canApprove: boolean;
-  /** Offers "Check SAP now": DRs copied from these orders' SOs become SC deliveries. */
-  canCheckSap: boolean;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -77,7 +74,7 @@ export function ScOrdersPanel({
         matchesTableSearch(query, [
           row.orderNumber,
           row.serviceCenter.name,
-          row.status,
+          BRANCH_ORDER_STATUS_LABELS[row.status],
           row.poNumber ?? "",
           row.sapDocNum != null ? String(row.sapDocNum) : "",
           ...row.deliveries.map((delivery) => delivery.sapDocNo ?? ""),
@@ -134,19 +131,6 @@ export function ScOrdersPanel({
       return;
     }
     run(() => rejectScOrderAction(decision.orderId), "Order rejected");
-  }
-
-  function checkSap() {
-    startTransition(async () => {
-      const result = await checkScOrdersInSapAction();
-      if ("error" in result) {
-        toast.error("Could not check SAP", { description: result.error });
-        return;
-      }
-      const summary = summarizeScOrderSapCheck(result);
-      toast[summary.tone](summary.title, { description: summary.description });
-      router.refresh();
-    });
   }
 
   const columns = useMemo(() => {
@@ -215,7 +199,9 @@ export function ScOrdersPanel({
         id: "status",
         header: "Status",
         enableSorting: true,
-        cell: ({ row }) => <Badge variant="secondary">{row.original.status}</Badge>,
+        cell: ({ row }) => (
+          <Badge variant="secondary">{BRANCH_ORDER_STATUS_LABELS[row.original.status]}</Badge>
+        ),
       }),
       orderColumn.display({
         id: "actions",
@@ -225,7 +211,7 @@ export function ScOrdersPanel({
           const order = row.original;
           return (
             <div className="flex flex-col gap-1">
-              {canApprove && ["pending_tl", "pending_sp"].includes(order.status) ? (
+              {canApprove && isScOrderApprovable(order.status) ? (
                 <>
                   <Button
                     size="sm"
@@ -278,23 +264,10 @@ export function ScOrdersPanel({
           placeholder: "Search order, center, PO or SO…",
         }}
         toolbarActions={
-          canCheckSap || canCreate ? (
-            <div className="flex flex-wrap items-center gap-2">
-              {canCheckSap ? (
-                <Button type="button" variant="outline" disabled={pending} onClick={checkSap}>
-                  <RefreshCw className={`mr-1 size-4 ${pending ? "animate-spin" : ""}`} aria-hidden />
-                  Check SAP now
-                </Button>
-              ) : null}
-              {canCreate ? (
-                <Button
-                  onClick={() => setSetupOpen(true)}
-                  disabled={pending || centers.length === 0}
-                >
-                  New order
-                </Button>
-              ) : null}
-            </div>
+          canCreate ? (
+            <Button onClick={() => setSetupOpen(true)} disabled={pending || centers.length === 0}>
+              New order
+            </Button>
           ) : null
         }
         empty={pageItems.length === 0}

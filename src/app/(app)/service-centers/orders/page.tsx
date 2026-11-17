@@ -4,8 +4,7 @@ import { listScCentersForOpsAction } from "@/features/service-center-ops/actions
 import { listScOrdersAction } from "@/features/service-center-ops/actions/sc-orders.actions";
 import {
   canAccessScOrders,
-  SC_ORDER_SAP_CHECK_PERMISSIONS,
-  SC_ORDERS_APPROVE,
+  canApproveScOrders,
   SC_ORDERS_CREATE,
 } from "@/features/service-center-ops/constants/sc-permissions";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
@@ -47,17 +46,14 @@ export default async function ScOrdersPage({ searchParams }: PageProps) {
         title="Service center orders"
         sticky={false}
         tutorial={SC_ORDERS_PAGE_TUTORIAL}
-        description="Approving posts the Sales Order to SAP. Once SAP copies it to a DR, Check SAP now adds that delivery to Deliveries."
+        description="Supply Planning approves each order, which posts the Sales Order to SAP. Once SAP copies it to a DR, Check SAP now on Deliveries brings the DR in."
       />
       <ModuleGuide {...SC_OPS_MODULE_GUIDE} />
       <ScOrdersPanel
         items={result.items}
         centers={centers}
         canCreate={hasPermission(session.user.permissions, SC_ORDERS_CREATE)}
-        canApprove={hasPermission(session.user.permissions, SC_ORDERS_APPROVE)}
-        canCheckSap={SC_ORDER_SAP_CHECK_PERMISSIONS.some((permission) =>
-          hasPermission(session.user.permissions, permission),
-        )}
+        canApprove={canApproveScOrders(session.user.permissions, session.user.roleSlugs)}
       />
     </div>
   );

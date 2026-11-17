@@ -1,14 +1,17 @@
 "use client";
 
 import { createColumnHelper } from "@tanstack/react-table";
+import { RefreshCw } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import {
   acceptScDeliveryAction,
+  checkScOrdersInSapAction,
   listScDeliveriesAction,
 } from "@/features/service-center-ops/actions/sc-logistics.actions";
+import { summarizeScOrderSapCheck } from "@/features/service-center-ordering/lib/sc-order-sap-check";
 import { searchSerialsForScStockInAction } from "@/features/service-center-ops/actions/sc-inventory.actions";
 import type { ScLogisticsActionCapabilities } from "@/features/service-center-ops/constants/sc-permissions";
 import { useClientTablePagination } from "@/components/data-table";
@@ -180,6 +183,20 @@ export function ScDeliveriesPanel({
     });
   }
 
+  /** DRs SAP users copied from approved SC orders' Sales Orders become deliveries here. */
+  function checkSap() {
+    startTransition(async () => {
+      const result = await checkScOrdersInSapAction();
+      if ("error" in result) {
+        toast.error("Could not check SAP", { description: result.error });
+        return;
+      }
+      const summary = summarizeScOrderSapCheck(result);
+      toast[summary.tone](summary.title, { description: summary.description });
+      router.refresh();
+    });
+  }
+
   const columns = useMemo(() => {
     const cols: DataTableColumn<DeliveryRow>[] = [
       deliveryColumn.display({
@@ -269,10 +286,18 @@ export function ScDeliveriesPanel({
           onChange: setQuery,
           placeholder: "Search delivery or center…",
         }}
+        toolbarActions={
+          capabilities.canCheckSap ? (
+            <Button type="button" variant="outline" disabled={pending} onClick={checkSap}>
+              <RefreshCw className={`mr-1 size-4 ${pending ? "animate-spin" : ""}`} aria-hidden />
+              Check SAP now
+            </Button>
+          ) : null
+        }
         empty={pageItems.length === 0}
         emptyMessage={
           items.length === 0
-            ? "No service center deliveries yet. Check SAP now on Orders adds the DRs SAP made."
+            ? "No service center deliveries yet. Check SAP now adds the DRs SAP copied from approved SC orders."
             : "No deliveries match your search."
         }
         pageSize={{ value: pageSize, onChange: setPageSize }}

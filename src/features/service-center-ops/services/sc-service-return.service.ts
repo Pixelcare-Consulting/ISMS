@@ -21,6 +21,7 @@ import {
 import { assertScInScope } from "@/features/service-center-ops/services/sc-scope";
 import { notifyCsrScServiceReturnDecided } from "@/features/service-center-ops/services/sc-service-return-notify";
 import { placeServiceCenterUnit } from "@/features/service-center-ops/services/service-center-placement";
+import { SC_ORDER_APPROVABLE_STATUSES } from "@/features/service-center-ordering/constants";
 import { scOrderService } from "@/features/service-center-ordering/services/sc-order.service";
 import { prisma } from "@/lib/database/client";
 import type { Prisma } from "@/lib/database/generated/prisma/client";
@@ -600,7 +601,7 @@ export const scServiceReturnService = {
     if (linked.count !== 1) {
       // Someone finished the request meanwhile: the order must not stay open for nothing.
       await prisma.serviceCenterOrder.updateMany({
-        where: { id: order.id, status: "pending_tl" },
+        where: { id: order.id, status: { in: [...SC_ORDER_APPROVABLE_STATUSES] } },
         data: { status: "rejected", notes: `Cancelled: request ${request.id} was already finished` },
       });
       throw new Error(STALE_REQUEST);

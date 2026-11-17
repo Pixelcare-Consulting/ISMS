@@ -10,10 +10,10 @@ import {
 } from "@/features/service-center-ordering/services/sc-order-worksheet";
 import { isSapProject } from "@/features/service-center-ordering/services/sc-ordering-sap";
 import { scOrderingSettingsService } from "@/features/service-center-ordering/services/sc-ordering-settings.service";
+import { SC_ORDER_APPROVABLE_STATUSES } from "@/features/service-center-ordering/constants";
 import { prisma } from "@/lib/database/client";
 
-/** Statuses an order can be approved from. Approval is a single step today. */
-const APPROVABLE: BranchOrderStatus[] = ["pending_tl", "pending_sp"];
+const APPROVABLE: BranchOrderStatus[] = [...SC_ORDER_APPROVABLE_STATUSES];
 
 /** One line per model, quantities summed, so a repeated model can't dodge the stock check. */
 function mergeLines(lines: { modelId: string; quantity: number }[]) {
@@ -79,7 +79,7 @@ export const scOrderService = {
         serviceCenterId: input.serviceCenterId,
         serviceCenterLocationId: input.serviceCenterLocationId ?? null,
         orderType: input.orderType ?? "manual",
-        status: "pending_tl",
+        status: "pending_sp",
         orderNumber,
         notes: input.notes?.trim() || null,
         poNumber: input.poNumber?.trim() || null,
@@ -93,7 +93,7 @@ export const scOrderService = {
             approvedQty: line.quantity,
           })),
         },
-        approvalLevels: { create: [{ level: 1, roleSlug: "tl" }] },
+        approvalLevels: { create: [{ level: 1, roleSlug: "sp" }] },
       },
       select: { id: true, orderNumber: true },
     });

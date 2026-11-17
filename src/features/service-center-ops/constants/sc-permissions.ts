@@ -3,6 +3,10 @@ import {
   type ResolvedCapabilities,
 } from "@/lib/auth/action-capabilities";
 import { hasPermission } from "@/lib/auth/permissions";
+import {
+  isSuperAdminOrderOverride,
+  isSupplyPlanningApproverRole,
+} from "@/features/orders/constants/order-workflow";
 import type { SalesActionCapabilities } from "@/features/sales/constants/sales-permissions";
 import type { PulloutActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 
@@ -41,9 +45,6 @@ export const SC_ORDERS_ACCESS = [
   SC_ORDERS_APPROVE,
 ] as const;
 
-/** Check SAP on SC orders: the people who handled SC deliveries before SAP Copy To. */
-export const SC_ORDER_SAP_CHECK_PERMISSIONS = [SC_LOGISTICS_CREATE, SC_LOGISTICS_MANAGE] as const;
-
 export const SC_LOGISTICS_ACCESS = [
   SC_LOGISTICS_VIEW,
   SC_LOGISTICS_CREATE,
@@ -54,6 +55,8 @@ export const SC_LOGISTICS_ACTION_CAPABILITIES = {
   canCreate: [SC_LOGISTICS_CREATE, SC_LOGISTICS_MANAGE],
   canManage: SC_LOGISTICS_MANAGE,
   canAcceptDelivery: [SC_LOGISTICS_CREATE, SC_LOGISTICS_MANAGE],
+  /** Check SAP now on Deliveries: DRs copied from SC Sales Orders become SC deliveries. */
+  canCheckSap: [SC_LOGISTICS_CREATE, SC_LOGISTICS_MANAGE],
   canApprovePullout: [SC_ORDERS_APPROVE, SC_LOGISTICS_MANAGE],
 } as const;
 
@@ -106,6 +109,23 @@ export function resolveScLogisticsCapabilities(
 export function canAccessScSales(permissions: string[] | undefined): boolean {
   return SC_SALES_ACCESS.some((slug) => hasPermission(permissions, slug));
 }
+
+/**
+ * SC orders have one approval step, Supply Planning, like branch orders. The permission alone
+ * is not enough: Team Leaders hold it for SC pull-out approval.
+ */
+export function canApproveScOrders(
+  permissions: string[] | undefined,
+  roleSlugs: string[] | undefined,
+): boolean {
+  const roles = roleSlugs ?? [];
+  return (
+    hasPermission(permissions, SC_ORDERS_APPROVE) &&
+    (isSupplyPlanningApproverRole(roles) || isSuperAdminOrderOverride(roles))
+  );
+}
+
+export const SC_ORDER_APPROVER_ONLY = "Only Supply Planning can approve or reject service center orders";
 
 export function canAccessScOrders(permissions: string[] | undefined): boolean {
   return SC_ORDERS_ACCESS.some((slug) => hasPermission(permissions, slug));

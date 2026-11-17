@@ -13,10 +13,12 @@ import { holdSpecialOrderUnitForReturn } from "@/features/service-center-ops/ser
 import { notifyScSpecialOrderOutcome } from "@/features/service-center-ops/services/sc-service-return-notify";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import {
+  SC_LOGISTICS_ACTION_CAPABILITIES,
   SC_LOGISTICS_CREATE,
   SC_LOGISTICS_MANAGE,
   SC_LOGISTICS_VIEW,
 } from "@/features/service-center-ops/constants/sc-permissions";
+import { checkScOrdersInSap } from "@/features/service-center-ordering/services/sc-order-sap-check.service";
 import { scOpsRepository } from "@/features/service-center-ops/repositories/sc-ops.repository";
 import {
   blockedPlacementMessage,
@@ -36,6 +38,26 @@ function revalidateScLogistics() {
   revalidatePath("/service-centers/pullouts");
   revalidatePath("/service-centers/orders");
   revalidatePath("/service-centers/inventory");
+}
+
+/**
+ * Finds the DRs SAP users copied from approved SC orders' Sales Orders and makes each one an
+ * SC delivery, its serials DIT at the order's location, ready to accept.
+ */
+export async function checkScOrdersInSapAction() {
+  const session = await requireAnyPermission([...SC_LOGISTICS_ACTION_CAPABILITIES.canCheckSap]);
+  const scopedIds = await resolveScIdsForUser(
+    session.user.tenantId,
+    session.user.id,
+    session.user.permissions,
+  );
+  try {
+    const result = await checkScOrdersInSap(session.user.tenantId, session.user.id, scopedIds);
+    revalidateScLogistics();
+    return { success: true as const, ...result };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Could not check SAP" };
+  }
 }
 
 export async function listScDeliveriesAction(input?: {
