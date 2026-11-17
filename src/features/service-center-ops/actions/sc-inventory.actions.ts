@@ -201,6 +201,7 @@ export async function listScCentersForOpsAction() {
     "service_centers.sales.create",
     "service_centers.orders.view",
     "service_centers.orders.create",
+    "service_centers.orders.approve",
     "service_centers.logistics.view",
     "service_centers.logistics.create",
     "service_centers.logistics.manage",

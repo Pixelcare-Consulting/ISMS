@@ -105,6 +105,11 @@ export interface NavGroupEntry {
   items: NavGroupChild[];
   /** Open on first load when no child route is active (in-session toggle still works) */
   defaultOpen?: boolean;
+  /**
+   * Keep the module label and its page list even when only one page is visible. Without it,
+   * a module with one visible page shows as that page.
+   */
+  keepGroup?: boolean;
 }
 
 export type NavEntry = NavLinkEntry | NavGroupEntry;
@@ -619,6 +624,7 @@ export const appNavigation: NavEntry[] = [
     type: "group",
     label: "Service",
     icon: Building2,
+    keepGroup: true,
     items: [
       {
         label: "Inventory",
@@ -1052,8 +1058,10 @@ export function shouldShowSecondaryNav(entry: NavEntry): boolean {
   switch (entry.type) {
     case "link":
       return false;
-    case "group":
-      return flattenNavLinks(entry.items).length > 1;
+    case "group": {
+      const count = flattenNavLinks(entry.items).length;
+      return entry.keepGroup ? count > 0 : count > 1;
+    }
     default: {
       const _exhaustive: never = entry;
       return _exhaustive;
@@ -1075,7 +1083,7 @@ export function primaryNavDisplay(entry: NavEntry): {
       return { label: entry.label, icon: entry.icon };
     case "group": {
       const links = flattenNavLinks(entry.items);
-      if (links.length === 1) {
+      if (links.length === 1 && !entry.keepGroup) {
         const only = links[0];
         return { label: only.label, icon: only.icon ?? entry.icon };
       }
