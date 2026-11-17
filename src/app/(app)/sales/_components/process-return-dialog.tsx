@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import type { SaleDetailsPayload } from "@/app/(app)/sales/_components/sale-details-dialog";
+import { useSalesSource } from "@/app/(app)/sales/_components/sales-source";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,11 +30,6 @@ import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  listProcessReturnLookupsAction,
-  requestReturnAction,
-  type ProcessReturnPayload,
-} from "@/features/sales/actions/sales.actions";
-import {
   isDealerInitiatedDocumentTypeName,
   isReplacementDocumentTypeName,
   isReturnDocumentTypeName,
@@ -44,6 +40,7 @@ import {
   type ReturnStockStatusValue,
 } from "@/features/sales/constants/process-return";
 import { TO_FOLLOW_SERIAL_LABEL } from "@/features/sales/constants/to-follow-serial";
+import type { ProcessReturnPayload } from "@/features/sales/services/process-return-input";
 import { cn } from "@/utils/cn";
 
 type LookupOption = { id: string; name: string };
@@ -77,6 +74,7 @@ export function ProcessReturnDialog({
   onOpenChange,
   onSubmitted,
 }: ProcessReturnDialogProps) {
+  const { processReturn } = useSalesSource();
   const [pending, startTransition] = useTransition();
   const [loading, setLoading] = useState(true);
   const [confirmAction, setConfirmAction] = useState<
@@ -131,7 +129,7 @@ export function ProcessReturnDialog({
     });
     void (async () => {
       try {
-        const lookups = await listProcessReturnLookupsAction();
+        const lookups = await processReturn.listLookups();
         if (cancelled) return;
         setDocumentTypes(lookups.documentTypes);
         setProblems(lookups.problemDescriptions);
@@ -147,7 +145,7 @@ export function ProcessReturnDialog({
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, processReturn]);
 
   function toggleProblem(id: string) {
     setProblemIds((prev) =>
@@ -160,7 +158,7 @@ export function ProcessReturnDialog({
     if (!documentTypeId) return "Document type is required";
     if (!stockStatusCode) return "Stock status is required";
     if (problemIds.length === 0) return "Select at least one problem description";
-    if (showServiceExtras && !serviceCenterId) {
+    if (showServiceExtras && !processReturn.sellerFinishes && !serviceCenterId) {
       return "Service center is required for Service Return";
     }
     return null;
@@ -184,9 +182,7 @@ export function ProcessReturnDialog({
   }
 
   function approvalNote(documentTypeName: string | null | undefined): string {
-    if (isServiceDocumentTypeName(documentTypeName)) {
-      return "The unit becomes Reserve ODRF. The service center inspects it and finishes this request.";
-    }
+    if (isServiceDocumentTypeName(documentTypeName)) return processReturn.serviceNextStep;
     if (isDealerInitiatedDocumentTypeName(documentTypeName)) {
       return "This request waits for the Team Leader Approval.";
     }
@@ -205,7 +201,8 @@ export function ProcessReturnDialog({
       stockStatusCode,
       actionType,
       problemDescriptionIds: problemIds,
-      serviceCenterId: showServiceExtras ? serviceCenterId || null : null,
+      serviceCenterId:
+        showServiceExtras && !processReturn.sellerFinishes ? serviceCenterId || null : null,
       classification: showServiceExtras ? classification || null : null,
       serviceModelId: showServiceExtras ? serviceModelId || null : null,
       customerDealerBranch: showServiceExtras
@@ -221,7 +218,7 @@ export function ProcessReturnDialog({
     };
 
     startTransition(async () => {
-      const res = await requestReturnAction(sale.id, payload);
+      const res = await processReturn.request(sale.id, payload);
       if ("error" in res && res.error) {
         toast.error(res.error);
         return;
@@ -318,18 +315,20 @@ export function ProcessReturnDialog({
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Service Return
                   </p>
-                  <SearchableSelect
-                    label="Service Center *"
-                    options={serviceCenters.map((s) => ({
-                      id: s.id,
-                      label: s.name,
-                    }))}
-                    value={serviceCenterId}
-                    onChange={setServiceCenterId}
-                    placeholder="Select service center…"
-                    disabled={pending}
-                    popoverClassName="z-70"
-                  />
+                  {processReturn.sellerFinishes ? null : (
+                    <SearchableSelect
+                      label="Service Center *"
+                      options={serviceCenters.map((s) => ({
+                        id: s.id,
+                        label: s.name,
+                      }))}
+                      value={serviceCenterId}
+                      onChange={setServiceCenterId}
+                      placeholder="Select service center…"
+                      disabled={pending}
+                      popoverClassName="z-70"
+                    />
+                  )}
                   <SearchableSelect
                     label="Classification"
                     options={RETURN_CLASSIFICATION_OPTIONS.map((name) => ({

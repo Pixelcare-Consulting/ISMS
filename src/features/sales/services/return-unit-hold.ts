@@ -5,8 +5,8 @@ import { RESERVE_ODRF_CODE } from "@/features/sales/constants/return-history-sta
 import type { Prisma } from "@/lib/database/generated/prisma/client";
 
 /**
- * A requested return holds the sold unit at the branch sold: RSV for branch returns,
- * ODRF (Reserve ODRF) for a Service Return / Replacement the service center will finish.
+ * A requested branch return holds the sold unit at the branch sold as RSV. (SC sales hold
+ * theirs as Reserve ODRF in SC stock; see sc-service-return.service.)
  * The unit's prior status is written on its request history row so a reject can put it back.
  */
 

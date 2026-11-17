@@ -3,7 +3,7 @@ import type { ModuleGuideContent } from "@/content/module-guides/types";
 export const RETURNS_MODULE_GUIDE: ModuleGuideContent = {
   title: "Returns / Replacement",
   description:
-    "Finish customer returns and replacements after a sale. Start Process Return from Sales details. Dealer Initiated Return / Replacement waits for Team Leader. Other sales returns are approved when requested. Service Return and Service Replacement go to the chosen service center, which inspects the unit and finishes them under Service → SC Returns and Replacement. Service center sale returns are still evaluated by Customer Service.",
+    "Finish customer returns and replacements after a sale. Start Process Return from Sales details. Dealer Initiated Return / Replacement waits for Team Leader. Other sales returns are approved when requested. On service center sales, the CSR requests Service Return or Service Replacement from SC Sales → View details; the service center that sold the unit inspects it and finishes the request under Service → SC Returns and Replacement.",
   tips: [
     {
       label:
@@ -19,7 +19,7 @@ export const RETURNS_MODULE_GUIDE: ModuleGuideContent = {
     },
     {
       label:
-        "Service Returns: track Service Returns / Replacements sent to a service center, and evaluate, approve, reject, or restore service center sale returns",
+        "Service Returns: evaluate, approve, reject, or restore older service center walk-in returns",
     },
     {
       label:

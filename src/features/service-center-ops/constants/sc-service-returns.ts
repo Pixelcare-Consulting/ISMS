@@ -41,3 +41,8 @@ export function scServiceReturnsHref(params: {
   const query = search.toString();
   return query ? `/service-centers/returns?${query}` : "/service-centers/returns";
 }
+
+/** ATR/ODRF PDF of a Service Return / Replacement requested on an SC sale. */
+export function scAtrOdrfDownloadUrl(returnRequestId: string): string {
+  return `/api/service-centers/returns/${encodeURIComponent(returnRequestId)}/atr-odrf`;
+}

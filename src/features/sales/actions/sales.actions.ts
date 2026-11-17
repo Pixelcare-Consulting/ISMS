@@ -62,8 +62,6 @@ import {
   isServiceDocumentTypeName,
 } from "@/features/sales/constants/process-return";
 import {
-  isScServiceOpenReturnStatus,
-  RESERVE_ODRF_CODE,
   returnHistoryStatusLabel,
   returnHistoryStatusRef,
 } from "@/features/sales/constants/return-history-status";
@@ -72,6 +70,12 @@ import {
   resolveSalesAtrStatusCode,
 } from "@/features/sales/utils/resolve-line-status";
 import { generateAndStoreAtrOdrfPdf } from "@/features/sales/services/atr-odrf-pdf";
+import {
+  loadProcessReturnLookups,
+  processReturnPayloadSchema,
+  type ProcessReturnLookups,
+  type ProcessReturnPayload,
+} from "@/features/sales/services/process-return-input";
 import { nextReplacementNo } from "@/features/sales/services/replacement-no";
 import {
   holdCodeId,
@@ -80,7 +84,6 @@ import {
   restoreSerialAfterReturnReject,
   returnRequestHistoryDetails,
 } from "@/features/sales/services/return-unit-hold";
-import { notifyScServiceReturnRequested } from "@/features/service-center-ops/services/sc-service-return-notify";
 import {
   assertSaleHeaderLookups,
   assertSaleLookups,
@@ -406,11 +409,8 @@ export async function listSalesReturnsAction(input?: {
         atrStatus: sale.atrStatus,
         atrStatusCode: resolveSalesAtrStatusCode(sale.atrStatus, salesAtrCodes),
         returnStatus: row.status,
-        // The service center steps read better as the step than as Reserve ODRF here.
         returnStatusCode:
-          (isScServiceOpenReturnStatus(row.status)
-            ? null
-            : returnHistoryStatusRef(row.status, row.documentType?.name, row.actionType)) ??
+          returnHistoryStatusRef(row.status, row.documentType?.name, row.actionType) ??
           resolveSalesAtrStatusCode(row.status, salesAtrCodes),
         actionType: row.actionType ?? "return",
         stockStatusCode: row.stockStatusCode ?? "STK",
@@ -428,10 +428,7 @@ export async function listSalesReturnsAction(input?: {
         origSerialNos,
         origPrice,
         replSerialNo: replacement?.replacementSerialNumber?.serialNo ?? null,
-        replBranchName:
-          replacement?.replacementBranch?.name ??
-          replacement?.replacementServiceCenter?.name ??
-          null,
+        replBranchName: replacement?.replacementBranch?.name ?? null,
         replAmount: replacement?.replacementAmount?.toString() ?? null,
         replInvoiceNo: replacement?.replacementInvoiceNo ?? null,
         createdAt: row.createdAt.toISOString(),
@@ -1060,91 +1057,16 @@ export async function createSaleAction(input: unknown) {
   return { success: true as const };
 }
 
-export async function listProcessReturnLookupsAction() {
+export async function listProcessReturnLookupsAction(): Promise<ProcessReturnLookups> {
   const session = await requireAnyPermission([
     RETURNS_REQUEST,
     SALES_RETURN_REQUEST,
     SALES_CREATE,
   ]);
-  const tenantId = session.user.tenantId;
-
-  const [documentTypes, problemDescriptions, serviceCenters, models, warehouseLocations] =
-    await Promise.all([
-      prisma.documentType.findMany({
-        where: { tenantId, recordStatus: "active" },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
-      }),
-      prisma.problemDescription.findMany({
-        where: { tenantId, recordStatus: "active" },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
-      }),
-      prisma.serviceCenter.findMany({
-        where: { tenantId, deletedAt: null, status: "active" },
-        select: { id: true, name: true, sapCode: true },
-        orderBy: { name: "asc" },
-      }),
-      prisma.productModel.findMany({
-        where: { tenantId, status: "active" },
-        select: { id: true, skuCode: true, name: true },
-        orderBy: { skuCode: "asc" },
-        take: 1000,
-      }),
-      prisma.warehouseLocation.findMany({
-        where: {
-          warehouse: { tenantId },
-        },
-        select: {
-          id: true,
-          code: true,
-          name: true,
-          warehouse: { select: { name: true, code: true } },
-        },
-        orderBy: [{ warehouse: { name: "asc" } }, { name: "asc" }],
-        take: 1000,
-      }),
-    ]);
-
-  return {
-    documentTypes,
-    problemDescriptions,
-    serviceCenters: serviceCenters.map((sc) => ({
-      id: sc.id,
-      name: sc.sapCode ? `${sc.sapCode} · ${sc.name}` : sc.name,
-    })),
-    models: models.map((m) => ({
-      id: m.id,
-      name: m.skuCode ? `${m.skuCode} · ${m.name}` : m.name,
-    })),
-    warehouseLocations: warehouseLocations.map((loc) => ({
-      id: loc.id,
-      name: [
-        loc.warehouse.code || loc.warehouse.name,
-        loc.code || loc.name,
-      ]
-        .filter(Boolean)
-        .join(" · "),
-    })),
-  };
+  return loadProcessReturnLookups(session.user.tenantId);
 }
 
-const processReturnPayloadSchema = z.object({
-  saleDetailId: z.string().min(1),
-  documentTypeId: z.string().min(1),
-  stockStatusCode: z.enum(["STK", "DEF"]),
-  actionType: z.enum(["return", "replacement"]),
-  problemDescriptionIds: z.array(z.string().min(1)).min(1),
-  serviceCenterId: z.string().optional().nullable(),
-  classification: z.string().trim().optional().nullable(),
-  serviceModelId: z.string().optional().nullable(),
-  customerDealerBranch: z.string().trim().optional().nullable(),
-  natureOfTransaction: z.string().trim().optional().nullable(),
-  refContactPo: z.string().trim().optional().nullable(),
-  warehouseLocationId: z.string().optional().nullable(),
-});
-
-export type ProcessReturnPayload = z.infer<typeof processReturnPayloadSchema>;
+export type { ProcessReturnPayload };
 
 export async function requestReturnAction(
   saleId: string,
@@ -1282,17 +1204,13 @@ export async function requestReturnAction(
 
   const summaryNote = `[${data.actionType === "replacement" ? "Replacement" : "Return"} requested] ${documentType.name} · ${data.stockStatusCode} · ${problemDescriptionText}`;
   const needsTeamLeader = isDealerInitiatedDocumentTypeName(documentType.name);
-  // Service Return / Replacement: the chosen service center inspects and finishes it.
-  const holdCode = serviceReturn ? RESERVE_ODRF_CODE : "RSV";
   const requestedAt = new Date();
   const reserveCodes = targetDetail.serialNumberId
     ? await loadReturnReserveCodeIds(session.user.tenantId)
     : null;
-  if (targetDetail.serialNumberId && (!reserveCodes || !holdCodeId(holdCode, reserveCodes))) {
+  if (targetDetail.serialNumberId && (!reserveCodes || !holdCodeId("RSV", reserveCodes))) {
     return {
-      error: serviceReturn
-        ? ("Sold, Official Sold, and Reserve ODRF are not ready for this return" as const)
-        : ("Sold, Official Sold, and Reserved are not ready for this return" as const),
+      error: "Sold, Official Sold, and Reserved are not ready for this return" as const,
     };
   }
 
@@ -1303,15 +1221,13 @@ export async function requestReturnAction(
         saleId,
         saleDetailId: targetDetail.id,
         requestedById: session.user.id,
-        ...(serviceReturn
-          ? { status: "pending_sc" as const }
-          : needsTeamLeader
-            ? { status: "pending_tl" as const }
-            : {
-                status: "approved" as const,
-                approvedById: session.user.id,
-                approvedAt: requestedAt,
-              }),
+        ...(needsTeamLeader
+          ? { status: "pending_tl" as const }
+          : {
+              status: "approved" as const,
+              approvedById: session.user.id,
+              approvedAt: requestedAt,
+            }),
         actionType: data.actionType,
         stockStatusCode: data.stockStatusCode,
         documentTypeId: documentType.id,
@@ -1344,7 +1260,7 @@ export async function requestReturnAction(
         notes: [sale.notes, summaryNote].filter(Boolean).join("\n"),
       },
     });
-    if (needsTeamLeader || serviceReturn) {
+    if (needsTeamLeader) {
       await recordReturnRequested(
         tx,
         {
@@ -1355,7 +1271,7 @@ export async function requestReturnAction(
           serialNumberId: targetDetail.serialNumberId,
         },
         { requestedById: session.user.id, problemDescription: problemDescriptionText },
-        serviceReturn ? "INSPECTION" : "TL_APPROVAL",
+        "TL_APPROVAL",
       );
     }
 
@@ -1366,7 +1282,7 @@ export async function requestReturnAction(
         soldBranchId: sale.branchId,
         serialNumberId: targetDetail.serialNumberId,
         codes: reserveCodes,
-        holdCode,
+        holdCode: "RSV",
       });
       const actionLabel = data.actionType === "replacement" ? "Replacement" : "Return";
       await tx.serialNumberHistory.create({
@@ -1489,7 +1405,7 @@ export async function requestReturnAction(
     metadata: {
       transactionNo: sale.transactionNo,
       atrStatus: "reserve",
-      status: serviceReturn ? "pending_sc" : needsTeamLeader ? "pending_tl" : "approved",
+      status: needsTeamLeader ? "pending_tl" : "approved",
       actionType: data.actionType,
       stockStatusCode: data.stockStatusCode,
       documentTypeId: documentType.id,
@@ -1498,19 +1414,6 @@ export async function requestReturnAction(
       hasAtrOdrfPdf: Boolean(atrOdrfPdfPath),
     },
   });
-
-  if (serviceReturn && data.serviceCenterId) {
-    await notifyScServiceReturnRequested({
-      tenantId: session.user.tenantId,
-      actorUserId: session.user.id,
-      returnRequestId: created.id,
-      serviceCenterId: data.serviceCenterId,
-      transactionNo: sale.transactionNo,
-      actionType: data.actionType,
-      serialNo: targetDetail.serialNumber?.serialNo ?? null,
-    });
-    revalidatePath("/service-centers/returns");
-  }
 
   revalidatePath("/sales");
   revalidatePath("/returns");

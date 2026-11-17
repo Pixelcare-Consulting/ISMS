@@ -32,7 +32,7 @@ export const SC_MANAGE = "service_centers.manage";
  */
 export const SC_RETURNS_PROCESS = "service_centers.returns.process";
 
-/** SC Sales list / encode / header edit. Returns are handled outside SC Sales. */
+/** SC Sales list / encode / header edit. */
 export const SC_SALES_ACCESS = [
   SC_SALES_VIEW,
   SC_SALES_CREATE,
@@ -66,9 +66,13 @@ export type ScLogisticsActionCapabilities = ResolvedCapabilities<
   typeof SC_LOGISTICS_ACTION_CAPABILITIES
 >;
 
+/** Request a Service Return / Replacement on an SC sale line (Process V-b). */
+export const SC_SERVICE_RETURN_REQUEST_PERMISSIONS = [SC_RETURN_REQUEST, SC_SALES_CREATE] as const;
+
 /**
  * SC Sales uses the branch sales table and dialogs, so it resolves the same capability
- * shape. Return buttons stay off: SC returns and replacements follow their own process.
+ * shape. The CSR can request a Service Return / Replacement; the selling service center
+ * finishes it in SC Returns, so the branch evaluate / approve / complete steps stay off.
  */
 export function resolveScSalesCapabilities(
   permissions: string[] | undefined,
@@ -79,7 +83,7 @@ export function resolveScSalesCapabilities(
     canViewReturns: false,
     canCreateSale: can(SC_SALES_CREATE),
     canUpdateSaleHeader: can(SC_SALES_UPDATE),
-    canRequestReturn: false,
+    canRequestReturn: SC_SERVICE_RETURN_REQUEST_PERMISSIONS.some(can),
     canEvaluateReturn: false,
     canApproveReturn: false,
     canCompleteReturn: false,

@@ -1,7 +1,8 @@
-import type { Prisma, ReturnRequestStatus } from "@prisma/client";
+import type { ReturnRequestStatus } from "@prisma/client";
 
 import { SC_SERVICE_OPEN_RETURN_STATUSES } from "@/features/sales/constants/return-history-status";
 import { prisma } from "@/lib/database/client";
+import type { Prisma } from "@/lib/database/generated/prisma/client";
 
 /** List filter on the SC Returns page. `open` is everything the SC still has to finish. */
 export const SC_SERVICE_RETURN_FILTERS = [
@@ -21,7 +22,7 @@ export function parseScServiceReturnFilter(value: string | undefined): ScService
     : "open";
 }
 
-function statusWhere(filter: ScServiceReturnFilter): Prisma.BranchReturnRequestWhereInput {
+function statusWhere(filter: ScServiceReturnFilter): Prisma.ServiceCenterReturnRequestWhereInput {
   switch (filter) {
     case "open":
       return { status: { in: [...SC_SERVICE_OPEN_RETURN_STATUSES] } };
@@ -30,7 +31,6 @@ function statusWhere(filter: ScServiceReturnFilter): Prisma.BranchReturnRequestW
       return { status: filter };
     case "completed":
     case "rejected":
-      // Only requests the service center finished, not older branch-finished service returns.
       return { status: filter, inspectedAt: { not: null } };
     case "all":
       return {
@@ -46,18 +46,22 @@ function statusWhere(filter: ScServiceReturnFilter): Prisma.BranchReturnRequestW
   }
 }
 
-/** Service returns sent to a service center, limited to the user's service centers. */
+/**
+ * Service Return / Replacement requests (they carry a document type; the older SC walk-in
+ * returns do not), limited to the user's service centers.
+ */
 function scopeWhere(
   tenantId: string,
   scopedServiceCenterIds: string[] | null,
-): Prisma.BranchReturnRequestWhereInput {
+): Prisma.ServiceCenterReturnRequestWhereInput {
   return {
     tenantId,
-    serviceCenterId: scopedServiceCenterIds ? { in: scopedServiceCenterIds } : { not: null },
+    documentTypeId: { not: null },
+    ...(scopedServiceCenterIds ? { sale: { serviceCenterId: { in: scopedServiceCenterIds } } } : {}),
   };
 }
 
-function searchWhere(q: string): Prisma.BranchReturnRequestWhereInput | null {
+function searchWhere(q: string): Prisma.ServiceCenterReturnRequestWhereInput | null {
   const term = q.trim();
   if (!term) return null;
   const contains = { contains: term, mode: "insensitive" as const };
@@ -81,7 +85,6 @@ const listSelect = {
   createdAt: true,
   inspectedAt: true,
   documentType: { select: { name: true } },
-  serviceCenter: { select: { id: true, name: true, sapCode: true } },
   specialOrder: { select: { orderNumber: true, status: true } },
   saleDetail: {
     select: {
@@ -95,24 +98,14 @@ const listSelect = {
       transactionNo: true,
       transactionDate: true,
       customerName: true,
-      branch: { select: { name: true } },
-      details: {
-        where: { serialNumberId: { not: null } },
-        orderBy: { createdAt: "asc" as const },
-        take: 1,
-        select: {
-          serialNumber: { select: { serialNo: true } },
-          model: { select: { skuCode: true, name: true } },
-        },
-      },
+      serviceCenter: { select: { id: true, name: true, sapCode: true } },
     },
   },
-} satisfies Prisma.BranchReturnRequestSelect;
+} satisfies Prisma.ServiceCenterReturnRequestSelect;
 
 const detailSelect = {
   ...listSelect,
   saleDetailId: true,
-  serviceCenterId: true,
   heldSerialNumberId: true,
   classification: true,
   natureOfTransaction: true,
@@ -126,6 +119,7 @@ const detailSelect = {
   inspectedBy: { select: { name: true, email: true } },
   serviceCenterLocation: { select: { code: true, name: true } },
   heldSerialNumber: { select: { serialNo: true } },
+  replacementSerialNumber: { select: { serialNo: true } },
   specialOrder: {
     select: { id: true, orderNumber: true, status: true, sapDocNum: true, createdAt: true },
   },
@@ -136,14 +130,6 @@ const detailSelect = {
       model: { select: { id: true, skuCode: true, name: true } },
     },
   },
-  serviceCenter: {
-    select: {
-      id: true,
-      name: true,
-      sapCode: true,
-      locations: { select: { id: true, code: true, name: true }, orderBy: { code: "asc" as const } },
-    },
-  },
   sale: {
     select: {
       id: true,
@@ -151,32 +137,20 @@ const detailSelect = {
       transactionDate: true,
       customerName: true,
       contactNo: true,
-      branch: { select: { name: true } },
-      details: {
-        where: { serialNumberId: { not: null } },
-        orderBy: { createdAt: "asc" as const },
-        take: 1,
+      serviceCenter: {
         select: {
-          modelId: true,
-          serialNumber: { select: { serialNo: true } },
-          model: { select: { id: true, skuCode: true, name: true } },
-        },
-      },
-      replacements: {
-        where: { replacementServiceCenterId: { not: null } },
-        orderBy: { createdAt: "desc" as const },
-        take: 1,
-        select: {
-          replacementNo: true,
-          replacementSerialNumber: { select: { serialNo: true } },
+          id: true,
+          name: true,
+          sapCode: true,
+          locations: { select: { id: true, code: true, name: true }, orderBy: { code: "asc" as const } },
         },
       },
     },
   },
-} satisfies Prisma.BranchReturnRequestSelect;
+} satisfies Prisma.ServiceCenterReturnRequestSelect;
 
-export type ScServiceReturnListRow = Prisma.BranchReturnRequestGetPayload<{ select: typeof listSelect }>;
-export type ScServiceReturnDetailRow = Prisma.BranchReturnRequestGetPayload<{
+export type ScServiceReturnListRow = Prisma.ServiceCenterReturnRequestGetPayload<{ select: typeof listSelect }>;
+export type ScServiceReturnDetailRow = Prisma.ServiceCenterReturnRequestGetPayload<{
   select: typeof detailSelect;
 }>;
 
@@ -187,7 +161,7 @@ export const scServiceReturnsRepository = {
     input: { page: number; limit: number; q: string; filter: ScServiceReturnFilter },
   ) {
     const search = searchWhere(input.q);
-    const where: Prisma.BranchReturnRequestWhereInput = {
+    const where: Prisma.ServiceCenterReturnRequestWhereInput = {
       AND: [
         scopeWhere(tenantId, scopedServiceCenterIds),
         statusWhere(input.filter),
@@ -196,14 +170,14 @@ export const scServiceReturnsRepository = {
     };
     const page = Math.max(1, input.page);
     const [items, total] = await Promise.all([
-      prisma.branchReturnRequest.findMany({
+      prisma.serviceCenterReturnRequest.findMany({
         where,
         select: listSelect,
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         skip: (page - 1) * input.limit,
         take: input.limit,
       }),
-      prisma.branchReturnRequest.count({ where }),
+      prisma.serviceCenterReturnRequest.count({ where }),
     ]);
     return {
       items,
@@ -216,7 +190,7 @@ export const scServiceReturnsRepository = {
 
   /** Open requests per status, for the KPI strip. */
   async countOpenByStatus(tenantId: string, scopedServiceCenterIds: string[] | null) {
-    const groups = await prisma.branchReturnRequest.groupBy({
+    const groups = await prisma.serviceCenterReturnRequest.groupBy({
       by: ["status"],
       where: {
         ...scopeWhere(tenantId, scopedServiceCenterIds),
@@ -231,13 +205,13 @@ export const scServiceReturnsRepository = {
 
   /** Requests the service center can act on now (sidebar badge). */
   countPendingSc(tenantId: string, scopedServiceCenterIds: string[] | null) {
-    return prisma.branchReturnRequest.count({
+    return prisma.serviceCenterReturnRequest.count({
       where: { ...scopeWhere(tenantId, scopedServiceCenterIds), status: "pending_sc" },
     });
   },
 
   findDetail(tenantId: string, scopedServiceCenterIds: string[] | null, id: string) {
-    return prisma.branchReturnRequest.findFirst({
+    return prisma.serviceCenterReturnRequest.findFirst({
       where: { id, ...scopeWhere(tenantId, scopedServiceCenterIds) },
       select: detailSelect,
     });

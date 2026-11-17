@@ -311,7 +311,7 @@ export const HELP_WORKFLOW_GUIDES: HelpWorkflowGuide[] = [
     id: "sales-atr",
     title: "Customer return after a sale",
     summary:
-      "Submit Process Return from the sale. Dealer Initiated Return / Replacement waits for Team Leader. Other sales returns are approved when requested. Service Return and Service Replacement go to the chosen service center, which inspects the unit and finishes them under Service → SC Returns and Replacement. Service center sale returns are still evaluated by Customer Service.",
+      "Submit Process Return from the sale. Dealer Initiated Return / Replacement waits for Team Leader. Other sales returns are approved when requested. On service center sales, the CSR requests Service Return or Service Replacement from SC Sales → View details; the service center that sold the unit inspects it and finishes the request under Service → SC Returns and Replacement.",
     audience: "Sales · CS · TL · Inventory",
     href: "/returns",
     steps: [

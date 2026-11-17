@@ -48,6 +48,7 @@ export const SC_SALES_PAGE_TUTORIAL: PageTutorialContent = {
         "Use TO-FOLLOW when the serial is not known yet, then set the real serial later from View details.",
         "Mark a sale Reserved to hold its units as RSV; clearing Reserved sells them (SLD).",
         "Edit header from the list to correct customer, payment, or proof details.",
+        "Customer brings a unit back: View details → Request Return, choose Service Return or Service Replacement. The unit becomes Reserve ODRF and the service center finishes the request under Service → SC Returns and Replacement.",
       ],
     },
   ],
@@ -134,14 +135,14 @@ export const SC_RETURNS_PAGE_TUTORIAL: PageTutorialContent = {
   triggerLabel: "Open service returns tutorial",
   dialogTitle: "Service center returns: quick guide",
   dialogDescription:
-    "Finish the Service Returns and Service Replacements a CSR sent to your service center.",
+    "Finish the Service Returns and Service Replacements a CSR requested on your service center's sales.",
   helpHref: "/help",
   helpLinkLabel: "Full Help & Support portal",
   sections: [
     {
       title: "What this page is for",
       description:
-        "A CSR requests a Service Return or Service Replacement on a branch sale (Sales → View details → Request Return) and picks your service center. The unit becomes Reserve ODRF and the request waits here as Pending SC. You get a notification for each new request.",
+        "A CSR requests a Service Return or Service Replacement on one of your service center's sales (SC Sales → View details → Request Return). The unit becomes Reserve ODRF in your stock and the request waits here as Pending SC. You get a notification for each new request.",
     },
     {
       title: "How to use it",
@@ -150,7 +151,7 @@ export const SC_RETURNS_PAGE_TUTORIAL: PageTutorialContent = {
         "Service Return: choose the location that receives the unit and Submit Return. The unit goes into your stock as the STK or DEF the CSR chose.",
         "Service Replacement, unit in stock: pick the model and serial from your STK and Replace Unit. The returned unit goes into your stock and the new unit is Sold on the same invoice.",
         "Service Replacement, no unit in stock: Raise Special Order. It follows the service center order flow (approval, SAP, delivery). The request shows Awaiting Stock until you accept that delivery; the unit is then held for it and the request is back to Pending SC.",
-        "Reject with a reason when the unit does not qualify. It goes back to Sold or Official Sold and the CSR is notified.",
+        "Reject with a reason when the unit does not qualify. It gets back the status it had before the request and the CSR is notified.",
       ],
     },
   ],

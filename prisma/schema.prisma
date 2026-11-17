@@ -454,7 +454,7 @@ model User {
   returnRequestsEvaluated            BranchReturnRequest[]         @relation("ReturnEvaluatedBy")
   returnRequestsApproved             BranchReturnRequest[]         @relation("ReturnApprovedBy")
   returnRequestsAccepted             BranchReturnRequest[]         @relation("ReturnAcceptedBy")
-  returnRequestsInspected            BranchReturnRequest[]         @relation("ReturnInspectedBy")
+  scReturnRequestsInspected          ServiceCenterReturnRequest[]  @relation("ScReturnInspectedBy")
   scReturnRequestsSubmitted          ServiceCenterReturnRequest[]  @relation("ScReturnRequestedBy")
   scReturnRequestsEvaluated          ServiceCenterReturnRequest[]  @relation("ScReturnEvaluatedBy")
   scReturnRequestsApproved           ServiceCenterReturnRequest[]  @relation("ScReturnApprovedBy")
@@ -816,6 +816,7 @@ model ProductModel {
   serviceCenterSalesDetails          ServiceCenterSalesTransactionDetail[]
   serviceCenterOrderDetails          ServiceCenterOrderDetail[]
   branchReturnRequestsAsServiceModel BranchReturnRequest[]          @relation("BranchReturnServiceModel")
+  scReturnRequestsAsServiceModel     ServiceCenterReturnRequest[]   @relation("ScReturnServiceModel")
 
   @@unique([tenantId, skuCode])
   @@index([tenantId])
@@ -1178,6 +1179,7 @@ model ProblemDescription {
 
   tenant               Tenant                                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branchReturnRequests BranchReturnRequest[]
+  scReturnRequests     ServiceCenterReturnRequest[]
   pulloutLines         BranchPulloutLineProblemDescription[]
   scPulloutDetails     ServiceCenterPulloutDetailProblemDescription[]
 
@@ -1197,6 +1199,7 @@ model DocumentType {
   tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   returnTypes          ReturnType[]
   branchReturnRequests BranchReturnRequest[]
+  scReturnRequests     ServiceCenterReturnRequest[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -1362,7 +1365,6 @@ model ServiceCenter {
   sales                ServiceCenterSalesTransaction[]
   pullouts             ServiceCenterPullout[]
   branchReturnRequests BranchReturnRequest[]
-  salesReplacements    SalesReplacement[]
 
   @@unique([tenantId, sapCode])
   @@index([tenantId])
@@ -1396,6 +1398,7 @@ model ServiceCenterLocation {
   sales                ServiceCenterSalesTransaction[]
   pullouts             ServiceCenterPullout[]
   branchReturnRequests BranchReturnRequest[]
+  scReturnsReceived    ServiceCenterReturnRequest[] @relation("ScReturnReceivingLocation")
 
   @@unique([serviceCenterId, code])
   @@map("service_center_locations")
@@ -1607,6 +1610,7 @@ model WarehouseLocation {
   pulloutLinesReceived BranchPulloutLine[]   @relation("BranchPulloutLineReceivedLocation")
   deliveryLinesFrom    BranchDeliveryLine[]  @relation("DeliveryLineWarehouseFrom")
   branchReturnRequests BranchReturnRequest[]
+  scReturnRequests     ServiceCenterReturnRequest[]
   deliveryReturnLines  DeliveryReturnLine[]
   deliveryTransfersReceived DeliveryTransfer[]
 
@@ -1834,7 +1838,8 @@ model SerialNumber {
   serviceCenterSalesDetails    ServiceCenterSalesTransactionDetail[]
   salesReplacementsOriginal    SalesReplacement[]              @relation("SalesReplacementOriginalSn")
   salesReplacementsReplacement SalesReplacement[]              @relation("SalesReplacementReplacementSn")
-  heldForBranchReturns         BranchReturnRequest[]           @relation("BranchReturnHeldSerial")
+  heldForScReturns             ServiceCenterReturnRequest[]    @relation("ScReturnHeldSerial")
+  scReturnReplacements         ServiceCenterReturnRequest[]    @relation("ScReturnReplacementSerial")
   branchBackloads              BranchBackload[]
   warehouseInventories         WarehouseInventory[]
   deliveryLines                BranchDeliveryLine[]
@@ -3255,13 +3260,6 @@ model BranchReturnRequest {
   evaluatedAt             DateTime?              @map("evaluated_at")
   approvedAt              DateTime?              @map("approved_at")
   completedAt             DateTime?              @map("completed_at")
-  /// Service center user who finished or rejected a Service Return / Replacement.
-  inspectedById           String?                @map("inspected_by_id")
-  inspectedAt             DateTime?              @map("inspected_at")
-  /// Special service center order raised when the replacement was not in SC stock.
-  specialOrderId          String?                @unique @map("special_order_id")
-  /// Unit from the special order's delivery, held (RSV) at the service center for this request.
-  heldSerialNumberId      String?                @map("held_serial_number_id")
   createdAt               DateTime               @default(now()) @map("created_at")
   updatedAt               DateTime               @updatedAt @map("updated_at")
 
@@ -3279,16 +3277,10 @@ model BranchReturnRequest {
   evaluatedBy           User?                         @relation("ReturnEvaluatedBy", fields: [evaluatedById], references: [id], onDelete: SetNull)
   approvedBy            User?                         @relation("ReturnApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
   acceptedBy            User?                         @relation("ReturnAcceptedBy", fields: [acceptedById], references: [id], onDelete: SetNull)
-  inspectedBy           User?                         @relation("ReturnInspectedBy", fields: [inspectedById], references: [id], onDelete: SetNull)
-  specialOrder          ServiceCenterOrder?           @relation(fields: [specialOrderId], references: [id], onDelete: SetNull)
-  heldSerialNumber      SerialNumber?                 @relation("BranchReturnHeldSerial", fields: [heldSerialNumberId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, status])
   @@index([tenantId, actionType])
   @@index([documentTypeId])
-  @@index([tenantId, serviceCenterId, status])
-  @@index([inspectedById])
-  @@index([heldSerialNumberId])
   @@index([serviceCenterId])
   @@index([serviceModelId])
   @@index([warehouseLocationId])
@@ -3347,8 +3339,6 @@ model SalesReplacement {
   replacementSerialNumberId String?   @map("replacement_serial_number_id")
   replacementDealerId       String?   @map("replacement_dealer_id")
   replacementBranchId       String?   @map("replacement_branch_id")
-  /// Service Replacement: the service center whose stock gave the replacement unit.
-  replacementServiceCenterId String?  @map("replacement_service_center_id")
   replacementAmount         Decimal?  @map("replacement_amount") @db.Decimal(12, 2)
   replacementModelPrice     Decimal?  @map("replacement_model_price") @db.Decimal(12, 2)
   replacementInvoiceDate    DateTime? @map("replacement_invoice_date")
@@ -3364,12 +3354,10 @@ model SalesReplacement {
   replacementSerialNumber SerialNumber?          @relation("SalesReplacementReplacementSn", fields: [replacementSerialNumberId], references: [id], onDelete: SetNull)
   replacementDealer       Dealer?                @relation(fields: [replacementDealerId], references: [id], onDelete: SetNull)
   replacementBranch       Branch?                @relation(fields: [replacementBranchId], references: [id], onDelete: SetNull)
-  replacementServiceCenter ServiceCenter?        @relation(fields: [replacementServiceCenterId], references: [id], onDelete: SetNull)
   transactedBy            User?                  @relation("SalesReplacementTransactedBy", fields: [transactedById], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, replacementNo])
   @@index([tenantId, saleId])
-  @@index([replacementServiceCenterId])
   @@map("sales_replacements")
 }
 
@@ -3742,7 +3730,8 @@ model ServiceCenterOrder {
   approvalLevels        ServiceCenterOrderApprovalLevel[]
   deliveries            ServiceCenterDelivery[]
   /// The Service Replacement this special order was raised for.
-  branchReturnRequest   BranchReturnRequest?
+  /// The Service Replacement (Process V-b) this special order was raised for.
+  scReturnRequest       ServiceCenterReturnRequest?
 
   @@unique([tenantId, orderNumber])
   @@index([tenantId, serviceCenterId, status])
@@ -4014,6 +4003,7 @@ model ServiceCenterSalesTransactionDetail {
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
   sale         ServiceCenterSalesTransaction @relation(fields: [salesId], references: [id], onDelete: Cascade)
+  returnRequests ServiceCenterReturnRequest[]
   packageType  PackageType?                  @relation(fields: [packageTypeId], references: [id], onDelete: SetNull)
   brand        Brand?                        @relation(fields: [brandId], references: [id], onDelete: SetNull)
   promoType    PromoType?                    @relation(fields: [promoTypeId], references: [id], onDelete: SetNull)
@@ -4027,11 +4017,43 @@ model ServiceCenterSalesTransactionDetail {
   @@map("service_center_sales_transaction_details")
 }
 
+/// A return request on a service center sale. Process V-b (Service Return / Service Replacement)
+/// rows carry a document type and the fields below; the selling service center inspects the
+/// unit and finishes them. Rows without a document type are the older walk-in return steps.
 model ServiceCenterReturnRequest {
   id              String              @id @default(cuid())
   tenantId        String              @map("tenant_id")
   saleId          String              @unique @map("sale_id")
+  /// Sale line whose unit is returned or replaced.
+  saleDetailId    String?             @map("sale_detail_id")
   status          ReturnRequestStatus @default(pending_cs)
+  actionType      ReturnActionType?   @map("action_type")
+  /// STK or DEF the returned unit goes into SC stock as.
+  stockStatusCode ReturnStockStatusCode? @map("stock_status_code")
+  documentTypeId  String?             @map("document_type_id")
+  problemDescriptionId   String?      @map("problem_description_id")
+  /// Joined multi-select Problem Description names.
+  problemDescriptionText String?      @map("problem_description_text")
+  /// Inventory code the unit had before it became Reserve ODRF (SLD, OFS or RSV); a reject restores it.
+  priorStatusCode String?             @map("prior_status_code")
+  classification         String?
+  serviceModelId         String?      @map("service_model_id")
+  customerDealerBranch   String?      @map("customer_dealer_branch")
+  natureOfTransaction    String?      @map("nature_of_transaction")
+  refContactPo           String?      @map("ref_contact_po")
+  warehouseLocationId    String?      @map("warehouse_location_id")
+  /// Stored ATR/ODRF PDF path (object storage).
+  atrOdrfPdfPath  String?             @map("atr_odrf_pdf_path")
+  /// SC location the returned unit was put into.
+  serviceCenterLocationId String?     @map("service_center_location_id")
+  inspectedById   String?             @map("inspected_by_id")
+  inspectedAt     DateTime?           @map("inspected_at")
+  /// Special SC order raised when the replacement was not in SC stock.
+  specialOrderId  String?             @unique @map("special_order_id")
+  /// Unit from the special order's delivery, held (RSV) at the service center for this request.
+  heldSerialNumberId String?          @map("held_serial_number_id")
+  /// The unit that replaced the returned one on the sale line.
+  replacementSerialNumberId String?   @map("replacement_serial_number_id")
   requestNotes    String?             @map("request_notes")
   evaluationNotes String?             @map("evaluation_notes")
   acceptedAt      DateTime?           @map("accepted_at")
@@ -4051,8 +4073,23 @@ model ServiceCenterReturnRequest {
   evaluatedBy User?                         @relation("ScReturnEvaluatedBy", fields: [evaluatedById], references: [id], onDelete: SetNull)
   approvedBy  User?                         @relation("ScReturnApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
   acceptedBy  User?                         @relation("ScReturnAcceptedBy", fields: [acceptedById], references: [id], onDelete: SetNull)
+  inspectedBy User?                         @relation("ScReturnInspectedBy", fields: [inspectedById], references: [id], onDelete: SetNull)
+  saleDetail            ServiceCenterSalesTransactionDetail? @relation(fields: [saleDetailId], references: [id], onDelete: SetNull)
+  documentType          DocumentType?          @relation(fields: [documentTypeId], references: [id], onDelete: SetNull)
+  problemDescription    ProblemDescription?    @relation(fields: [problemDescriptionId], references: [id], onDelete: SetNull)
+  serviceModel          ProductModel?          @relation("ScReturnServiceModel", fields: [serviceModelId], references: [id], onDelete: SetNull)
+  warehouseLocation     WarehouseLocation?     @relation(fields: [warehouseLocationId], references: [id], onDelete: SetNull)
+  serviceCenterLocation ServiceCenterLocation? @relation("ScReturnReceivingLocation", fields: [serviceCenterLocationId], references: [id], onDelete: SetNull)
+  specialOrder          ServiceCenterOrder?    @relation(fields: [specialOrderId], references: [id], onDelete: SetNull)
+  heldSerialNumber      SerialNumber?          @relation("ScReturnHeldSerial", fields: [heldSerialNumberId], references: [id], onDelete: SetNull)
+  replacementSerialNumber SerialNumber?        @relation("ScReturnReplacementSerial", fields: [replacementSerialNumberId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, status])
+  @@index([saleDetailId])
+  @@index([documentTypeId])
+  @@index([inspectedById])
+  @@index([heldSerialNumberId])
+  @@index([replacementSerialNumberId])
   @@map("service_center_return_requests")
 }
 

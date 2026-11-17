@@ -14,8 +14,12 @@ import { resolvePagination, toPaginatedResult } from "@/lib/shared/pagination";
  * (sold place) and `stockSourceBranch` its stock-source location.
  */
 
-/** SC returns are service returns, so their lines read Service Returned/Replaced. */
+/** Older SC walk-in returns have no document type; they read as Service Returned. */
 const SC_RETURN_DOCUMENT_TYPE = { name: "Service Return" } as const;
+
+const returnRefSelect = {
+  select: { id: true, status: true, saleDetailId: true, documentType: { select: { name: true } } },
+} as const;
 
 type ScSort = { field?: SalesListSort; dir?: SalesListSortDir };
 
@@ -62,13 +66,20 @@ function toLocationRef(location: { id: string; name: string; code: string } | nu
   return location ? { id: location.id, name: scLocationLabel(location) } : null;
 }
 
-function toReturnRef(request: { id: string; status: string } | null) {
+function toReturnRef(
+  request: {
+    id: string;
+    status: string;
+    saleDetailId: string | null;
+    documentType: { name: string } | null;
+  } | null,
+) {
   return request
     ? {
         id: request.id,
         status: request.status,
-        saleDetailId: null,
-        documentType: SC_RETURN_DOCUMENT_TYPE,
+        saleDetailId: request.saleDetailId,
+        documentType: request.documentType ?? SC_RETURN_DOCUMENT_TYPE,
       }
     : null;
 }
@@ -92,7 +103,7 @@ const scSalesLineInclude = {
       serviceCenterLocationId: true,
       serviceCenter: { select: { id: true, name: true } },
       serviceCenterLocation: locationSelect,
-      returnRequest: { select: { id: true, status: true } },
+      returnRequest: returnRefSelect,
     },
   },
 } satisfies Prisma.ServiceCenterSalesTransactionDetailInclude;
@@ -217,7 +228,7 @@ export const scSalesRepository = {
         paymentType: { select: { id: true, name: true } },
         saleType: { select: { id: true, name: true } },
         customerDeliveryMethod: { select: { id: true, name: true } },
-        returnRequest: { select: { id: true, status: true } },
+        returnRequest: returnRefSelect,
         createdBy: { select: { name: true, email: true } },
         details: {
           orderBy: { createdAt: "asc" },
@@ -264,7 +275,10 @@ export const scSalesRepository = {
     });
   },
 
-  /** SC sales with a return request (Service Returns ledger), with their line serials. */
+  /**
+   * SC sales with an older walk-in return request (Service Returns ledger), with their line
+   * serials. Service Returns / Replacements (Process V-b) are finished in SC Returns instead.
+   */
   async listReturnSales(
     tenantId: string,
     serviceCenterIds: string[] | null,
@@ -276,7 +290,10 @@ export const scSalesRepository = {
       tenantId,
       ...(serviceCenterIds ? { serviceCenterId: { in: serviceCenterIds } } : {}),
       returnRequest: {
-        is: options?.statusIn?.length ? { status: { in: options.statusIn } } : {},
+        is: {
+          documentTypeId: null,
+          ...(options?.statusIn?.length ? { status: { in: options.statusIn } } : {}),
+        },
       },
     };
 

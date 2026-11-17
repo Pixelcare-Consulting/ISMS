@@ -148,11 +148,6 @@ export function ScServiceReturnsPanel({
         cell: ({ row }) => row.original.customerName?.trim() || "—",
       }),
       column.display({
-        id: "branch",
-        header: "BRANCH SOLD",
-        cell: ({ row }) => row.original.branchName,
-      }),
-      column.display({
         id: "serviceCenter",
         header: "SERVICE CENTER",
         cell: ({ row }) => row.original.serviceCenterName,

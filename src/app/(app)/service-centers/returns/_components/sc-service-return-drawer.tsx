@@ -72,7 +72,7 @@ const CONFIRM_COPY: Record<PendingConfirm, { title: string; description: string;
   reject: {
     title: "Reject this request?",
     description:
-      "The unit goes back to Sold or Official Sold, the sale reopens, and the CSR is notified with your reason.",
+      "The unit gets back the status it had before the request (Sold, Official Sold or Reserved), the sale reopens, and the CSR is notified with your reason.",
     label: "Reject",
   },
 };
@@ -294,7 +294,7 @@ function ScServiceReturnDrawerContent({
             {detail?.transactionNo ?? (loading ? "Loading…" : "Service return")}
           </SheetTitle>
           <SheetDescription>
-            {detail ? `${detail.branchName} · ${detail.serviceCenterName}` : "Request details"}
+            {detail ? `Sold at ${detail.serviceCenterName}` : "Request details"}
           </SheetDescription>
           {detail && statusMeta ? (
             <div className="pt-2">
@@ -404,7 +404,7 @@ function ScServiceReturnDrawerContent({
                       />
                       {detail.receivedAt ? <Detail label="Received at" value={detail.receivedAt} /> : null}
                       {detail.replacementSerialNo ? (
-                        <Detail label="Replacement serial" value={`${detail.replacementSerialNo}${detail.replacementNo ? ` (${detail.replacementNo})` : ""}`} />
+                        <Detail label="Replacement serial" value={detail.replacementSerialNo} />
                       ) : null}
                       {detail.rejectReason ? (
                         <div className="sm:col-span-2">

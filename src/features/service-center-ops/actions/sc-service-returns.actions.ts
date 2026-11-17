@@ -4,9 +4,19 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
-import { atrOdrfDownloadUrl } from "@/features/sales/constants/process-return";
-import { SC_RETURNS_PROCESS } from "@/features/service-center-ops/constants/sc-permissions";
-import type { ScServiceReturnStatus } from "@/features/service-center-ops/constants/sc-service-returns";
+import {
+  loadProcessReturnLookups,
+  processReturnPayloadSchema,
+  type ProcessReturnLookups,
+} from "@/features/sales/services/process-return-input";
+import {
+  SC_RETURNS_PROCESS,
+  SC_SERVICE_RETURN_REQUEST_PERMISSIONS,
+} from "@/features/service-center-ops/constants/sc-permissions";
+import {
+  scAtrOdrfDownloadUrl,
+  type ScServiceReturnStatus,
+} from "@/features/service-center-ops/constants/sc-service-returns";
 import {
   parseScServiceReturnFilter,
   scServiceReturnsRepository,
@@ -19,11 +29,11 @@ import {
   type ScServiceReturnActor,
 } from "@/features/service-center-ops/services/sc-service-return.service";
 import { SC_ORDER_PO_NUMBER_MAX } from "@/features/service-center-ordering/constants";
-import { requirePermission } from "@/lib/auth/permissions";
+import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
 
 /**
  * Service center lane of a Service Return / Replacement (Process V-b). The CSR requests it
- * from Sales; the service center inspects the unit and finishes it here.
+ * from SC Sales; the selling service center inspects the unit and finishes it here.
  */
 
 async function requireActor(): Promise<ScServiceReturnActor> {
@@ -41,11 +51,24 @@ async function requireActor(): Promise<ScServiceReturnActor> {
 
 function revalidateScServiceReturns() {
   revalidatePath("/service-centers/returns");
+  revalidatePath("/service-centers/sales");
   revalidatePath("/service-centers/inventory");
   revalidatePath("/service-centers/orders");
-  revalidatePath("/returns");
-  revalidatePath("/sales");
-  revalidatePath("/inventory");
+}
+
+/** CSR, SC Sales: request a Service Return / Replacement on an SC sale line. */
+async function requireRequester() {
+  const session = await requireAnyPermission([...SC_SERVICE_RETURN_REQUEST_PERMISSIONS]);
+  const actor: ScServiceReturnActor = {
+    tenantId: session.user.tenantId,
+    userId: session.user.id,
+    scopedServiceCenterIds: await resolveScIdsForUser(
+      session.user.tenantId,
+      session.user.id,
+      session.user.permissions,
+    ),
+  };
+  return { actor, requesterName: session.user.name?.trim() || session.user.email || "—" };
 }
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -75,8 +98,8 @@ function asStatus(status: string): ScServiceReturnStatus {
   }
 }
 
-function unitOf(row: Pick<ScServiceReturnListRow, "saleDetail" | "sale">) {
-  const line = row.saleDetail ?? row.sale.details[0] ?? null;
+function unitOf(row: Pick<ScServiceReturnListRow, "saleDetail">) {
+  const line = row.saleDetail;
   return {
     serialNo: line?.serialNumber?.serialNo ?? null,
     modelLabel: modelLabel(line?.model),
@@ -95,10 +118,9 @@ function toListDto(row: ScServiceReturnListRow) {
     transactionNo: row.sale.transactionNo,
     transactionDate: row.sale.transactionDate?.toISOString() ?? null,
     customerName: row.sale.customerName,
-    branchName: row.sale.branch.name,
-    serviceCenterName: row.serviceCenter
-      ? `${row.serviceCenter.sapCode} · ${row.serviceCenter.name}`
-      : "—",
+    serviceCenterName: row.sale.serviceCenter.sapCode
+      ? `${row.sale.serviceCenter.sapCode} · ${row.sale.serviceCenter.name}`
+      : row.sale.serviceCenter.name,
     serialNo: unit.serialNo,
     modelLabel: unit.modelLabel,
     specialOrderNumber: row.specialOrder?.orderNumber ?? null,
@@ -109,8 +131,7 @@ function toListDto(row: ScServiceReturnListRow) {
 export type ScServiceReturnListItem = ReturnType<typeof toListDto>;
 
 function toDetailDto(row: ScServiceReturnDetailRow) {
-  const line = row.saleDetail ?? row.sale.details[0] ?? null;
-  const replacement = row.sale.replacements[0] ?? null;
+  const line = row.saleDetail;
   return {
     ...toListDto(row),
     contactNo: row.sale.contactNo,
@@ -128,8 +149,7 @@ function toDetailDto(row: ScServiceReturnDetailRow) {
       ? `${row.serviceCenterLocation.code} · ${row.serviceCenterLocation.name}`
       : null,
     heldSerialNo: row.heldSerialNumber?.serialNo ?? null,
-    replacementSerialNo: replacement?.replacementSerialNumber?.serialNo ?? null,
-    replacementNo: replacement?.replacementNo ?? null,
+    replacementSerialNo: row.replacementSerialNumber?.serialNo ?? null,
     specialOrder: row.specialOrder
       ? {
           orderNumber: row.specialOrder.orderNumber,
@@ -137,8 +157,8 @@ function toDetailDto(row: ScServiceReturnDetailRow) {
           sapDocNum: row.specialOrder.sapDocNum,
         }
       : null,
-    atrOdrfUrl: row.atrOdrfPdfPath ? atrOdrfDownloadUrl(row.id) : null,
-    locations: (row.serviceCenter?.locations ?? []).map((location) => ({
+    atrOdrfUrl: row.atrOdrfPdfPath ? scAtrOdrfDownloadUrl(row.id) : null,
+    locations: row.sale.serviceCenter.locations.map((location) => ({
       id: location.id,
       name: `${location.code} · ${location.name}`,
     })),
@@ -146,6 +166,26 @@ function toDetailDto(row: ScServiceReturnDetailRow) {
 }
 
 export type ScServiceReturnDetail = ReturnType<typeof toDetailDto>;
+
+/** Process Return form lookups for SC sales: service document types only, no SC picker. */
+export async function listScProcessReturnLookupsAction(): Promise<ProcessReturnLookups> {
+  const { actor } = await requireRequester();
+  return loadProcessReturnLookups(actor.tenantId, { serviceOnly: true });
+}
+
+export async function requestScServiceReturnAction(saleId: string, payload: unknown) {
+  const { actor, requesterName } = await requireRequester();
+  if (!saleId) return { error: "Sale not found" };
+  const parsed = processReturnPayloadSchema.safeParse(payload);
+  if (!parsed.success) return { error: "Invalid process return details" };
+  try {
+    await scServiceReturnService.request(actor, { saleId, payload: parsed.data, requesterName });
+  } catch (e) {
+    return { error: errorMessage(e, "Could not request the return") };
+  }
+  revalidateScServiceReturns();
+  return { success: true as const };
+}
 
 export async function listScServiceReturnsAction(input?: {
   page?: number;

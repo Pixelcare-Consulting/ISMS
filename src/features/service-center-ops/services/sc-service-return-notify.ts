@@ -14,7 +14,10 @@ export function scServiceReturnHref(returnRequestId: string): string {
   return `/service-centers/returns?request=${encodeURIComponent(returnRequestId)}`;
 }
 
-const CSR_TRACKING_HREF = "/returns?tab=service";
+/** The CSR follows the request on the SC sale it was raised from. */
+function csrTrackingHref(transactionNo: string): string {
+  return `/service-centers/sales?q=${encodeURIComponent(transactionNo)}`;
+}
 
 /** Users assigned to the service center whose role can process its service returns. */
 async function listScProcessorIds(tenantId: string, serviceCenterId: string): Promise<string[]> {
@@ -158,7 +161,7 @@ export async function notifyCsrScServiceReturnDecided(input: {
       body: completed
         ? `${input.serviceCenterName} finished this request.`
         : `${input.serviceCenterName} rejected this request${input.reason ? `: ${input.reason}` : "."} The sale is open again.`,
-      href: CSR_TRACKING_HREF,
+      href: csrTrackingHref(input.transactionNo),
       returnRequestId: input.returnRequestId,
     });
   } catch (error) {

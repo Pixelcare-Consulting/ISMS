@@ -45,7 +45,7 @@ export default async function ScServiceReturnsPage({ searchParams }: PageProps) 
         title="Service center returns"
         sticky={false}
         tutorial={SC_RETURNS_PAGE_TUTORIAL}
-        description="Service Returns and Replacements a CSR sent to your service center. Inspect the unit, then submit the return, replace it from your stock, raise a special order, or reject it."
+        description="Service Returns and Replacements a CSR requested on your service center's sales. Inspect the unit, then submit the return, replace it from your stock, raise a special order, or reject it."
       />
       <ModuleGuide {...SC_OPS_MODULE_GUIDE} />
       <ScServiceReturnsPanel
