@@ -79,15 +79,16 @@ describe("summarizeScOrderSapCheck", () => {
     expect(summarizeScOrderSapCheck({ ...base, deliveriesCreated: 2, serialCount: 5 })).toEqual({
       tone: "success",
       title: "Added 2 deliveries from SAP (5 units)",
-      description: "See Service center deliveries to accept them.",
+      description: "Open a delivery to receive its units.",
     });
   });
 
   it("never drops a problem", () => {
     const withProblem = { ...base, problems: ["SCO-1: SN1 is at Branch A in ISMS."] };
-    expect(summarizeScOrderSapCheck({ ...withProblem, deliveriesCreated: 1, serialCount: 1 })).toMatchObject({
+    expect(summarizeScOrderSapCheck({ ...withProblem, deliveriesCreated: 1, serialCount: 5 })).toEqual({
       tone: "warning",
-      description: "SCO-1: SN1 is at Branch A in ISMS.",
+      title: "Added 1 delivery from SAP (5 units). 1 SAP delivery not added",
+      description: "Not added: SCO-1: SN1 is at Branch A in ISMS.",
     });
     expect(summarizeScOrderSapCheck(withProblem)).toMatchObject({
       tone: "warning",

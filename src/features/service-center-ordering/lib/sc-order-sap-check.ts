@@ -81,10 +81,15 @@ function plural(count: number, one: string, many = `${one}s`): string {
 export function summarizeScOrderSapCheck(result: ScOrderSapCheckResult): ScOrderSapCheckSummary {
   const problems = result.problems.length > 0 ? result.problems.join(" ") : undefined;
   if (result.deliveriesCreated > 0) {
+    const added = `Added ${plural(result.deliveriesCreated, "delivery", "deliveries")} from SAP (${plural(result.serialCount, "unit")})`;
+    if (!problems) {
+      return { tone: "success", title: added, description: "Open a delivery to receive its units." };
+    }
+    // Part of the run failed: the title says so, not only what went in.
     return {
-      tone: result.problems.length > 0 ? "warning" : "success",
-      title: `Added ${plural(result.deliveriesCreated, "delivery", "deliveries")} from SAP (${plural(result.serialCount, "unit")})`,
-      description: problems ?? "See Service center deliveries to accept them.",
+      tone: "warning",
+      title: `${added}. ${plural(result.problems.length, "SAP delivery", "SAP deliveries")} not added`,
+      description: `Not added: ${problems}`,
     };
   }
   if (result.problems.length > 0) {
