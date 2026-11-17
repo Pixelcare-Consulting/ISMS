@@ -336,6 +336,33 @@ export const appNavigation: NavEntry[] = [
     icon: Package,
     items: [
       {
+        label: "Inventory",
+        icon: Package,
+        items: [
+          {
+            href: "/inventory/v2",
+            label: "Branch Inventory",
+            icon: ClipboardCheck,
+            permission: "inventory.view",
+            countBadgeKey: "branchInventoryV2Updates",
+          },
+          {
+            href: "/inventory/monthly-sir",
+            label: "Monthly SIR",
+            icon: ClipboardList,
+            permission: "inventory.view",
+            countBadgeKey: "monthlySirPending",
+          },
+          // { DO NOT UNCOMMENT THIS, NO NEED TO SHOW IN THE NAVIGATION
+          //   href: "/inventory/stock-count",
+          //   label: "P-Count",
+          //   icon: ClipboardList,
+          //   permission: "inventory.view",
+          //   badge: "new",
+          // },
+        ],
+      },
+      {
         label: "Movement",
         icon: Truck,
         items: [
@@ -366,33 +393,7 @@ export const appNavigation: NavEntry[] = [
           },
         ],
       },
-      {
-        label: "Inventory",
-        icon: Package,
-        items: [
-          {
-            href: "/inventory/v2",
-            label: "Branch Inventory",
-            icon: ClipboardCheck,
-            permission: "inventory.view",
-            countBadgeKey: "branchInventoryV2Updates",
-          },
-          {
-            href: "/inventory/monthly-sir",
-            label: "Monthly SIR",
-            icon: ClipboardList,
-            permission: "inventory.view",
-            countBadgeKey: "monthlySirPending",
-          },
-          // { DO NOT UNCOMMENT THIS, NO NEED TO SHOW IN THE NAVIGATION
-          //   href: "/inventory/stock-count",
-          //   label: "P-Count",
-          //   icon: ClipboardList,
-          //   permission: "inventory.view",
-          //   badge: "new",
-          // },
-        ],
-      },
+      
     ],
   },
   {

@@ -39,9 +39,6 @@ export interface CompetitorKpis {
   avgPrice: number | null;
 }
 
-const WRITE_BRANCH_AOR_ERROR =
-  "Competitor observations require exactly one branch assigned in your AOR";
-
 function toDto(row: CompetitorObservationListItem): CompetitorObservationDto {
   return {
     id: row.id,
@@ -81,13 +78,12 @@ function assertBranchInScope(branchId: string | null | undefined, scopedBranchId
   }
 }
 
-/** Writes never bypass AOR via hasFullAccess — exactly one branch required. */
-async function resolveWriteBranchId(tenantId: string, userId: string): Promise<string> {
+/** Writes never bypass AOR via hasFullAccess. The chosen branch must be assigned to the user. */
+async function assertAorBranch(tenantId: string, userId: string, branchId: string): Promise<void> {
   const branchIds = await getUserBranchIds(tenantId, userId);
-  if (!branchIds || branchIds.length !== 1) {
-    throw new Error(WRITE_BRANCH_AOR_ERROR);
+  if (!branchIds?.includes(branchId)) {
+    throw new Error("Branch is outside your area of responsibility");
   }
-  return branchIds[0]!;
 }
 
 async function resolveActiveCompetitor(tenantId: string, competitorId: string) {
@@ -204,13 +200,17 @@ export const competitorService = {
         ? allBranches.filter((b) => scopedBranchIds.includes(b.id))
         : allBranches;
 
+    const aorIds = new Set((await getUserBranchIds(tenantId, userId)) ?? []);
+    const toBranchOption = (b: (typeof allBranches)[number]) => ({
+      id: b.id,
+      name: b.name,
+      sapCode: b.sapCode,
+      label: `${b.name} (${b.sapCode})`,
+    });
+
     return {
-      branches: branches.map((b) => ({
-        id: b.id,
-        name: b.name,
-        sapCode: b.sapCode,
-        label: `${b.name} (${b.sapCode})`,
-      })),
+      branches: branches.map(toBranchOption),
+      aorBranches: allBranches.filter((b) => aorIds.has(b.id)).map(toBranchOption),
       brands: brands.map((b) => ({
         id: b.id,
         name: b.name,
@@ -234,6 +234,7 @@ export const competitorService = {
     tenantId: string;
     actorUserId: string;
     competitorId: string;
+    branchId: string;
     competitorBrandId?: string | null;
     competitorModelId?: string | null;
     price?: number | null;
@@ -246,7 +247,7 @@ export const competitorService = {
       throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
     }
 
-    const branchId = await resolveWriteBranchId(input.tenantId, input.actorUserId);
+    await assertAorBranch(input.tenantId, input.actorUserId, parsed.data.branchId);
     const competitor = await resolveActiveCompetitor(input.tenantId, parsed.data.competitorId);
     const brandModel = await resolveCompetitorBrandAndModel(
       input.tenantId,
@@ -257,7 +258,7 @@ export const competitorService = {
     const row = await competitorRepository.create(input.tenantId, {
       competitorId: competitor.id,
       competitorName: competitor.name,
-      branchId,
+      branchId: parsed.data.branchId,
       competitorBrandId: brandModel.competitorBrandId,
       competitorModelId: brandModel.competitorModelId,
       brandName: brandModel.brandName,
@@ -286,6 +287,7 @@ export const competitorService = {
     actorUserId: string;
     id: string;
     competitorId: string;
+    branchId: string;
     competitorBrandId?: string | null;
     competitorModelId?: string | null;
     price?: number | null;
@@ -301,10 +303,11 @@ export const competitorService = {
     const existing = await competitorRepository.findById(input.tenantId, parsed.data.id);
     if (!existing) throw new Error("Observation not found");
 
-    const branchId = await resolveWriteBranchId(input.tenantId, input.actorUserId);
-    if (existing.branchId && existing.branchId !== branchId) {
+    const aorBranchIds = await getUserBranchIds(input.tenantId, input.actorUserId);
+    if (existing.branchId && !aorBranchIds?.includes(existing.branchId)) {
       throw new Error("Observation is outside your area of responsibility");
     }
+    await assertAorBranch(input.tenantId, input.actorUserId, parsed.data.branchId);
 
     const competitor = await resolveActiveCompetitor(input.tenantId, parsed.data.competitorId);
     const brandModel = await resolveCompetitorBrandAndModel(
@@ -316,7 +319,7 @@ export const competitorService = {
     const row = await competitorRepository.update(input.tenantId, parsed.data.id, {
       competitorId: competitor.id,
       competitorName: competitor.name,
-      branchId,
+      branchId: parsed.data.branchId,
       competitorBrandId: brandModel.competitorBrandId,
       competitorModelId: brandModel.competitorModelId,
       brandName: brandModel.brandName,
@@ -343,8 +346,8 @@ export const competitorService = {
     const existing = await competitorRepository.findById(input.tenantId, input.id);
     if (!existing) throw new Error("Observation not found");
 
-    const branchId = await resolveWriteBranchId(input.tenantId, input.actorUserId);
-    if (existing.branchId && existing.branchId !== branchId) {
+    const aorBranchIds = await getUserBranchIds(input.tenantId, input.actorUserId);
+    if (existing.branchId && !aorBranchIds?.includes(existing.branchId)) {
       throw new Error("Observation is outside your area of responsibility");
     }
 

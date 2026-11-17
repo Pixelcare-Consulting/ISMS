@@ -737,7 +737,7 @@ export function SaleDetailsDialog({
                 disabled={pending}
                 onClick={() => onReturnAction("restore")}
               >
-                Restore stock
+                Return Stock
               </Button>
             ) : null}
             {showCompleteReplacement ? (
@@ -747,7 +747,7 @@ export function SaleDetailsDialog({
                 disabled={pending}
                 onClick={() => onReturnAction("complete_replacement")}
               >
-                Complete replacement
+                Replace Stock
               </Button>
             ) : null}
           </DialogFooter>

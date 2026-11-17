@@ -112,7 +112,7 @@ export const REASON_STATUS_DEFAULTS: ReasonStatusDefaultGroup[] = [
     name: "Sales & ATR",
     code: "sales_atr",
     usedIn:
-      "Sales & ATR — return request steps (Pending CS / TL, approved, rejected, completed) and ATR header status (open, reserve, closed).",
+      "Sales & ATR — return request steps (Pending TL, approved, rejected, completed) and ATR header status (open, reserve, closed).",
     codes: [
       { code: "pending_cs", name: "Pending CS", sortOrder: 1, color: "amber" },
       { code: "pending_tl", name: "Pending TL", sortOrder: 2, color: "amber" },

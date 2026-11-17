@@ -4,6 +4,7 @@ import { createContext, useContext, type ReactNode } from "react";
 
 import type { SaleDetailsPayload } from "@/app/(app)/sales/_components/sale-details-dialog";
 import {
+  countAgingSellableStockAction,
   createSaleAction,
   getSaleDetailsAction,
   listBranchesForSalesAction,
@@ -11,6 +12,7 @@ import {
   listStockSourceBranchesForSalesAction,
   updateSaleHeaderAction,
   updateSaleSerialAction,
+  type AgingSellableSerial,
 } from "@/features/sales/actions/sales.actions";
 import type { SaleableSerialItem } from "@/features/sales/lib/saleable-serial-query";
 import { saleProofViewUrl } from "@/features/sales/utils/sale-proof";
@@ -118,6 +120,11 @@ export interface SalesSource {
       page: number;
       limit: number;
     }) => Promise<PaginatedResult<SaleableSerialItem>>;
+    /** Aged sellable units of a model at the stock source. Omitted: no aging check. */
+    countAgingSellableStock?: (input: {
+      stockSourceId: string;
+      modelId: string;
+    }) => Promise<{ count: number; serials: AgingSellableSerial[] }>;
   };
 }
 
@@ -159,6 +166,8 @@ export const BRANCH_SALES_SOURCE: SalesSource = {
     listStockSources: (soldId) => listStockSourceBranchesForSalesAction(soldId),
     listSaleableSerials: ({ stockSourceId, ...rest }) =>
       listSaleableSerialsAction({ ...rest, branchId: stockSourceId }),
+    countAgingSellableStock: ({ stockSourceId, modelId }) =>
+      countAgingSellableStockAction({ branchId: stockSourceId, modelId }),
   },
 };
 

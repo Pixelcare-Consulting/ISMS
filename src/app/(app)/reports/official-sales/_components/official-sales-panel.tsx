@@ -30,6 +30,16 @@ import {
   runWithActionProgress,
   type ActionProgressState,
 } from "@/components/ui/action-progress-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -357,6 +367,9 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
   );
   const [detailRow, setDetailRow] = useState<OfficialSalesStagingRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+  const [processConfirm, setProcessConfirm] = useState<{
+    rowIds?: string[];
+  } | null>(null);
   /** Download busy is independent so it never clears/blocks write actions. */
   const [isDownloading, setIsDownloading] = useState(false);
   /** Per write-action busy — avoids one global pending that freezes selection. */
@@ -670,6 +683,20 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
       toast.success(processMessage);
     }
     router.refresh();
+  }
+
+  function requestProcess(rowIds?: string[]) {
+    if (writeBusy || progressOpen) return;
+    if (rowIds !== undefined && rowIds.length === 0) return;
+    if (rowIds === undefined && pendingRowCount === 0) return;
+    setProcessConfirm({ rowIds });
+  }
+
+  function confirmProcess() {
+    const target = processConfirm;
+    if (!target || writeBusy || progressOpen) return;
+    setProcessConfirm(null);
+    void onProcess(target.rowIds);
   }
 
   async function onDeleteConfirm() {
@@ -1020,7 +1047,7 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
                   variant="outline"
                   className="min-w-36"
                   disabled={writeBusy || progressOpen || pendingRowCount === 0}
-                  onClick={() => void onProcess()}
+                  onClick={() => requestProcess()}
                 >
                   {isProcessing ? (
                     <>
@@ -1063,12 +1090,32 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
         onOpenChange={(open) => {
           if (!open && !isProcessing && !isDeleting) setDetailRow(null);
         }}
-        onProcess={(rowId) => void onProcess([rowId])}
+        onProcess={(rowId) => requestProcess([rowId])}
         onDelete={(row) => {
           setDetailRow(null);
           setDeleteTarget({ mode: "single", row });
         }}
       />
+
+      <AlertDialog
+        open={processConfirm !== null}
+        onOpenChange={(open) => {
+          if (!open && !isProcessing) setProcessConfirm(null);
+        }}
+      >
+        <AlertDialogContent className="z-60" overlayClassName="z-60">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Process these rows?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to process these rows?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmProcess}>Yes</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <DeleteConfirmDialog
         open={deleteTarget !== null}

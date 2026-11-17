@@ -477,6 +477,7 @@ async function soldSource(
             returnRequest: {
               select: {
                 status: true,
+                actionType: true,
                 saleDetailId: true,
                 documentType: { select: { name: true } },
               },
@@ -510,7 +511,11 @@ async function soldSource(
       const request = r.sale.returnRequest;
       const historyStatus =
         request && returnRequestAppliesToLine(request.saleDetailId, r.id)
-          ? returnHistoryStatusRef(request.status, request.documentType?.name)
+          ? returnHistoryStatusRef(
+              request.status,
+              request.documentType?.name,
+              request.actionType,
+            )
           : null;
       return [
         {

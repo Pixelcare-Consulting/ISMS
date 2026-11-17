@@ -21,8 +21,6 @@ const OMITTED_OPERATION_SLUGS = [
   "reports.manage",
   "dashboard.view",
   "forecast.view",
-  "forecast.manage",
-  "sap.manage",
 ] as const;
 
 describe("isTenantSetupAdmin", () => {
@@ -82,6 +80,14 @@ describe("SETUP_PERMISSION_SLUGS", () => {
       "master_data.manage",
       "dashboard.custom.view",
       "dashboard.custom.manage",
+      "audit_logs.view",
+      "serial_logs.view",
+      "inventory_approvals.view",
+      "policies.view",
+      "policies.create",
+      "policies.approve",
+      "sap.manage",
+      "forecast.manage",
     ]);
 
     for (const slug of SETUP_PERMISSION_SLUGS) {
@@ -96,8 +102,7 @@ describe("SETUP_PERMISSION_SLUGS", () => {
           slug === "dashboard.custom.view" ||
           slug === "dashboard.custom.manage",
       ).toBe(true);
-      expect(slug.startsWith("forecast.")).toBe(false);
-      expect(slug).not.toBe("sap.manage");
+      expect(slug).not.toBe("forecast.view");
     }
 
     for (const slug of OMITTED_OPERATION_SLUGS) {
@@ -143,6 +148,16 @@ describe("isSetupPathAllowed", () => {
       "/dashboard/custom/dash-1/edit",
       "/dashboard/custom/ready/branch-sales",
       "/dashboard/site-traffic",
+      "/settings/planning",
+      "/settings/planning/runs",
+      "/settings/planning/runs/run-1",
+      "/settings/sap-integration",
+      "/settings/sap-integration/jobs",
+      "/audit-logs/system",
+      "/audit-logs/serial-numbers",
+      "/audit-logs/inventory-approvals",
+      "/policies",
+      "/policies/policy-1",
     ];
 
     for (const pathname of allowed) {
@@ -150,7 +165,7 @@ describe("isSetupPathAllowed", () => {
     }
   });
 
-  it("blocks dashboard, orders, logistics, planning runs, and SAP jobs", () => {
+  it("blocks dashboard, orders, logistics, and other operations", () => {
     const blocked = [
       "/dashboard",
       "/dashboard/operations",
@@ -165,11 +180,9 @@ describe("isSetupPathAllowed", () => {
       "/sales",
       "/returns",
       "/reports",
-      "/settings/planning",
-      "/settings/planning/runs",
-      "/settings/planning/runs/run-1",
-      "/settings/sap-integration",
-      "/settings/sap-integration/jobs",
+      "/announcements",
+      "/service-centers/inventory",
+      "/service-centers/orders",
       "/settings",
       "/setup-admin",
       "/helpful",

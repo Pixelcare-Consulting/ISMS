@@ -1,8 +1,8 @@
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import {
   isReturnHistoryStatus,
-  returnHistoryStatusRef,
   returnRequestAppliesToLine,
+  type ReturnHistoryAction,
 } from "@/features/sales/constants/return-history-status";
 
 export type SaleStatusCodeRef = {
@@ -17,6 +17,13 @@ const TO_FOLLOW_STATUS_FALLBACK: SaleStatusCodeRef = {
   color: "orange",
 };
 
+/** Open return-request steps. A finished return uses RETURNED / REPLACED instead. */
+const OPEN_RETURN_REQUEST_CODES = new Set([
+  "pending_cs",
+  "pending_tl",
+  "approved",
+]);
+
 /** Tiny fallbacks when sales_atr Settings codes are missing (unseeded tenant). */
 const SALES_ATR_STATUS_FALLBACK: Record<string, SaleStatusCodeRef> = {
   pending_cs: { code: "pending_cs", name: "Pending CS", color: "amber" },
@@ -27,6 +34,8 @@ const SALES_ATR_STATUS_FALLBACK: Record<string, SaleStatusCodeRef> = {
   open: { code: "open", name: "Open", color: "sky" },
   reserve: { code: "reserve", name: "Reserve", color: "amber" },
   closed: { code: "closed", name: "Closed", color: "slate" },
+  RETURNED: { code: "RETURNED", name: "Returned", color: "violet" },
+  REPLACED: { code: "REPLACED", name: "Replaced", color: "violet" },
 };
 
 export async function resolveToFollowStatusCode(
@@ -56,18 +65,39 @@ export async function loadSalesAtrCodesByCode(
   );
 }
 
+function findSalesAtrCode(
+  code: string,
+  codesByCode: Map<string, SaleStatusCodeRef>,
+): SaleStatusCodeRef | undefined {
+  const exact = codesByCode.get(code);
+  if (exact) return exact;
+  const folded = code.toLowerCase();
+  for (const [key, value] of codesByCode) {
+    if (key.toLowerCase() === folded) return value;
+  }
+  return undefined;
+}
+
 export function resolveSalesAtrStatusCode(
   code: string,
   codesByCode: Map<string, SaleStatusCodeRef>,
 ): SaleStatusCodeRef {
   return (
-    codesByCode.get(code) ??
-    SALES_ATR_STATUS_FALLBACK[code] ?? {
+    findSalesAtrCode(code, codesByCode) ??
+    SALES_ATR_STATUS_FALLBACK[code] ??
+    SALES_ATR_STATUS_FALLBACK[code.toUpperCase()] ??
+    SALES_ATR_STATUS_FALLBACK[code.toLowerCase()] ?? {
       code,
       name: code.replaceAll("_", " "),
       color: "amber",
     }
   );
+}
+
+function finishedReturnSettingsCode(
+  actionType: ReturnHistoryAction | null | undefined,
+): "RETURNED" | "REPLACED" {
+  return actionType === "replacement" ? "REPLACED" : "RETURNED";
 }
 
 export interface ListedLineStatusDetail {
@@ -81,19 +111,22 @@ export interface ListedLineStatusSale {
   returnRequest?: {
     status: string;
     saleDetailId: string | null;
+    actionType?: ReturnHistoryAction | null;
     documentType?: { name: string } | null;
   } | null;
 }
 
 /**
  * List/details STATUS preference (never live inventory):
- * 1) Returned/Replaced or Service Returned/Replaced while a return is open or finished
- * 2) Closed ATR header (no return history status)
- * 3) Frozen detail.statusCode (FW / SLD / RSV / OFS)
- * 4) Legacy derive from serial + atrStatus
+ * 1) Open return on this line: Pending CS, Pending TL, or Approved from Sales & ATR
+ * 2) Finished return on this line: Returned or Replaced (settings codes RETURNED, REPLACED)
+ * 3) No return and a closed sale: Closed
+ * 4) No return, no serial, and a reserve sale: Reserve
+ * 5) Otherwise the frozen inventory status (Sold, Official Sold, TO FOLLOW)
  *
- * The product return status stays through request, approval, and completion.
- * Rejected requests fall through so the sale shows its inventory status again.
+ * A rejected request is not a lasting status. The line goes back to that sale status.
+ * Another line's return does not retitle this line; `keepFrozenStatus` also stops a
+ * closed header from covering a sibling that is still Sold or TO FOLLOW.
  */
 export function resolveLineStatusCode(
   detail: {
@@ -104,18 +137,31 @@ export function resolveLineStatusCode(
   toFollowStatus: SaleStatusCodeRef,
   salesAtrCodes: Map<string, SaleStatusCodeRef>,
   returnStatus?: string | null,
-  documentTypeName?: string | null,
+  _documentTypeName?: string | null,
   /**
-   * Another line on this sale is Returned/Replaced. Keep this line's own
-   * Sold / TO FOLLOW status instead of flipping it to Closed.
+   * Another line on this sale has the open or finished return. Keep this line's
+   * own Sold / TO FOLLOW status instead of flipping it to Closed.
    */
   keepFrozenStatus?: boolean,
+  actionType?: ReturnHistoryAction | null,
 ): SaleStatusCodeRef | null {
-  const historyStatus = returnHistoryStatusRef(returnStatus, documentTypeName);
-  if (historyStatus) return historyStatus;
+  const requestStep = returnStatus?.trim().toLowerCase() ?? "";
+  if (OPEN_RETURN_REQUEST_CODES.has(requestStep)) {
+    return resolveSalesAtrStatusCode(requestStep, salesAtrCodes);
+  }
+  if (requestStep === "completed") {
+    return resolveSalesAtrStatusCode(
+      finishedReturnSettingsCode(actionType),
+      salesAtrCodes,
+    );
+  }
 
   if (atrStatus === "closed" && !keepFrozenStatus) {
     return resolveSalesAtrStatusCode("closed", salesAtrCodes);
+  }
+
+  if (!detail.serialNumberId && atrStatus === "reserve") {
+    return resolveSalesAtrStatusCode("reserve", salesAtrCodes);
   }
 
   if (detail.statusCode) {
@@ -126,12 +172,7 @@ export function resolveLineStatusCode(
     };
   }
 
-  if (!detail.serialNumberId) {
-    if (atrStatus === "reserve") {
-      return resolveSalesAtrStatusCode("reserve", salesAtrCodes);
-    }
-    return toFollowStatus;
-  }
+  if (!detail.serialNumberId) return toFollowStatus;
   return resolveSalesAtrStatusCode(atrStatus, salesAtrCodes);
 }
 
@@ -155,5 +196,6 @@ export function resolveListedLineStatus(
     applies ? request?.status : null,
     request?.documentType?.name,
     Boolean(request && isReturnHistoryStatus(request.status) && !applies),
+    applies ? request?.actionType : null,
   );
 }

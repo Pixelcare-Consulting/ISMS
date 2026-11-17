@@ -27,6 +27,8 @@
  * - No file names, SQL, FK, schema fields, migration names, reseed steps, or RBAC jargon dumps
  * - Avoid technical jargon (hydration, pool timeout, GROUP BY, slugs, etc.)
  * - Keep highlights short; order changes as feature → improvement → fix
+ * - What's New shows a line once: a highlight already said in changes is hidden,
+ *   and a change already said in a remaining highlight is hidden
  *
  * Audience / What's New visibility:
  * - Omit `audience` (or set `"end_user"`) for notes that appear in the in-app What's New dialog
@@ -66,6 +68,153 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.95.3",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T16:45:00+08:00",
+    title: "Market Survey reports and cleaner What's New",
+    highlights: [
+      "Market Survey can filter observations and download a report.",
+      "What's New lists each update once.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "On Market Survey, choose the branch when you add or edit an observation. Filter the list by date, tick the rows you need, and download a report. If nothing is ticked, the report uses the From and To dates.",
+      },
+      {
+        type: "improvement",
+        description: "Observations are numbered, and you can step through them page by page.",
+      },
+      {
+        type: "improvement",
+        description: "A new observation is dated today, and that date stays as recorded.",
+      },
+      {
+        type: "fix",
+        description:
+          "What's New lists each update once. A summary line is not repeated again under Feature, Improvement, or Fix.",
+      },
+    ],
+  },
+  {
+    version: "0.95.2",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T16:05:00+08:00",
+    title: "Aging stock, returns, and status names",
+    highlights: [
+      "A new sale warns when stock is over 30 days, and sales status uses the names from Settings.",
+      "Returns and replacements name the next approver, and a branch leader can decide a pending defect from inventory.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "From the unit in Branch Inventory, a branch team leader can approve or reject a defect that is still waiting.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Add Line Items on a new sale shows Model Aging Validation when the chosen model has stock over 30 days. An older serial in the list shows its real age in days, such as the serial and 45 days. The selected serial still shows how old it is under the field.",
+      },
+      {
+        type: "improvement",
+        description:
+          "On Add Line Items, brand, model, and serial stay hidden until you select a package.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Before a return or replacement request is sent, a message asks you to continue and names who approves it next.",
+      },
+      {
+        type: "improvement",
+        description:
+          "On a replacement, New Invoice starts blank so you type a new transaction number and the other details. The branches stay with the sale. Same Invoice is unchanged.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The status shown on a sale follows the Sales & ATR labels in Settings, including Pending TL, Approved, Returned, Replaced, and the header statuses.",
+      },
+    ],
+  },
+  {
+    version: "0.95.1",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T15:15:00+08:00",
+    title: "Confirm before you continue",
+    highlights: [
+      "Choosing a model on a new sale warns you when that model still has units older than 30 days from the delivery receipt.",
+      "Sales, returns, transfers, pull-outs, and deliveries ask you to confirm before they continue.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "On a new sale, choosing a model shows Model Aging Validation when that model has stock older than 30 days from the delivery receipt. OK lets you keep encoding.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Saving a sale, a header, or a serial, finishing a replacement, and requesting a return or replacement each ask Yes or No first. No leaves the form open.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Submitting a transfer or pull-out, saving or sending a pull-out, approving or rejecting one, and receiving or rejecting a delivery now ask before they continue. Service center orders, deliveries, pull-outs, and sales, and Official Sales processing, ask the same way.",
+      },
+    ],
+  },
+  {
+    version: "0.95.0",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T14:30:00+08:00",
+    title: "Super Admin oversight",
+    highlights: [
+      "Super Admin can open audit logs, SAP integration, policies, and planning from the setup menu.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Super Admin can open audit logs, SAP integration, policies, and planning from the setup menu.",
+      },
+      {
+        type: "improvement",
+        description:
+          "If you already use Super Admin, sign out and back in once to see the new menus.",
+      },
+    ],
+  },
+  {
+    version: "0.94.7",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T13:15:00+08:00",
+    title: "Return and replacement status",
+    highlights: [
+      "A requested return or replacement holds the unit as Reserved until you finish or reject it.",
+      "Sales show Returned or Replaced, and you finish them with Return Stock or Replace Stock.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Requesting a return or replacement holds that unit as Reserved. If the request is rejected, the unit goes back to the status it had before.",
+      },
+      {
+        type: "improvement",
+        description:
+          "A return shows Returned and a replacement shows Replaced. A service return shows Service Returned, and a service replacement shows Service Replaced. You can filter the sales list by each status.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Finish a return with Return Stock, or a replacement with Replace Stock. A replacement still asks you to choose Same Invoice or New Invoice.",
+      },
+    ],
+  },
+  {
     version: "0.94.6",
     date: "2026-11-17",
     releasedAt: "2026-11-17T11:45:00+08:00",
@@ -85,7 +234,7 @@ export const RELEASES: ReleaseNote[] = [
     version: "0.94.5",
     date: "2026-11-17",
     releasedAt: "2026-11-17T11:00:00+08:00",
-    title: "SAP integration in plain language",
+    title: "SAP integration Updated",
     highlights: [
       "SAP integration shows what was sent, what is waiting, and what needs another try.",
       "Each row uses the order or document number people already know.",
@@ -5109,7 +5258,7 @@ export const RELEASES: ReleaseNote[] = [
     title: "Sales list stays on sold lines",
     highlights: [
       "Sales shows Sold, Official Sold, and TO FOLLOW only",
-      "Pending CS/TL, Approved, Rejected, Closed, and similar return statuses stay under Returns / Replacement",
+      "Pending TL, Approved, Rejected, Closed, and similar return statuses stay under Returns / Replacement",
       "Sales totals match the filtered list",
     ],
     changes: [
@@ -6401,7 +6550,7 @@ export const RELEASES: ReleaseNote[] = [
       "Attach multiple proof files and review them in a preview window",
       "Type the transaction number from your invoice when encoding a sale",
       "Model price fills from the latest price list — and stays at 0 when none exists",
-      "TO FOLLOW saves reliably; returns show Pending CS and ask for a reason",
+      "TO FOLLOW saves reliably; returns show Pending TL and ask for a reason",
       "When you sell from another branch’s stock, the unit moves to the selling branch",
     ],
     changes: [
@@ -6473,7 +6622,7 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "fix",
         description:
-          "After a return is requested, Sales list status shows Pending CS instead of staying on TO FOLLOW",
+          "After a return is requested, Sales list status shows Pending TL instead of staying on TO FOLLOW",
       },
       {
         type: "fix",

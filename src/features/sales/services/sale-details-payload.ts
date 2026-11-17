@@ -83,8 +83,11 @@ export async function toSaleDetailsPayload(tenantId: string, sale: SaleDetailsSo
   const proofPaths = parseSaleProofPaths(sale.proof);
   const request = sale.returnRequest;
   const returnStatusCode = request
-    ? (returnHistoryStatusRef(request.status, request.documentType?.name) ??
-      resolveSalesAtrStatusCode(request.status, salesAtrCodes))
+    ? (returnHistoryStatusRef(
+        request.status,
+        request.documentType?.name,
+        request.actionType,
+      ) ?? resolveSalesAtrStatusCode(request.status, salesAtrCodes))
     : null;
 
   return {

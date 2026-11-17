@@ -24,6 +24,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -114,6 +124,22 @@ type LoadState =
   | { kind: "error"; message: string }
   | { kind: "ready"; status: string; lines: DeliveryReceiptLine[] };
 
+function receiveConfirmCopy(
+  kind: "accept" | "reject",
+  sapDocType: ReceiveTarget["sapDocType"],
+): { question: string; detail: string } {
+  if (kind === "accept") {
+    return {
+      question: "Are you sure you want to receive this delivery?",
+      detail: "The ticked units move into this branch's stock.",
+    };
+  }
+  return {
+    question: "Are you sure you want to reject this delivery?",
+    detail: `This posts the ${sapDocType === "ITR" ? "IT" : "Return"} in SAP right away and sends the units back to the warehouse.`,
+  };
+}
+
 function ReceiveBody({
   target,
   onClose,
@@ -134,6 +160,7 @@ function ReceiveBody({
   /** Units the branch marks DEF (optional); they return to the warehouse as defective. */
   const [defectiveIds, setDefectiveIds] = useState<string[]>([]);
   const [rejectError, setRejectError] = useState<string | null>(null);
+  const [confirmKind, setConfirmKind] = useState<"accept" | "reject" | null>(null);
   const remarksId = useId();
 
   useEffect(() => {
@@ -173,6 +200,24 @@ function ReceiveBody({
     setSelected((current) =>
       checked ? [...current, serialNumberId] : current.filter((id) => id !== serialNumberId),
     );
+  }
+
+  function requestAccept() {
+    if (pending || state.kind !== "ready" || ticked.length === 0) return;
+    setConfirmKind("accept");
+  }
+
+  function requestReject() {
+    if (pending || !requestReturn || ticked.length === 0) return;
+    setConfirmKind("reject");
+  }
+
+  function continueConfirm() {
+    const next = confirmKind;
+    if (!next || pending) return;
+    setConfirmKind(null);
+    if (next === "accept") submitAccept();
+    else submitReject();
   }
 
   function submitAccept() {
@@ -220,6 +265,37 @@ function ReceiveBody({
       onClose();
     });
   }
+
+  const confirmCopy = confirmKind ? receiveConfirmCopy(confirmKind, target.sapDocType) : null;
+  const confirmDialog = (
+    <AlertDialog
+      open={confirmKind !== null}
+      onOpenChange={(open) => {
+        if (!open && !pending) setConfirmKind(null);
+      }}
+    >
+      <AlertDialogContent className="z-[80]" overlayClassName="z-[70]">
+        <AlertDialogHeader>
+          <AlertDialogTitle>{confirmCopy?.question ?? "Are you sure?"}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {confirmCopy?.detail ?? "No leaves this screen as it is."}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={pending}>No</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={pending}
+            onClick={(event) => {
+              event.preventDefault();
+              continueConfirm();
+            }}
+          >
+            Yes
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
 
   if (step === "reject") {
     const overallDefault = remarks.trim() || DEFAULT_REJECT_REMARKS;
@@ -300,12 +376,13 @@ function ReceiveBody({
           <Button variant="outline" className="max-sm:h-11" disabled={pending} onClick={() => setStep("select")}>
             Back
           </Button>
-          <Button variant="destructive" className="max-sm:h-11" disabled={pending} onClick={submitReject}>
+          <Button variant="destructive" className="max-sm:h-11" disabled={pending} onClick={requestReject}>
             {pending
               ? "Posting to SAP…"
               : `Confirm reject and post ${target.sapDocType === "ITR" ? "IT" : "Return"}`}
           </Button>
         </DialogFooter>
+        {confirmDialog}
       </>
     );
   }
@@ -397,12 +474,13 @@ function ReceiveBody({
           <Button
             disabled={pending || !canAct}
             className="bg-emerald-600 text-white hover:bg-emerald-700 max-sm:h-11"
-            onClick={submitAccept}
+            onClick={requestAccept}
           >
             Receive {scope}
           </Button>
         ) : null}
       </DialogFooter>
+      {confirmDialog}
     </>
   );
 }

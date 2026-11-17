@@ -680,6 +680,47 @@ function ExtraSerialsTable({
   );
 }
 
+type PulloutSaveConfirm =
+  | { kind: "save-list" }
+  | { kind: "send" }
+  | { kind: "approve-all" }
+  | { kind: "reject" }
+  | { kind: "approve-unit"; serialNumberId: string; serialNo: string };
+
+function pulloutSaveConfirmCopy(confirm: PulloutSaveConfirm): { question: string; detail: string } {
+  switch (confirm.kind) {
+    case "save-list":
+      return {
+        question: "Are you sure you want to save this list?",
+        detail: "The waybill, courier, schedule, and units on this list are saved.",
+      };
+    case "send":
+      return {
+        question: "Are you sure you want to send this pull-out?",
+        detail: "Sending puts the units in transit and ends the pull-out.",
+      };
+    case "approve-all":
+      return {
+        question: "Are you sure you want to approve all units?",
+        detail: "Every unit still waiting on this pull-out is approved.",
+      };
+    case "reject":
+      return {
+        question: "Are you sure you want to reject this pull-out?",
+        detail: "This pull-out is rejected and the units go back to where they were pulled from.",
+      };
+    case "approve-unit":
+      return {
+        question: "Are you sure you want to approve this unit?",
+        detail: `Serial ${confirm.serialNo} is approved on this pull-out.`,
+      };
+    default: {
+      const unreachable: never = confirm;
+      return unreachable;
+    }
+  }
+}
+
 function AddSerialsPanel({
   state,
   rows,
@@ -763,6 +804,7 @@ export function PulloutDetailView({
   const [checklistOptions, setChecklistOptions] =
     useState<PulloutChecklistOptions>(EMPTY_CHECKLIST_OPTIONS);
   const [deleteTarget, setDeleteTarget] = useState<ItemRow | null>(null);
+  const [saveConfirm, setSaveConfirm] = useState<PulloutSaveConfirm | null>(null);
   useEffect(() => {
     if (!addOpen || !canEditList) return;
     let cancelled = false;
@@ -898,11 +940,66 @@ export function PulloutDetailView({
     );
   }
 
-  function submitList(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function requestSaveList() {
     if (!canEditList || pending || !canSaveList) return;
     if (detail.status.code === PULLOUT_WORKFLOW_CODE.pending_logistics && !listDirty) return;
-    saveList();
+    setSaveConfirm({ kind: "save-list" });
+  }
+
+  function submitList(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    requestSaveList();
+  }
+
+  function requestSend() {
+    if (!showSend || pending || listDirty) return;
+    setSaveConfirm({ kind: "send" });
+  }
+
+  function requestApproveAll() {
+    if (!showApprove || pending) return;
+    setSaveConfirm({ kind: "approve-all" });
+  }
+
+  function requestRejectPullout() {
+    if (!showReject || pending) return;
+    setSaveConfirm({ kind: "reject" });
+  }
+
+  function requestApproveUnit(row: ItemRow) {
+    if (pending || row.decision === PULLOUT_LINE_DECISION.accepted) return;
+    setSaveConfirm({
+      kind: "approve-unit",
+      serialNumberId: row.serialNumberId,
+      serialNo: row.serialNo,
+    });
+  }
+
+  function continueSaveConfirm() {
+    const next = saveConfirm;
+    if (!next || pending) return;
+    setSaveConfirm(null);
+    switch (next.kind) {
+      case "save-list":
+        saveList();
+        return;
+      case "send":
+        run(() => actions.release(detail.id), "Pull-out is in transit");
+        return;
+      case "approve-all":
+        run(() => actions.approve(detail.id), "Pull-out approved");
+        return;
+      case "reject":
+        run(() => actions.reject(detail.id), "Pull-out rejected");
+        return;
+      case "approve-unit":
+        run(() => actions.approveLine(detail.id, next.serialNumberId), "Unit approved");
+        return;
+      default: {
+        const unreachable: never = next;
+        return unreachable;
+      }
+    }
   }
 
   function updateExtraChoice(serialNumberId: string, patch: Partial<PulloutLineChoice>) {
@@ -954,7 +1051,7 @@ export function PulloutDetailView({
             size="sm"
             disabled={pending}
             aria-label={`Approve ${row.serialNo}`}
-            onClick={() => run(() => actions.approveLine(detail.id, row.serialNumberId), "Unit approved")}
+            onClick={() => requestApproveUnit(row)}
           >
             Approve
           </Button>
@@ -1040,7 +1137,7 @@ export function PulloutDetailView({
           <Button
             type="button"
             disabled={pending}
-            onClick={() => run(() => actions.approve(detail.id), "Pull-out approved")}
+            onClick={requestApproveAll}
           >
             Approve all
           </Button>
@@ -1049,7 +1146,7 @@ export function PulloutDetailView({
               type="button"
               variant="outline"
               disabled={pending}
-              onClick={() => run(() => actions.reject(detail.id), "Pull-out rejected")}
+              onClick={requestRejectPullout}
             >
               Reject
             </Button>
@@ -1082,7 +1179,7 @@ export function PulloutDetailView({
             type="button"
             disabled={pending || listDirty}
             title={listDirty ? "Save the list first" : undefined}
-            onClick={() => run(() => actions.release(detail.id), "Pull-out is in transit")}
+            onClick={requestSend}
           >
             Send
           </Button>
@@ -1209,6 +1306,8 @@ export function PulloutDetailView({
     </RecordSheet>
   );
 
+  const saveConfirmCopy = saveConfirm ? pulloutSaveConfirmCopy(saveConfirm) : null;
+
   return (
     <div className="space-y-6">
       <DocumentDetailBand
@@ -1239,6 +1338,33 @@ export function PulloutDetailView({
       ) : (
         sheet
       )}
+      <AlertDialog
+        open={saveConfirm !== null}
+        onOpenChange={(open) => {
+          if (!open && !pending) setSaveConfirm(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{saveConfirmCopy?.question ?? "Are you sure?"}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {saveConfirmCopy?.detail ?? "No leaves this screen as it is."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>No</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={pending}
+              onClick={(event) => {
+                event.preventDefault();
+                continueSaveConfirm();
+              }}
+            >
+              Yes
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {

@@ -4,6 +4,16 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import type { SaleDetailsPayload } from "@/app/(app)/sales/_components/sale-details-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -24,6 +34,7 @@ import {
   type ProcessReturnPayload,
 } from "@/features/sales/actions/sales.actions";
 import {
+  isDealerInitiatedDocumentTypeName,
   isReplacementDocumentTypeName,
   isReturnDocumentTypeName,
   isServiceDocumentTypeName,
@@ -68,6 +79,9 @@ export function ProcessReturnDialog({
 }: ProcessReturnDialogProps) {
   const [pending, startTransition] = useTransition();
   const [loading, setLoading] = useState(true);
+  const [confirmAction, setConfirmAction] = useState<
+    ProcessReturnPayload["actionType"] | null
+  >(null);
   const [documentTypes, setDocumentTypes] = useState<LookupOption[]>([]);
   const [problems, setProblems] = useState<LookupOption[]>([]);
   const [serviceCenters, setServiceCenters] = useState<LookupOption[]>([]);
@@ -166,6 +180,24 @@ export function ProcessReturnDialog({
       toast.error("Selected document type requires Return, not Replacement");
       return;
     }
+    setConfirmAction(actionType);
+  }
+
+  function approvalNote(documentTypeName: string | null | undefined): string {
+    if (isServiceDocumentTypeName(documentTypeName)) {
+      return "This request is subject for approval of the service department.";
+    }
+    if (isDealerInitiatedDocumentTypeName(documentTypeName)) {
+      return "This request waits for the Team Leader Approval.";
+    }
+    return "This request is automatically approved when you send it.";
+  }
+
+  function confirmSubmit() {
+    const actionType = confirmAction;
+    if (!actionType) return;
+    const nextStep = approvalNote(selectedDocType?.name);
+    setConfirmAction(null);
 
     const payload: ProcessReturnPayload = {
       saleDetailId,
@@ -198,6 +230,7 @@ export function ProcessReturnDialog({
         actionType === "replacement"
           ? "Replacement request submitted"
           : "Return request submitted",
+        { description: nextStep },
       );
       onOpenChange(false);
       onSubmitted();
@@ -205,7 +238,13 @@ export function ProcessReturnDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next && confirmAction) return;
+        onOpenChange(next);
+      }}
+    >
       <DialogContent className="flex max-h-[90svh] w-[min(calc(100vw-2rem),36rem)] max-w-xl flex-col overflow-hidden">
         <DialogHeader className="shrink-0 pr-8 text-left">
           <DialogTitle>Process Return</DialogTitle>
@@ -440,6 +479,29 @@ export function ProcessReturnDialog({
           ) : null}
         </DialogFooter>
       </DialogContent>
+      <AlertDialog
+        open={confirmAction !== null}
+        onOpenChange={(next) => {
+          if (!next) setConfirmAction(null);
+        }}
+      >
+        <AlertDialogContent className="z-[80]" overlayClassName="z-[80]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmAction === "replacement"
+                ? "Are you sure you want to replace this serial no.?"
+                : "Are you sure you want to return this serial no.?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {approvalNote(selectedDocType?.name)}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmSubmit}>Yes</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }
