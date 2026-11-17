@@ -66,6 +66,22 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.94.6",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T11:45:00+08:00",
+    title: "Side menu section labels",
+    highlights: [
+      "Side menus now show section labels, the same way Inventory does.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Side menus now show section labels, the same way Inventory does.",
+      },
+    ],
+  },
+  {
     version: "0.94.5",
     date: "2026-11-17",
     releasedAt: "2026-11-17T11:00:00+08:00",

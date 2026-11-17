@@ -320,11 +320,11 @@ export function SapIntegrationPanel({
     return cols;
   }, [indexOffset]);
 
-  const sendLabel = pending
-    ? "Sending…"
-    : canSend
-      ? "Send waiting documents"
-      : "Nothing is waiting to send.";
+  // DO NOT UNCOMMENT THIS - This is the button to send the waiting documents to SAP - const sendLabel = pending
+  //   ? "Sending…"
+  //   : canSend
+  //     ? "Send waiting documents"
+  //     : "Nothing is waiting to send.";
 
   const emptyMessage = committedQuery ? EMPTY_SEARCH : view ? EMPTY_GROUP : EMPTY_QUEUE;
 
@@ -332,7 +332,7 @@ export function SapIntegrationPanel({
     <div className="space-y-4">
       <GlobalKpiCards items={cards} />
 
-      {/* <div className="space-y-2">
+      {/* DO NOT UNCOMMENT THIS - This is the button to send the waiting documents to SAP <div className="space-y-2">
         <Button
           type="button"
           className="max-sm:h-11"
