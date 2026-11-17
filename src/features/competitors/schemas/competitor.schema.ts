@@ -25,6 +25,7 @@ export const competitorListFilterSchema = z.object({
 
 export const createCompetitorObservationSchema = z.object({
   competitorId: z.string().trim().min(1, "Competitor is required"),
+  branchId: z.string().trim().min(1, "Branch is required"),
   competitorBrandId: optionalId,
   competitorModelId: optionalId,
   price: z
