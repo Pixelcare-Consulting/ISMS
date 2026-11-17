@@ -37,7 +37,10 @@ export default async function PickupsPage({ searchParams }: PickupsPageProps) {
       </SectionPageLead>
       <PulloutKpisStrip kpis={kpis} />
       <PulloutsPanel
-        pullouts={pullouts}
+        pullouts={{
+          ...pullouts,
+          items: pullouts.items.map(({ branch, ...row }) => ({ ...row, place: branch })),
+        }}
         capabilities={capabilities}
         workflowStatuses={workflowStatuses}
         currentUserName={currentUserName}

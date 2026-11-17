@@ -92,7 +92,7 @@ function sentDetail(
     scheduledByName: null,
     actualScheduledDate: null,
     status: { code: "in_transit", name: "Pull-out in transit", color: null },
-    branch: { id: "b1", name: "Branch A" },
+    place: { id: "b1", name: "Branch A" },
     warehouse: null,
     warehouseLocation: null,
     reason: null,
@@ -110,7 +110,7 @@ function renderView(capabilities = logistics, detail = sentDetail()) {
     <PulloutDetailView
       detail={detail}
       capabilities={capabilities}
-      branchScope={null}
+      placeScope={null}
       workflowStatuses={[]}
     />,
   );

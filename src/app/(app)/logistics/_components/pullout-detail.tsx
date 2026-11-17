@@ -28,6 +28,10 @@ import {
   type PulloutLineChoice,
 } from "@/app/(app)/logistics/_components/pullout-line-fields";
 import { pulloutPrintDocument } from "@/app/(app)/logistics/_components/pullout-print";
+import {
+  usePulloutSource,
+  type PulloutSource,
+} from "@/app/(app)/logistics/_components/pullout-source";
 import { RecordedProblemCell } from "@/app/(app)/logistics/_components/recorded-problem-cell";
 import { pulloutAuditLabel, PulloutTracker } from "@/app/(app)/logistics/_components/pullout-tracker";
 import {
@@ -60,25 +64,13 @@ import {
   PULLOUT_ATTACHMENT_MAX_FILES,
   PULLOUT_ATTACHMENT_OPEN_CODES,
 } from "@/features/logistics/constants/pullout-attachments";
-import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
+import type { PulloutActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import {
   PULLOUT_WORKFLOW_CODE,
   workflowStatusLabel,
   type WorkflowStatusOption,
 } from "@/features/logistics/constants/workflow-codes";
-import {
-  approvePulloutLineAction,
-  approvePulloutTlAction,
-  checkPulloutSapAction,
-  deletePulloutLineAction,
-  listPulloutChecklistOptionsAction,
-  listPulloutSerialsAction,
-  rejectPulloutAction,
-  releasePulloutAction,
-  updatePulloutListAction,
-  uploadPulloutAttachmentAction,
-  type PulloutChecklistOptions,
-} from "@/features/logistics/actions/logistics.actions";
+import type { PulloutChecklistOptions } from "@/features/logistics/actions/logistics.actions";
 import {
   manilaDateTimeInputValue,
   scheduleDateInputValue,
@@ -131,8 +123,8 @@ const MANILA_DATE_TIME = new Intl.DateTimeFormat("en-PH", {
   timeZone: "Asia/Manila",
 });
 
-function inScope(scope: string[] | null, branchId: string): boolean {
-  return scope === null || scope.includes(branchId);
+function inScope(scope: string[] | null, placeId: string): boolean {
+  return scope === null || scope.includes(placeId);
 }
 
 function formatWhen(value: string | null | undefined, withTime: boolean): string | null {
@@ -376,7 +368,7 @@ function sameIds(left: readonly string[], right: readonly string[]): boolean {
   return left.every((id) => ids.has(id));
 }
 
-function stageDescription(code: string): string {
+function stageDescription(code: string, copy: PulloutSource["copy"]): string {
   switch (code) {
     case PULLOUT_WORKFLOW_CODE.pending_tl:
       return "Team Lead approves or rejects each unit, or decides the whole pull-out.";
@@ -385,20 +377,21 @@ function stageDescription(code: string): string {
     case PULLOUT_WORKFLOW_CODE.pending_logistics:
       return "The list is saved. Send it when the units are ready to leave.";
     case PULLOUT_WORKFLOW_CODE.in_transit:
-      return "These units left the branch. The pull-out ends here.";
+      return copy.sentStage;
     default:
       return "Who asked for this pull-out and what it covers.";
   }
 }
 
 function AttachmentLinks({ attachments }: { attachments: PulloutDetail["attachments"] }) {
+  const { attachmentHref } = usePulloutSource();
   if (attachments.length === 0) return <span className="text-muted-foreground">No files attached.</span>;
   return (
     <ul className="space-y-1">
       {attachments.map((attachment) => (
         <li key={attachment.id}>
           <a
-            href={`/api/logistics/pullout-attachments/${encodeURIComponent(attachment.id)}`}
+            href={attachmentHref(attachment.id)}
             target="_blank"
             rel="noopener noreferrer"
             className="break-all underline underline-offset-2 hover:text-primary"
@@ -422,6 +415,7 @@ function RequestorSection({
   pending: boolean;
   onAttach: (file: File) => void;
 }) {
+  const { copy } = usePulloutSource();
   const remarks = detail.notes?.trim() ?? "";
 
   function pickFile(event: ChangeEvent<HTMLInputElement>) {
@@ -431,9 +425,9 @@ function RequestorSection({
   }
 
   return (
-    <RecordSection title="Requestor" description={stageDescription(detail.status.code)} divided>
+    <RecordSection title="Requestor" description={stageDescription(detail.status.code, copy)} divided>
       <RecordFieldGrid>
-        <RecordReadout label="Branch Name" value={textOrDash(detail.branch.name)} />
+        <RecordReadout label={copy.placeLabel} value={textOrDash(detail.place.name)} />
         <RecordReadout label="Created By" value={textOrDash(detail.createdByName)} />
         <RecordReadout label="Created Date" value={textOrDash(formatWhen(detail.createdAt, false))} />
         <RecordReadout
@@ -653,12 +647,14 @@ function ExtraSerialsTable({
   selected,
   onToggle,
   details,
+  emptyMessage,
 }: {
   rows: ExtraSerial[];
   pending: boolean;
   selected: string[];
   onToggle: (serialNumberId: string, on: boolean) => void;
   details: ExtraSerialDetails;
+  emptyMessage: string;
 }) {
   return (
     <div className="space-y-2">
@@ -676,7 +672,7 @@ function ExtraSerialsTable({
         ]}
         searchPlaceholder="Search serials…"
         itemLabel="serial"
-        emptyMessage="No other free serials at this branch."
+        emptyMessage={emptyMessage}
         noMatchMessage="No matching serials."
         minWidth="96rem"
       />
@@ -692,6 +688,7 @@ function AddSerialsPanel({
   onToggle,
   onRetry,
   details,
+  emptyMessage,
 }: {
   state: ExtraSerialLoad;
   rows: ExtraSerial[];
@@ -700,6 +697,7 @@ function AddSerialsPanel({
   onToggle: (serialNumberId: string, on: boolean) => void;
   onRetry: () => void;
   details: ExtraSerialDetails;
+  emptyMessage: string;
 }) {
   switch (state) {
     case "idle":
@@ -722,6 +720,7 @@ function AddSerialsPanel({
           selected={selected}
           onToggle={onToggle}
           details={details}
+          emptyMessage={emptyMessage}
         />
       );
     default: {
@@ -734,21 +733,23 @@ function AddSerialsPanel({
 export function PulloutDetailView({
   detail,
   capabilities,
-  branchScope,
+  placeScope,
   workflowStatuses,
 }: {
   detail: PulloutDetail;
-  capabilities: LogisticsActionCapabilities;
-  branchScope: string[] | null;
+  capabilities: PulloutActionCapabilities;
+  /** Branch or service center ids the person may act on. Null: all. */
+  placeScope: string[] | null;
   workflowStatuses: readonly WorkflowStatusOption[];
 }) {
   const router = useRouter();
+  const { actions, copy, listHref } = usePulloutSource();
   const [pending, startTransition] = useTransition();
   const canEditList =
     (detail.status.code === PULLOUT_WORKFLOW_CODE.for_pullout ||
       detail.status.code === PULLOUT_WORKFLOW_CODE.pending_logistics) &&
     capabilities.canManage &&
-    inScope(branchScope, detail.branch.id);
+    inScope(placeScope, detail.place.id);
   const [extraSerials, setExtraSerials] = useState<ExtraSerial[]>([]);
   const [waybillNo, setWaybillNo] = useState(detail.waybillNo ?? "");
   const [courierName, setCourierName] = useState(detail.courierName ?? "");
@@ -765,7 +766,7 @@ export function PulloutDetailView({
   useEffect(() => {
     if (!addOpen || !canEditList) return;
     let cancelled = false;
-    void listPulloutSerialsAction(detail.branch.id).then((result) => {
+    void actions.listSerials(detail.place.id).then((result) => {
       if (cancelled) return;
       if ("serials" in result) {
         setExtraSerials(
@@ -788,12 +789,12 @@ export function PulloutDetailView({
     return () => {
       cancelled = true;
     };
-  }, [addOpen, canEditList, detail.branch.id, extrasAttempt]);
+  }, [actions, addOpen, canEditList, detail.place.id, extrasAttempt]);
 
   useEffect(() => {
     if (!addOpen || !canEditList) return;
     let cancelled = false;
-    void listPulloutChecklistOptionsAction().then((result) => {
+    void actions.listChecklistOptions().then((result) => {
       if (cancelled) return;
       if (result.error) toast.error(result.error);
       else setChecklistOptions(result);
@@ -801,7 +802,7 @@ export function PulloutDetailView({
     return () => {
       cancelled = true;
     };
-  }, [addOpen, canEditList]);
+  }, [actions, addOpen, canEditList]);
 
   // "loading" is set by the handlers that start a fetch, not inside the effect.
   function toggleAddPanel() {
@@ -844,14 +845,18 @@ export function PulloutDetailView({
   const inTransit = detail.status.code === PULLOUT_WORKFLOW_CODE.in_transit;
   // Receipts and in-transit rejections only exist on pull-outs from before receiving was dropped.
   const showReceipts = detail.lines.some((line) => line.receivedAt || line.rejectedAt);
-  const returnSlip = pulloutPrintDocument(detail);
+  const returnSlip = pulloutPrintDocument(detail, copy.printPlaceCopy);
+  const checkSapAction = actions.checkSap;
   const canCheckSap =
-    detail.canCheckSap && capabilities.canManage && inScope(branchScope, detail.branch.id);
+    checkSapAction !== null &&
+    detail.canCheckSap &&
+    capabilities.canManage &&
+    inScope(placeScope, detail.place.id);
   const showSapDocument =
     detail.canCheckSap || detail.lines.some((line) => Boolean(line.sapDocument || line.redelivery));
   const canAttach =
     capabilities.canCreate &&
-    inScope(branchScope, detail.branch.id) &&
+    inScope(placeScope, detail.place.id) &&
     PULLOUT_ATTACHMENT_OPEN_CODES.includes(detail.status.code) &&
     detail.attachments.length < PULLOUT_ATTACHMENT_MAX_FILES;
   const listDirty =
@@ -875,7 +880,7 @@ export function PulloutDetailView({
   function saveList() {
     run(
       () =>
-        updatePulloutListAction(detail.id, {
+        actions.updateList(detail.id, {
           waybillNo,
           courierName,
           scheduledAt,
@@ -911,19 +916,20 @@ export function PulloutDetailView({
     const formData = new FormData();
     formData.set("pulloutId", detail.id);
     formData.set("file", file);
-    run(() => uploadPulloutAttachmentAction(formData), "File attached");
+    run(() => actions.uploadAttachment(formData), "File attached");
   }
 
   function confirmDelete() {
     if (!deleteTarget) return;
     const { serialNumberId } = deleteTarget;
     setDeleteTarget(null);
-    run(() => deletePulloutLineAction(detail.id, serialNumberId), "Unit rejected from this pull-out");
+    run(() => actions.deleteLine(detail.id, serialNumberId), "Unit rejected from this pull-out");
   }
 
   function checkSap() {
+    if (!checkSapAction) return;
     startTransition(async () => {
-      const response = await checkPulloutSapAction(detail.id);
+      const response = await checkSapAction(detail.id);
       if ("error" in response) {
         toast.error(response.error);
         return;
@@ -948,7 +954,7 @@ export function PulloutDetailView({
             size="sm"
             disabled={pending}
             aria-label={`Approve ${row.serialNo}`}
-            onClick={() => run(() => approvePulloutLineAction(detail.id, row.serialNumberId), "Unit approved")}
+            onClick={() => run(() => actions.approveLine(detail.id, row.serialNumberId), "Unit approved")}
           >
             Approve
           </Button>
@@ -1021,7 +1027,7 @@ export function PulloutDetailView({
     if (!inTransit) return null;
     return (
       <p className="text-sm text-muted-foreground">
-        {`These units left ${detail.branch.name} and no longer count in its branch inventory. In SAP, put ${detail.pulloutNo} in the "Pull Out Number Generated in ISMS" row field of the IT or Return, then use Check SAP: the units it lists become Pulled out. A DR copied from that Return later is picked up the same way.`}
+        {copy.sentNote(detail)}
       </p>
     );
   }
@@ -1034,7 +1040,7 @@ export function PulloutDetailView({
           <Button
             type="button"
             disabled={pending}
-            onClick={() => run(() => approvePulloutTlAction(detail.id), "Pull-out approved")}
+            onClick={() => run(() => actions.approve(detail.id), "Pull-out approved")}
           >
             Approve all
           </Button>
@@ -1043,7 +1049,7 @@ export function PulloutDetailView({
               type="button"
               variant="outline"
               disabled={pending}
-              onClick={() => run(() => rejectPulloutAction(detail.id), "Pull-out rejected")}
+              onClick={() => run(() => actions.reject(detail.id), "Pull-out rejected")}
             >
               Reject
             </Button>
@@ -1076,7 +1082,7 @@ export function PulloutDetailView({
             type="button"
             disabled={pending || listDirty}
             title={listDirty ? "Save the list first" : undefined}
-            onClick={() => run(() => releasePulloutAction(detail.id), "Pull-out is in transit")}
+            onClick={() => run(() => actions.release(detail.id), "Pull-out is in transit")}
           >
             Send
           </Button>
@@ -1183,6 +1189,7 @@ export function PulloutDetailView({
               choices: extraChoices,
               onChange: updateExtraChoice,
             }}
+            emptyMessage={copy.noOtherFreeSerials}
           />
         ) : null}
         {canEditList && addedMissing.length > 0 ? (
@@ -1205,7 +1212,7 @@ export function PulloutDetailView({
   return (
     <div className="space-y-6">
       <DocumentDetailBand
-        backHref="/logistics/pickups"
+        backHref={listHref}
         backLabel="Back to pull-outs"
         title={detail.pulloutNo}
         statusLine={
@@ -1242,7 +1249,7 @@ export function PulloutDetailView({
           <AlertDialogHeader>
             <AlertDialogTitle>{`Reject ${deleteTarget?.serialNo ?? "this unit"}?`}</AlertDialogTitle>
             <AlertDialogDescription>
-              The unit comes off this pull-out and goes back to its branch status.
+              {copy.rejectUnitDescription}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

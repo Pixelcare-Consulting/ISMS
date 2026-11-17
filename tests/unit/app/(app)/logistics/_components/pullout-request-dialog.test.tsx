@@ -4,12 +4,16 @@ import "@testing-library/jest-dom";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { PulloutRequestDialog } from "@/app/(app)/logistics/_components/pullout-request-dialog";
-import { listPulloutSerialsAction } from "@/features/logistics/actions/logistics.actions";
+import {
+  createPulloutAction,
+  listPulloutSerialsAction,
+} from "@/features/logistics/actions/logistics.actions";
 import type { PulloutSerialOption } from "@/features/logistics/services/pullout-posting.service";
 
 jest.mock("sonner", () => ({ toast: { error: jest.fn(), success: jest.fn() } }));
 
 jest.mock("@/features/logistics/actions/logistics.actions", () => ({
+  createPulloutAction: jest.fn(async () => ({ success: true, id: "pullout-1", pulloutNo: "PLT-1" })),
   listBranchesForLogisticsAction: jest.fn(async () => [
     { id: "branch-a", name: "Branch A" },
     { id: "branch-b", name: "Branch B" },
@@ -26,6 +30,7 @@ jest.mock("@/features/logistics/actions/logistics.actions", () => ({
 }));
 
 const listSerials = jest.mocked(listPulloutSerialsAction);
+const createPullout = jest.mocked(createPulloutAction);
 
 function serial(
   serialNumberId: string,
@@ -44,7 +49,7 @@ function serial(
 }
 
 function renderDialog(onOpenChange = jest.fn()) {
-  const props = { onSubmit: jest.fn(async () => ({})), onCreated: jest.fn(), onOpenChange };
+  const props = { onCreated: jest.fn(), onOpenChange };
   return { ...render(<PulloutRequestDialog open {...props} />), props };
 }
 
@@ -284,7 +289,7 @@ describe("PulloutRequestDialog units", () => {
 
   it("submits a defective unit with its problem and no classification or reason", async () => {
     useBothUnitTypes();
-    const { props } = renderDialog();
+    renderDialog();
     await formShown();
     await chooseBranch("Branch A");
     await pickUnit("BRANCH-A-DEF");
@@ -296,8 +301,8 @@ describe("PulloutRequestDialog units", () => {
       fireEvent.click(submitButton());
     });
 
-    expect(props.onSubmit).toHaveBeenCalledTimes(1);
-    const [input] = props.onSubmit.mock.calls[0] as unknown as [
+    expect(createPullout).toHaveBeenCalledTimes(1);
+    const [input] = createPullout.mock.calls[0] as unknown as [
       {
         lines: {
           pulloutClassificationIds: string[];
@@ -375,7 +380,7 @@ describe("PulloutRequestDialog branch", () => {
   });
 
   it("names no destination warehouse and sends none: the pull-out ends in transit", async () => {
-    const { props } = renderDialog();
+    renderDialog();
     await formShown();
     await chooseBranch("Branch A");
     await pickUnitDetails("BRANCH-A-UNIT");
@@ -385,8 +390,8 @@ describe("PulloutRequestDialog branch", () => {
       fireEvent.click(submitButton());
     });
 
-    expect(props.onSubmit).toHaveBeenCalledTimes(1);
-    const [input] = props.onSubmit.mock.calls[0] as unknown as [Record<string, unknown>];
+    expect(createPullout).toHaveBeenCalledTimes(1);
+    const [input] = createPullout.mock.calls[0] as unknown as [Record<string, unknown>];
     expect(input.branchId).toBe("branch-a");
     expect(input).not.toHaveProperty("warehouseId");
   });

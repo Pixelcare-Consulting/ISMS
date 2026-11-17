@@ -4,6 +4,7 @@ import {
 } from "@/lib/auth/action-capabilities";
 import { hasPermission } from "@/lib/auth/permissions";
 import type { SalesActionCapabilities } from "@/features/sales/constants/sales-permissions";
+import type { PulloutActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 
 export const SC_INVENTORY_VIEW = "service_centers.inventory.view";
 export const SC_SALES_VIEW = "service_centers.sales.view";
@@ -49,7 +50,6 @@ export const SC_LOGISTICS_ACTION_CAPABILITIES = {
   canManage: SC_LOGISTICS_MANAGE,
   canAcceptDelivery: [SC_LOGISTICS_CREATE, SC_LOGISTICS_MANAGE],
   canApprovePullout: [SC_ORDERS_APPROVE, SC_LOGISTICS_MANAGE],
-  canCompletePullout: SC_LOGISTICS_MANAGE,
 } as const;
 
 export type ScLogisticsActionCapabilities = ResolvedCapabilities<
@@ -73,6 +73,22 @@ export function resolveScSalesCapabilities(
     canEvaluateReturn: false,
     canApproveReturn: false,
     canCompleteReturn: false,
+  };
+}
+
+/**
+ * SC pull-outs use the branch pull-out list and detail page, so they resolve the same
+ * capability shape: create (request), Team Lead approve/reject, and Logistics list/Send.
+ */
+export function resolveScPulloutCapabilities(
+  permissions: string[] | undefined,
+): PulloutActionCapabilities {
+  const caps = resolveScLogisticsCapabilities(permissions);
+  return {
+    canCreate: caps.canCreate,
+    canManage: caps.canManage,
+    canApproveTl: caps.canApprovePullout,
+    canRejectTransfer: caps.canApprovePullout,
   };
 }
 

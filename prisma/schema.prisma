@@ -433,6 +433,10 @@ model User {
   branchSalesTransactionsCreated     BranchSalesTransaction[]      @relation("BranchSalesTransactionCreatedBy")
   serviceCenterSalesCreated          ServiceCenterSalesTransaction[] @relation("ServiceCenterSalesTransactionCreatedBy")
   branchPulloutsScheduled            BranchPullout[]               @relation("BranchPulloutScheduledBy")
+  serviceCenterPulloutsCreated       ServiceCenterPullout[]        @relation("ServiceCenterPulloutCreatedBy")
+  serviceCenterPulloutsScheduled     ServiceCenterPullout[]        @relation("ServiceCenterPulloutScheduledBy")
+  serviceCenterPulloutDetailsDecided ServiceCenterPulloutDetail[]  @relation("ServiceCenterPulloutDetailDecidedBy")
+  serviceCenterPulloutAttachmentsUploaded ServiceCenterPulloutAttachment[] @relation("ServiceCenterPulloutAttachmentUploadedBy")
   branchDeliveriesScheduled          BranchDelivery[]              @relation("BranchDeliveryScheduledBy")
   branchTransfersScheduled           BranchTransfer[]              @relation("BranchTransferScheduledBy")
   branchTransferLinesDecided         BranchTransferLine[]          @relation("BranchTransferLineDecidedBy")
@@ -1164,6 +1168,7 @@ model ProblemDescription {
   tenant               Tenant                                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branchReturnRequests BranchReturnRequest[]
   pulloutLines         BranchPulloutLineProblemDescription[]
+  scPulloutDetails     ServiceCenterPulloutDetailProblemDescription[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -1231,6 +1236,7 @@ model PulloutClassification {
 
   tenant              Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   lineClassifications BranchPulloutLineClassification[]
+  scDetailClassifications ServiceCenterPulloutDetailClassification[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -1247,6 +1253,7 @@ model UnitPackingCondition {
 
   tenant                Tenant                              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   linePackingConditions BranchPulloutLinePackingCondition[]
+  scDetailPackingConditions ServiceCenterPulloutDetailPackingCondition[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -1263,6 +1270,7 @@ model AccessoryCompleteness {
 
   tenant                     Tenant                                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   lineAccessoryCompletenesses BranchPulloutLineAccessoryCompleteness[]
+  scDetailAccessoryCompletenesses ServiceCenterPulloutDetailAccessoryCompleteness[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -1755,6 +1763,8 @@ model ReasonStatusCode {
   serviceCenterDeliveries       ServiceCenterDelivery[]
   scPulloutsWorkflow            ServiceCenterPullout[]         @relation("ScPulloutWorkflowStatus")
   scPulloutsReasonCode          ServiceCenterPullout[]         @relation("ScPulloutReasonCode")
+  scPulloutDetailsReason        ServiceCenterPulloutDetail[]   @relation("ScPulloutDetailReason")
+  scPulloutDetailPriorStatuses  ServiceCenterPulloutDetail[]   @relation("ScPulloutDetailPriorStatus")
   branchSalesTransactionDetails BranchSalesTransactionDetail[]
   serviceCenterSalesTransactionDetails ServiceCenterSalesTransactionDetail[]
 
@@ -3959,17 +3969,25 @@ model ServiceCenterReturnRequest {
   @@map("service_center_return_requests")
 }
 
+/// Service center pull-out. Same flow as `BranchPullout` (request → TL approval → logistics
+/// list → Send), on the SC ledger. It ends at Send with the units DIT; nothing posts to SAP.
 model ServiceCenterPullout {
   id                      String    @id @default(cuid())
   tenantId                String    @map("tenant_id")
   serviceCenterId         String    @map("service_center_id")
+  /// Set on pull-outs made before SC pull-outs matched branch pull-outs. New pull-outs cover
+  /// units at any location of the center and leave it null.
   serviceCenterLocationId String?   @map("service_center_location_id")
   pulloutNo               String    @map("pullout_no")
   statusCodeId            String?   @map("status_code_id")
   reasonStatusId          String?   @map("reason_status_id")
   reasonStatusCodeId      String?   @map("reason_status_code_id")
   waybillNo               String?   @map("waybill_no")
+  courierName             String?   @map("courier_name")
   scheduledAt             DateTime? @map("scheduled_at")
+  actualScheduledDate     DateTime? @map("actual_scheduled_date")
+  scheduledById           String?   @map("scheduled_by_id")
+  createdById             String?   @map("created_by_id")
   notes                   String?
   createdAt               DateTime  @default(now()) @map("created_at")
   updatedAt               DateTime  @updatedAt @map("updated_at")
@@ -3980,24 +3998,104 @@ model ServiceCenterPullout {
   statusCode            ReasonStatusCode?                   @relation("ScPulloutWorkflowStatus", fields: [statusCodeId], references: [id], onDelete: SetNull)
   reasonStatus          ReasonStatus?                       @relation("ScPulloutReasonStatus", fields: [reasonStatusId], references: [id], onDelete: SetNull)
   reasonStatusCode      ReasonStatusCode?                   @relation("ScPulloutReasonCode", fields: [reasonStatusCodeId], references: [id], onDelete: SetNull)
+  scheduledBy           User?                               @relation("ServiceCenterPulloutScheduledBy", fields: [scheduledById], references: [id], onDelete: SetNull)
+  createdBy             User?                               @relation("ServiceCenterPulloutCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   details               ServiceCenterPulloutDetail[]
   approvalLevels        ServiceCenterPulloutApprovalLevel[]
+  attachments           ServiceCenterPulloutAttachment[]
 
   @@unique([tenantId, pulloutNo])
   @@index([tenantId, serviceCenterId])
+  @@index([statusCodeId])
+  @@index([scheduledById])
+  @@index([createdById])
   @@map("service_center_pullouts")
 }
 
+/// One unit on a service center pull-out. Mirrors `BranchPulloutLine` without the receiving
+/// and SAP columns: SC pull-outs end at Send.
 model ServiceCenterPulloutDetail {
-  id             String @id @default(cuid())
-  pulloutId      String @map("pullout_id")
-  serialNumberId String @map("serial_number_id")
+  id                String    @id @default(cuid())
+  pulloutId         String    @map("pullout_id")
+  serialNumberId    String    @map("serial_number_id")
+  /// STK or DEF before this pull-out held the unit.
+  priorStatusCodeId String?   @map("prior_status_code_id")
+  /// Team Lead's call on this unit: pending, then accepted. A declined unit's row is deleted.
+  decision          String    @default("pending")
+  decidedAt         DateTime? @map("decided_at")
+  decidedById       String?   @map("decided_by_id")
+  remarks           String?
+  /// Pull-out reason. A defective unit is always the DEF reason, with problem descriptions saying why.
+  reasonCodeId      String?   @map("reason_code_id")
 
-  pullout      ServiceCenterPullout @relation(fields: [pulloutId], references: [id], onDelete: Cascade)
-  serialNumber SerialNumber         @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
+  pullout                 ServiceCenterPullout                              @relation(fields: [pulloutId], references: [id], onDelete: Cascade)
+  serialNumber            SerialNumber                                      @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
+  priorStatusCode         ReasonStatusCode?                                 @relation("ScPulloutDetailPriorStatus", fields: [priorStatusCodeId], references: [id], onDelete: SetNull)
+  decidedBy               User?                                             @relation("ServiceCenterPulloutDetailDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+  reasonCode              ReasonStatusCode?                                 @relation("ScPulloutDetailReason", fields: [reasonCodeId], references: [id], onDelete: SetNull)
+  classifications         ServiceCenterPulloutDetailClassification[]
+  problemDescriptions     ServiceCenterPulloutDetailProblemDescription[]
+  packingConditions       ServiceCenterPulloutDetailPackingCondition[]
+  accessoryCompletenesses ServiceCenterPulloutDetailAccessoryCompleteness[]
 
   @@unique([pulloutId, serialNumberId])
+  @@index([serialNumberId])
+  @@index([priorStatusCodeId])
+  @@index([decidedById])
+  @@index([reasonCodeId])
   @@map("service_center_pullout_details")
+}
+
+model ServiceCenterPulloutDetailClassification {
+  id                      String @id @default(cuid())
+  pulloutDetailId         String @map("pullout_detail_id")
+  pulloutClassificationId String @map("pullout_classification_id")
+
+  pulloutDetail         ServiceCenterPulloutDetail @relation(fields: [pulloutDetailId], references: [id], onDelete: Cascade)
+  pulloutClassification PulloutClassification      @relation(fields: [pulloutClassificationId], references: [id], onDelete: Cascade)
+
+  @@unique([pulloutDetailId, pulloutClassificationId])
+  @@index([pulloutClassificationId])
+  @@map("service_center_pullout_detail_classifications")
+}
+
+model ServiceCenterPulloutDetailProblemDescription {
+  id                   String @id @default(cuid())
+  pulloutDetailId      String @map("pullout_detail_id")
+  problemDescriptionId String @map("problem_description_id")
+
+  pulloutDetail      ServiceCenterPulloutDetail @relation(fields: [pulloutDetailId], references: [id], onDelete: Cascade)
+  problemDescription ProblemDescription         @relation(fields: [problemDescriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([pulloutDetailId, problemDescriptionId])
+  @@index([problemDescriptionId])
+  @@map("service_center_pullout_detail_problem_descriptions")
+}
+
+model ServiceCenterPulloutDetailPackingCondition {
+  id                     String @id @default(cuid())
+  pulloutDetailId        String @map("pullout_detail_id")
+  unitPackingConditionId String @map("unit_packing_condition_id")
+
+  pulloutDetail        ServiceCenterPulloutDetail @relation(fields: [pulloutDetailId], references: [id], onDelete: Cascade)
+  unitPackingCondition UnitPackingCondition       @relation(fields: [unitPackingConditionId], references: [id], onDelete: Cascade)
+
+  @@unique([pulloutDetailId, unitPackingConditionId])
+  @@index([unitPackingConditionId])
+  @@map("service_center_pullout_detail_packing_conditions")
+}
+
+model ServiceCenterPulloutDetailAccessoryCompleteness {
+  id                      String @id @default(cuid())
+  pulloutDetailId         String @map("pullout_detail_id")
+  accessoryCompletenessId String @map("accessory_completeness_id")
+
+  pulloutDetail         ServiceCenterPulloutDetail @relation(fields: [pulloutDetailId], references: [id], onDelete: Cascade)
+  accessoryCompleteness AccessoryCompleteness      @relation(fields: [accessoryCompletenessId], references: [id], onDelete: Cascade)
+
+  @@unique([pulloutDetailId, accessoryCompletenessId])
+  @@index([accessoryCompletenessId])
+  @@map("service_center_pullout_detail_accessory_completeness")
 }
 
 model ServiceCenterPulloutApprovalLevel {
@@ -4008,12 +4106,31 @@ model ServiceCenterPulloutApprovalLevel {
   approvedAt   DateTime? @map("approved_at")
   approvedById String?   @map("approved_by_id")
   rejectedAt   DateTime? @map("rejected_at")
+  rejectedById String?   @map("rejected_by_id")
   comment      String?
 
   pullout ServiceCenterPullout @relation(fields: [pulloutId], references: [id], onDelete: Cascade)
 
   @@unique([pulloutId, level])
   @@map("service_center_pullout_approval_levels")
+}
+
+model ServiceCenterPulloutAttachment {
+  id           String   @id @default(cuid())
+  pulloutId    String   @map("pullout_id")
+  fileName     String   @map("file_name")
+  storagePath  String   @map("storage_path")
+  mimeType     String   @map("mime_type")
+  sizeBytes    Int      @map("size_bytes")
+  uploadedById String   @map("uploaded_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  pullout    ServiceCenterPullout @relation(fields: [pulloutId], references: [id], onDelete: Cascade)
+  uploadedBy User                 @relation("ServiceCenterPulloutAttachmentUploadedBy", fields: [uploadedById], references: [id])
+
+  @@index([pulloutId])
+  @@index([uploadedById])
+  @@map("service_center_pullout_attachments")
 }
 
 /// Pixelcare AI — private internal assistant conversations (per-user ownership).

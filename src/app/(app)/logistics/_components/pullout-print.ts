@@ -5,7 +5,6 @@ import type { PulloutDetail } from "@/features/logistics/services/pullout-postin
 
 type PrintedLine = PulloutDetail["lines"][number];
 
-const RETURN_SLIP_LEGEND = ["PAGE 1: BRANCH COPY", "PAGE 2: ACCOUNTING COPY"] as const;
 
 function joined(values: readonly (string | null | undefined)[]): string {
   return values
@@ -30,8 +29,11 @@ const DETAIL_COLUMNS: readonly {
   { label: "Remarks", value: (line) => joined([line.remarks]) },
 ];
 
-/** Pull-out slip. Null until the waybill, courier and schedule are saved, and on cancelled pull-outs. */
-export function pulloutPrintDocument(detail: PulloutDetail): SlipDocument | null {
+/**
+ * Pull-out slip. Null until the waybill, courier and schedule are saved, and on cancelled
+ * pull-outs. `placeCopy` names the first page's copy: "BRANCH" or "SERVICE CENTER".
+ */
+export function pulloutPrintDocument(detail: PulloutDetail, placeCopy: string): SlipDocument | null {
   if (detail.status.code === PULLOUT_WORKFLOW_CODE.cancelled) return null;
   if (!shipmentIsReady(detail)) return null;
   const lines = detail.lines.filter((line) => !line.rejectedAt);
@@ -44,7 +46,7 @@ export function pulloutPrintDocument(detail: PulloutDetail): SlipDocument | null
   return {
     title: "PULL-OUT SLIP",
     number: detail.pulloutNo,
-    customer: detail.branch.name,
+    customer: detail.place.name,
     // The slip shows a calendar date, so take the Manila date rather than the UTC one.
     date: formatManilaDate(detail.scheduledAt),
     address: "",
@@ -55,7 +57,7 @@ export function pulloutPrintDocument(detail: PulloutDetail): SlipDocument | null
       notes: [],
       details: shown.map((index) => cells[row][index]),
     })),
-    copyLegend: RETURN_SLIP_LEGEND,
+    copyLegend: [`PAGE 1: ${placeCopy} COPY`, "PAGE 2: ACCOUNTING COPY"],
     copiesPerPage: 2,
   };
 }

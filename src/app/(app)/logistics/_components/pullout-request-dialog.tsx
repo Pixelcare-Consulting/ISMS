@@ -3,18 +3,9 @@
 import { useEffect, useState, useTransition, type ReactNode } from "react";
 import { toast } from "sonner";
 
-import {
-  listBranchesForLogisticsAction,
-  listPulloutChecklistOptionsAction,
-  listPulloutSerialsAction,
-  type PulloutChecklistOptions,
-  uploadPulloutAttachmentAction,
-} from "@/features/logistics/actions/logistics.actions";
+import type { PulloutChecklistOptions } from "@/features/logistics/actions/logistics.actions";
 import { pulloutCondition } from "@/features/logistics/services/pullout-posting.planner";
-import type {
-  PulloutCreateInput,
-  PulloutSerialOption,
-} from "@/features/logistics/services/pullout-posting.service";
+import type { PulloutSerialOption } from "@/features/logistics/services/pullout-posting.service";
 import {
   EMPTY_CHECKLIST_OPTIONS,
   PULLOUT_LINE_FIELDS,
@@ -25,6 +16,11 @@ import {
   pulloutMissingDetailsText,
   type PulloutLineChoice,
 } from "@/app/(app)/logistics/_components/pullout-line-fields";
+import {
+  usePulloutSource,
+  type PulloutPlaceOption,
+  type PulloutSource,
+} from "@/app/(app)/logistics/_components/pullout-source";
 import { RecordedProblemCell } from "@/app/(app)/logistics/_components/recorded-problem-cell";
 import { PulloutConditionBadge } from "@/features/logistics/components/pullout-condition-badge";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
@@ -58,9 +54,6 @@ const MANILA_DATE = new Intl.DateTimeFormat("en-PH", {
 interface PulloutRequestDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (
-    input: PulloutCreateInput,
-  ) => Promise<{ error?: string; id?: string; pulloutNo?: string }>;
   onCreated: () => void;
   currentUserName?: string;
 }
@@ -76,25 +69,32 @@ function serialMatches(serial: PulloutSerialOption, query: string): boolean {
   );
 }
 
-function unitTableMessage(input: {
-  branchChosen: boolean;
-  loading: boolean;
-  serialCount: number;
-  matchCount: number;
-}): string | null {
-  if (!input.branchChosen) return "Select a branch to see its units.";
+function unitTableMessage(
+  copy: PulloutSource["copy"],
+  input: {
+    placeChosen: boolean;
+    loading: boolean;
+    serialCount: number;
+    matchCount: number;
+  },
+): string | null {
+  if (!input.placeChosen) return copy.choosePlaceFirst;
   if (input.loading) return "Loading serials…";
-  if (input.serialCount === 0) return "No serials are free at this branch.";
+  if (input.serialCount === 0) return copy.noFreeSerials;
   if (input.matchCount === 0) return "No serials match this search.";
   return null;
 }
 
-async function uploadAttachments(pulloutId: string, files: readonly File[]): Promise<string | null> {
+async function uploadAttachments(
+  upload: PulloutSource["actions"]["uploadAttachment"],
+  pulloutId: string,
+  files: readonly File[],
+): Promise<string | null> {
   for (const file of files) {
     const formData = new FormData();
     formData.set("pulloutId", pulloutId);
     formData.set("file", file);
-    const result = await uploadPulloutAttachmentAction(formData);
+    const result = await upload(formData);
     if ("error" in result) return `${file.name}: ${result.error}`;
   }
   return null;
@@ -134,16 +134,16 @@ function ModelCell({ skuCode, name }: { skuCode: string; name: string }) {
 export function PulloutRequestDialog({
   open,
   onOpenChange,
-  onSubmit,
   onCreated,
   currentUserName = "",
 }: PulloutRequestDialogProps) {
+  const { actions, copy } = usePulloutSource();
   const [pending, startTransition] = useTransition();
-  const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
+  const [places, setPlaces] = useState<PulloutPlaceOption[]>([]);
   const [serials, setSerials] = useState<PulloutSerialOption[]>([]);
-  const [loadedBranchId, setLoadedBranchId] = useState<string | null>(null);
+  const [loadedPlaceId, setLoadedPlaceId] = useState<string | null>(null);
   const [listsLoaded, setListsLoaded] = useState(false);
-  const [branchId, setBranchId] = useState("");
+  const [placeId, setPlaceId] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const [choices, setChoices] = useState<Record<string, PulloutLineChoice>>({});
   const [files, setFiles] = useState<File[]>([]);
@@ -154,12 +154,9 @@ export function PulloutRequestDialog({
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    void Promise.all([
-      listBranchesForLogisticsAction(),
-      listPulloutChecklistOptionsAction(),
-    ]).then(([branchRows, checklist]) => {
+    void Promise.all([actions.listPlaces(), actions.listChecklistOptions()]).then(([placeRows, checklist]) => {
       if (cancelled) return;
-      setBranches(branchRows);
+      setPlaces(placeRows);
       if (checklist.error) {
         setChecklistOptions(EMPTY_CHECKLIST_OPTIONS);
         toast.error(checklist.error);
@@ -177,14 +174,14 @@ export function PulloutRequestDialog({
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, actions]);
 
   useEffect(() => {
-    if (!open || !branchId) return;
+    if (!open || !placeId) return;
     let cancelled = false;
-    void listPulloutSerialsAction(branchId).then((result) => {
+    void actions.listSerials(placeId).then((result) => {
       if (cancelled) return;
-      setLoadedBranchId(branchId);
+      setLoadedPlaceId(placeId);
       if ("error" in result && result.error) {
         toast.error(result.error);
         return;
@@ -194,9 +191,9 @@ export function PulloutRequestDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, branchId]);
+  }, [open, placeId, actions]);
 
-  const waitingForSerials = Boolean(branchId) && loadedBranchId !== branchId;
+  const waitingForSerials = Boolean(placeId) && loadedPlaceId !== placeId;
   const selectedSet = new Set(selected);
   const filteredSerials = serials.filter((serial) => serialMatches(serial, query));
   const pageCount = Math.max(1, Math.ceil(filteredSerials.length / SERIAL_PAGE_SIZE));
@@ -213,8 +210,8 @@ export function PulloutRequestDialog({
       !pulloutLineComplete(serial.inventoryCode, pulloutLineChoice(choices, serial.serialNumberId)),
   );
   const ready = selectedSerials.length > 0 && missingDetails.length === 0;
-  const tableMessage = unitTableMessage({
-    branchChosen: Boolean(branchId),
+  const tableMessage = unitTableMessage(copy, {
+    placeChosen: Boolean(placeId),
     loading: waitingForSerials,
     serialCount: serials.length,
     matchCount: filteredSerials.length,
@@ -263,8 +260,8 @@ export function PulloutRequestDialog({
   }
 
   function resetForm() {
-    setLoadedBranchId(null);
-    setBranchId("");
+    setLoadedPlaceId(null);
+    setPlaceId("");
     setFiles([]);
     resetUnits();
   }
@@ -275,18 +272,18 @@ export function PulloutRequestDialog({
     onOpenChange(false);
   }
 
-  function chooseBranch(nextBranchId: string) {
-    if (nextBranchId === branchId) return;
-    setBranchId(nextBranchId);
-    setLoadedBranchId(null);
+  function choosePlace(nextPlaceId: string) {
+    if (nextPlaceId === placeId) return;
+    setPlaceId(nextPlaceId);
+    setLoadedPlaceId(null);
     resetUnits();
   }
 
   function submit() {
     if (!ready) return;
     startTransition(async () => {
-      const result = await onSubmit({
-        branchId,
+      const result = await actions.create({
+        placeId,
         lines: selectedSerials.map((serial) =>
           pulloutLineInput(
             serial.serialNumberId,
@@ -302,7 +299,9 @@ export function PulloutRequestDialog({
       toast.success(
         result.pulloutNo ? `Pull-out ${result.pulloutNo} submitted` : "Pull-out submitted",
       );
-      const attachError = result.id ? await uploadAttachments(result.id, files) : null;
+      const attachError = result.id
+        ? await uploadAttachments(actions.uploadAttachment, result.id, files)
+        : null;
       if (attachError) {
         toast.error(`The pull-out was saved, but a file was not attached. ${attachError}`);
       }
@@ -343,14 +342,14 @@ export function PulloutRequestDialog({
                 <Field label="Pull-out No.">
                   <span className="text-muted-foreground">Assigned when you submit</span>
                 </Field>
-                <Field label="Branch Name" htmlFor="pullout-branch">
+                <Field label={copy.placeLabel} htmlFor="pullout-place">
                   <SearchableSelect
-                    id="pullout-branch"
-                    options={branches.map((branch) => ({ id: branch.id, label: branch.name }))}
-                    value={branchId}
-                    onChange={chooseBranch}
-                    placeholder={listsLoaded ? "Select branch…" : "Loading branches…"}
-                    searchPlaceholder="Search branches…"
+                    id="pullout-place"
+                    options={places.map((place) => ({ id: place.id, label: place.name }))}
+                    value={placeId}
+                    onChange={choosePlace}
+                    placeholder={listsLoaded ? copy.placePlaceholder : copy.placeLoading}
+                    searchPlaceholder={copy.placeSearchPlaceholder}
                     disabled={pending || !listsLoaded}
                     popoverClassName={POPOVER_CLASS}
                   />
@@ -381,7 +380,7 @@ export function PulloutRequestDialog({
               <Input
                 id="pullout-serial-search"
                 value={query}
-                disabled={pending || !branchId || waitingForSerials}
+                disabled={pending || !placeId || waitingForSerials}
                 placeholder="Search model code, model name, or serial number"
                 aria-label="Search model code, model name, or serial number"
                 onChange={(event) => {

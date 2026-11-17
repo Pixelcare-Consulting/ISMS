@@ -8,16 +8,29 @@ import {
   PULLOUT_ATTACHMENT_OPEN_CODES,
   pulloutAttachmentError,
 } from "@/features/logistics/constants/pullout-attachments";
-import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import {
   asWorkflowCode,
   PULLOUT_SETTLED_CODES,
   PULLOUT_WORKFLOW_CODE,
-  type PulloutWorkflowCodeKey,
 } from "@/features/logistics/constants/workflow-codes";
 import type { PulloutSapDocType } from "@/features/logistics/lib/pullout-sap-document";
 import { recordedProblemsBySerial } from "@/features/logistics/services/pullout-recorded-problems";
-import type { AllocatableSerial, HoldCode } from "@/features/logistics/services/posting-planner-types";
+import type { AllocatableSerial } from "@/features/logistics/services/posting-planner-types";
+import {
+  assertActiveChecklist,
+  assertLineDetails,
+  checklistBySerial,
+  defectiveReasonIdFor,
+  displayName,
+  lineDetailData,
+  problemDescriptionText,
+  PULLOUT_LINE_CHECKLIST_SELECT,
+  pulloutInventoryIds,
+  pulloutLineChecklistView,
+  pulloutWorkflowId,
+  type PulloutCreateLine,
+  type PulloutInventoryIds,
+} from "@/features/logistics/services/pullout-line-checklist";
 import {
   planPulloutApprove,
   planPulloutCreate,
@@ -26,11 +39,8 @@ import {
   planPulloutLineDelete,
   planPulloutReject,
   planPulloutUpdateList,
-  PULLOUT_DEFECTIVE_REASON_CODE,
   PULLOUT_LINE_DECISION,
-  pulloutClassificationError,
   pulloutCondition,
-  pulloutReasonError,
   type PulloutConditionView,
   type PulloutDecisionLineView,
   type PulloutStatus,
@@ -55,8 +65,7 @@ import { buildPulloutAttachmentPath, getObjectStorage } from "@/lib/storage";
 
 const CLAIM_LOST = "One or more serials changed before this pull-out could be saved";
 
-/** A unit being put on a pull-out, with the STK or DEF it starts as. */
-type PlannedLine = { serialNumberId: string; priorCode: HoldCode };
+export type { PulloutCreateLine };
 
 export interface PulloutSerialOption {
   serialNumberId: string;
@@ -87,20 +96,6 @@ export interface PulloutLineRedelivery {
   branchName: string;
 }
 
-/**
- * Details for one selected serial. Classification and reason are for stock units,
- * problem descriptions for defective ones.
- */
-export interface PulloutCreateLine {
-  serialNumberId: string;
-  pulloutReasonCodeId?: string;
-  problemDescriptionIds: string[];
-  pulloutClassificationIds: string[];
-  unitPackingConditionIds: string[];
-  accessoryCompletenessIds: string[];
-  remarks?: string;
-}
-
 export interface PulloutCreateInput {
   branchId: string;
   lines: PulloutCreateLine[];
@@ -125,7 +120,8 @@ export interface PulloutDetail {
   scheduledByName: string | null;
   actualScheduledDate: string | null;
   status: { code: string; name: string; color: string | null };
-  branch: { id: string; name: string };
+  /** Where the units leave from: the branch, or the service center on an SC pull-out. */
+  place: { id: string; name: string };
   /** Only on pull-outs made before receiving was dropped. */
   warehouse: { id: string; name: string; code: string } | null;
   warehouseLocation: { name: string; code: string } | null;
@@ -175,21 +171,6 @@ function asPulloutStatus(code: string): PulloutStatus | null {
 
 function nextNo() {
   return `PLT-${Date.now().toString(36).toUpperCase()}`;
-}
-
-async function inventoryIds(tenantId: string) {
-  const [stk, def, rsv, fpo, dit] = await Promise.all([
-    reasonStatusService.requireCodeId(tenantId, "inventory_system", "STK"),
-    reasonStatusService.requireCodeId(tenantId, "inventory_system", "DEF"),
-    reasonStatusService.requireCodeId(tenantId, "inventory_system", "RSV"),
-    reasonStatusService.requireCodeId(tenantId, "inventory_system", "FPO"),
-    reasonStatusService.requireCodeId(tenantId, "inventory_system", "DIT"),
-  ]);
-  return { STK: stk, DEF: def, RSV: rsv, FPO: fpo, DIT: dit };
-}
-
-async function workflowId(tenantId: string, code: PulloutWorkflowCodeKey) {
-  return reasonStatusService.requireCodeId(tenantId, "pullout_workflow", code);
 }
 
 async function loadAllocatable(
@@ -343,197 +324,17 @@ async function stampApproval(
   await tx.branchPulloutApprovalLevel.update({ where: { id: existing.id }, data });
 }
 
-function displayName(name: string | null | undefined): string | null {
-  const trimmed = name?.trim();
-  return trimmed ? trimmed : null;
-}
-
-const CHECKLIST_REQUIRED =
-  "Choose the classification, unit packing condition, and accessory completeness this pull-out needs for every selected serial";
-const CHECKLIST_DUPLICATE =
-  "Each classification, packing condition, and accessory completeness can only be chosen once";
-const CHECKLIST_INACTIVE =
-  "Choose an active classification, unit packing condition, and accessory completeness for every selected serial";
-
-function assertNoDuplicateIds(ids: readonly string[]): void {
-  if (new Set(ids).size !== ids.length) {
-    throw new Error(CHECKLIST_DUPLICATE);
-  }
-}
-
-function requireChecklistIds(ids: readonly string[] | undefined): void {
-  if (!ids || ids.length === 0 || ids.some((id) => id.length === 0)) {
-    throw new Error(CHECKLIST_REQUIRED);
-  }
-  assertNoDuplicateIds(ids);
-}
-
-function checklistBySerial(lines: readonly PulloutCreateLine[]): Map<string, PulloutCreateLine> {
-  if (lines.length === 0) throw new Error("Select the serials to pull out");
-  const bySerial = new Map<string, PulloutCreateLine>();
-  for (const line of lines) {
-    if (!line.serialNumberId) throw new Error(CHECKLIST_REQUIRED);
-    assertNoDuplicateIds(line.pulloutClassificationIds);
-    assertNoDuplicateIds(line.problemDescriptionIds);
-    requireChecklistIds(line.unitPackingConditionIds);
-    requireChecklistIds(line.accessoryCompletenessIds);
-    if (bySerial.has(line.serialNumberId)) {
-      throw new Error("Each serial can only be selected once");
-    }
-    bySerial.set(line.serialNumberId, line);
-  }
-  return bySerial;
-}
-
-/** Refuses retired choices. Returns the problem description names by id, for the approval trail. */
-async function assertActiveChecklist(
-  tenantId: string,
-  lines: readonly PulloutCreateLine[],
-): Promise<Map<string, string>> {
-  const classificationIds = [...new Set(lines.flatMap((line) => line.pulloutClassificationIds))];
-  const packingIds = [...new Set(lines.flatMap((line) => line.unitPackingConditionIds))];
-  const accessoryIds = [...new Set(lines.flatMap((line) => line.accessoryCompletenessIds))];
-  const problemIds = [...new Set(lines.flatMap((line) => line.problemDescriptionIds))];
-  const reasonIds = [
-    ...new Set(lines.flatMap((line) => (line.pulloutReasonCodeId ? [line.pulloutReasonCodeId] : []))),
-  ];
-  const [classifications, packings, accessories, problems, reasons] = await Promise.all([
-    prisma.pulloutClassification.findMany({
-      where: { tenantId, recordStatus: "active", id: { in: classificationIds } },
-      select: { id: true },
-    }),
-    prisma.unitPackingCondition.findMany({
-      where: { tenantId, recordStatus: "active", id: { in: packingIds } },
-      select: { id: true },
-    }),
-    prisma.accessoryCompleteness.findMany({
-      where: { tenantId, recordStatus: "active", id: { in: accessoryIds } },
-      select: { id: true },
-    }),
-    prisma.problemDescription.findMany({
-      where: { tenantId, recordStatus: "active", id: { in: problemIds } },
-      select: { id: true, name: true },
-    }),
-    prisma.reasonStatusCode.findMany({
-      where: {
-        tenantId,
-        recordStatus: "active",
-        id: { in: reasonIds },
-        code: { not: PULLOUT_DEFECTIVE_REASON_CODE },
-        reasonStatus: { category: "pullout_reason" },
-      },
-      select: { id: true },
-    }),
-  ]);
-  const activeClassifications = new Set(classifications.map((row) => row.id));
-  const activePackings = new Set(packings.map((row) => row.id));
-  const activeAccessories = new Set(accessories.map((row) => row.id));
-  const activeProblems = new Set(problems.map((row) => row.id));
-  const activeReasons = new Set(reasons.map((row) => row.id));
-  for (const line of lines) {
-    if (
-      line.pulloutClassificationIds.some((id) => !activeClassifications.has(id)) ||
-      line.unitPackingConditionIds.some((id) => !activePackings.has(id)) ||
-      line.accessoryCompletenessIds.some((id) => !activeAccessories.has(id)) ||
-      line.problemDescriptionIds.some((id) => !activeProblems.has(id)) ||
-      (line.pulloutReasonCodeId !== undefined && !activeReasons.has(line.pulloutReasonCodeId))
-    ) {
-      throw new Error(CHECKLIST_INACTIVE);
-    }
-  }
-  return new Map(problems.map((row) => [row.id, row.name]));
-}
-
-/** Every planned unit has details, and they fit its own STK or DEF. */
-function assertLineDetails(
-  lines: readonly PlannedLine[],
-  details: ReadonlyMap<string, PulloutCreateLine>,
-): void {
-  if (lines.length !== details.size || lines.some((line) => !details.has(line.serialNumberId))) {
-    throw new Error(CHECKLIST_REQUIRED);
-  }
-  for (const line of lines) {
-    const choice = details.get(line.serialNumberId);
-    const classificationError = pulloutClassificationError(
-      line.priorCode,
-      choice?.pulloutClassificationIds.length ?? 0,
-    );
-    if (classificationError) throw new Error(classificationError);
-    const reasonError = pulloutReasonError(
-      line.priorCode,
-      Boolean(choice?.pulloutReasonCodeId),
-      choice?.problemDescriptionIds.length ?? 0,
-    );
-    if (reasonError) throw new Error(reasonError);
-  }
-}
-
-async function defectiveReasonIdFor(
-  tenantId: string,
-  lines: readonly PlannedLine[],
-): Promise<string | null> {
-  if (!lines.some((line) => line.priorCode === "DEF")) return null;
-  return reasonStatusService.requireCodeId(tenantId, "pullout_reason", PULLOUT_DEFECTIVE_REASON_CODE);
-}
-
-/** The details a line saves, whether it was on the request or added by Logistics. */
-function lineDetailData(
-  line: PlannedLine,
-  details: ReadonlyMap<string, PulloutCreateLine>,
-  defectiveReasonId: string | null,
-) {
-  const choice = details.get(line.serialNumberId);
-  if (!choice) throw new Error(CHECKLIST_REQUIRED);
-  return {
-    remarks: choice.remarks?.trim() || null,
-    reasonCodeId: line.priorCode === "DEF" ? defectiveReasonId : choice.pulloutReasonCodeId,
-    problemDescriptions: {
-      create: choice.problemDescriptionIds.map((problemDescriptionId) => ({ problemDescriptionId })),
-    },
-    classifications: {
-      create: choice.pulloutClassificationIds.map((pulloutClassificationId) => ({
-        pulloutClassificationId,
-      })),
-    },
-    packingConditions: {
-      create: choice.unitPackingConditionIds.map((unitPackingConditionId) => ({
-        unitPackingConditionId,
-      })),
-    },
-    accessoryCompletenesses: {
-      create: choice.accessoryCompletenessIds.map((accessoryCompletenessId) => ({
-        accessoryCompletenessId,
-      })),
-    },
-  };
-}
-
-function savedNames(names: readonly (string | null | undefined)[]): string[] {
-  return names.flatMap((name) => {
-    const trimmed = displayName(name);
-    return trimmed ? [trimmed] : [];
-  });
-}
-
-function problemDescriptionText(
-  choice: PulloutCreateLine | undefined,
-  namesById: ReadonlyMap<string, string>,
-): string | null {
-  const names = savedNames((choice?.problemDescriptionIds ?? []).map((id) => namesById.get(id)));
-  return names.length > 0 ? names.join(", ") : null;
-}
-
 interface ApprovalIds {
-  codes: Awaited<ReturnType<typeof inventoryIds>>;
+  codes: PulloutInventoryIds;
   nextStatusId: string;
   pendingId: string;
 }
 
 async function approvalIds(tenantId: string): Promise<ApprovalIds> {
   const [codes, nextStatusId, pendingId] = await Promise.all([
-    inventoryIds(tenantId),
-    workflowId(tenantId, "for_pullout"),
-    workflowId(tenantId, "pending_tl"),
+    pulloutInventoryIds(tenantId),
+    pulloutWorkflowId(tenantId, "for_pullout"),
+    pulloutWorkflowId(tenantId, "pending_tl"),
   ]);
   return { codes, nextStatusId, pendingId };
 }
@@ -612,7 +413,7 @@ export const pulloutPostingService = {
     branchId: string,
   ): Promise<PulloutSerialOption[]> {
     await authorizePosting(actor, "pullout.create", branchId);
-    const codes = await inventoryIds(actor.tenantId);
+    const codes = await pulloutInventoryIds(actor.tenantId);
     const rows = await prisma.branchInventory.findMany({
       where: {
         tenantId: actor.tenantId,
@@ -687,9 +488,7 @@ export const pulloutPostingService = {
         },
         lines: {
           select: {
-            serialNumberId: true,
-            decision: true,
-            remarks: true,
+            ...PULLOUT_LINE_CHECKLIST_SELECT,
             receivedAt: true,
             receivedBy: { select: { name: true } },
             receivedLocation: { select: { code: true, name: true } },
@@ -703,27 +502,6 @@ export const pulloutPostingService = {
             sapDocLinkedBy: { select: { name: true } },
             redeliveryDelivery: {
               select: { id: true, deliveryNo: true, drNo: true, branch: { select: { name: true } } },
-            },
-            priorStatusCode: { select: { code: true } },
-            reasonCode: { select: { name: true } },
-            problemDescriptions: {
-              select: { problemDescription: { select: { name: true } } },
-              orderBy: { problemDescription: { name: "asc" } },
-            },
-            classifications: {
-              select: { pulloutClassification: { select: { name: true } } },
-              orderBy: { pulloutClassification: { name: "asc" } },
-            },
-            packingConditions: {
-              select: { unitPackingCondition: { select: { name: true } } },
-              orderBy: { unitPackingCondition: { name: "asc" } },
-            },
-            accessoryCompletenesses: {
-              select: { accessoryCompleteness: { select: { name: true } } },
-              orderBy: { accessoryCompleteness: { name: "asc" } },
-            },
-            serialNumber: {
-              select: { serialNo: true, model: { select: { skuCode: true, name: true } } },
             },
           },
           orderBy: { serialNumber: { serialNo: "asc" } },
@@ -767,31 +545,14 @@ export const pulloutPostingService = {
       scheduledByName: displayName(pullout.scheduledBy?.name),
       actualScheduledDate: pullout.actualScheduledDate?.toISOString() ?? null,
       status: pullout.statusCode,
-      branch: pullout.branch,
+      place: pullout.branch,
       warehouse: pullout.warehouse,
       warehouseLocation: pullout.warehouseLocation,
       reason: pullout.reasonStatusCode,
       lines: pullout.lines.map((line) => ({
-        serialNumberId: line.serialNumberId,
-        decision: line.decision,
-        remarks: line.remarks,
-        reasonName: line.reasonCode?.name ?? null,
-        problemDescriptionNames: savedNames(
-          line.problemDescriptions.map((row) => row.problemDescription.name),
-        ),
-        serialNo: line.serialNumber.serialNo,
-        skuCode: line.serialNumber.model.skuCode,
-        modelName: line.serialNumber.model.name,
-        priorCode: line.priorStatusCode?.code ?? null,
-        inventoryCode: inventoryBySerial.get(line.serialNumberId)?.statusCode.code ?? null,
-        classificationNames: savedNames(
-          line.classifications.map((row) => row.pulloutClassification.name),
-        ),
-        unitPackingConditionNames: savedNames(
-          line.packingConditions.map((row) => row.unitPackingCondition.name),
-        ),
-        accessoryCompletenessNames: savedNames(
-          line.accessoryCompletenesses.map((row) => row.accessoryCompleteness.name),
+        ...pulloutLineChecklistView(
+          line,
+          inventoryBySerial.get(line.serialNumberId)?.statusCode.code ?? null,
         ),
         receivedAt: line.receivedAt?.toISOString() ?? null,
         receivedByName: displayName(line.receivedBy?.name),
@@ -838,8 +599,8 @@ export const pulloutPostingService = {
     const plan = planPulloutCreate({ branchId: input.branchId, serials });
     if (!plan.ok) throw new Error(plan.error);
     assertLineDetails(plan.lines, checklist);
-    const codes = await inventoryIds(actor.tenantId);
-    const statusCodeId = await workflowId(actor.tenantId, "pending_tl");
+    const codes = await pulloutInventoryIds(actor.tenantId);
+    const statusCodeId = await pulloutWorkflowId(actor.tenantId, "pending_tl");
     const defectiveReasonId = await defectiveReasonIdFor(actor.tenantId, plan.lines);
 
     try {
@@ -1144,10 +905,10 @@ export const pulloutPostingService = {
     if (!preview.ok) throw new Error(preview.error);
     if (preview.idempotent) return { id: current.id, idempotent: true };
 
-    const codes = await inventoryIds(actor.tenantId);
-    const nextStatusId = await workflowId(actor.tenantId, "cancelled");
+    const codes = await pulloutInventoryIds(actor.tenantId);
+    const nextStatusId = await pulloutWorkflowId(actor.tenantId, "cancelled");
     const fromIds = await Promise.all(
-      (["pending_tl", "requested"] as const).map((code) => workflowId(actor.tenantId, code)),
+      (["pending_tl", "requested"] as const).map((code) => pulloutWorkflowId(actor.tenantId, code)),
     );
 
     try {
@@ -1252,10 +1013,10 @@ export const pulloutPostingService = {
     await assertActiveChecklist(actor.tenantId, addedLines);
     const defectiveReasonId = await defectiveReasonIdFor(actor.tenantId, plan.holds);
 
-    const codes = await inventoryIds(actor.tenantId);
-    const nextStatusId = await workflowId(actor.tenantId, "pending_logistics");
+    const codes = await pulloutInventoryIds(actor.tenantId);
+    const nextStatusId = await pulloutWorkflowId(actor.tenantId, "pending_logistics");
     const fromIds = await Promise.all(
-      (["for_pullout", "pending_logistics"] as const).map((code) => workflowId(actor.tenantId, code)),
+      (["for_pullout", "pending_logistics"] as const).map((code) => pulloutWorkflowId(actor.tenantId, code)),
     );
 
     try {
@@ -1395,9 +1156,9 @@ export const pulloutPostingService = {
     const preview = planPulloutFinalize(current);
     if (!preview.ok) throw new Error(preview.error);
 
-    const codes = await inventoryIds(actor.tenantId);
-    const nextStatusId = await workflowId(actor.tenantId, "in_transit");
-    const pendingLogisticsId = await workflowId(actor.tenantId, "pending_logistics");
+    const codes = await pulloutInventoryIds(actor.tenantId);
+    const nextStatusId = await pulloutWorkflowId(actor.tenantId, "in_transit");
+    const pendingLogisticsId = await pulloutWorkflowId(actor.tenantId, "pending_logistics");
 
     if (!preview.idempotent) {
       try {
