@@ -3,6 +3,7 @@ import {
   isReturnHistoryStatus,
   returnHistoryStatusRef,
   returnRequestAppliesToLine,
+  type ReturnHistoryAction,
 } from "@/features/sales/constants/return-history-status";
 
 export type SaleStatusCodeRef = {
@@ -81,13 +82,14 @@ export interface ListedLineStatusSale {
   returnRequest?: {
     status: string;
     saleDetailId: string | null;
+    actionType?: ReturnHistoryAction | null;
     documentType?: { name: string } | null;
   } | null;
 }
 
 /**
  * List/details STATUS preference (never live inventory):
- * 1) Returned/Replaced or Service Returned/Replaced while a return is open or finished
+ * 1) Returned, Replaced, Service Returned, or Service Replaced while a return is open or finished
  * 2) Closed ATR header (no return history status)
  * 3) Frozen detail.statusCode (FW / SLD / RSV / OFS)
  * 4) Legacy derive from serial + atrStatus
@@ -106,12 +108,17 @@ export function resolveLineStatusCode(
   returnStatus?: string | null,
   documentTypeName?: string | null,
   /**
-   * Another line on this sale is Returned/Replaced. Keep this line's own
+   * Another line on this sale is Returned or Replaced. Keep this line's own
    * Sold / TO FOLLOW status instead of flipping it to Closed.
    */
   keepFrozenStatus?: boolean,
+  actionType?: ReturnHistoryAction | null,
 ): SaleStatusCodeRef | null {
-  const historyStatus = returnHistoryStatusRef(returnStatus, documentTypeName);
+  const historyStatus = returnHistoryStatusRef(
+    returnStatus,
+    documentTypeName,
+    actionType,
+  );
   if (historyStatus) return historyStatus;
 
   if (atrStatus === "closed" && !keepFrozenStatus) {
@@ -155,5 +162,6 @@ export function resolveListedLineStatus(
     applies ? request?.status : null,
     request?.documentType?.name,
     Boolean(request && isReturnHistoryStatus(request.status) && !applies),
+    applies ? request?.actionType : null,
   );
 }

@@ -66,6 +66,33 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.94.7",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T13:15:00+08:00",
+    title: "Return and replacement status",
+    highlights: [
+      "A requested return or replacement holds the unit as Reserved until you finish or reject it.",
+      "Sales show Returned or Replaced, and you finish them with Return Stock or Replace Stock.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Requesting a return or replacement holds that unit as Reserved. If the request is rejected, the unit goes back to the status it had before.",
+      },
+      {
+        type: "improvement",
+        description:
+          "A return shows Returned and a replacement shows Replaced. A service return shows Service Returned, and a service replacement shows Service Replaced. You can filter the sales list by each status.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Finish a return with Return Stock, or a replacement with Replace Stock. A replacement still asks you to choose Same Invoice or New Invoice.",
+      },
+    ],
+  },
+  {
     version: "0.94.6",
     date: "2026-11-17",
     releasedAt: "2026-11-17T11:45:00+08:00",

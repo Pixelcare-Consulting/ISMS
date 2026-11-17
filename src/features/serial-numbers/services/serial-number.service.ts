@@ -279,6 +279,7 @@ function buildTimeline(row: SerialTraceabilityRow): SerialTimelineEvent[] {
       const historyStatus = returnHistoryStatusRef(
         sale.returnRequest.status,
         sale.returnRequest.documentType?.name,
+        sale.returnRequest.actionType,
       );
       events.push({
         id: `return-${sale.returnRequest.id}`,

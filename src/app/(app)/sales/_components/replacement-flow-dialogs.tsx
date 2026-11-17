@@ -362,7 +362,7 @@ export function ReplacementFlowDialogs({
       >
         <DialogContent className="z-60 max-w-md" overlayClassName="z-60">
           <DialogHeader>
-            <DialogTitle>Complete replacement</DialogTitle>
+            <DialogTitle>Replace Stock</DialogTitle>
             <DialogDescription>
               Choose how to issue the replacement unit for transaction{" "}
               <span className="font-medium text-foreground">
