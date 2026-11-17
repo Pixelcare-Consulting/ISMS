@@ -62,7 +62,7 @@ describe("to-follow claim", () => {
     const updateMany = jest.fn().mockResolvedValue({ count: 0 });
     await expect(
       claimToFollowSaleLine(
-        { branchSalesTransactionDetail: { updateMany } },
+        { updateMany },
         {
           detailId: "line-1",
           saleId: "sale-1",
@@ -88,7 +88,7 @@ describe("to-follow claim", () => {
     const updateMany = jest.fn().mockResolvedValue({ count: 1 });
     await expect(
       claimToFollowSaleLine(
-        { branchSalesTransactionDetail: { updateMany } },
+        { updateMany },
         {
           detailId: "line-1",
           saleId: "sale-1",

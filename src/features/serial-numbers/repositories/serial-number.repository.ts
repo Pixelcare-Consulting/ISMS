@@ -878,12 +878,14 @@ function inFlightSerialWorkflow(): Prisma.SerialNumberWhereInput {
         },
       },
       {
-        serviceCenterSales: {
+        serviceCenterSalesDetails: {
           some: {
-            OR: [
-              { atrStatus: { in: [...OPEN_ATR_STATUSES] } },
-              { returnRequest: { status: { in: [...OPEN_RETURN_STATUSES] } } },
-            ],
+            sale: {
+              OR: [
+                { atrStatus: { in: [...OPEN_ATR_STATUSES] } },
+                { returnRequest: { status: { in: [...OPEN_RETURN_STATUSES] } } },
+              ],
+            },
           },
         },
       },
@@ -931,7 +933,7 @@ function unreferencedSerial(): Prisma.SerialNumberWhereInput {
     deliveryLines: { none: {} },
     history: { none: {} },
     serviceCenterInventories: { none: {} },
-    serviceCenterSales: { none: {} },
+    serviceCenterSalesDetails: { none: {} },
     serviceCenterPulloutDetails: { none: {} },
     serviceBackloads: { none: {} },
   };

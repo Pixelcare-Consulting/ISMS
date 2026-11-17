@@ -6,6 +6,7 @@ export const BRS_PERMISSIONS = [
   { slug: "service_centers.inventory.view", name: "View service center inventory" },
   { slug: "service_centers.sales.view", name: "View service center sales" },
   { slug: "service_centers.sales.create", name: "Create service center sales" },
+  { slug: "service_centers.sales.update", name: "Edit service center sale headers" },
   { slug: "service_centers.return.request", name: "Request service center return (ATR)" },
   { slug: "service_centers.return.evaluate", name: "Evaluate service center return (CS)" },
   { slug: "service_centers.return.approve", name: "Approve service center return (TL)" },

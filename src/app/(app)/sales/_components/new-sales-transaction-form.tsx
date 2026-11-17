@@ -26,11 +26,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import {
-  createSaleAction,
-  listStockSourceBranchesForSalesAction,
-  uploadSaleProofAction,
-} from "@/features/sales/actions/sales.actions";
+import { useSalesSource } from "@/app/(app)/sales/_components/sales-source";
+import { uploadSaleProofAction } from "@/features/sales/actions/sales.actions";
 import { isToFollowSerial } from "@/features/sales/constants/to-follow-serial";
 import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
 import { SALE_PROOF_MAX_FILES } from "@/features/sales/utils/sale-proof";
@@ -61,19 +58,20 @@ function SalesEncodeBanner({
   saveDisabled: boolean;
   onSave: () => void;
 }) {
+  const source = useSalesSource();
   return (
     <header className="flex flex-col gap-4 rounded-xl bg-sidebar px-5 py-5 text-sidebar-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6">
       <div className="min-w-0">
         <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
-          New sales transaction
+          {source.copy.encodeTitle}
         </h1>
         <p className="mt-1 text-sm text-sidebar-muted">
-          Enter header details, add package line sets, then save to update stock.
+          {source.copy.encodeDescription}
         </p>
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-2">
         <Link
-          href="/sales"
+          href={source.listHref}
           aria-disabled={pending || undefined}
           tabIndex={pending ? -1 : undefined}
           onClick={(event) => {
@@ -86,7 +84,7 @@ function SalesEncodeBanner({
           }
         >
           <ChevronLeft className="size-4" aria-hidden />
-          Back to sales
+          {source.copy.backToList}
         </Link>
         <Button type="button" disabled={saveDisabled} onClick={onSave}>
           Save Transaction
@@ -116,6 +114,8 @@ export function NewSalesTransactionForm({
   brands,
 }: NewSalesTransactionFormProps) {
   const router = useRouter();
+  const source = useSalesSource();
+  const { createSale, listStockSources } = source.actions;
   const [pending, startTransition] = useTransition();
   const resolvedBranchId = autoResolveBranch ? (branches[0]?.id ?? "") : "";
   const [branchId, setBranchId] = useState(resolvedBranchId);
@@ -156,7 +156,7 @@ export function NewSalesTransactionForm({
     let cancelled = false;
     void (async () => {
       try {
-        const rows = await listStockSourceBranchesForSalesAction(branchId);
+        const rows = await listStockSources(branchId);
         if (cancelled) return;
         setStockSources(rows);
         setAlternateBranchId((prev) =>
@@ -164,14 +164,14 @@ export function NewSalesTransactionForm({
         );
       } catch {
         if (cancelled) return;
-        toast.error("Failed to load stock source branches");
+        toast.error(source.copy.stockSourceLoadError);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [branchId]);
+  }, [branchId, listStockSources, source.copy.stockSourceLoadError]);
 
   const totalSaleAmount = useMemo(
     () => details.reduce((sum, d) => sum + d.saleAmount, 0),
@@ -329,11 +329,11 @@ export function NewSalesTransactionForm({
       return;
     }
     if (!branchId) {
-      toast.error("Select a branch");
+      toast.error(source.copy.selectSoldError);
       return;
     }
     if (!alternateBranchId) {
-      toast.error("Select a stock source branch");
+      toast.error(source.copy.selectStockSourceError);
       return;
     }
     if (!customerName.trim()) {
@@ -358,10 +358,10 @@ export function NewSalesTransactionForm({
     }
 
     startTransition(async () => {
-      const result = await createSaleAction({
+      const result = await createSale({
         transactionNo: transactionNo.trim(),
-        branchId,
-        alternateBranchId,
+        soldId: branchId,
+        stockSourceId: alternateBranchId,
         customerName: customerName.trim(),
         contactNo: contactNo.trim() || undefined,
         // SI/Trans mirrors transaction number — field removed from the form as redundant.
@@ -391,7 +391,7 @@ export function NewSalesTransactionForm({
         return;
       }
       toast.success(reserved ? "Reserved sale recorded" : "Sale transaction saved");
-      router.push("/sales");
+      router.push(source.listHref);
       router.refresh();
     });
   }
@@ -401,7 +401,7 @@ export function NewSalesTransactionForm({
       <div className="space-y-6">
         <SalesEncodeBanner pending={false} saveDisabled onSave={() => undefined} />
         <div className="rounded-xl border border-border/70 bg-card p-5 text-sm text-muted-foreground shadow-sm sm:p-6">
-          No branch in your area of responsibility. Assign an AOR before recording sales.
+          {source.copy.noSoldPlaces}
         </div>
       </div>
     );
@@ -424,7 +424,7 @@ export function NewSalesTransactionForm({
             <div>
               <h2 className="text-base font-semibold text-foreground">Transaction</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Branch, customer, payment, and proof for this sale.
+                {source.copy.sectionDescription}
               </p>
             </div>
             <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
@@ -443,7 +443,7 @@ export function NewSalesTransactionForm({
           <div className="space-y-2">
             {resolvedBranch ? (
               <>
-                <p className="text-sm text-muted-foreground">Branch sold *</p>
+                <p className="text-sm text-muted-foreground">{source.copy.soldLabel} *</p>
                 <p className="mt-1.5 min-h-10 break-words rounded-lg bg-muted/70 px-3 py-2.5 text-sm font-medium leading-5 text-foreground">
                   {resolvedBranch.name}
                 </p>
@@ -451,21 +451,21 @@ export function NewSalesTransactionForm({
             ) : showBranchPicker ? (
               <>
                 <Label className="font-normal text-muted-foreground" htmlFor="sale-branch">
-                  Branch sold *
+                  {source.copy.soldLabel} *
                 </Label>
               <SearchableSelect
                 id="sale-branch"
                 options={branches.map((b) => ({ id: b.id, label: b.name }))}
                 value={branchId}
                 onChange={onBranchChange}
-                placeholder="Select branch…"
-                searchPlaceholder="Search branches…"
+                placeholder={source.copy.soldPlaceholder}
+                searchPlaceholder={source.copy.soldSearchPlaceholder}
               />
               </>
             ) : null}
           </div>
           <div className="space-y-2">
-            <Label className="font-normal text-muted-foreground" htmlFor="sale-stock-source">Branch or alternate branch *</Label>
+            <Label className="font-normal text-muted-foreground" htmlFor="sale-stock-source">{source.copy.stockSourceLabel} *</Label>
             <SearchableSelect
               id="sale-stock-source"
               options={stockSources.map((b) => ({ id: b.id, label: b.name }))}
@@ -474,9 +474,13 @@ export function NewSalesTransactionForm({
                 setAlternateBranchId(id);
                 setDetails([]);
               }}
-              placeholder={branchId ? "Select branch with stock…" : "Select branch sold first…"}
-              searchPlaceholder="Search branches with stock…"
-              emptyMessage="No sellable stock in your area."
+              placeholder={
+                branchId
+                  ? source.copy.stockSourcePlaceholder
+                  : source.copy.stockSourceNeedsSold
+              }
+              searchPlaceholder={source.copy.stockSourceSearchPlaceholder}
+              emptyMessage={source.copy.stockSourceEmpty}
               disabled={!branchId || stockSources.length === 0}
             />
           </div>

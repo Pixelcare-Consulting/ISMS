@@ -65,8 +65,8 @@ const RETURN_HISTORY_STATUSES = [
 ] as const;
 
 /**
- * Prisma filter: sale lines whose frozen inventory status is Sold / Official Sold /
- * TO FOLLOW.
+ * Sale-line filter shared by branch and service center sale lines (both tables have the
+ * same columns). Typed per table by the wrappers below.
  *
  * Default (KPIs, order analytics): open sales only. Closed ATR headers and
  * in-progress returns stay off those counts.
@@ -75,28 +75,28 @@ const RETURN_HISTORY_STATUSES = [
  * including a closed ATR, so their status can stay Returned/Replaced. A rejected
  * return comes back as a normal open sale.
  */
-export function salesListDetailWhere(
-  tenantId: string,
+function saleLineListFilter(
+  saleScope: { tenantId: string; serviceCenterId?: { in: string[] } },
   options?: { includeReturnHistory?: boolean },
-): Prisma.BranchSalesTransactionDetailWhereInput {
-  const openSale: Prisma.BranchSalesTransactionWhereInput = {
-    tenantId,
-    atrStatus: { not: "closed" },
+) {
+  const openSale = {
+    ...saleScope,
+    atrStatus: { not: "closed" as const },
     OR: [
       { returnRequest: { is: null } },
-      { returnRequest: { is: { status: "completed" } } },
+      { returnRequest: { is: { status: "completed" as const } } },
     ],
   };
 
-  const sale: Prisma.BranchSalesTransactionWhereInput = options?.includeReturnHistory
+  const sale = options?.includeReturnHistory
     ? {
-        tenantId,
+        ...saleScope,
         OR: [
           {
-            atrStatus: { not: "closed" },
+            atrStatus: { not: "closed" as const },
             OR: [
               { returnRequest: { is: null } },
-              { returnRequest: { is: { status: "rejected" } } },
+              { returnRequest: { is: { status: "rejected" as const } } },
             ],
           },
           {
@@ -110,24 +110,43 @@ export function salesListDetailWhere(
 
   return {
     AND: [
-      {
-        sale,
-      },
+      { sale },
       {
         OR: [
-          {
-            statusCode: {
-              code: { in: [...SALES_LIST_STATUS_CODES] },
-            },
-          },
+          { statusCode: { code: { in: [...SALES_LIST_STATUS_CODES] } } },
           // Legacy TO FOLLOW rows before statusCode was frozen on details.
           {
             statusCodeId: null,
             serialNumberId: null,
-            sale: { atrStatus: { not: "reserve" } },
+            sale: { atrStatus: { not: "reserve" as const } },
           },
         ],
       },
     ],
   };
+}
+
+/**
+ * Prisma filter: branch sale lines whose frozen inventory status is Sold / Official Sold /
+ * TO FOLLOW. See `saleLineListFilter` for the two modes.
+ */
+export function salesListDetailWhere(
+  tenantId: string,
+  options?: { includeReturnHistory?: boolean },
+): Prisma.BranchSalesTransactionDetailWhereInput {
+  return saleLineListFilter({ tenantId }, options);
+}
+
+/** Service center sale lines, limited to the user's service centers when scoped. */
+export function serviceCenterSalesListDetailWhere(
+  tenantId: string,
+  serviceCenterIds: string[] | null,
+  options?: { includeReturnHistory?: boolean },
+): Prisma.ServiceCenterSalesTransactionDetailWhereInput {
+  return saleLineListFilter(
+    serviceCenterIds
+      ? { tenantId, serviceCenterId: { in: serviceCenterIds } }
+      : { tenantId },
+    options,
+  );
 }

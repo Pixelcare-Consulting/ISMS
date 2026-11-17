@@ -2,6 +2,8 @@ import { DEFAULT_TABLE_PAGE_SIZE } from "@/components/data-table/table-page-size
 
 /** Sales list URL. Omits default page and page size. Status and search are omitted when cleared. */
 export function buildSalesPageHref(input: {
+  /** List page path. Defaults to branch Sales (`/sales`). */
+  basePath?: string;
   page?: number;
   limit?: number;
   sort?: string;
@@ -20,6 +22,7 @@ export function buildSalesPageHref(input: {
   if (input.status) params.set("status", input.status);
   const q = input.q?.trim();
   if (q) params.set("q", q);
+  const basePath = input.basePath ?? "/sales";
   const query = params.toString();
-  return query ? `/sales?${query}` : "/sales";
+  return query ? `${basePath}?${query}` : basePath;
 }

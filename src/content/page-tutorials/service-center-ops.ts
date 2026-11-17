@@ -32,21 +32,22 @@ export const SC_SALES_PAGE_TUTORIAL: PageTutorialContent = {
   triggerLabel: "Open service sales tutorial",
   dialogTitle: "Service center sales — quick guide",
   dialogDescription:
-    "Encode sales from service center stock. Request a return here; finish under Returns / Replacement.",
+    "Encode sales the same way as branch Sales Transactions, with units sold from service center stock.",
   helpHref: "/help",
   helpLinkLabel: "Full Help & Support portal",
   sections: [
     {
       title: "What this page is for",
       description:
-        "Record a sale from STK stock at a service center location. Start a return from this list; evaluate, approve, and restore under Returns / Replacement → Service (or Approvals).",
+        "Record sales made at a service center. Each sale picks the service center sold and the location whose STK units it sells. These sales stay out of branch sales reports and KPIs.",
     },
     {
       title: "How to use it",
       bullets: [
-        "New sale picks a center, location, and available serial.",
-        "Request return with a reason when the sale is still open.",
-        "Open Returns / Replacement to finish evaluate → approve → restore to STK.",
+        "New transaction: pick the service center and location, fill the header, then add package line sets.",
+        "Use TO-FOLLOW when the serial is not known yet, then set the real serial later from View details.",
+        "Mark a sale Reserved to hold its units as RSV; clearing Reserved sells them (SLD).",
+        "Edit header from the list to correct customer, payment, or proof details.",
       ],
     },
   ],

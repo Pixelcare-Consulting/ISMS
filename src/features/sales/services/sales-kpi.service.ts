@@ -15,6 +15,7 @@ import {
   resolveListedLineStatus,
   resolveToFollowStatusCode,
 } from "@/features/sales/utils/resolve-line-status";
+import type { SalesLineStatusSource } from "@/features/sales/services/sales-list.service";
 import type { KpiStatusCount } from "@/lib/kpi-cards";
 
 const SALE_STATUS_FALLBACK: Record<string, string> = {
@@ -53,57 +54,57 @@ function returnHistoryCard(
   }
 }
 
+/** Status cards for any set of sale-line status sources (branch or service center). */
+export async function computeSalesKpis(
+  tenantId: string,
+  sources: SalesLineStatusSource[],
+  q?: string,
+): Promise<SalesKpis> {
+  const query = q?.trim() ?? "";
+  const [inventoryCodes, toFollowStatus, salesAtrCodes] = await Promise.all([
+    reasonStatusRepository.listActiveCodesByCategory(tenantId, "inventory_system"),
+    resolveToFollowStatusCode(tenantId),
+    loadSalesAtrCodesByCode(tenantId),
+  ]);
+
+  const statusCountByCode = new Map<string, number>();
+  let totalLines = 0;
+  for (const source of sources) {
+    const status = resolveListedLineStatus(
+      source,
+      source.sale,
+      toFollowStatus,
+      salesAtrCodes,
+    );
+    if (query && !matchesSalesListSearch(query, source, status)) continue;
+    totalLines += 1;
+    if (!status) continue;
+    const code = canonicalSalesListStatusCode(status.code);
+    statusCountByCode.set(code, (statusCountByCode.get(code) ?? 0) + 1);
+  }
+
+  const statuses: KpiStatusCount[] = SALES_LIST_STATUS_CODES.map((code) => {
+    const meta = inventoryCodes.find((row) => row.code.toUpperCase() === code);
+    return {
+      code,
+      name: meta?.name ?? SALE_STATUS_FALLBACK[code] ?? code,
+      count: statusCountByCode.get(code) ?? 0,
+      color: meta?.color ?? null,
+    };
+  });
+
+  for (const code of SALES_RETURN_HISTORY_LIST_CODES) {
+    const count = statusCountByCode.get(code) ?? 0;
+    if (count === 0) continue;
+    statuses.push({ ...returnHistoryCard(code), count });
+  }
+
+  return { totalLines, statuses };
+}
+
 export const salesKpiService = {
   async getKpis(tenantId: string, q?: string): Promise<SalesKpis> {
-    const query = q?.trim() ?? "";
-    const [inventoryCodes, sources, toFollowStatus, salesAtrCodes] =
-      await Promise.all([
-        reasonStatusRepository.listActiveCodesByCategory(
-          tenantId,
-          "inventory_system",
-        ),
-        salesRepository.listDetailStatusSources(tenantId),
-        resolveToFollowStatusCode(tenantId),
-        loadSalesAtrCodesByCode(tenantId),
-      ]);
-
-    const statusCountByCode = new Map<string, number>();
-    let totalLines = 0;
-    for (const source of sources) {
-      const status = resolveListedLineStatus(
-        source,
-        source.sale,
-        toFollowStatus,
-        salesAtrCodes,
-      );
-      if (query && !matchesSalesListSearch(query, source, status)) continue;
-      totalLines += 1;
-      if (!status) continue;
-      const code = canonicalSalesListStatusCode(status.code);
-      statusCountByCode.set(code, (statusCountByCode.get(code) ?? 0) + 1);
-    }
-
-    const statuses: KpiStatusCount[] = SALES_LIST_STATUS_CODES.map((code) => {
-      const meta = inventoryCodes.find(
-        (row) => row.code.toUpperCase() === code,
-      );
-      return {
-        code,
-        name: meta?.name ?? SALE_STATUS_FALLBACK[code] ?? code,
-        count: statusCountByCode.get(code) ?? 0,
-        color: meta?.color ?? null,
-      };
-    });
-
-    for (const code of SALES_RETURN_HISTORY_LIST_CODES) {
-      const count = statusCountByCode.get(code) ?? 0;
-      if (count === 0) continue;
-      statuses.push({ ...returnHistoryCard(code), count });
-    }
-
-    return {
-      totalLines,
-      statuses,
-    };
+    const sources = await salesRepository.listDetailStatusSources(tenantId);
+    return computeSalesKpis(tenantId, sources, q);
   },
 };

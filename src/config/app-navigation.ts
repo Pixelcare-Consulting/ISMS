@@ -641,6 +641,7 @@ export const appNavigation: NavEntry[] = [
             anyPermissions: [
               "service_centers.sales.view",
               "service_centers.sales.create",
+              "service_centers.sales.update",
             ],
           },
         ],

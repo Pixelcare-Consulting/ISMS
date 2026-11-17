@@ -22,11 +22,11 @@ import {
   SALE_RETURN_CONFIRM_COPY,
   type SaleReturnPendingConfirm,
 } from "@/app/(app)/sales/_components/sale-return-confirm";
+import { useSalesSource } from "@/app/(app)/sales/_components/sales-source";
 import {
   approveReturnAction,
   completeReturnRestoreAction,
   evaluateReturnAction,
-  getSaleDetailsAction,
   rejectReturnAction,
   type SaleStatusCodeRef,
 } from "@/features/sales/actions/sales.actions";
@@ -191,6 +191,8 @@ export function SalesTable({
 }: SalesTableProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const source = useSalesSource();
+  const { getSaleDetails } = source.actions;
   const committedQuery = searchQuery.trim();
   const [query, setQuery] = useState(committedQuery);
   const urlQueryRef = useRef(committedQuery);
@@ -229,6 +231,7 @@ export function SalesTable({
       if (next === committedQuery) return;
       router.push(
         buildSalesPageHref({
+          basePath: source.listHref,
           page: 1,
           limit: pageSize,
           sort: sort || undefined,
@@ -240,7 +243,7 @@ export function SalesTable({
       );
     }, SEARCH_DEBOUNCE_MS);
     return () => window.clearTimeout(handle);
-  }, [committedQuery, pageSize, query, router, sort, sortDir, status]);
+  }, [committedQuery, pageSize, query, router, sort, sortDir, status, source.listHref]);
 
   function salesHref(
     page: number,
@@ -249,6 +252,7 @@ export function SalesTable({
     nextSortDir?: string,
   ) {
     return buildSalesPageHref({
+      basePath: source.listHref,
       page,
       limit,
       sort: nextSort,
@@ -314,12 +318,12 @@ export function SalesTable({
       }),
       saleColumn.accessor((row) => row.branch.name, {
         id: "branch",
-        header: "BRANCH",
+        header: source.copy.soldColumn,
         enableSorting: true,
       }),
       saleColumn.accessor((row) => row.alternateBranch.name, {
         id: "alternateBranch",
-        header: "ALTERNATE BRANCH",
+        header: source.copy.stockSourceColumn,
         enableSorting: false,
       }),
       saleColumn.display({
@@ -419,11 +423,17 @@ export function SalesTable({
     ];
 
     return cols;
-  }, [capabilities.canUpdateSaleHeader, pending, saleIdMap]);
+  }, [
+    capabilities.canUpdateSaleHeader,
+    pending,
+    saleIdMap,
+    source.copy.soldColumn,
+    source.copy.stockSourceColumn,
+  ]);
 
   function refreshSaleDetails(saleId: string) {
     startTransition(async () => {
-      const res = await getSaleDetailsAction(saleId);
+      const res = await getSaleDetails(saleId);
       if ("error" in res) {
         toast.error(res.error);
         setDetailsSaleId(null);
@@ -464,7 +474,7 @@ export function SalesTable({
 
   function openHeaderEdit(saleId: string) {
     startTransition(async () => {
-      const res = await getSaleDetailsAction(saleId);
+      const res = await getSaleDetails(saleId);
       if ("error" in res) {
         toast.error(res.error);
         return;
@@ -556,7 +566,7 @@ export function SalesTable({
       setPendingConfirm(null);
       router.refresh();
       if (detailsSaleId) {
-        const refreshed = await getSaleDetailsAction(detailsSaleId);
+        const refreshed = await getSaleDetails(detailsSaleId);
         if ("error" in refreshed) {
           setDetailsSaleId(null);
           setSaleDetails(null);

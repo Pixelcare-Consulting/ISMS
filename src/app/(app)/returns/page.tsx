@@ -20,7 +20,7 @@ import {
 } from "@/features/returns/constants/returns-permissions";
 import { getReturnsKpisAction } from "@/features/returns/actions/returns.actions";
 import { ReturnsKpisStrip } from "@/features/returns/components/returns-kpis";
-import { listScReturnsAction } from "@/features/service-center-ops/actions/sc-sales.actions";
+import { listScReturnsAction } from "@/features/service-center-ops/actions/sc-returns.actions";
 import { requireAuth } from "@/lib/auth/permissions";
 import { pageMetadata } from "@/lib/shared/seo";
 

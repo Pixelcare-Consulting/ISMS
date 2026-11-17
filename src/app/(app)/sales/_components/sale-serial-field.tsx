@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { listSaleableSerialsAction } from "@/features/sales/actions/sales.actions";
+import { useSalesSource } from "@/app/(app)/sales/_components/sales-source";
 import {
   isToFollowSerial,
   TO_FOLLOW_SERIAL_ID,
@@ -72,6 +72,7 @@ export function SaleSerialField({
   popoverClassName?: string;
   id?: string;
 }) {
+  const { listSaleableSerials } = useSalesSource().actions;
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [retryNonce, setRetryNonce] = useState(0);
   const requestKey = `${stockBranchId}\0${modelId}\0${debouncedSearch}\0${retryNonce}`;
@@ -129,8 +130,8 @@ export function SaleSerialField({
     let active = true;
     void (async () => {
       try {
-        const result = await listSaleableSerialsAction({
-          branchId: stockBranchId,
+        const result = await listSaleableSerials({
+          stockSourceId: stockBranchId,
           modelId,
           search: debouncedSearch || undefined,
           page: 1,
@@ -160,7 +161,7 @@ export function SaleSerialField({
     return () => {
       active = false;
     };
-  }, [requestKey, stockBranchId, modelId, debouncedSearch]);
+  }, [requestKey, stockBranchId, modelId, debouncedSearch, listSaleableSerials]);
 
   async function loadMore() {
     if (!modelId || !stockBranchId || loadingMore) return;
@@ -169,8 +170,8 @@ export function SaleSerialField({
     const nextPage = page + 1;
     setLoadingMore(true);
     try {
-      const result = await listSaleableSerialsAction({
-        branchId: stockBranchId,
+      const result = await listSaleableSerials({
+        stockSourceId: stockBranchId,
         modelId,
         search: debouncedSearch || undefined,
         page: nextPage,
