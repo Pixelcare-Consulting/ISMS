@@ -3,7 +3,6 @@
 -- problem description, packing condition, accessory completeness). The header gains the
 -- logistics fields and attachments. The flow ends at Send (DIT); nothing posts to SAP.
 
-◇ injected env (17) from .env.local // tip: ◈ secrets for agents [www.dotenvx.com]
 -- AlterTable
 ALTER TABLE "service_center_pullouts" ADD COLUMN     "actual_scheduled_date" TIMESTAMP(3),
 ADD COLUMN     "courier_name" TEXT,
