@@ -29,6 +29,16 @@ import { RecordedProblemCell } from "@/app/(app)/logistics/_components/recorded-
 import { PulloutConditionBadge } from "@/features/logistics/components/pullout-condition-badge";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { DocumentAttachmentPicker } from "@/components/document-attachment-picker";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -150,6 +160,7 @@ export function PulloutRequestDialog({
   const [checklistOptions, setChecklistOptions] = useState<PulloutChecklistOptions>(EMPTY_CHECKLIST_OPTIONS);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -271,6 +282,7 @@ export function PulloutRequestDialog({
 
   function close() {
     if (pending) return;
+    setSubmitConfirmOpen(false);
     resetForm();
     onOpenChange(false);
   }
@@ -282,8 +294,14 @@ export function PulloutRequestDialog({
     resetUnits();
   }
 
+  function requestSubmit() {
+    if (!ready || pending) return;
+    setSubmitConfirmOpen(true);
+  }
+
   function submit() {
-    if (!ready) return;
+    if (!ready || pending) return;
+    setSubmitConfirmOpen(false);
     startTransition(async () => {
       const result = await onSubmit({
         branchId,
@@ -334,7 +352,7 @@ export function PulloutRequestDialog({
             className="space-y-6"
             onSubmit={(event) => {
               event.preventDefault();
-              submit();
+              requestSubmit();
             }}
           >
             <section className="space-y-3">
@@ -556,6 +574,36 @@ export function PulloutRequestDialog({
             Submit
           </Button>
         </DialogFooter>
+        <AlertDialog
+          open={submitConfirmOpen}
+          onOpenChange={(open) => {
+            if (!open && !pending) setSubmitConfirmOpen(false);
+          }}
+        >
+          <AlertDialogContent className="z-[80]" overlayClassName="z-[70]">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure you want to submit this pull-out?</AlertDialogTitle>
+              <AlertDialogDescription>
+                The selected units are reserved until the Team Lead decides.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel type="button" disabled={pending}>
+                No
+              </AlertDialogCancel>
+              <AlertDialogAction
+                type="button"
+                disabled={pending}
+                onClick={(event) => {
+                  event.preventDefault();
+                  submit();
+                }}
+              >
+                Yes
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </DialogContent>
     </Dialog>
   );

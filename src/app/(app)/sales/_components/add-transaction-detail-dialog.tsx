@@ -4,12 +4,22 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { SaleSerialField } from "@/app/(app)/sales/_components/sale-serial-field";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
+  countAgingSellableStockAction,
   listModelsForSalesAction,
   listPackageTypesForSalesAction,
   resolveModelPriceForSalesAction,
@@ -201,6 +211,8 @@ export function AddTransactionDetailDialog({
     initialRows?.length ? rowsToSets(initialRows) : [emptySet()],
   );
   const [hydrated, setHydrated] = useState(!isEdit);
+  const [agingCount, setAgingCount] = useState<number | null>(null);
+  const agingCheckRef = useRef(0);
 
   const selectedPackage = useMemo(
     () => packages.find((p) => p.id === packageTypeId) ?? null,
@@ -248,6 +260,8 @@ export function AddTransactionDetailDialog({
   useEffect(() => {
     if (stockBranchRef.current === stockBranchId) return;
     stockBranchRef.current = stockBranchId;
+    agingCheckRef.current += 1;
+    setAgingCount(null);
     setSets((prev) =>
       prev.map((set) => ({
         ...set,
@@ -258,7 +272,13 @@ export function AddTransactionDetailDialog({
     );
   }, [stockBranchId]);
 
+  function dismissAgingCheck() {
+    agingCheckRef.current += 1;
+    setAgingCount(null);
+  }
+
   function onPackageChange(id: string) {
+    dismissAgingCheck();
     setPackageTypeId(id);
     const pkg = packages.find((p) => p.id === id);
     const n = Math.max(1, pkg?.quantity ?? 1);
@@ -272,6 +292,7 @@ export function AddTransactionDetailDialog({
   }
 
   function onSetBrandChange(index: number, brandId: string) {
+    dismissAgingCheck();
     updateSet(index, {
       brandId,
       modelId: "",
@@ -291,6 +312,8 @@ export function AddTransactionDetailDialog({
       serialNo: "",
       serialSkuCode: "",
     });
+    const requestId = ++agingCheckRef.current;
+    setAgingCount(null);
     if (!modelId) {
       updateSet(index, {
         modelPrice: "",
@@ -299,36 +322,56 @@ export function AddTransactionDetailDialog({
       });
       return;
     }
-    try {
-      const resolved = await resolveModelPriceForSalesAction({
-        modelId,
-        packageTypeId: packageTypeId || undefined,
-        transactionDate: transactionDate || undefined,
-      });
-      if (resolved) {
-        updateSet(index, {
-          modelPrice: String(resolved.amount),
-          noPriceList: false,
-          priceFallbackDate:
-            resolved.source === "pricelist_fallback"
-              ? resolved.periodStart
-              : null,
+
+    const priceTask = (async () => {
+      try {
+        const resolved = await resolveModelPriceForSalesAction({
+          modelId,
+          packageTypeId: packageTypeId || undefined,
+          transactionDate: transactionDate || undefined,
         });
-      } else {
+        if (resolved) {
+          updateSet(index, {
+            modelPrice: String(resolved.amount),
+            noPriceList: false,
+            priceFallbackDate:
+              resolved.source === "pricelist_fallback"
+                ? resolved.periodStart
+                : null,
+          });
+        } else {
+          updateSet(index, {
+            modelPrice: "0",
+            noPriceList: true,
+            priceFallbackDate: null,
+          });
+        }
+      } catch {
+        toast.error("Failed to resolve model price");
         updateSet(index, {
           modelPrice: "0",
           noPriceList: true,
           priceFallbackDate: null,
         });
       }
-    } catch {
-      toast.error("Failed to resolve model price");
-      updateSet(index, {
-        modelPrice: "0",
-        noPriceList: true,
-        priceFallbackDate: null,
-      });
-    }
+    })();
+
+    const agingTask = (async () => {
+      try {
+        const result = await countAgingSellableStockAction({
+          branchId: stockBranchId,
+          modelId,
+        });
+        if (requestId !== agingCheckRef.current) return;
+        setAgingCount(result.count > 0 ? result.count : null);
+      } catch {
+        if (requestId !== agingCheckRef.current) return;
+        setAgingCount(null);
+        toast.error("Failed to check model aging");
+      }
+    })();
+
+    await Promise.all([priceTask, agingTask]);
   }
 
   function modelOptionsForSet(set: DetailSetDraft) {
@@ -442,6 +485,7 @@ export function AddTransactionDetailDialog({
   }
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="flex w-full max-w-2xl max-h-[calc(100svh-2rem)] min-h-0 flex-col overflow-hidden rounded-xl border bg-card shadow-xl">
         <div className="shrink-0 rounded-t-xl border-b bg-card p-4 sm:p-6">
@@ -725,5 +769,27 @@ export function AddTransactionDetailDialog({
         </div>
       </div>
     </div>
+    <AlertDialog
+      open={agingCount !== null}
+      onOpenChange={(open) => {
+        if (!open) setAgingCount(null);
+      }}
+    >
+      <AlertDialogContent className="z-60" overlayClassName="z-60">
+        <AlertDialogHeader>
+          <AlertDialogTitle>MODEL AGING VALIDATION</AlertDialogTitle>
+          <AlertDialogDescription>
+            ({agingCount ?? 0}) serial(s) on this model are over 30 days from dr
+            date.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogAction onClick={() => setAgingCount(null)}>
+            OK
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }

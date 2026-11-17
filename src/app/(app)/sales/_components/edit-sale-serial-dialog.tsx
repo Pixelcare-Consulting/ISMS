@@ -4,6 +4,16 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { SaleSerialField } from "@/app/(app)/sales/_components/sale-serial-field";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -49,6 +59,7 @@ export function EditSaleSerialDialog({
   onClose: () => void;
 }) {
   const [pending, startTransition] = useTransition();
+  const [saveConfirmOpen, setSaveConfirmOpen] = useState(false);
   // The line is already TO-FOLLOW. Keep that choice; do not replace it when
   // the lookup is loading, empty, or failed.
   const [serialNumberId, setSerialNumberId] = useState(
@@ -57,11 +68,16 @@ export function EditSaleSerialDialog({
   const [deliveryNo, setDeliveryNo] = useState(currentDeliveryNo ?? "");
   const [deliveryDate, setDeliveryDate] = useState(currentDeliveryDate ?? "");
 
-  function save() {
+  function requestSave() {
     if (!serialNumberId) {
       toast.error("Select a serial");
       return;
     }
+    setSaveConfirmOpen(true);
+  }
+
+  function save() {
+    setSaveConfirmOpen(false);
     startTransition(async () => {
       const result = await updateSaleSerialAction({
         saleId,
@@ -87,10 +103,12 @@ export function EditSaleSerialDialog({
   }
 
   return (
+    <>
     <Dialog
       open
       onOpenChange={(nextOpen) => {
-        if (!nextOpen && !pending) onClose();
+        if (!nextOpen && (pending || saveConfirmOpen)) return;
+        if (!nextOpen) onClose();
       }}
     >
       <DialogContent className="z-60 sm:max-w-md" overlayClassName="z-60">
@@ -149,11 +167,31 @@ export function EditSaleSerialDialog({
           >
             Cancel
           </Button>
-          <Button type="button" disabled={pending} onClick={save}>
+          <Button type="button" disabled={pending} onClick={requestSave}>
             {showDelivery ? "Save line" : "Save serial"}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    <AlertDialog
+      open={saveConfirmOpen}
+      onOpenChange={(next) => {
+        if (!next) setSaveConfirmOpen(false);
+      }}
+    >
+      <AlertDialogContent className="z-70" overlayClassName="z-70">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Save this record?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Are you sure you want to save this record?
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>No</AlertDialogCancel>
+          <AlertDialogAction onClick={save}>Yes</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }

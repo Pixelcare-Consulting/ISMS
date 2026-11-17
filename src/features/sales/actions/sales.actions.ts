@@ -19,6 +19,8 @@ import {
   sellableStkDefectReportsFilter,
 } from "@/features/inventory/services/inventory-sellable-guards";
 import { statusUpdatedStamp } from "@/features/inventory/lib/status-updated-stamp";
+import { inventoryRepository } from "@/features/inventory/repositories/inventory.repository";
+import { wholeDaysBetween } from "@/features/inventory/utils/sku-series";
 import {
   markSerialSoldFromStockSource,
   restoreSerialToStockSource,
@@ -986,6 +988,71 @@ export async function listSaleableSerialsAction(
     limit: input.limit,
     stkCodeId,
   });
+}
+
+/** Sellable units whose latest DR date is strictly older than this many days. */
+const MODEL_AGING_DR_DAYS = 30;
+const MODEL_AGING_LOOKUP_CHUNK = 500;
+
+/**
+ * Count sellable STK serials for one model at the stock source whose latest
+ * delivery receipt date is more than 30 days ago. Serials with no DR date
+ * are omitted. Uses the same latest-receipt lookup as inventory aging.
+ */
+export async function countAgingSellableStockAction(input: {
+  branchId: string;
+  modelId: string;
+}): Promise<{ count: number }> {
+  const session = await requirePermission("sales.create");
+  const branchId = input.branchId.trim();
+  const modelId = input.modelId.trim();
+  if (!branchId || !modelId) return { count: 0 };
+
+  await assertStockLocationReadable(
+    session.user.tenantId,
+    session.user.id,
+    branchId,
+    session.user.permissions,
+  );
+
+  const stkCodeId = await reasonStatusService.requireCodeId(
+    session.user.tenantId,
+    "inventory_system",
+    "STK",
+  );
+
+  const rows = await prisma.branchInventory.findMany({
+    where: {
+      tenantId: session.user.tenantId,
+      branchId,
+      statusCodeId: stkCodeId,
+      defectReports: sellableStkDefectReportsFilter,
+      serialNumber: { modelId },
+    },
+    select: { serialNumberId: true },
+  });
+
+  const serialNumberIds = [
+    ...new Set(rows.map((row) => row.serialNumberId)),
+  ];
+  if (serialNumberIds.length === 0) return { count: 0 };
+
+  let count = 0;
+  for (let i = 0; i < serialNumberIds.length; i += MODEL_AGING_LOOKUP_CHUNK) {
+    const chunk = serialNumberIds.slice(i, i + MODEL_AGING_LOOKUP_CHUNK);
+    const deliveries = await inventoryRepository.findLatestDeliveryReceipts(
+      session.user.tenantId,
+      chunk,
+    );
+    for (const receipt of deliveries) {
+      if (!receipt.deliveryDate) continue;
+      if (wholeDaysBetween(receipt.deliveryDate) > MODEL_AGING_DR_DAYS) {
+        count += 1;
+      }
+    }
+  }
+
+  return { count };
 }
 
 export async function uploadSaleProofAction(formData: FormData) {
