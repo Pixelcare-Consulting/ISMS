@@ -63,7 +63,7 @@ export interface NavLinkItem {
   exact?: boolean;
   permission?: string;
   /** Show link when user has any of these permissions */
-  anyPermissions?: string[];
+  anyPermissions?: readonly string[];
   /** Extra path prefixes that keep this item active after a route moves under it. */
   activePathPrefixes?: readonly string[];
   platformOperatorOnly?: boolean;
@@ -156,6 +156,25 @@ const SPECIAL_ORDER_ACCESS = [
   "orders.view",
   "orders.create",
   "orders.approve",
+] as const;
+
+/** Kept here so the client sidebar does not import service-center server helpers. */
+const SC_SALES_ACCESS = [
+  "service_centers.sales.view",
+  "service_centers.sales.create",
+  "service_centers.sales.update",
+] as const;
+
+const SC_ORDERS_ACCESS = [
+  "service_centers.orders.view",
+  "service_centers.orders.create",
+  "service_centers.orders.approve",
+] as const;
+
+const SC_LOGISTICS_ACCESS = [
+  "service_centers.logistics.view",
+  "service_centers.logistics.create",
+  "service_centers.logistics.manage",
 ] as const;
 
 export const appNavigation: NavEntry[] = [
@@ -265,6 +284,12 @@ export const appNavigation: NavEntry[] = [
             ],
             countBadgeKey: "ordersAutoReplenishQueue",
           },
+          {
+            href: "/service-centers/orders",
+            label: "Service Center Orders",
+            icon: ShoppingCart,
+            anyPermissions: SC_ORDERS_ACCESS,
+          },
         ],
       },
     ],
@@ -283,6 +308,12 @@ export const appNavigation: NavEntry[] = [
             label: "Sales Transactions",
             icon: Store,
             anyPermissions: ["sales.view", "sales.create", "sales.update"],
+          },
+          {
+            href: "/service-centers/sales",
+            label: "Service Center Sales",
+            icon: Store,
+            anyPermissions: SC_SALES_ACCESS,
           },
         ],
       },
@@ -336,12 +367,12 @@ export const appNavigation: NavEntry[] = [
     icon: Package,
     items: [
       {
-        label: "Inventory",
+        label: "Branch Inventory",
         icon: Package,
         items: [
           {
             href: "/inventory/v2",
-            label: "Branch Inventory",
+            label: "Inventory",
             icon: ClipboardCheck,
             permission: "inventory.view",
             countBadgeKey: "branchInventoryV2Updates",
@@ -362,8 +393,9 @@ export const appNavigation: NavEntry[] = [
           // },
         ],
       },
+      
       {
-        label: "Movement",
+        label: "Branch Movement",
         icon: Truck,
         items: [
           {
@@ -393,7 +425,36 @@ export const appNavigation: NavEntry[] = [
           },
         ],
       },
-      
+      {
+        label: "Service Center Inventory",
+        icon: Package,
+        items: [
+          {
+            href: "/service-centers/inventory",
+            label: "Inventory (Service Center)",
+            icon: ClipboardCheck,
+            permission: "service_centers.inventory.view",
+          },
+        ],
+      },
+      {
+        label: "Service Center Movement",
+        icon: Truck,
+        items: [
+          {
+            href: "/service-centers/deliveries",
+            label: "Deliveries (Service Center)",
+            icon: Truck,
+            anyPermissions: SC_LOGISTICS_ACCESS,
+          },
+          {
+            href: "/service-centers/pullouts",
+            label: "Pull-outs (Service Center)",
+            icon: ArrowUpToLine,
+            anyPermissions: SC_LOGISTICS_ACCESS,
+          },
+        ],
+      },
     ],
   },
   {
@@ -613,83 +674,6 @@ export const appNavigation: NavEntry[] = [
     label: "Policies",
     icon: ScrollText,
     anyPermissions: ["policies.view", "policies.create", "policies.approve"],
-  },
-  {
-    type: "group",
-    label: "Service",
-    icon: Building2,
-    items: [
-      {
-        label: "Inventory",
-        icon: Package,
-        items: [
-          {
-            href: "/service-centers/inventory",
-            label: "SC Inventory",
-            icon: Package,
-            permission: "service_centers.inventory.view",
-          },
-        ],
-      },
-      {
-        label: "Sales",
-        icon: Store,
-        items: [
-          {
-            href: "/service-centers/sales",
-            label: "SC Sales",
-            icon: Store,
-            anyPermissions: [
-              "service_centers.sales.view",
-              "service_centers.sales.create",
-              "service_centers.sales.update",
-            ],
-          },
-        ],
-      },
-      {
-        label: "Orders",
-        icon: ShoppingCart,
-        items: [
-          {
-            href: "/service-centers/orders",
-            label: "SC Orders",
-            icon: ShoppingCart,
-            anyPermissions: [
-              "service_centers.orders.view",
-              "service_centers.orders.create",
-              "service_centers.orders.approve",
-            ],
-          },
-        ],
-      },
-      {
-        label: "Movement",
-        icon: Truck,
-        items: [
-          {
-            href: "/service-centers/deliveries",
-            label: "SC Deliveries",
-            icon: Truck,
-            anyPermissions: [
-              "service_centers.logistics.view",
-              "service_centers.logistics.create",
-              "service_centers.logistics.manage",
-            ],
-          },
-          {
-            href: "/service-centers/pullouts",
-            label: "SC Pull-outs",
-            icon: ArrowUpToLine,
-            anyPermissions: [
-              "service_centers.logistics.view",
-              "service_centers.logistics.create",
-              "service_centers.logistics.manage",
-            ],
-          },
-        ],
-      },
-    ],
   },
   {
     type: "group",

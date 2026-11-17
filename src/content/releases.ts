@@ -68,6 +68,27 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.95.4",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T17:55:00+08:00",
+    title: "Service center pages in the main menus",
+    highlights: [
+      "Service center inventory, orders, sales, deliveries, and pull-outs now sit with the matching menus.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "The separate Service menu is gone. Service center inventory, deliveries, and pull-outs are under Inventory. Service center orders are under Orders, and service center sales are under Sales & Returns.",
+      },
+      {
+        type: "fix",
+        description:
+          "Service center inventory, deliveries, and pull-outs open their own pages. They no longer repeat the branch lists.",
+      },
+    ],
+  },
+  {
     version: "0.95.3",
     date: "2026-11-17",
     releasedAt: "2026-11-17T16:45:00+08:00",
