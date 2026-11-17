@@ -19,6 +19,8 @@ interface GroupedPermissionsChecklistProps {
   }) => void;
   onToggleSlug?: (slug: string, enabled: boolean) => void;
   onModuleSelectAll?: (group: PermissionModuleGroup, enable: boolean) => void;
+  /** Mint background on a checked permission, matching the role checklist. */
+  highlightChecked?: boolean;
   className?: string;
 }
 
@@ -31,6 +33,7 @@ export function GroupedPermissionsChecklist({
   onToggle,
   onToggleSlug,
   onModuleSelectAll,
+  highlightChecked = false,
   className,
 }: GroupedPermissionsChecklistProps) {
   return (
@@ -100,7 +103,10 @@ export function GroupedPermissionsChecklist({
                 return (
                   <li
                     key={permission.id}
-                    className="flex items-start gap-3 px-3 py-2.5"
+                    className={cn(
+                      "flex items-start gap-3 px-3 py-2.5",
+                      highlightChecked && checked && "bg-[#E8F5F1]",
+                    )}
                   >
                     <Checkbox
                       checked={checked}

@@ -26,6 +26,12 @@ import { LoadingModal } from "@/components/ui/loading-modal";
 import { PasswordInput } from "@/components/ui/password-input";
 import { authClient } from "@/lib/auth/client";
 import { queuePendingAuthToast } from "@/lib/auth/pending-auth-toast";
+import {
+  ALREADY_SIGNED_IN_MESSAGE,
+  REPLACE_OTHER_SESSIONS_HEADER,
+  isAlreadySignedInMessage,
+  loginErrorMessage,
+} from "@/lib/auth/session-policy";
 import { cn } from "@/utils/cn";
 
 const inputClassName = cn(
@@ -63,12 +69,10 @@ async function readPostLoginUser(): Promise<PostLoginUser | null> {
 
 export function LoginForm() {
   const searchParams = useSearchParams();
-  const sessionExpired = searchParams.get("error") === "session-expired";
   const [error, setError] = useState<string | null>(
-    sessionExpired
-      ? "Your session is no longer valid. Sign in again."
-      : null,
+    loginErrorMessage(searchParams.get("error")),
   );
+  const [alreadySignedIn, setAlreadySignedIn] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
   const callbackUrl = searchParams.get("callbackUrl") ?? "/dashboard";
 
@@ -83,18 +87,29 @@ export function LoginForm() {
   const isSubmitting = form.formState.isSubmitting;
   const isBusy = isSubmitting || isRedirecting;
 
-  async function onSubmit(values: LoginInput) {
+  async function onSubmit(values: LoginInput, replaceOtherSessions = false) {
     setError(null);
     setIsRedirecting(true);
 
     const result = await authClient.signIn.email({
       email: values.email,
       password: values.password,
-      fetchOptions: { credentials: "include" },
+      fetchOptions: {
+        credentials: "include",
+        headers: replaceOtherSessions
+          ? { [REPLACE_OTHER_SESSIONS_HEADER]: "1" }
+          : undefined,
+      },
     });
 
     if (result.error) {
       setIsRedirecting(false);
+      if (isAlreadySignedInMessage(result.error.message)) {
+        setAlreadySignedIn(true);
+        setError(ALREADY_SIGNED_IN_MESSAGE);
+        return;
+      }
+      setAlreadySignedIn(false);
       setError(
         result.error.message?.includes("Too many")
           ? result.error.message
@@ -102,6 +117,7 @@ export function LoginForm() {
       );
       return;
     }
+    setAlreadySignedIn(false);
 
     try {
       const signedInUser = (result.data as { user?: PostLoginUser } | undefined)?.user;
@@ -142,7 +158,10 @@ export function LoginForm() {
         description="Verifying your credentials and loading your workspace."
       />
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+        <form
+          onSubmit={form.handleSubmit((values) => onSubmit(values, false))}
+          className="space-y-5"
+        >
           <FormField
             control={form.control}
             name="email"
@@ -203,6 +222,20 @@ export function LoginForm() {
               "Sign in"
             )}
           </Button>
+
+          {/* DO NOT UNCOMMENT THIS WE DONT NEED THIS TO DISPLAY {alreadySignedIn ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 w-full rounded-lg text-sm font-semibold"
+              disabled={isBusy}
+              onClick={() => {
+                void form.handleSubmit((values) => onSubmit(values, true))();
+              }}
+            >
+              Sign out the other device and continue here
+            </Button>
+          ) : null} */}
 
           <AppVersion className="w-full pt-1" />
         </form>

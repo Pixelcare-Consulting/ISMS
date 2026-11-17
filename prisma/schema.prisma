@@ -262,6 +262,8 @@ model Tenant {
   logo       String?
   /// Address and contact lines printed beside the logo on slips, one per line.
   documentHeader String? @map("document_header")
+  /// When true, Add user and Edit user omit built-in roles. A role already on the user stays visible.
+  hideSystemRolesOnUsers Boolean @default(true) @map("hide_system_roles_on_users")
   /// Reserved home tenant for platform operators (Pixelcare). Never listed as a customer.
   isPlatform Boolean   @default(false) @map("is_platform")
   createdAt  DateTime  @default(now()) @map("created_at")
@@ -388,6 +390,8 @@ model User {
   emailVerified Boolean   @default(false) @map("email_verified")
   image         String?
   departmentId  String?   @map("department_id")
+  /// When true, the app sends this person to Profile until they choose a new password.
+  mustChangePassword Boolean @default(false) @map("must_change_password")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
   deletedAt     DateTime? @map("deleted_at")
@@ -676,14 +680,16 @@ model Account {
 }
 
 model Session {
-  id        String   @id @default(cuid())
-  expiresAt DateTime @map("expires_at")
-  token     String   @unique
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  ipAddress String?  @map("ip_address")
-  userAgent String?  @map("user_agent")
-  userId    String   @map("user_id")
+  id           String   @id @default(cuid())
+  expiresAt    DateTime @map("expires_at")
+  token        String   @unique
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  /** Last click, key, or scroll. Idle sign-out uses this, not `updatedAt`. */
+  lastActiveAt DateTime @default(now()) @map("last_active_at")
+  ipAddress    String?  @map("ip_address")
+  userAgent    String?  @map("user_agent")
+  userId       String   @map("user_id")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

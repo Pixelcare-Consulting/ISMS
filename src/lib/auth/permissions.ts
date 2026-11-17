@@ -5,6 +5,11 @@ import { PROVIDER_ONLY_ROLE_SLUGS } from "@/features/roles/constants/role.consta
 import { SETUP_HOME, isTenantSetupAdmin } from "@/features/roles/constants/setup-access";
 import { auth, signOutServer } from "@/lib/auth";
 import { prisma } from "@/lib/database/client";
+import { readLiveSessionState } from "@/lib/auth/session-liveness";
+import {
+  LOGIN_ERROR_IDLE,
+  LOGIN_ERROR_SIGNED_IN_ELSEWHERE,
+} from "@/lib/auth/session-policy";
 import { toAppSession, type AppSession } from "@/lib/auth/session";
 
 const DASHBOARD_FORBIDDEN = "/dashboard?error=forbidden";
@@ -99,6 +104,24 @@ const getRequiredSession = cache(async (): Promise<AppSession> => {
 
   const exists = await sessionUserExists(session);
   if (!exists) {
+    await signOutServer({ redirectTo: "/login?error=session-expired" });
+  }
+
+  const sessionId = session.sessionId ?? "";
+  if (!sessionId) {
+    await signOutServer({ redirectTo: "/login?error=session-expired" });
+  }
+
+  const live = await readLiveSessionState(sessionId, session.user.id);
+  if (live === "idle") {
+    await signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_IDLE}` });
+  }
+  if (live === "missing") {
+    await signOutServer({
+      redirectTo: `/login?error=${LOGIN_ERROR_SIGNED_IN_ELSEWHERE}`,
+    });
+  }
+  if (live === "expired") {
     await signOutServer({ redirectTo: "/login?error=session-expired" });
   }
 

@@ -14,6 +14,34 @@ import { syncCredentialAccountPassword } from "@/lib/auth/auth";
 
 import { updateUserSchema } from "@/features/users/schemas/update-user.schema";
 
+async function resolveAssignableRoles(input: {
+  tenantId: string;
+  roleSlugs: string[];
+  allowProviderOnlyRoles?: boolean;
+}) {
+  const slugs = [
+    ...new Set(input.roleSlugs.map((slug) => slug.trim()).filter(Boolean)),
+  ];
+  if (slugs.length === 0) {
+    throw new Error("At least one role is required");
+  }
+
+  const roles: NonNullable<
+    Awaited<ReturnType<typeof roleRepository.findBySlug>>
+  >[] = [];
+  for (const slug of slugs) {
+    if (!input.allowProviderOnlyRoles && isProviderOnlyRole(slug)) {
+      throw new Error("This role cannot be assigned");
+    }
+    const role = await roleRepository.findBySlug(input.tenantId, slug);
+    if (!role) {
+      throw new Error("Role not found");
+    }
+    roles.push(role);
+  }
+  return roles;
+}
+
 export const userService = {
   async listUsers(tenantId: string, isPlatformOperator = false) {
     const users = await userRepository.listByTenant(tenantId);
@@ -37,8 +65,9 @@ export const userService = {
     email: string;
     name: string;
     password: string;
-    roleSlug?: string;
+    roleSlugs: string[];
     departmentId?: string | null;
+    mustChangePassword?: boolean;
     allowProviderOnlyRoles?: boolean;
   }) {
     const existing = await userRepository.findByEmail(
@@ -59,6 +88,12 @@ export const userService = {
       }
     }
 
+    const roles = await resolveAssignableRoles({
+      tenantId: input.tenantId,
+      roleSlugs: input.roleSlugs,
+      allowProviderOnlyRoles: input.allowProviderOnlyRoles,
+    });
+
     const passwordHash = await bcrypt.hash(input.password, 12);
     const user = await userRepository.create({
       tenantId: input.tenantId,
@@ -66,15 +101,11 @@ export const userService = {
       name: input.name,
       passwordHash,
       departmentId: input.departmentId ?? null,
+      mustChangePassword: input.mustChangePassword ?? false,
     });
     await syncCredentialAccountPassword(user.id, passwordHash);
 
-    const roleSlug = input.roleSlug ?? "employee";
-    if (!input.allowProviderOnlyRoles && isProviderOnlyRole(roleSlug)) {
-      throw new Error("This role cannot be assigned");
-    }
-    const role = await roleRepository.findBySlug(input.tenantId, roleSlug);
-    if (role) {
+    for (const role of roles) {
       await userRepository.assignRole(user.id, role.id);
     }
 
@@ -95,7 +126,7 @@ export const userService = {
     actorUserId: string;
     userId: string;
     name: string;
-    roleSlug: string;
+    roleSlugs: string[];
     departmentId?: string | null;
     password?: string;
     allowProviderOnlyRoles?: boolean;
@@ -103,7 +134,7 @@ export const userService = {
     const parsed = updateUserSchema.safeParse({
       userId: input.userId,
       name: input.name,
-      roleSlug: input.roleSlug,
+      roleSlugs: input.roleSlugs,
       departmentId: input.departmentId,
       password: input.password,
     });
@@ -134,21 +165,21 @@ export const userService = {
       }
     }
 
-    if (!input.allowProviderOnlyRoles && isProviderOnlyRole(input.roleSlug)) {
-      throw new Error("This role cannot be assigned");
-    }
-
-    const role = await roleRepository.findBySlug(input.tenantId, input.roleSlug);
-    if (!role) {
-      throw new Error("Role not found");
-    }
+    const roles = await resolveAssignableRoles({
+      tenantId: input.tenantId,
+      roleSlugs: parsed.data.roleSlugs,
+      allowProviderOnlyRoles: input.allowProviderOnlyRoles,
+    });
 
     await userRepository.update(input.tenantId, input.userId, {
       name: parsed.data.name,
       departmentId: parsed.data.departmentId ?? null,
     });
 
-    await userRepository.setRoles(input.userId, [role.id]);
+    await userRepository.setRoles(
+      input.userId,
+      roles.map((role) => role.id),
+    );
 
     if (parsed.data.password) {
       const passwordHash = await bcrypt.hash(parsed.data.password, 12);

@@ -70,6 +70,9 @@ export async function changePasswordAction(input: {
       newPassword: parsed.data.newPassword,
     });
 
+    revalidatePath("/settings/profile");
+    revalidatePath("/", "layout");
+
     return { success: true };
   } catch (e) {
     return {

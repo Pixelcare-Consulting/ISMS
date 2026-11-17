@@ -63,6 +63,7 @@ export const profileService = {
       passwordHash,
     );
     await syncCredentialAccountPassword(user.id, passwordHash);
+    await userRepository.clearMustChangePassword(input.tenantId, user.id);
 
     await auditService.log({
       tenantId: input.tenantId,

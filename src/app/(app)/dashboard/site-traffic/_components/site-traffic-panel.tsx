@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createColumnHelper } from "@tanstack/react-table";
 
+import { formatSiteTrafficRelativeTime } from "@/features/dashboard/lib/site-traffic-time";
 import type { SiteTrafficOverview } from "@/features/dashboard/services/site-traffic.service";
 import { GlobalKpiCards } from "@/lib/kpi-cards";
 import type { KpiCardItem } from "@/lib/kpi-cards";
@@ -31,23 +32,33 @@ const topPsColumn = createColumnHelper<DataTableFeatures, TopPsRow>();
 
 interface SiteTrafficPanelProps {
   overview: SiteTrafficOverview;
+  /** Server render instant. First paint uses this clock so the label matches the HTML. */
+  observedAt: string;
 }
 
-function relativeTime(value: Date | string): string {
-  const d = typeof value === "string" ? new Date(value) : value;
-  if (Number.isNaN(d.getTime())) return "—";
-  const diffMs = Date.now() - d.getTime();
-  const sec = Math.max(0, Math.floor(diffMs / 1000));
-  if (sec < 60) return `${sec} second${sec === 1 ? "" : "s"} ago`;
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min} minute${min === 1 ? "" : "s"} ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 48) return `${hr} hour${hr === 1 ? "" : "s"} ago`;
-  const day = Math.floor(hr / 24);
-  return `${day} day${day === 1 ? "" : "s"} ago`;
+function SiteTrafficTimestamp({
+  value,
+  observedAt,
+}: {
+  value: Date | string;
+  observedAt: string;
+}) {
+  const [liveNowMs, setLiveNowMs] = useState<number | null>(null);
+  const valueMs = value instanceof Date ? value.getTime() : Date.parse(value);
+  const valueKey = Number.isNaN(valueMs) ? "" : String(valueMs);
+
+  useEffect(() => {
+    if (!valueKey) return;
+    const tick = () => setLiveNowMs(Date.now());
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [valueKey]);
+
+  return formatSiteTrafficRelativeTime(value, liveNowMs ?? observedAt);
 }
 
-export function SiteTrafficPanel({ overview }: SiteTrafficPanelProps) {
+export function SiteTrafficPanel({ overview, observedAt }: SiteTrafficPanelProps) {
   const { kpis } = overview;
 
   const recentColumns = useMemo(() => {
@@ -92,12 +103,17 @@ export function SiteTrafficPanel({ overview }: SiteTrafficPanelProps) {
         id: "timestamp",
         header: "Timestamp",
         enableSorting: false,
-        cell: ({ row }) => relativeTime(row.original.lastSeenAt),
+        cell: ({ row }) => (
+          <SiteTrafficTimestamp
+            value={row.original.lastSeenAt}
+            observedAt={observedAt}
+          />
+        ),
         meta: { className: "whitespace-nowrap text-xs tabular-nums" },
       }),
     ];
     return cols;
-  }, []);
+  }, [observedAt]);
 
   const pageColumns = useMemo(() => {
     const cols: DataTableColumn<PageRow>[] = [
@@ -115,12 +131,17 @@ export function SiteTrafficPanel({ overview }: SiteTrafficPanelProps) {
         id: "timestamp",
         header: "Timestamp",
         enableSorting: false,
-        cell: ({ row }) => relativeTime(row.original.lastSeenAt),
+        cell: ({ row }) => (
+          <SiteTrafficTimestamp
+            value={row.original.lastSeenAt}
+            observedAt={observedAt}
+          />
+        ),
         meta: { className: "whitespace-nowrap text-xs tabular-nums" },
       }),
     ];
     return cols;
-  }, []);
+  }, [observedAt]);
 
   const topPsColumns = useMemo(() => {
     const cols: DataTableColumn<TopPsRow>[] = [

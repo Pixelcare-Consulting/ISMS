@@ -5,7 +5,6 @@ import { useMemo, useState, useTransition } from "react";
 import { createColumnHelper } from "@tanstack/react-table";
 import { Search } from "lucide-react";
 import { toast } from "sonner";
-
 import {
   appModules,
   parsePermissionSlug,
@@ -21,6 +20,7 @@ import { toggleRolePermissionAction } from "@/features/roles/actions/role.action
 import {
   filterTenantVisibleRoles,
   isProviderOnlyRole,
+  withoutBuiltInRoles,
 } from "@/features/roles/constants/role.constants";
 import { PermissionChangeDialog } from "@/features/roles/components/permission-change-dialog";
 import {
@@ -52,6 +52,8 @@ interface RoleModuleActionMatrixProps {
   matrix: RolesPermissionsMatrix;
   /** Super Admin or platform operator — may toggle grants on system roles. */
   canManageSystemRoleAccess?: boolean;
+  /** On hides built-in roles, same switch as the Roles page. */
+  hideSystemRoles?: boolean;
 }
 
 interface ModuleActionCell {
@@ -258,9 +260,17 @@ function ModuleBulkActions({
 export function RoleModuleActionMatrix({
   matrix,
   canManageSystemRoleAccess = false,
+  hideSystemRoles = false,
 }: RoleModuleActionMatrixProps) {
   const router = useRouter();
-  const roles = filterTenantVisibleRoles(matrix.roles);
+  const roles = useMemo(
+    () =>
+      withoutBuiltInRoles(
+        filterTenantVisibleRoles(matrix.roles),
+        hideSystemRoles,
+      ),
+    [hideSystemRoles, matrix.roles],
+  );
   const { permissions } = matrix;
   const [selectedRoleId, setSelectedRoleId] = useState(roles[0]?.id ?? "");
   const [moduleQuery, setModuleQuery] = useState("");
@@ -507,9 +517,11 @@ export function RoleModuleActionMatrix({
     return (
       <DataTableShell>
         <p className="py-12 text-center text-muted-foreground">
-          {canManageSystemRoleAccess
-            ? "No roles configured yet."
-            : "No custom roles yet. Use Add role on the simple view, or assign built-in roles from Settings → Users."}
+          {hideSystemRoles
+            ? "Built-in roles are hidden. Turn this off to show them."
+            : canManageSystemRoleAccess
+              ? "No roles configured yet."
+              : "No custom roles yet. Use Add role on the simple view, or assign built-in roles from Settings → Users."}
         </p>
       </DataTableShell>
     );

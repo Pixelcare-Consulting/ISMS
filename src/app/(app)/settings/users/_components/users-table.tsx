@@ -12,6 +12,7 @@ import { createColumnHelper, type RowSelectionState } from "@tanstack/react-tabl
 import { toast } from "sonner";
 
 import { deleteUserAction } from "@/features/users/actions/user.actions";
+import type { UserRoleOption } from "@/app/(app)/settings/users/_components/user-role-picker";
 import {
   filterTenantVisibleRoles,
   filterTenantVisibleUsers,
@@ -39,11 +40,6 @@ import { matchesTableSearch } from "@/utils/match-table-search";
 
 const userColumn = createColumnHelper<DataTableFeatures, UserRow>();
 
-interface RoleOption {
-  slug: string;
-  name: string;
-}
-
 interface DepartmentOption {
   id: string;
   name: string;
@@ -60,8 +56,9 @@ interface UserRow {
 
 interface UsersTableProps {
   users: UserRow[];
-  roles: RoleOption[];
+  roles: UserRoleOption[];
   departments: DepartmentOption[];
+  hideSystemRoles: boolean;
   currentUserId: string;
   toolbarActions?: ReactNode;
 }
@@ -80,6 +77,7 @@ export function UsersTable({
   users,
   roles,
   departments,
+  hideSystemRoles,
   currentUserId,
   toolbarActions,
 }: UsersTableProps) {
@@ -109,6 +107,7 @@ export function UsersTable({
       <CreateUserDialog
         roles={visibleRoles}
         departments={departments}
+        hideSystemRoles={hideSystemRoles}
         onCreated={(user) => {
           setRows((currentRows) => [user, ...currentRows]);
           router.refresh();
@@ -327,6 +326,7 @@ export function UsersTable({
           user={editingUser}
           roles={visibleRoles}
           departments={departments}
+          hideSystemRoles={hideSystemRoles}
           onUpdated={(user) => {
             setRows((currentRows) =>
               currentRows.map((row) => (row.id === user.id ? user : row)),

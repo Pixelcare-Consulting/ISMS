@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 
 import { ProviderShell } from "@/app/(provider)/_components/provider-shell";
+import { SessionActivity } from "@/components/auth/session-activity";
 import { DocumentTitle } from "@/components/document-title";
 import { resolveRouteTitle } from "@/config/route-titles";
 import { requirePlatformOperator } from "@/lib/auth/permissions";
@@ -23,6 +24,7 @@ export default async function ProviderLayout({
   return (
     <>
       <DocumentTitle />
+      <SessionActivity />
       <ProviderShell
         user={{
           name: session.user.name,

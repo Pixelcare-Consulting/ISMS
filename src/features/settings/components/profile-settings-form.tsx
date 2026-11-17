@@ -24,6 +24,7 @@ interface ProfileSettingsFormProps {
     image: string | null;
     department: string | null;
     roles: string[];
+    mustChangePassword?: boolean;
   };
 }
 
@@ -38,6 +39,9 @@ export function ProfileSettingsForm({ initialValues }: ProfileSettingsFormProps)
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [mustChangePassword, setMustChangePassword] = useState(
+    initialValues.mustChangePassword ?? false,
+  );
   const [profilePending, startProfileTransition] = useTransition();
   const [passwordPending, startPasswordTransition] = useTransition();
   const [imagePending, setImagePending] = useState(false);
@@ -138,8 +142,13 @@ export function ProfileSettingsForm({ initialValues }: ProfileSettingsFormProps)
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
+      const wasRequired = mustChangePassword;
+      setMustChangePassword(false);
+      router.refresh();
       toast.success("Password updated", {
-        description: "Use your new password next time you sign in.",
+        description: wasRequired
+          ? "You can continue in the app."
+          : "Use your new password next time you sign in.",
       });
     });
   }
@@ -148,6 +157,12 @@ export function ProfileSettingsForm({ initialValues }: ProfileSettingsFormProps)
 
   return (
     <div className="space-y-6">
+      {mustChangePassword ? (
+        <p className="rounded-lg border border-[#E7D7B0] bg-[#FFF4DE] px-4 py-3 text-sm text-foreground">
+          Choose a new password before you continue. Profile stays open until
+          this password is saved.
+        </p>
+      ) : null}
       <SettingsSection
         title="Profile"
         description="Update your name and profile photo."

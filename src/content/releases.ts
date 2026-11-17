@@ -68,6 +68,76 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.95.8",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T21:25:00+08:00",
+    title: "One sign-in at a time and session timeout",
+    highlights: [
+      "An account can only be signed in on one device at a time, No longer supports multiple sign-ins.",
+      "You are signed out after 15 minutes when idle.",
+      "Recent activity on Site Traffic shows a steady time when the page opens.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "If this account is already signed in somewhere else, sign-in stops and explains that. You can sign out the other device and continue here.",
+      },
+      {
+        type: "feature",
+        description:
+          "After 15 minutes with no clicks, keys, or scrolling, you are signed out and asked to sign in again.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Add user and Add role show a check beside each allowed permission, and the access preview keeps selected roles, combined access, and the note in separate places.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The access preview names the module with each permission, so the same action on two modules stays easy to tell apart.",
+      },
+      {
+        type: "improvement",
+        description:
+          "On Roles, Hide when adding a user also hides built-in role cards. Turn the switch off to show them again.",
+      },
+      {
+        type: "fix",
+        description:
+          "After Site Traffic opens, recent activity times keep moving on their own, from a few seconds ago through minutes and hours.",
+      },
+    ],
+  },
+  {
+    version: "0.95.6",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T20:15:00+08:00",
+    title: "Assign more than one role",
+    highlights: [
+      "A new user can have more than one role, and their access is the combination of those roles.",
+      "On Roles, Hide when adding a user keeps built-in roles off the user form until it is turned off.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "When you add or edit a user, you can assign any number of roles. Access is everything those roles allow, listed once.",
+      },
+      {
+        type: "feature",
+        description:
+          "On Roles, Hide when adding a user is on by default. Built-in role cards are hidden while it is on. They stay off Add user and Edit user until you turn the switch off. A built-in role someone already has stays checked so it is not removed by accident.",
+      },
+      {
+        type: "improvement",
+        description:
+          "You can ask a new user to choose their own password the first time they sign in. They go to Profile and can continue after that password is saved.",
+      },
+    ],
+  },
+  {
     version: "0.95.5",
     date: "2026-11-17",
     releasedAt: "2026-11-17T19:30:00+08:00",

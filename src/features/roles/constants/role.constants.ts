@@ -45,6 +45,17 @@ export function canManageSystemRoleAccess(
   return isPlatformOperator || hasProviderRole(roleSlugs);
 }
 
+/** Drop built-in roles while Hide when adding a user is on. */
+export function withoutBuiltInRoles<T extends { isSystem?: boolean }>(
+  roles: readonly T[],
+  hideBuiltIn: boolean,
+): T[] {
+  if (!hideBuiltIn) {
+    return [...roles];
+  }
+  return roles.filter((role) => !role.isSystem);
+}
+
 /** Roles shown in the tenant Roles / matrix UI. */
 export function filterRolesForPermissionsUi<
   T extends { slug: string; isSystem?: boolean },

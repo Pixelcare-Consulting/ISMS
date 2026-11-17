@@ -3,13 +3,14 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 
-import { Plus } from "lucide-react";
+import { Check, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import {
   createRoleAction,
   toggleRolePermissionAction,
 } from "@/features/roles/actions/role.actions";
+import { AccessPreviewPanel } from "@/features/roles/components/access-preview-panel";
 import { GroupedPermissionsChecklist } from "@/features/roles/components/grouped-permissions-checklist";
 import { slugifyRoleName } from "@/features/roles/constants/role.constants";
 import type { PermissionModuleGroup } from "@/features/roles/lib/group-permissions-by-module";
@@ -73,15 +74,62 @@ export function CreateRoleWizard({
     [selectedSlugs],
   );
 
-  const permissionLabelBySlug = useMemo(() => {
+  const catalogNameBySlug = useMemo(() => {
     const map = new Map<string, string>();
+    for (const permission of permissions) {
+      map.set(permission.slug, permission.name);
+    }
+    return map;
+  }, [permissions]);
+
+  const permissionPreviewBySlug = useMemo(() => {
+    const map = new Map<string, { moduleName: string; actionLabel: string }>();
     for (const group of groups) {
       for (const permission of group.permissions) {
-        map.set(permission.slug, permission.label);
+        map.set(permission.slug, {
+          moduleName: group.moduleName,
+          actionLabel: permission.label,
+        });
       }
     }
     return map;
   }, [groups]);
+
+  const selectedAccessItems = useMemo(
+    () =>
+      selectedList.map((slugValue) => {
+        const preview = permissionPreviewBySlug.get(slugValue);
+        if (!preview) {
+          return {
+            id: slugValue,
+            name: catalogNameBySlug.get(slugValue) ?? "Selected permission",
+          };
+        }
+        return {
+          id: slugValue,
+          name: preview.moduleName,
+          detail: preview.actionLabel,
+        };
+      }),
+    [catalogNameBySlug, permissionPreviewBySlug, selectedList],
+  );
+
+  const selectedAccessNames = useMemo(() => {
+    const seen = new Set<string>();
+    const names: string[] = [];
+    for (const item of selectedAccessItems) {
+      const line = item.detail ? `${item.name} — ${item.detail}` : item.name;
+      if (seen.has(line)) continue;
+      seen.add(line);
+      names.push(line);
+    }
+    return names;
+  }, [selectedAccessItems]);
+
+  const accessHeading =
+    selectedAccessItems.length === 1
+      ? "1 permission selected"
+      : `${selectedAccessItems.length} permissions selected`;
 
   function resetForm() {
     setError(null);
@@ -236,7 +284,7 @@ export function CreateRoleWizard({
       </Button>
 
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="flex max-h-[90vh] max-w-lg flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
+        <DialogContent className="flex max-h-[90vh] w-full max-w-[1050px] flex-col gap-0 overflow-hidden p-0 sm:max-w-[1050px] sm:p-0">
           <DialogHeader className="space-y-3 border-b border-border/60 px-6 py-4 text-left">
             <DialogTitle>Add role</DialogTitle>
             <DialogDescription>
@@ -338,8 +386,8 @@ export function CreateRoleWizard({
                           className={cn(
                             "w-full rounded-lg border px-3 py-2.5 text-left transition-colors",
                             selected
-                              ? "border-primary bg-primary/5"
-                              : "border-border/70 hover:bg-accent/30",
+                              ? "border-[#CDE6DE] bg-[#E8F5F1]"
+                              : "border-border/70 hover:bg-muted/60",
                           )}
                         >
                           <p className="text-sm font-medium">{item.name}</p>
@@ -359,13 +407,30 @@ export function CreateRoleWizard({
                 <p className="text-sm text-muted-foreground">
                   What should people with this role be able to see and do?
                 </p>
-                <GroupedPermissionsChecklist
-                  groups={groups}
-                  assignedSlugs={selectedSlugs}
-                  mode="draft"
-                  onToggleSlug={onToggleSlug}
-                  onModuleSelectAll={onModuleSelectAll}
-                />
+                <div className="grid items-stretch gap-4 min-[900px]:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+                  <div className="max-h-[28rem] min-w-0 overflow-y-auto pr-1">
+                    <GroupedPermissionsChecklist
+                      groups={groups}
+                      assignedSlugs={selectedSlugs}
+                      mode="draft"
+                      highlightChecked
+                      onToggleSlug={onToggleSlug}
+                      onModuleSelectAll={onModuleSelectAll}
+                    />
+                  </div>
+                  <AccessPreviewPanel
+                    heading={accessHeading}
+                    selectedLabel="Selected access"
+                    selectedItems={selectedAccessItems}
+                    onRemove={(slugValue) => onToggleSlug(slugValue, false)}
+                    accessNames={selectedAccessNames}
+                    emptySelection="No access selected yet."
+                    emptyAccess="Allowed permissions appear here."
+                    note="Permissions add up. Turn on only the access this role needs."
+                    caption="From the selected access"
+                    disabled={pending}
+                  />
+                </div>
               </div>
             ) : null}
 
@@ -384,21 +449,22 @@ export function CreateRoleWizard({
                 </div>
                 <div>
                   <p className="mb-2 font-medium text-foreground">
-                    Access ({selectedList.length})
+                    Access ({selectedAccessNames.length})
                   </p>
-                  {selectedList.length === 0 ? (
+                  {selectedAccessNames.length === 0 ? (
                     <p className="text-muted-foreground">
                       No access selected — you can add it after creating the
                       role.
                     </p>
                   ) : (
-                    <ul className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-border/60 px-3 py-2">
-                      {selectedList.map((slugValue) => (
+                    <ul className="max-h-48 space-y-1.5 overflow-y-auto rounded-lg border border-border/60 px-3 py-2">
+                      {selectedAccessNames.map((name) => (
                         <li
-                          key={slugValue}
-                          className="text-xs text-muted-foreground"
+                          key={name}
+                          className="flex items-start gap-2 text-sm text-foreground"
                         >
-                          {permissionLabelBySlug.get(slugValue) ?? slugValue}
+                          <Check className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
+                          {name}
                         </li>
                       ))}
                     </ul>

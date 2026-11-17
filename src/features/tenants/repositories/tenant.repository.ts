@@ -66,6 +66,21 @@ export const tenantRepository = {
     });
   },
 
+  async getHideSystemRolesOnUsers(tenantId: string) {
+    const tenant = await prisma.tenant.findFirst({
+      where: { id: tenantId, deletedAt: null },
+      select: { hideSystemRolesOnUsers: true },
+    });
+    return tenant?.hideSystemRolesOnUsers ?? true;
+  },
+
+  setHideSystemRolesOnUsers(tenantId: string, hideSystemRolesOnUsers: boolean) {
+    return prisma.tenant.update({
+      where: { id: tenantId },
+      data: { hideSystemRolesOnUsers },
+    });
+  },
+
   listCustomers() {
     return prisma.tenant.findMany({
       where: customerWhere,

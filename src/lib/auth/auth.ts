@@ -6,6 +6,11 @@ import { nextCookies } from "better-auth/next-js";
 import bcrypt from "bcryptjs";
 
 import { isPlatformOperator as checkPlatformOperator } from "@/features/roles/constants/role.constants";
+import {
+  enforceSingleSessionOnCreate,
+  replaceOtherSessionsRequested,
+} from "@/lib/auth/enforce-single-session";
+import { REPLACE_OTHER_SESSIONS_HEADER } from "@/lib/auth/session-policy";
 import { prisma } from "@/lib/database/client";
 import { logger } from "@/lib/shared/logger";
 import { rateLimit } from "@/lib/cache/redis";
@@ -47,6 +52,14 @@ async function loadUserRoleSlugs(userId: string): Promise<string[]> {
   });
 
   return roles.map((role) => role.slug);
+}
+
+async function loadMustChangePassword(userId: string): Promise<boolean> {
+  const record = await prisma.user.findFirst({
+    where: { id: userId, deletedAt: null },
+    select: { mustChangePassword: true },
+  });
+  return record?.mustChangePassword ?? false;
 }
 
 async function loadTenantIsPlatform(tenantId: string): Promise<boolean> {
@@ -140,14 +153,21 @@ export const auth = betterAuth({
      * `customSession` plugin below still runs per request by design, so permissions
      * are never stale.
      *
-     * Trade-off: a session revoked elsewhere stays usable for up to `maxAge`.
-     * `requireAuth` still checks the user and tenant live on every call
-     * (`lib/auth/permissions.ts`), so a disabled user or tenant is caught at once;
-     * only remote sign-out lags, and only by a minute.
+     * The cookie can stay warm for `maxAge` after the row is deleted. `requireAuth`
+     * reads the session row and its last activity on every call, so a second
+     * sign-in or 15 minutes of idle still signs the person out on the next request.
      */
     cookieCache: {
       enabled: true,
       maxAge: 60,
+    },
+    additionalFields: {
+      lastActiveAt: {
+        type: "date",
+        required: false,
+        input: false,
+        defaultValue: () => new Date(),
+      },
     },
   },
   user: {
@@ -170,15 +190,36 @@ export const auth = betterAuth({
         },
       },
     },
+    session: {
+      create: {
+        before: async (session, context) => {
+          const userId = typeof session.userId === "string" ? session.userId : "";
+          if (!userId) {
+            return;
+          }
+          await enforceSingleSessionOnCreate(
+            userId,
+            replaceOtherSessionsRequested(context, REPLACE_OTHER_SESSIONS_HEADER),
+          );
+          return {
+            data: {
+              lastActiveAt: new Date(),
+            },
+          };
+        },
+      },
+    },
   },
   plugins: [
     customSession(async ({ user, session }) => {
       const tenantId = (user as { tenantId?: string }).tenantId ?? "";
-      const [permissions, roleSlugs, tenantIsPlatform] = await Promise.all([
-        loadUserPermissions(user.id),
-        loadUserRoleSlugs(user.id),
-        loadTenantIsPlatform(tenantId),
-      ]);
+      const [permissions, roleSlugs, tenantIsPlatform, mustChangePassword] =
+        await Promise.all([
+          loadUserPermissions(user.id),
+          loadUserRoleSlugs(user.id),
+          loadTenantIsPlatform(tenantId),
+          loadMustChangePassword(user.id),
+        ]);
 
       return {
         user: {
@@ -187,6 +228,7 @@ export const auth = betterAuth({
           permissions,
           roleSlugs,
           isPlatformOperator: checkPlatformOperator(roleSlugs, tenantIsPlatform),
+          mustChangePassword,
         },
         session,
       };

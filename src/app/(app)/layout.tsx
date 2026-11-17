@@ -22,6 +22,7 @@ import {
 } from "@/app/(app)/_components/contextual-sidebar-preference";
 import { PixelcareAwareShell } from "@/app/(app)/_components/pixelcare-aware-shell";
 import { WhatsNewHeaderAction } from "@/app/(app)/_components/whats-new-header-action";
+import { SessionActivity } from "@/components/auth/session-activity";
 import { DocumentTitle } from "@/components/document-title";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { resolveRouteTitle } from "@/config/route-titles";
@@ -69,6 +70,13 @@ export default async function AppLayout({
     roleSlugs: session.user.roleSlugs,
     isPlatformOperator,
   });
+
+  const onProfile =
+    pathname === "/settings/profile" ||
+    pathname.startsWith("/settings/profile/");
+  if (session.user.mustChangePassword && !onProfile) {
+    redirect("/settings/profile");
+  }
 
   if (setupAdmin && !isSetupPathAllowed(pathname)) {
     redirect(SETUP_HOME);
@@ -132,6 +140,7 @@ export default async function AppLayout({
   return (
     <SidebarProvider defaultOpen={defaultOpen}>
       <DocumentTitle />
+      <SessionActivity />
       <AppTopLoader />
       <Suspense fallback={null}>
         <AppNavigationProgress />

@@ -74,6 +74,7 @@ function session(): AppSession {
       permissions: ["inventory.view"],
       roleSlugs: [],
       isPlatformOperator: false,
+      mustChangePassword: false,
     },
   };
 }

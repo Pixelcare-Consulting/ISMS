@@ -34,6 +34,7 @@ export const userRepository = {
     name: string;
     passwordHash: string;
     departmentId?: string | null;
+    mustChangePassword?: boolean;
   }) {
     return prisma.user.create({
       data: {
@@ -42,6 +43,7 @@ export const userRepository = {
         name: data.name,
         passwordHash: data.passwordHash,
         departmentId: data.departmentId ?? null,
+        mustChangePassword: data.mustChangePassword ?? false,
       },
     });
   },
@@ -61,6 +63,13 @@ export const userRepository = {
     return prisma.user.update({
       where: { id, tenantId },
       data: { passwordHash },
+    });
+  },
+
+  clearMustChangePassword(tenantId: string, id: string) {
+    return prisma.user.update({
+      where: { id, tenantId },
+      data: { mustChangePassword: false },
     });
   },
 
