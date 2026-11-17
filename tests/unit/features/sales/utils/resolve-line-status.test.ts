@@ -270,3 +270,21 @@ describe("sales status cards and ?status=", () => {
     expect(salesListStatusCodesMatch("SLD", "SLD")).toBe(true);
   });
 });
+
+describe("resolveLineStatusCode for service center steps", () => {
+  it.each(["pending_sc", "awaiting_stock"])(
+    "shows Reserve ODRF while the request is %s",
+    (status) => {
+      expect(resolve({ serialNumberId: "sn-1", statusCode: sold }, "reserve", status, "replacement")).toMatchObject({
+        code: "ODRF",
+        name: "Reserve ODRF",
+      });
+    },
+  );
+
+  it("shows Replaced after the service center completes a replacement", () => {
+    expect(resolve({ serialNumberId: "sn-2", statusCode: sold }, "closed", "completed", "replacement")).toMatchObject({
+      code: "REPLACED",
+    });
+  });
+});

@@ -19,7 +19,10 @@ import { sapServiceLayerClient } from "@/features/sap/services/sap-service-layer
 import { sapServiceLayerService } from "@/features/sap/services/sap-service-layer.service";
 import { withSapSyncLock } from "@/features/sap/services/sap-sync-lock";
 import type { SapServiceLayerCredentials } from "@/features/sap/types/sap-service-layer";
-import { placeServiceCenterUnit } from "@/features/service-center-ops/services/service-center-placement";
+import {
+  placeServiceCenterUnits,
+  SC_DR_TRANSACTION_OPTIONS,
+} from "@/features/service-center-ops/services/service-center-placement";
 import {
   blockedPlacementMessage,
   SC_SAP_CHECK_BATCH,
@@ -132,9 +135,9 @@ async function applyDeliveryNote(
     const serialIds = [...new Set(idBySerial.values())];
     await lockSerialNumbers(tx, serialIds);
 
-    // Already on another SC delivery that is not yet accepted: the DR would double count it.
+    // Already on another SC delivery, neither accepted nor rejected back: the DR would double count it.
     const onOpenDelivery = await tx.serviceCenterDeliveryLine.findMany({
-      where: { serialNumberId: { in: serialIds }, acceptedAt: null },
+      where: { serialNumberId: { in: serialIds }, acceptedAt: null, returnedAt: null },
       select: { serialNumber: { select: { serialNo: true } }, delivery: { select: { deliveryNo: true } } },
     });
     if (onOpenDelivery.length > 0) {
@@ -154,15 +157,13 @@ async function applyDeliveryNote(
       if (warehouseRowIds.length > 0) {
         await tx.warehouseInventory.deleteMany({ where: { id: { in: warehouseRowIds } } });
       }
-      for (const serialNumberId of serialIds) {
-        await placeServiceCenterUnit(tx, {
-          tenantId,
-          serviceCenterId: order.serviceCenterId,
-          serviceCenterLocationId: locationId,
-          serialNumberId,
-          statusCodeId: codes.dit,
-        });
-      }
+      await placeServiceCenterUnits(tx, {
+        tenantId,
+        serviceCenterId: order.serviceCenterId,
+        serviceCenterLocationId: locationId,
+        serialNumberIds: serialIds,
+        statusCodeId: codes.dit,
+      });
     }
 
     const deliveryNo = scDeliveryNoForDr(doc.docEntry);
@@ -178,7 +179,7 @@ async function applyDeliveryNote(
         sapDocNum: doc.docNum,
         sapDocNo: doc.displayNo,
         sapDocDate: doc.docDate ? new Date(doc.docDate) : null,
-        lines: { create: serialIds.map((serialNumberId) => ({ serialNumberId })) },
+        lines: { createMany: { data: serialIds.map((serialNumberId) => ({ serialNumberId })) } },
       },
       select: { id: true },
     });
@@ -215,7 +216,7 @@ async function applyDeliveryNote(
       },
     });
     return serialIds.length;
-  });
+  }, SC_DR_TRANSACTION_OPTIONS);
 }
 
 /** One batch of orders: find their DRs, apply the new ones, close orders SAP finished. */

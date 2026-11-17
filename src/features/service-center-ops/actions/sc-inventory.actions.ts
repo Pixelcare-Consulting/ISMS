@@ -201,6 +201,7 @@ export async function listScCentersForOpsAction() {
     "service_centers.sales.create",
     "service_centers.orders.view",
     "service_centers.orders.create",
+    "service_centers.orders.approve",
     "service_centers.logistics.view",
     "service_centers.logistics.create",
     "service_centers.logistics.manage",
@@ -221,29 +222,5 @@ export async function listScCentersForOpsAction() {
       locations: { orderBy: { code: "asc" }, select: { id: true, code: true, name: true } },
     },
     orderBy: { name: "asc" },
-  });
-}
-
-/** Serial search for accepting an older (non-SAP) SC delivery. */
-export async function searchSerialsForScStockInAction(query: string) {
-  const session = await requireAnyPermission([
-    "service_centers.manage",
-    "service_centers.logistics.manage",
-    "service_centers.logistics.create",
-  ]);
-  const q = query.trim();
-  if (q.length < 2) return [];
-  return prisma.serialNumber.findMany({
-    where: {
-      tenantId: session.user.tenantId,
-      serialNo: { contains: q, mode: "insensitive" },
-    },
-    select: {
-      id: true,
-      serialNo: true,
-      model: { select: { skuCode: true, name: true } },
-    },
-    orderBy: { serialNo: "asc" },
-    take: 25,
   });
 }

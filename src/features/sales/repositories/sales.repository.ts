@@ -14,17 +14,16 @@ export function branchReturnDocumentTypeScopeWhere(
 ): Prisma.BranchReturnRequestWhereInput {
   if (!scope) return {};
 
-  const serviceNameFilter: Prisma.StringFilter = {
-    in: [...SERVICE_DOCUMENT_TYPE_NAMES],
-    mode: "insensitive",
+  const serviceNameFilter: Prisma.DocumentTypeWhereInput = {
+    OR: SERVICE_DOCUMENT_TYPE_NAMES.map((prefix) => ({
+      name: { startsWith: prefix, mode: "insensitive" as const },
+    })),
   };
 
   if (scope === "service") {
     return {
       documentType: {
-        is: {
-          name: serviceNameFilter,
-        },
+        is: serviceNameFilter,
       },
     };
   }
@@ -35,9 +34,7 @@ export function branchReturnDocumentTypeScopeWhere(
       {
         NOT: {
           documentType: {
-            is: {
-              name: serviceNameFilter,
-            },
+            is: serviceNameFilter,
           },
         },
       },

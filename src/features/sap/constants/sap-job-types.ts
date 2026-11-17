@@ -12,6 +12,7 @@ import type {
 export const SAP_JOB_TYPE_LABELS: Record<SapIntegrationJobType, string> = {
   approved_order: "Branch order",
   service_center_order: "Service center order",
+  sc_delivery_return: "Service center delivery reject",
   delivery_return: "Delivery return",
   delivery_partial_return: "Partial return",
   delivery_transfer: "Unit transfer",
@@ -224,4 +225,5 @@ export const SAP_REFERENCE_TYPES = {
   StockVariance: "StockVariance",
   StockCountSession: "StockCountSession",
   ServiceCenterOrder: "ServiceCenterOrder",
+  ScDeliveryReturnRequest: "ServiceCenterDeliveryReturnRequest",
 } as const;

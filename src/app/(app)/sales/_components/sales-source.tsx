@@ -8,6 +8,8 @@ import {
   createSaleAction,
   getSaleDetailsAction,
   listBranchesForSalesAction,
+  listProcessReturnLookupsAction,
+  requestReturnAction,
   listSaleableSerialsAction,
   listStockSourceBranchesForSalesAction,
   updateSaleHeaderAction,
@@ -15,6 +17,10 @@ import {
   type AgingSellableSerial,
 } from "@/features/sales/actions/sales.actions";
 import type { SaleableSerialItem } from "@/features/sales/lib/saleable-serial-query";
+import type {
+  ProcessReturnLookups,
+  ProcessReturnPayload,
+} from "@/features/sales/services/process-return-input";
 import { saleProofViewUrl } from "@/features/sales/utils/sale-proof";
 import type { PaginatedResult } from "@/lib/shared/pagination";
 
@@ -126,6 +132,18 @@ export interface SalesSource {
       modelId: string;
     }) => Promise<{ count: number; serials: AgingSellableSerial[] }>;
   };
+  /** Process Return form on a sale line. */
+  processReturn: {
+    listLookups: () => Promise<ProcessReturnLookups>;
+    request: (saleId: string, payload: ProcessReturnPayload) => Promise<ActionResult>;
+    /**
+     * True for SC sales: the service center that sold the unit finishes every request, so the
+     * form has no service center picker.
+     */
+    sellerFinishes: boolean;
+    /** What happens next, shown after a Service Return / Replacement is sent. */
+    serviceNextStep: string;
+  };
 }
 
 export const BRANCH_SALES_SOURCE: SalesSource = {
@@ -168,6 +186,12 @@ export const BRANCH_SALES_SOURCE: SalesSource = {
       listSaleableSerialsAction({ ...rest, branchId: stockSourceId }),
     countAgingSellableStock: ({ stockSourceId, modelId }) =>
       countAgingSellableStockAction({ branchId: stockSourceId, modelId }),
+  },
+  processReturn: {
+    listLookups: () => listProcessReturnLookupsAction(),
+    request: (saleId, payload) => requestReturnAction(saleId, payload),
+    sellerFinishes: false,
+    serviceNextStep: "This request is subject for approval of the service department.",
   },
 };
 

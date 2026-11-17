@@ -141,7 +141,7 @@ export default async function ReturnsPage({ searchParams }: ReturnsPageProps) {
         title="Returns / Replacement"
         sticky={false}
         tutorial={RETURNS_PAGE_TUTORIAL}
-        description="Track branch and service center customer returns. Start a request from the sale’s View details. Dealer Initiated sales returns wait for Team Leader; other sales returns are approved when requested. Service center returns are still evaluated by Customer Service."
+        description="Track branch and service center customer returns. Start a request from the sale’s View details. Dealer Initiated sales returns wait for Team Leader; other sales returns are approved when requested. Service Return and Service Replacement on service center sales are requested from SC Sales and finished by the service center that sold the unit."
       />
       <ModuleGuide {...RETURNS_MODULE_GUIDE} />
       <ReturnsKpisStrip kpis={activeKpis} />

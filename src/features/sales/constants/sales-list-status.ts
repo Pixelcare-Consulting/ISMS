@@ -1,5 +1,7 @@
 import type { Prisma } from "@prisma/client";
 
+import { RETURN_HISTORY_STATUSES } from "@/features/sales/constants/return-history-status";
+
 /**
  * Inventory statuses always shown on the Sales list / KPI cards.
  * Sales & ATR steps are added only when a row actually resolves to them.
@@ -27,6 +29,8 @@ export const SALES_ATR_LIST_CODES = [
   "pending_cs",
   "pending_tl",
   "approved",
+  // Reserve ODRF: a service return the service center is still working on.
+  "ODRF",
   "RETURNED",
   "REPLACED",
   "closed",
@@ -82,14 +86,6 @@ export function salesListStatusCodesMatch(
 ): boolean {
   return canonicalSalesListStatusCode(resolvedCode) === filter;
 }
-
-/** Return steps that keep Returned or Replaced on the sales list. */
-const RETURN_HISTORY_STATUSES = [
-  "pending_cs",
-  "pending_tl",
-  "approved",
-  "completed",
-] as const;
 
 /**
  * Sale-line filter shared by branch and service center sale lines (both tables have the

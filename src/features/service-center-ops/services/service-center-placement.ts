@@ -6,6 +6,13 @@ import {
   lockSerialNumbers,
 } from "@/features/inventory/services/serial-placement";
 
+/**
+ * For transactions that move a whole SAP DR into a service center. Prisma's 5 s default is
+ * too short once each query crosses to a remote database; the work itself is a fixed number
+ * of queries, so this only absorbs latency.
+ */
+export const SC_DR_TRANSACTION_OPTIONS = { maxWait: 10_000, timeout: 30_000 } as const;
+
 type ServiceCenterPlacementClient = Pick<
   Prisma.TransactionClient,
   | "$queryRaw"
@@ -58,4 +65,51 @@ export async function placeServiceCenterUnit(
     },
   });
   return created.id;
+}
+
+/**
+ * `placeServiceCenterUnit` for many serials at one location, in a fixed number of queries:
+ * one lock, one placement read, one update, one insert. A DR's serials arrive together, and a
+ * query per serial outlived the transaction timeout on a remote database.
+ */
+export async function placeServiceCenterUnits(
+  tx: ServiceCenterPlacementClient,
+  input: {
+    tenantId: string;
+    serviceCenterId: string;
+    serviceCenterLocationId: string;
+    serialNumberIds: readonly string[];
+    statusCodeId: string;
+  },
+): Promise<void> {
+  const serialNumberIds = [...new Set(input.serialNumberIds)];
+  if (serialNumberIds.length === 0) return;
+  await lockSerialNumbers(tx, serialNumberIds);
+  const occupied = await loadCurrentPlacements(tx, serialNumberIds);
+  const sameLocation = occupied.filter(
+    (row) =>
+      row.table === "service_center" &&
+      row.serviceCenterLocationId === input.serviceCenterLocationId,
+  );
+  assertExclusivePlacement({ placements: occupied, replacingIds: sameLocation.map((row) => row.id) });
+
+  if (sameLocation.length > 0) {
+    await tx.serviceCenterInventory.updateMany({
+      where: { id: { in: sameLocation.map((row) => row.id) } },
+      data: { statusCodeId: input.statusCodeId, serviceCenterId: input.serviceCenterId },
+    });
+  }
+  const placed = new Set(sameLocation.map((row) => row.serialNumberId));
+  const toCreate = serialNumberIds.filter((id) => !placed.has(id));
+  if (toCreate.length > 0) {
+    await tx.serviceCenterInventory.createMany({
+      data: toCreate.map((serialNumberId) => ({
+        tenantId: input.tenantId,
+        serviceCenterId: input.serviceCenterId,
+        serviceCenterLocationId: input.serviceCenterLocationId,
+        serialNumberId,
+        statusCodeId: input.statusCodeId,
+      })),
+    });
+  }
 }

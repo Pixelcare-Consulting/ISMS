@@ -1,5 +1,6 @@
 import { auditService } from "@/features/audit/services/audit.service";
 import { completeDeliveryReturn } from "@/features/logistics/services/delivery-return-completion";
+import { completeScDeliveryReturn } from "@/features/service-center-ops/services/sc-delivery-return-completion";
 import { logisticsService } from "@/features/logistics/services/logistics.service";
 import { orderRepository } from "@/features/orders/repositories/order.repository";
 import { resolveOrderSapRouting } from "@/features/orders/services/order-sap-routing";
@@ -167,6 +168,39 @@ export const mockSapOutbound: SapOutboundPort = {
       userId,
       action: "sap.delivery_return_processed",
       entityType: SAP_REFERENCE_TYPES.DeliveryReturnRequest,
+      entityId: returnId,
+      metadata: { sapDocRef, jobId: job.id, adapter: "mock" },
+    });
+    return sapDocRef;
+  },
+
+  /** Mock Return number, then the same local completion as the live adapter. */
+  async createScDeliveryReturnDocument({ tenantId, userId, job }) {
+    const returnId = job.referenceId;
+    if (!returnId) throw new Error("Missing service center reject reference");
+    const request = await prisma.serviceCenterDeliveryReturnRequest.findFirst({
+      where: { id: returnId, tenantId },
+      select: { status: true },
+    });
+    if (!request) throw new Error("Service center reject not found");
+    if (request.status !== "APPROVED" && request.status !== "COMPLETED") {
+      throw new Error("Only an approved reject can be posted to SAP");
+    }
+    const sapDocNo = `MOCK-RETURN-${returnId.slice(-8).toUpperCase()}`;
+    if (request.status === "APPROVED") {
+      await prisma.serviceCenterDeliveryReturnRequest.update({
+        where: { id: returnId },
+        data: { sapDocNo, sapDocDate: new Date(), sapError: null },
+      });
+      await completeScDeliveryReturn({ tenantId, userId, returnId, sapDocNo });
+    }
+    const sapDocRef = `RETURN-${sapDocNo}`;
+    await sapIntegrationRepository.markCompleted(job.id, sapDocRef);
+    await auditService.log({
+      tenantId,
+      userId,
+      action: "sap.sc_delivery_return_processed",
+      entityType: SAP_REFERENCE_TYPES.ScDeliveryReturnRequest,
       entityId: returnId,
       metadata: { sapDocRef, jobId: job.id, adapter: "mock" },
     });

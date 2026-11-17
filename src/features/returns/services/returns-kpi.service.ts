@@ -8,6 +8,8 @@ const RETURN_STATUS_ORDER: ReturnRequestStatus[] = [
   "pending_cs",
   "pending_tl",
   "approved",
+  "pending_sc",
+  "awaiting_stock",
   "rejected",
   "completed",
 ];
@@ -24,6 +26,8 @@ const RETURN_STATUS_LABELS: Record<ReturnRequestStatus, string> = {
   approved: "Approved",
   rejected: "Rejected",
   completed: "Completed",
+  pending_sc: "Pending SC",
+  awaiting_stock: "Awaiting Stock",
 };
 
 export interface ReturnsKpis {

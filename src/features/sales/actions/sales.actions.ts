@@ -71,6 +71,20 @@ import {
 } from "@/features/sales/utils/resolve-line-status";
 import { generateAndStoreAtrOdrfPdf } from "@/features/sales/services/atr-odrf-pdf";
 import {
+  loadProcessReturnLookups,
+  processReturnPayloadSchema,
+  type ProcessReturnLookups,
+  type ProcessReturnPayload,
+} from "@/features/sales/services/process-return-input";
+import { nextReplacementNo } from "@/features/sales/services/replacement-no";
+import {
+  holdCodeId,
+  loadReturnReserveCodeIds,
+  markSoldSerialReserved,
+  restoreSerialAfterReturnReject,
+  returnRequestHistoryDetails,
+} from "@/features/sales/services/return-unit-hold";
+import {
   assertSaleHeaderLookups,
   assertSaleLookups,
   DUPLICATE_SALE_SERIAL_ERROR,
@@ -396,11 +410,8 @@ export async function listSalesReturnsAction(input?: {
         atrStatusCode: resolveSalesAtrStatusCode(sale.atrStatus, salesAtrCodes),
         returnStatus: row.status,
         returnStatusCode:
-          returnHistoryStatusRef(
-            row.status,
-            row.documentType?.name,
-            row.actionType,
-          ) ?? resolveSalesAtrStatusCode(row.status, salesAtrCodes),
+          returnHistoryStatusRef(row.status, row.documentType?.name, row.actionType) ??
+          resolveSalesAtrStatusCode(row.status, salesAtrCodes),
         actionType: row.actionType ?? "return",
         stockStatusCode: row.stockStatusCode ?? "STK",
         documentTypeName: row.documentType?.name ?? null,
@@ -1046,250 +1057,16 @@ export async function createSaleAction(input: unknown) {
   return { success: true as const };
 }
 
-export async function listProcessReturnLookupsAction() {
+export async function listProcessReturnLookupsAction(): Promise<ProcessReturnLookups> {
   const session = await requireAnyPermission([
     RETURNS_REQUEST,
     SALES_RETURN_REQUEST,
     SALES_CREATE,
   ]);
-  const tenantId = session.user.tenantId;
-
-  const [documentTypes, problemDescriptions, serviceCenters, models, warehouseLocations] =
-    await Promise.all([
-      prisma.documentType.findMany({
-        where: { tenantId, recordStatus: "active" },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
-      }),
-      prisma.problemDescription.findMany({
-        where: { tenantId, recordStatus: "active" },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
-      }),
-      prisma.serviceCenter.findMany({
-        where: { tenantId, deletedAt: null, status: "active" },
-        select: { id: true, name: true, sapCode: true },
-        orderBy: { name: "asc" },
-      }),
-      prisma.productModel.findMany({
-        where: { tenantId, status: "active" },
-        select: { id: true, skuCode: true, name: true },
-        orderBy: { skuCode: "asc" },
-        take: 1000,
-      }),
-      prisma.warehouseLocation.findMany({
-        where: {
-          warehouse: { tenantId },
-        },
-        select: {
-          id: true,
-          code: true,
-          name: true,
-          warehouse: { select: { name: true, code: true } },
-        },
-        orderBy: [{ warehouse: { name: "asc" } }, { name: "asc" }],
-        take: 1000,
-      }),
-    ]);
-
-  return {
-    documentTypes,
-    problemDescriptions,
-    serviceCenters: serviceCenters.map((sc) => ({
-      id: sc.id,
-      name: sc.sapCode ? `${sc.sapCode} · ${sc.name}` : sc.name,
-    })),
-    models: models.map((m) => ({
-      id: m.id,
-      name: m.skuCode ? `${m.skuCode} · ${m.name}` : m.name,
-    })),
-    warehouseLocations: warehouseLocations.map((loc) => ({
-      id: loc.id,
-      name: [
-        loc.warehouse.code || loc.warehouse.name,
-        loc.code || loc.name,
-      ]
-        .filter(Boolean)
-        .join(" · "),
-    })),
-  };
+  return loadProcessReturnLookups(session.user.tenantId);
 }
 
-const processReturnPayloadSchema = z.object({
-  saleDetailId: z.string().min(1),
-  documentTypeId: z.string().min(1),
-  stockStatusCode: z.enum(["STK", "DEF"]),
-  actionType: z.enum(["return", "replacement"]),
-  problemDescriptionIds: z.array(z.string().min(1)).min(1),
-  serviceCenterId: z.string().optional().nullable(),
-  classification: z.string().trim().optional().nullable(),
-  serviceModelId: z.string().optional().nullable(),
-  customerDealerBranch: z.string().trim().optional().nullable(),
-  natureOfTransaction: z.string().trim().optional().nullable(),
-  refContactPo: z.string().trim().optional().nullable(),
-  warehouseLocationId: z.string().optional().nullable(),
-});
-
-export type ProcessReturnPayload = z.infer<typeof processReturnPayloadSchema>;
-
-const RETURN_RESERVE_FROM_CODES = ["SLD", "OFS", "RSV"] as const;
-type ReturnReserveFromCode = (typeof RETURN_RESERVE_FROM_CODES)[number];
-
-const PRIOR_INVENTORY_STATUS =
-  /· was (Official Sold|Sold|Reserved) \(request /u;
-
-const PRIOR_STATUS_LABEL: Record<ReturnReserveFromCode, string> = {
-  SLD: "Sold",
-  OFS: "Official Sold",
-  RSV: "Reserved",
-};
-
-function isReturnReserveFromCode(code: string): code is ReturnReserveFromCode {
-  return (RETURN_RESERVE_FROM_CODES as readonly string[]).includes(code);
-}
-
-function priorInventoryStatusFromHistory(
-  details: string | null | undefined,
-): ReturnReserveFromCode | null {
-  const label = PRIOR_INVENTORY_STATUS.exec(details ?? "")?.[1];
-  if (label === "Official Sold") return "OFS";
-  if (label === "Sold") return "SLD";
-  if (label === "Reserved") return "RSV";
-  return null;
-}
-
-function returnRequestHistoryDetails(
-  actionLabel: string,
-  transactionNo: string,
-  returnRequestId: string,
-  priorStatus: ReturnReserveFromCode | null,
-): string {
-  const prior = priorStatus ? ` · was ${PRIOR_STATUS_LABEL[priorStatus]}` : "";
-  return `${actionLabel} ${transactionNo}${prior} (request ${returnRequestId})`;
-}
-
-function reserveFromCodeId(
-  code: ReturnReserveFromCode,
-  ids: { sldCodeId: string; ofsCodeId: string; rsvCodeId: string },
-): string {
-  switch (code) {
-    case "SLD":
-      return ids.sldCodeId;
-    case "OFS":
-      return ids.ofsCodeId;
-    case "RSV":
-      return ids.rsvCodeId;
-    default: {
-      const _exhaustive: never = code;
-      return _exhaustive;
-    }
-  }
-}
-
-async function loadReturnReserveCodeIds(tenantId: string) {
-  const [sldCodeId, ofsCodeId, rsvCodeId] = await Promise.all([
-    reasonStatusService.findCodeId(tenantId, "inventory_system", "SLD"),
-    reasonStatusService.findCodeId(tenantId, "inventory_system", "OFS"),
-    reasonStatusService.findCodeId(tenantId, "inventory_system", "RSV"),
-  ]);
-  if (!sldCodeId || !ofsCodeId || !rsvCodeId) return null;
-  return { sldCodeId, ofsCodeId, rsvCodeId };
-}
-
-type ReturnReserveTx = Pick<
-  Prisma.TransactionClient,
-  "branchInventory" | "serialNumberHistory" | "$queryRaw"
->;
-
-/**
- * Sold, Official Sold, or Reserved at the branch sold becomes Reserved.
- * Returns the status the unit had, so a later reject can put it back.
- */
-async function markSoldSerialReserved(
-  tx: ReturnReserveTx,
-  input: {
-    tenantId: string;
-    userId: string;
-    soldBranchId: string;
-    serialNumberId: string;
-    sldCodeId: string;
-    ofsCodeId: string;
-    rsvCodeId: string;
-  },
-): Promise<ReturnReserveFromCode | null> {
-  await lockSerialNumbers(tx, [input.serialNumberId]);
-  const row = await tx.branchInventory.findFirst({
-    where: {
-      tenantId: input.tenantId,
-      branchId: input.soldBranchId,
-      serialNumberId: input.serialNumberId,
-      statusCodeId: {
-        in: [input.sldCodeId, input.ofsCodeId, input.rsvCodeId],
-      },
-    },
-    select: {
-      id: true,
-      statusCode: { select: { code: true } },
-    },
-  });
-  if (!row || !isReturnReserveFromCode(row.statusCode.code)) return null;
-
-  await tx.branchInventory.updateMany({
-    where: {
-      id: row.id,
-      statusCodeId: {
-        in: [input.sldCodeId, input.ofsCodeId, input.rsvCodeId],
-      },
-    },
-    data: {
-      statusCodeId: input.rsvCodeId,
-      updatedById: input.userId,
-      ...statusUpdatedStamp(row.statusCode.code, "RSV"),
-    },
-  });
-  return row.statusCode.code;
-}
-
-/** Put a requested unit back to the status remembered on its request history row. */
-async function restoreSerialAfterReturnReject(
-  tx: ReturnReserveTx,
-  input: {
-    tenantId: string;
-    userId: string;
-    soldBranchId: string;
-    returnRequestId: string;
-    sldCodeId: string;
-    ofsCodeId: string;
-    rsvCodeId: string;
-  },
-): Promise<void> {
-  const history = await tx.serialNumberHistory.findFirst({
-    where: {
-      tenantId: input.tenantId,
-      txnType: { in: ["return", "replacement"] },
-      details: { contains: `(request ${input.returnRequestId})` },
-    },
-    orderBy: { createdAt: "asc" },
-    select: { serialNumberId: true, details: true },
-  });
-  const prior = priorInventoryStatusFromHistory(history?.details);
-  if (!history || !prior) return;
-
-  await lockSerialNumbers(tx, [history.serialNumberId]);
-  await tx.branchInventory.updateMany({
-    where: {
-      tenantId: input.tenantId,
-      branchId: input.soldBranchId,
-      serialNumberId: history.serialNumberId,
-      statusCodeId: input.rsvCodeId,
-    },
-    data: {
-      statusCodeId: reserveFromCodeId(prior, input),
-      updatedById: input.userId,
-      ...statusUpdatedStamp("RSV", prior),
-    },
-  });
-}
+export type { ProcessReturnPayload };
 
 export async function requestReturnAction(
   saleId: string,
@@ -1431,7 +1208,7 @@ export async function requestReturnAction(
   const reserveCodes = targetDetail.serialNumberId
     ? await loadReturnReserveCodeIds(session.user.tenantId)
     : null;
-  if (targetDetail.serialNumberId && !reserveCodes) {
+  if (targetDetail.serialNumberId && (!reserveCodes || !holdCodeId("RSV", reserveCodes))) {
     return {
       error: "Sold, Official Sold, and Reserved are not ready for this return" as const,
     };
@@ -1504,7 +1281,8 @@ export async function requestReturnAction(
         userId: session.user.id,
         soldBranchId: sale.branchId,
         serialNumberId: targetDetail.serialNumberId,
-        ...reserveCodes,
+        codes: reserveCodes,
+        holdCode: "RSV",
       });
       const actionLabel = data.actionType === "replacement" ? "Replacement" : "Return";
       await tx.serialNumberHistory.create({
@@ -1627,6 +1405,7 @@ export async function requestReturnAction(
     metadata: {
       transactionNo: sale.transactionNo,
       atrStatus: "reserve",
+      status: needsTeamLeader ? "pending_tl" : "approved",
       actionType: data.actionType,
       stockStatusCode: data.stockStatusCode,
       documentTypeId: documentType.id,
@@ -2007,7 +1786,8 @@ export async function rejectReturnAction(returnRequestId: string, notes?: string
         userId: session.user.id,
         soldBranchId: row.sale.branchId,
         returnRequestId,
-        ...reserveCodes,
+        codes: reserveCodes,
+        holdCode: "RSV",
       });
     }
     await recordReturnRejected(tx, approval, {
@@ -2103,14 +1883,6 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
   revalidatePath("/returns");
   revalidatePath("/inventory");
   return { success: true as const };
-}
-
-async function nextReplacementNo(
-  tenantId: string,
-  tx: Pick<typeof prisma, "salesReplacement">,
-): Promise<string> {
-  const count = await tx.salesReplacement.count({ where: { tenantId } });
-  return `REPL-${String(count + 1).padStart(6, "0")}`;
 }
 
 const replacementSameInvoiceSchema = z.object({

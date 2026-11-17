@@ -14,10 +14,9 @@ export interface ReturnApprovalRef {
   serialNumberId: string | null;
 }
 
-function stepDocument(
-  ref: ReturnApprovalRef,
-  step: "CS_EVALUATION" | "TL_APPROVAL",
-): InventoryApprovalDocument {
+type ReturnApprovalStep = "INSPECTION" | "CS_EVALUATION" | "TL_APPROVAL";
+
+function stepDocument(ref: ReturnApprovalRef, step: ReturnApprovalStep): InventoryApprovalDocument {
   const { tenantId, sourceType, sourceId, sourceNo } = ref;
   return { tenantId, sourceType, sourceId, sourceNo, step };
 }
@@ -26,7 +25,7 @@ export async function recordReturnRequested(
   db: LedgerDb,
   ref: ReturnApprovalRef,
   request: { requestedById: string; remarks?: string | null; problemDescription?: string | null },
-  step: "CS_EVALUATION" | "TL_APPROVAL" = "CS_EVALUATION",
+  step: ReturnApprovalStep = "CS_EVALUATION",
 ) {
   if (!ref.serialNumberId) return;
   await inventoryApprovalLedger.recordRequested(db, stepDocument(ref, step), {
@@ -81,5 +80,23 @@ export async function recordReturnRejected(
     status: "REJECTED",
     decidedById: rejection.decidedById,
     remarks: rejection.remarks,
+  });
+}
+
+/**
+ * A Service Return / Replacement is decided by the service center at inspection: finishing
+ * the request approves the step, rejecting it rejects the step.
+ */
+export async function recordServiceInspectionDecided(
+  db: LedgerDb,
+  ref: ReturnApprovalRef,
+  decision: { status: "APPROVED" | "REJECTED"; decidedById: string; remarks?: string | null },
+) {
+  if (!ref.serialNumberId) return;
+  await inventoryApprovalLedger.recordDecision(db, stepDocument(ref, "INSPECTION"), {
+    serialNumberIds: [ref.serialNumberId],
+    status: decision.status,
+    decidedById: decision.decidedById,
+    remarks: decision.remarks,
   });
 }

@@ -14,6 +14,10 @@ import {
   TRANSFER_WORKFLOW_CODE,
 } from "@/features/logistics/constants/workflow-codes";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
+import {
+  OPEN_RETURN_REQUEST_STATUSES,
+  RESERVE_ODRF_CODE,
+} from "@/features/sales/constants/return-history-status";
 import { SAP_SYNC_CHUNK } from "@/features/sap/services/sap-master-data";
 import {
   createInChunks,
@@ -819,9 +823,9 @@ const OPEN_PULLOUT_CODES = [
   PULLOUT_WORKFLOW_CODE.in_transit,
 ] as const;
 const OPEN_ATR_STATUSES = ["open", "reserve"] as const;
-const OPEN_RETURN_STATUSES = ["pending_cs", "pending_tl", "approved"] as const;
+const OPEN_RETURN_STATUSES = OPEN_RETURN_REQUEST_STATUSES;
 /** Branch stock that is mid-move, not resting stock or a finished sale. */
-const IN_FLIGHT_INVENTORY_CODES = ["DIT", "RSV", "FPO", "FTR", "FW"] as const;
+const IN_FLIGHT_INVENTORY_CODES = ["DIT", "RSV", "FPO", "FTR", "FW", RESERVE_ODRF_CODE] as const;
 
 /**
  * In-progress validation work that must keep the serial: an open stock count
