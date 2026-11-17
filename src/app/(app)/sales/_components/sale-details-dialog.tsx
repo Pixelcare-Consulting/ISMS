@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { SaleProofViewerDialog } from "@/app/(app)/sales/_components/sale-proof-viewer-dialog";
+import { useSalesSource } from "@/app/(app)/sales/_components/sales-source";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -276,6 +277,7 @@ export function SaleDetailsDialog({
   onEditHeader,
   onReturnAction,
 }: SaleDetailsDialogProps) {
+  const source = useSalesSource();
   const [proofViewerOpen, setProofViewerOpen] = useState(false);
   const dateLabel = formatOptionalDate(sale.transactionDate);
   // Pickup sales have no delivery receipt, so the column is noise.
@@ -346,11 +348,11 @@ export function SaleDetailsDialog({
               <dd className="text-right">{dateLabel ?? "—"}</dd>
             </div>
             <div className="flex justify-between gap-3">
-              <dt className="text-muted-foreground">Branch</dt>
+              <dt className="text-muted-foreground">{source.copy.soldDetail}</dt>
               <dd className="text-right">{sale.branch.name}</dd>
             </div>
             <div className="flex justify-between gap-3">
-              <dt className="text-muted-foreground">Stock source</dt>
+              <dt className="text-muted-foreground">{source.copy.stockSourceDetail}</dt>
               <dd className="text-right">
                 {sale.stockSourceBranch?.name ?? sale.branch.name}
               </dd>
@@ -755,8 +757,8 @@ export function SaleDetailsDialog({
     </TooltipProvider>
     <SaleProofViewerDialog
       key={`${sale.id}-${proofViewerOpen ? "open" : "closed"}`}
-      saleId={sale.id}
       proofPaths={sale.proofPaths}
+      fileHref={(index) => source.proofHref(sale.id, index)}
       open={proofViewerOpen}
       onOpenChange={setProofViewerOpen}
     />

@@ -7,8 +7,8 @@ import { resolveNavLinkCount, type NavCountBadges } from "@/app/(app)/_component
 import { SidebarNavCountBadge } from "@/app/(app)/_components/sidebar-nav-count-badge";
 import { SidebarNavNewBadge } from "@/app/(app)/_components/sidebar-nav-new-badge";
 import {
-  isNavItemActive,
   navSecondarySections,
+  resolveActiveNavHrefs,
   type NavGroupChild,
   type NavLinkItem,
   type NavSecondarySection,
@@ -37,6 +37,7 @@ export function NavDestinationList({
   onNavigate,
 }: NavDestinationListProps) {
   const sections = navSecondarySections(items);
+  const activeHrefs = resolveActiveNavHrefs(pathname, items);
 
   return (
     <ul className={listClass(variant, nested)}>
@@ -44,7 +45,7 @@ export function NavDestinationList({
         <NavDestinationSection
           key={sectionKey(section)}
           section={section}
-          pathname={pathname}
+          activeHrefs={activeHrefs}
           permissions={permissions}
           countBadges={countBadges}
           variant={variant}
@@ -57,14 +58,14 @@ export function NavDestinationList({
 
 function NavDestinationSection({
   section,
-  pathname,
+  activeHrefs,
   permissions,
   countBadges,
   variant,
   onNavigate,
 }: {
   section: NavSecondarySection;
-  pathname: string;
+  activeHrefs: ReadonlySet<string>;
   permissions: string[];
   countBadges?: NavCountBadges;
   variant: NavDestinationVariant;
@@ -76,7 +77,7 @@ function NavDestinationSection({
         <li>
           <NavDestinationLink
             item={section.item}
-            pathname={pathname}
+            active={activeHrefs.has(section.item.href)}
             permissions={permissions}
             countBadges={countBadges}
             variant={variant}
@@ -93,7 +94,7 @@ function NavDestinationSection({
               <li key={item.href}>
                 <NavDestinationLink
                   item={item}
-                  pathname={pathname}
+                  active={activeHrefs.has(item.href)}
                   permissions={permissions}
                   countBadges={countBadges}
                   variant={variant}
@@ -113,25 +114,19 @@ function NavDestinationSection({
 
 function NavDestinationLink({
   item,
-  pathname,
+  active,
   permissions,
   countBadges,
   variant,
   onNavigate,
 }: {
   item: NavLinkItem;
-  pathname: string;
+  active: boolean;
   permissions: string[];
   countBadges?: NavCountBadges;
   variant: NavDestinationVariant;
   onNavigate?: () => void;
 }) {
-  const active = isNavItemActive(
-    pathname,
-    item.href,
-    item.exact,
-    item.activePathPrefixes,
-  );
   const count = resolveNavLinkCount(item, permissions, countBadges);
   const Icon = item.icon;
 

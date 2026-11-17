@@ -41,6 +41,48 @@ function scopeIds(serviceCenterIds: string[] | null, serviceCenterId?: string): 
   return [serviceCenterId];
 }
 
+/**
+ * A unit sent on an SC pull-out (`sci` = service_center_inventories). Sending ends the
+ * pull-out with the unit still DIT on its SC row, and Check SAP turns it PO once SAP shows it,
+ * so Service Center Inventory leaves both out, as Branch Inventory does with `sentOnPulloutSql`.
+ * A row changed after the send (a later delivery of the same serial, say) is not the sent unit
+ * any more and shows again.
+ */
+function scSentOnPulloutSql(): Prisma.Sql {
+  return Prisma.sql`(EXISTS (
+    SELECT 1
+    FROM reason_status_codes pulled
+    WHERE pulled.id = sci.status_code_id
+      AND pulled.code = 'PO'
+  ) OR EXISTS (
+    SELECT 1
+    FROM service_center_pullout_details scpd
+    INNER JOIN service_center_pullouts scp ON scp.id = scpd.pullout_id
+    INNER JOIN reason_status_codes psc ON psc.id = scp.status_code_id
+    INNER JOIN reason_status_codes isc ON isc.id = sci.status_code_id
+    WHERE scpd.serial_number_id = sci.serial_number_id
+      AND scp.tenant_id = sci.tenant_id
+      AND scp.service_center_id = sci.service_center_id
+      AND psc.code = 'in_transit'
+      AND isc.code = 'DIT'
+      AND scpd.redelivery_delivery_id IS NULL
+      AND sci.updated_at <= scp.updated_at
+  ))`;
+}
+
+/** SC inventory ids of the units sent on a pull-out, for Prisma-built queries. */
+async function findScSentOnPulloutIds(tenantId: string, serviceCenterIds: readonly string[]) {
+  if (serviceCenterIds.length === 0) return [];
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT sci.id
+    FROM service_center_inventories sci
+    WHERE sci.tenant_id = ${tenantId}
+      AND sci.service_center_id IN (${Prisma.join([...serviceCenterIds])})
+      AND ${scSentOnPulloutSql()}
+  `;
+  return rows.map((row) => row.id);
+}
+
 export const scInventoryViewRepository = {
   /** Units per center × model × status, sold statuses left out. */
   async aggregate(
@@ -54,6 +96,7 @@ export const scInventoryViewRepository = {
     const conditions: Prisma.Sql[] = [
       Prisma.sql`sci.tenant_id = ${tenantId}`,
       Prisma.sql`rsc.code NOT IN (${Prisma.join([...SC_INVENTORY_HIDDEN_STATUS_CODES])})`,
+      Prisma.sql`NOT ${scSentOnPulloutSql()}`,
     ];
     if (ids) conditions.push(Prisma.sql`sci.service_center_id IN (${Prisma.join(ids)})`);
     if (filters.seriesId) conditions.push(Prisma.sql`pm.series_id = ${filters.seriesId}`);
@@ -107,9 +150,11 @@ export const scInventoryViewRepository = {
     if (!ids || ids.length === 0) return toPaginatedResult([], 0, page, limit);
 
     const q = filters.q?.trim();
+    const sentIds = await findScSentOnPulloutIds(tenantId, ids);
     const where: Prisma.ServiceCenterInventoryWhereInput = {
       tenantId,
       serviceCenterId: { in: ids },
+      ...(sentIds.length > 0 ? { id: { notIn: sentIds } } : {}),
       statusCode: { code: { notIn: [...SC_INVENTORY_HIDDEN_STATUS_CODES] } },
       ...(filters.statusCodeId ? { statusCodeId: filters.statusCodeId } : {}),
       ...(filters.serviceCenterLocationId ? { serviceCenterLocationId: filters.serviceCenterLocationId } : {}),

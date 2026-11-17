@@ -1,116 +1,45 @@
+import type { Prisma } from "@/lib/database/generated/prisma/client";
 import { prisma } from "@/lib/database/client";
 import {
   resolvePagination,
   toPaginatedResult,
   type PaginationInput,
 } from "@/lib/shared/pagination";
-import type { Prisma, ReturnRequestStatus } from "@prisma/client";
+
+export type ScPulloutListSort = "pulloutNo" | "serviceCenter" | "reason" | "status";
+
+function scPulloutWhere(
+  tenantId: string,
+  serviceCenterIds: string[] | null,
+): Prisma.ServiceCenterPulloutWhereInput {
+  return {
+    tenantId,
+    statusCodeId: { not: null },
+    ...(serviceCenterIds ? { serviceCenterId: { in: serviceCenterIds } } : {}),
+  };
+}
+
+function scPulloutOrderBy(
+  field: ScPulloutListSort,
+  dir: "asc" | "desc",
+): Prisma.ServiceCenterPulloutOrderByWithRelationInput {
+  switch (field) {
+    case "pulloutNo":
+      return { pulloutNo: dir };
+    case "serviceCenter":
+      return { serviceCenter: { name: dir } };
+    case "reason":
+      return { reasonStatusCode: { name: dir } };
+    case "status":
+      return { statusCode: { code: dir } };
+    default: {
+      const unreachable: never = field;
+      return unreachable;
+    }
+  }
+}
 
 export const scOpsRepository = {
-  async listSales(
-    tenantId: string,
-    serviceCenterIds: string[] | null,
-    pagination: PaginationInput,
-  ) {
-    const { page, limit, skip, take } = resolvePagination(pagination);
-    const where = {
-      tenantId,
-      ...(serviceCenterIds ? { serviceCenterId: { in: serviceCenterIds } } : {}),
-    };
-
-    const [total, items] = await Promise.all([
-      prisma.serviceCenterSalesTransaction.count({ where }),
-      prisma.serviceCenterSalesTransaction.findMany({
-        where,
-        include: {
-          serviceCenter: {
-            select: { id: true, name: true, sapCode: true },
-          },
-          serviceCenterLocation: {
-            select: { id: true, name: true, code: true },
-          },
-          serialNumber: {
-            select: {
-              id: true,
-              serialNo: true,
-              model: { select: { skuCode: true, name: true } },
-            },
-          },
-          returnRequest: {
-            select: {
-              id: true,
-              status: true,
-              requestNotes: true,
-              evaluationNotes: true,
-            },
-          },
-        },
-        orderBy: { createdAt: "desc" },
-        skip,
-        take,
-      }),
-    ]);
-
-    return toPaginatedResult(items, total, page, limit);
-  },
-
-  /** SC sales that have an open/closed return request (Service Returns ledger). */
-  async listReturnSales(
-    tenantId: string,
-    serviceCenterIds: string[] | null,
-    pagination: PaginationInput,
-    options?: { statusIn?: ReturnRequestStatus[] },
-  ) {
-    const { page, limit, skip, take } = resolvePagination(pagination);
-    const where: Prisma.ServiceCenterSalesTransactionWhereInput = {
-      tenantId,
-      ...(serviceCenterIds ? { serviceCenterId: { in: serviceCenterIds } } : {}),
-      returnRequest: {
-        is: {
-          ...(options?.statusIn?.length
-            ? { status: { in: options.statusIn } }
-            : {}),
-        },
-      },
-    };
-
-    const [total, items] = await Promise.all([
-      prisma.serviceCenterSalesTransaction.count({ where }),
-      prisma.serviceCenterSalesTransaction.findMany({
-        where,
-        include: {
-          serviceCenter: {
-            select: { id: true, name: true, sapCode: true },
-          },
-          serviceCenterLocation: {
-            select: { id: true, name: true, code: true },
-          },
-          serialNumber: {
-            select: {
-              id: true,
-              serialNo: true,
-              model: { select: { skuCode: true, name: true } },
-            },
-          },
-          returnRequest: {
-            select: {
-              id: true,
-              status: true,
-              requestNotes: true,
-              evaluationNotes: true,
-              createdAt: true,
-            },
-          },
-        },
-        orderBy: { createdAt: "desc" },
-        skip,
-        take,
-      }),
-    ]);
-
-    return toPaginatedResult(items, total, page, limit);
-  },
-
   async listOrders(
     tenantId: string,
     serviceCenterIds: string[] | null,
@@ -208,43 +137,50 @@ export const scOpsRepository = {
     return toPaginatedResult(items, total, page, limit);
   },
 
+  /** SC pull-outs in scope, shaped like the branch pull-out list rows. */
   async listPullouts(
     tenantId: string,
     serviceCenterIds: string[] | null,
     pagination: PaginationInput,
+    sort?: { field?: ScPulloutListSort; dir?: "asc" | "desc" },
   ) {
     const { page, limit, skip, take } = resolvePagination(pagination);
-    const where = {
-      tenantId,
-      ...(serviceCenterIds ? { serviceCenterId: { in: serviceCenterIds } } : {}),
-    };
+    const where = scPulloutWhere(tenantId, serviceCenterIds);
+    const dir = sort?.dir ?? "desc";
 
     const [total, items] = await Promise.all([
       prisma.serviceCenterPullout.count({ where }),
       prisma.serviceCenterPullout.findMany({
         where,
-        include: {
-          serviceCenter: {
-            select: { id: true, name: true, sapCode: true },
-          },
-          serviceCenterLocation: {
-            select: { id: true, name: true, code: true },
-          },
-          statusCode: {
-            select: { id: true, code: true, name: true, color: true },
-          },
-          details: {
-            include: {
-              serialNumber: { select: { id: true, serialNo: true } },
-            },
-          },
+        select: {
+          id: true,
+          pulloutNo: true,
+          serviceCenter: { select: { name: true } },
+          statusCode: { select: { id: true, code: true, name: true, color: true } },
+          reasonStatusCode: { select: { id: true, code: true, name: true, color: true } },
         },
-        orderBy: { createdAt: "desc" },
+        orderBy: sort?.field ? scPulloutOrderBy(sort.field, dir) : { createdAt: "desc" },
         skip,
         take,
       }),
     ]);
 
-    return toPaginatedResult(items, total, page, limit);
+    // `scPulloutWhere` leaves out rows with no status, so every row has one.
+    const rows = items.flatMap(({ serviceCenter, statusCode, ...row }) =>
+      statusCode ? [{ ...row, statusCode, place: serviceCenter }] : [],
+    );
+    return toPaginatedResult(rows, total, page, limit);
+  },
+
+  countPulloutsByStatus(tenantId: string, serviceCenterIds: string[] | null) {
+    return prisma.serviceCenterPullout.groupBy({
+      by: ["statusCodeId"],
+      where: scPulloutWhere(tenantId, serviceCenterIds),
+      _count: { id: true },
+    });
+  },
+
+  countAllPullouts(tenantId: string, serviceCenterIds: string[] | null) {
+    return prisma.serviceCenterPullout.count({ where: scPulloutWhere(tenantId, serviceCenterIds) });
   },
 };

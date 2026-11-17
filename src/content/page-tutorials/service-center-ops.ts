@@ -32,21 +32,22 @@ export const SC_SALES_PAGE_TUTORIAL: PageTutorialContent = {
   triggerLabel: "Open service sales tutorial",
   dialogTitle: "Service center sales — quick guide",
   dialogDescription:
-    "Encode sales from service center stock. Request a return here; finish under Returns / Replacement.",
+    "Encode sales the same way as branch Sales Transactions, with units sold from service center stock.",
   helpHref: "/help",
   helpLinkLabel: "Full Help & Support portal",
   sections: [
     {
       title: "What this page is for",
       description:
-        "Record a sale from STK stock at a service center location. Start a return from this list; evaluate, approve, and restore under Returns / Replacement → Service (or Approvals).",
+        "Record sales made at a service center. Each sale picks the service center sold and the location whose STK units it sells. These sales stay out of branch sales reports and KPIs.",
     },
     {
       title: "How to use it",
       bullets: [
-        "New sale picks a center, location, and available serial.",
-        "Request return with a reason when the sale is still open.",
-        "Open Returns / Replacement to finish evaluate → approve → restore to STK.",
+        "New transaction: pick the service center and location, fill the header, then add package line sets.",
+        "Use TO-FOLLOW when the serial is not known yet, then set the real serial later from View details.",
+        "Mark a sale Reserved to hold its units as RSV; clearing Reserved sells them (SLD).",
+        "Edit header from the list to correct customer, payment, or proof details.",
       ],
     },
   ],
@@ -98,16 +99,32 @@ export const SC_DELIVERIES_PAGE_TUTORIAL: PageTutorialContent = {
 export const SC_PULLOUTS_PAGE_TUTORIAL: PageTutorialContent = {
   id: "service-centers-pullouts",
   triggerLabel: "Open service pull-outs tutorial",
-  dialogTitle: "Service center pull-outs — quick guide",
+  dialogTitle: "Service center pull-outs: quick guide",
   dialogDescription:
-    "Reserve, approve, and complete pull-outs against service center inventory.",
+    "Take units out of a service center through Team Lead approval and Logistics.",
   helpHref: "/help",
   helpLinkLabel: "Full Help & Support portal",
   sections: [
     {
       title: "What this page is for",
       description:
-        "Pull-outs remove units from the service center ledger when completed. There is no warehouse destination on this flow.",
+        "Pull-outs take units out of a service center. Flow: service center requests → TL approves → Logistics saves the list → Logistics sends it. After Send, Check SAP marks the units Pulled out once SAP shows them on an IT or Return.",
+    },
+    {
+      title: "How to use it",
+      bullets: [
+        "Choose Stock (STK) or Defective (DEF), then add the units and their details.",
+        "Team Lead approves or deletes each unit, or approves them all.",
+        "After approval, Logistics enters the waybill and schedule and saves the list.",
+        "Send puts every unit in transit (DIT). Sent units no longer count in Service Center Inventory.",
+        "In SAP, put the pull-out no. in the \"Pull Out Number Generated in ISMS\" row field of the IT or Return, then select Check SAP on the pull-out: the units it lists become Pulled out (PO).",
+        "A DR copied from that Return back to the service center becomes a delivery under Deliveries the next time you select Check SAP; accept it there.",
+      ],
+    },
+    {
+      title: "Tip",
+      description:
+        "Keep reason/status codes current under Settings so pull-out forms stay consistent.",
     },
   ],
 };

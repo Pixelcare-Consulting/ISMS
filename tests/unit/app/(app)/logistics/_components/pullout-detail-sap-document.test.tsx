@@ -76,7 +76,7 @@ function sentDetail(
   lines = [
     line("s1"),
     line("s2", RETURN_14402),
-    line("s3", RETURN_14402, { deliveryId: "d1", deliveryNo: "DLV-9", drNo: "168206", branchName: "Branch B" }),
+    line("s3", RETURN_14402, { deliveryId: "d1", deliveryNo: "DLV-9", drNo: "168206", placeName: "Branch B" }),
   ],
 ) {
   return {
@@ -92,7 +92,7 @@ function sentDetail(
     scheduledByName: null,
     actualScheduledDate: null,
     status: { code: "in_transit", name: "Pull-out in transit", color: null },
-    branch: { id: "b1", name: "Branch A" },
+    place: { id: "b1", name: "Branch A" },
     warehouse: null,
     warehouseLocation: null,
     reason: null,
@@ -110,7 +110,7 @@ function renderView(capabilities = logistics, detail = sentDetail()) {
     <PulloutDetailView
       detail={detail}
       capabilities={capabilities}
-      branchScope={null}
+      placeScope={null}
       workflowStatuses={[]}
     />,
   );

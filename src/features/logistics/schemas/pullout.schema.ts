@@ -24,3 +24,24 @@ export const pulloutSchema = z.object({
 });
 
 export const PULLOUT_CREATE_INPUT_ERROR = "Choose a branch and the details for each serial";
+
+/** Logistics list save, on branch and service center pull-outs. Dates are form strings. */
+export const pulloutListSchema = z.object({
+  waybillNo: z.string().optional(),
+  courierName: z.string().trim().max(120).optional(),
+  scheduledAt: z.string().optional(),
+  actualPulloutDate: z.string().optional(),
+  notes: z.string().optional(),
+  serialNumberIds: z.array(z.string().min(1)).min(1),
+  addedLines: z.array(pulloutLineSchema).optional(),
+});
+
+/** Not sent: leave as is. Blank: clear it. */
+export function optionalFormDate(
+  value: string | undefined,
+  parse: (raw: string) => Date | null,
+): Date | null | undefined | "invalid" {
+  if (value === undefined) return undefined;
+  if (!value.trim()) return null;
+  return parse(value) ?? "invalid";
+}

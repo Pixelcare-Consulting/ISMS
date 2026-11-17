@@ -34,7 +34,11 @@ import {
   deliveryTransferService,
   type DeliveryTransferDraft,
 } from "@/features/logistics/services/delivery-transfer.service";
-import { PULLOUT_DEFECTIVE_REASON_CODE } from "@/features/logistics/services/pullout-posting.planner";
+import {
+  EMPTY_PULLOUT_CHECKLIST_OPTIONS,
+  loadPulloutChecklistOptions,
+  type PulloutChecklistOptions,
+} from "@/features/logistics/services/pullout-checklist-options";
 import { pulloutPostingService } from "@/features/logistics/services/pullout-posting.service";
 import { checkPulloutInSap } from "@/features/logistics/services/pullout-sap-check.service";
 import { transferPostingService } from "@/features/logistics/services/transfer-posting.service";
@@ -58,8 +62,9 @@ import {
 } from "@/features/logistics/lib/transfer-visibility";
 import { parseManilaDateTime, parseScheduleDate } from "@/features/logistics/lib/shipment";
 import {
+  optionalFormDate,
   PULLOUT_CREATE_INPUT_ERROR,
-  pulloutLineSchema,
+  pulloutListSchema,
   pulloutSchema,
 } from "@/features/logistics/schemas/pullout.schema";
 import { transferLineRemarksSchema } from "@/features/logistics/lib/transfer-line-remarks";
@@ -141,15 +146,6 @@ const transferSchema = z.object({
     .max(64)
     .optional()
     .transform((value) => value || undefined),
-});
-const pulloutListSchema = z.object({
-  waybillNo: z.string().optional(),
-  courierName: z.string().trim().max(120).optional(),
-  scheduledAt: z.string().optional(),
-  actualPulloutDate: z.string().optional(),
-  notes: z.string().optional(),
-  serialNumberIds: z.array(z.string().min(1)).min(1),
-  addedLines: z.array(pulloutLineSchema).optional(),
 });
 const serialIdsSchema = z.object({
   serialNumberIds: z.array(z.string().min(1)).min(1),
@@ -619,51 +615,20 @@ export async function listPulloutSerialsAction(branchId: string) {
   }
 }
 
-export interface PulloutChecklistOptions {
-  classifications: { id: string; name: string }[];
-  unitPackingConditions: { id: string; name: string }[];
-  accessoryCompleteness: { id: string; name: string }[];
-  /** Reasons a stock unit can pick. Defective units are always the DEF reason. */
-  reasons: { id: string; name: string }[];
-  problemDescriptions: { id: string; name: string }[];
-}
-
-const EMPTY_CHECKLIST_OPTIONS: PulloutChecklistOptions = {
-  reasons: [],
-  problemDescriptions: [],
-  classifications: [],
-  unitPackingConditions: [],
-  accessoryCompleteness: [],
-};
+export type { PulloutChecklistOptions };
 
 /** Active pull-out checklist names for people who can create a pull-out. */
 export async function listPulloutChecklistOptionsAction(): Promise<
   PulloutChecklistOptions & { error?: string }
 > {
   const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
-  const where = { tenantId: session.user.tenantId, recordStatus: "active" as const };
-  const orderBy = { name: "asc" as const };
-  const select = { id: true, name: true };
   try {
-    const [classifications, unitPackingConditions, accessoryCompleteness, problemDescriptions, reasons] =
-      await Promise.all([
-        prisma.pulloutClassification.findMany({ where, orderBy, select }),
-        prisma.unitPackingCondition.findMany({ where, orderBy, select }),
-        prisma.accessoryCompleteness.findMany({ where, orderBy, select }),
-        prisma.problemDescription.findMany({ where, orderBy, select }),
-        prisma.reasonStatusCode.findMany({
-          where: {
-            ...where,
-            code: { not: PULLOUT_DEFECTIVE_REASON_CODE },
-            reasonStatus: { category: "pullout_reason" },
-          },
-          orderBy: { sortOrder: "asc" },
-          select,
-        }),
-      ]);
-    return { classifications, unitPackingConditions, accessoryCompleteness, problemDescriptions, reasons };
+    return await loadPulloutChecklistOptions(session.user.tenantId);
   } catch (error) {
-    return { ...EMPTY_CHECKLIST_OPTIONS, ...actionError(error, "Failed to load pull-out checklist options") };
+    return {
+      ...EMPTY_PULLOUT_CHECKLIST_OPTIONS,
+      ...actionError(error, "Failed to load pull-out checklist options"),
+    };
   }
 }
 
@@ -750,22 +715,12 @@ export async function schedulePulloutAction(id: string) {
   }
 }
 
-/** Not sent: leave as is. Blank: clear it. */
-function optionalDate(
-  value: string | undefined,
-  parse: (raw: string) => Date | null,
-): Date | null | undefined | "invalid" {
-  if (value === undefined) return undefined;
-  if (!value.trim()) return null;
-  return parse(value) ?? "invalid";
-}
-
 export async function updatePulloutListAction(id: string, input: unknown) {
   const session = await requirePermission(LOGISTICS_MANAGE);
   const parsed = pulloutListSchema.safeParse(input);
   if (!parsed.success) return { error: "Choose the serials on this list" };
-  const scheduledAt = optionalDate(parsed.data.scheduledAt, parseManilaDateTime);
-  const actualScheduledDate = optionalDate(parsed.data.actualPulloutDate, parseScheduleDate);
+  const scheduledAt = optionalFormDate(parsed.data.scheduledAt, parseManilaDateTime);
+  const actualScheduledDate = optionalFormDate(parsed.data.actualPulloutDate, parseScheduleDate);
   if (scheduledAt === "invalid" || actualScheduledDate === "invalid") {
     return { error: "Enter a valid schedule and actual pull-out date" };
   }

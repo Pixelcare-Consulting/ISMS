@@ -11,7 +11,7 @@ import {
   evaluateScReturnAction,
   listScReturnsAction,
   rejectScReturnAction,
-} from "@/features/service-center-ops/actions/sc-sales.actions";
+} from "@/features/service-center-ops/actions/sc-returns.actions";
 import type { ReturnsActionCapabilities } from "@/features/returns/constants/returns-permissions";
 import {
   isReturnHistoryStatus,
@@ -52,7 +52,7 @@ export function ScReturnsPanel({
           row.transactionNo,
           row.customerName ?? "",
           row.serviceCenter.name,
-          row.serialNumber?.serialNo ?? "",
+          row.serialNos.join(" "),
           row.atrStatus,
           row.returnRequest && isReturnHistoryStatus(row.returnRequest.status)
             ? SERVICE_RETURNED_REPLACED_STATUS
@@ -139,7 +139,8 @@ export function ScReturnsPanel({
         id: "serial",
         header: "Serial",
         enableSorting: false,
-        cell: ({ row }) => row.original.serialNumber?.serialNo ?? "—",
+        cell: ({ row }) =>
+          row.original.serialNos.length > 0 ? row.original.serialNos.join(", ") : "—",
         meta: { className: "font-mono text-sm" },
       }),
       returnColumn.display({

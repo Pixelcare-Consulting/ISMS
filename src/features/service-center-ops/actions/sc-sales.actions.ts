@@ -3,532 +3,753 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { auditService } from "@/features/audit/services/audit.service";
-import {
-  recordReturnApproved,
-  recordReturnEvaluated,
-  recordReturnRejected,
-  recordReturnRequested,
-  type ReturnApprovalRef,
-} from "@/features/inventory-approvals/services/return-approvals";
 import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
-import { placeServiceCenterUnit } from "@/features/service-center-ops/services/service-center-placement";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
-import { returnHistoryStatusLabel } from "@/features/sales/constants/return-history-status";
+import { isToFollowSerial, TO_FOLLOW_SERIAL_ID } from "@/features/sales/constants/to-follow-serial";
 import {
-  SC_ORDERS_APPROVE,
-  SC_RETURN_APPROVE,
-  SC_RETURN_COMPLETE,
-  SC_RETURN_EVALUATE,
-  SC_RETURN_REQUEST,
+  resolveSaleableSerialPage,
+  type SaleableSerialItem,
+} from "@/features/sales/lib/saleable-serial-query";
+import type { SalesListSort } from "@/features/sales/repositories/sales.repository";
+import { toSaleDetailsPayload } from "@/features/sales/services/sale-details-payload";
+import {
+  assertSaleHeaderLookups,
+  assertSaleLookups,
+  DUPLICATE_SALE_SERIAL_ERROR,
+  hasDuplicateSaleSerials,
+  isSaleReserved,
+  priceSaleDetails,
+  realSaleSerialIds,
+  resolveLineDeliveryEdit,
+  resolveReservedToggle,
+  resolveSaleEncodeStatusCodes,
+  saleDetailRowData,
+  saleDetailSchema,
+  saleHeaderCreateData,
+  saleHeaderFieldsSchema,
+  saleHeaderUpdateData,
+  toDateInputValue,
+  updateSaleSerialSchema,
+} from "@/features/sales/services/sale-encode";
+import { computeSalesKpis } from "@/features/sales/services/sales-kpi.service";
+import { listSalesLines } from "@/features/sales/services/sales-list.service";
+import {
+  assertSerialLinkForSaleLine,
+  claimToFollowSaleLine,
+} from "@/features/sales/services/sale-serial-link";
+import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
+import { saleHasOfficialSoldLine } from "@/features/sales/utils/sale-header-edit";
+import { resolveSaleTransactionDate } from "@/features/sales/utils/transaction-date";
+import {
+  SC_SALES_ACCESS,
   SC_SALES_CREATE,
-  SC_SALES_VIEW,
-  SC_LOGISTICS_MANAGE,
-  scReturnRejectPermissions,
+  SC_SALES_UPDATE,
 } from "@/features/service-center-ops/constants/sc-permissions";
 import {
-  RETURNS_APPROVE,
-  RETURNS_APPROVALS_VIEW_PERMISSIONS,
-  RETURNS_COMPLETE,
-  RETURNS_EVALUATE,
-  RETURNS_REQUEST,
-  RETURNS_SERVICE_VIEW_PERMISSIONS,
-} from "@/features/returns/constants/returns-permissions";
-import { scOpsRepository } from "@/features/service-center-ops/repositories/sc-ops.repository";
+  scLocationLabel,
+  scSalesRepository,
+} from "@/features/service-center-ops/repositories/sc-sales.repository";
+import {
+  assertScSerialSellable,
+  markScSerialSold,
+  moveScSoldSerialStatus,
+  queryScSaleableSerials,
+} from "@/features/service-center-ops/services/sc-sale-inventory";
 import {
   assertScInScope,
   resolveScIdsForUser,
 } from "@/features/service-center-ops/services/sc-scope";
-import { parseTablePageSize } from "@/components/data-table/table-page-size";
-import {
-  hasPermission,
-  requireAnyPermission,
-  requirePermission,
-} from "@/lib/auth/permissions";
+import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
+import { toPaginatedResult, type PaginatedResult } from "@/lib/shared/pagination";
+
+/**
+ * Service center sales. Same encode, list, details, and edit behaviour as branch Sales
+ * Transactions (shared `features/sales/services`); the sold place is a service center and
+ * stock comes from one of its locations on the SC ledger.
+ */
+
+const SC_SALES_SORT_FIELDS = new Set<SalesListSort>([
+  "transactionNo",
+  "date",
+  "branch",
+  "customer",
+  "amount",
+  "atrStatus",
+  "returnStatus",
+]);
+
+const scStockSourceSchema = z.object({
+  serviceCenterId: z.string().min(1),
+  serviceCenterLocationId: z.string().min(1),
+});
+
+const scSaleSchema = saleHeaderFieldsSchema.extend({
+  ...scStockSourceSchema.shape,
+  details: z.array(saleDetailSchema).min(1),
+});
+
+const updateScSaleHeaderSchema = saleHeaderFieldsSchema.extend({
+  ...scStockSourceSchema.shape,
+  saleId: z.string().min(1),
+});
+
+const TRANSACTION_NO_TAKEN =
+  "Transaction number already used on this service center. Enter a different number.";
 
 function revalidateScSales() {
   revalidatePath("/service-centers/sales");
   revalidatePath("/service-centers/sales/new");
   revalidatePath("/service-centers/inventory");
-  revalidatePath("/returns");
 }
 
-function scReturnApproval(
+async function scScopeForSession(session: {
+  user: { tenantId: string; id: string; permissions?: string[] };
+}) {
+  return resolveScIdsForUser(
+    session.user.tenantId,
+    session.user.id,
+    session.user.permissions,
+  );
+}
+
+/** The location belongs to this active service center, which is in the user's scope. */
+async function assertScStockSource(
   tenantId: string,
-  request: { id: string; sale: { transactionNo: string; serialNumberId: string | null } },
-): ReturnApprovalRef {
-  return {
-    tenantId,
-    sourceType: "SC_RETURN",
-    sourceId: request.id,
-    sourceNo: request.sale.transactionNo,
-    serialNumberId: request.sale.serialNumberId,
-  };
+  scopedIds: string[] | null,
+  input: { serviceCenterId: string; serviceCenterLocationId: string },
+): Promise<void> {
+  assertScInScope(input.serviceCenterId, scopedIds);
+  const location = await prisma.serviceCenterLocation.findFirst({
+    where: {
+      id: input.serviceCenterLocationId,
+      serviceCenterId: input.serviceCenterId,
+      serviceCenter: { tenantId, deletedAt: null, status: "active" },
+    },
+    select: { id: true },
+  });
+  if (!location) {
+    throw new Error("Stock source must be a location of the service center sold");
+  }
 }
 
-function nextTxnNo() {
-  const stamp = Date.now().toString(36).toUpperCase();
-  return `SCS-${stamp}`;
+async function isScTransactionNoTaken(input: {
+  tenantId: string;
+  serviceCenterId: string;
+  transactionNo: string;
+  exceptSaleId?: string;
+}): Promise<boolean> {
+  const taken = await prisma.serviceCenterSalesTransaction.findFirst({
+    where: {
+      tenantId: input.tenantId,
+      serviceCenterId: input.serviceCenterId,
+      transactionNo: input.transactionNo,
+      ...(input.exceptSaleId ? { NOT: { id: input.exceptSaleId } } : {}),
+    },
+    select: { id: true },
+  });
+  return Boolean(taken);
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
 }
 
 export async function listScSalesAction(input?: {
   page?: number;
   limit?: number;
+  sort?: string;
+  sortDir?: string;
+  status?: string;
+  q?: string;
 }) {
-  const session = await requireAnyPermission([
-    SC_SALES_VIEW,
-    SC_SALES_CREATE,
-  ]);
-  const scopedIds = await resolveScIdsForUser(
-    session.user.tenantId,
-    session.user.id,
-    session.user.permissions,
+  const session = await requireAnyPermission([...SC_SALES_ACCESS]);
+  const tenantId = session.user.tenantId;
+  const scopedIds = await scScopeForSession(session);
+  const field = input?.sort as SalesListSort | undefined;
+  return listSalesLines(
+    {
+      listLines: (pagination, sort) =>
+        scSalesRepository.listLines(tenantId, scopedIds, pagination, sort),
+      listStatusSources: (sort) =>
+        scSalesRepository.listStatusSources(tenantId, scopedIds, sort),
+      listLinesByIds: (ids) => scSalesRepository.listLinesByIds(tenantId, scopedIds, ids),
+    },
+    {
+      tenantId,
+      page: input?.page,
+      limit: parseTablePageSize(input?.limit),
+      sort: {
+        field: field && SC_SALES_SORT_FIELDS.has(field) ? field : undefined,
+        dir: input?.sortDir === "asc" || input?.sortDir === "desc" ? input.sortDir : undefined,
+      },
+      status: input?.status,
+      q: input?.q,
+    },
   );
-  return scOpsRepository.listSales(session.user.tenantId, scopedIds, {
-    page: input?.page,
-    limit: parseTablePageSize(input?.limit),
+}
+
+export async function getScSalesKpisAction(q?: string) {
+  const session = await requireAnyPermission([...SC_SALES_ACCESS]);
+  const scopedIds = await scScopeForSession(session);
+  const sources = await scSalesRepository.listStatusSources(session.user.tenantId, scopedIds);
+  return computeSalesKpis(session.user.tenantId, sources, q);
+}
+
+export async function getScSaleDetailsAction(saleId: string) {
+  const session = await requireAnyPermission([...SC_SALES_ACCESS]);
+  const scopedIds = await scScopeForSession(session);
+  const sale = await scSalesRepository.findSaleDetails(
+    session.user.tenantId,
+    scopedIds,
+    saleId,
+  );
+  if (!sale) return { error: "Sale not found" as const };
+  return toSaleDetailsPayload(session.user.tenantId, sale);
+}
+
+/** Active service centers in the user's area of responsibility (Service center sold). */
+export async function listScCentersForSalesAction() {
+  const session = await requireAnyPermission([SC_SALES_CREATE, SC_SALES_UPDATE]);
+  const scopedIds = await scScopeForSession(session);
+  return prisma.serviceCenter.findMany({
+    where: {
+      tenantId: session.user.tenantId,
+      deletedAt: null,
+      status: "active",
+      ...(scopedIds ? { id: { in: scopedIds } } : {}),
+    },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
   });
 }
 
-/** Service Returns ledger — sales that already have a return request. */
-export async function listScReturnsAction(input?: {
-  page?: number;
-  limit?: number;
-  statusIn?: Array<"pending_cs" | "pending_tl" | "approved" | "rejected" | "completed">;
-}) {
-  const forApprovalsQueue = Boolean(input?.statusIn?.length);
-  const session = await requireAnyPermission(
-    forApprovalsQueue
-      ? [...RETURNS_APPROVALS_VIEW_PERMISSIONS]
-      : [...RETURNS_SERVICE_VIEW_PERMISSIONS],
-  );
-  const scopedIds = await resolveScIdsForUser(
-    session.user.tenantId,
-    session.user.id,
-    session.user.permissions,
-  );
-  return scOpsRepository.listReturnSales(
-    session.user.tenantId,
-    scopedIds,
-    {
-      page: input?.page,
-      limit: parseTablePageSize(input?.limit),
+/**
+ * Stock-source locations of one service center, with their STK count. Locations without
+ * stock stay listed so a TO-FOLLOW sale can still be encoded.
+ */
+export async function listScStockSourcesForSalesAction(serviceCenterId: string) {
+  const session = await requireAnyPermission([SC_SALES_CREATE, SC_SALES_UPDATE]);
+  const tenantId = session.user.tenantId;
+  assertScInScope(serviceCenterId, await scScopeForSession(session));
+
+  const [locations, stkCodeId] = await Promise.all([
+    prisma.serviceCenterLocation.findMany({
+      where: { serviceCenterId, serviceCenter: { tenantId, deletedAt: null } },
+      select: { id: true, name: true, code: true },
+      orderBy: { code: "asc" },
+    }),
+    reasonStatusService.requireCodeId(tenantId, "inventory_system", "STK"),
+  ]);
+  if (locations.length === 0) return [];
+
+  const stocked = await prisma.serviceCenterInventory.groupBy({
+    by: ["serviceCenterLocationId"],
+    where: {
+      tenantId,
+      serviceCenterLocationId: { in: locations.map((location) => location.id) },
+      statusCodeId: stkCodeId,
     },
-    { statusIn: input?.statusIn },
+    _count: { id: true },
+  });
+  const stkByLocation = new Map(
+    stocked.map((row) => [row.serviceCenterLocationId, row._count.id]),
   );
+
+  return locations
+    .map((location) => ({
+      id: location.id,
+      name: `${scLocationLabel(location)} · ${stkByLocation.get(location.id) ?? 0} STK`,
+      stk: stkByLocation.get(location.id) ?? 0,
+    }))
+    .sort((left, right) => Number(right.stk > 0) - Number(left.stk > 0))
+    .map(({ id, name }) => ({ id, name }));
 }
 
-export async function listScStkSerialsAction(
-  serviceCenterId: string,
-  serviceCenterLocationId: string,
-) {
+export async function listScSaleableSerialsAction(input: {
+  serviceCenterLocationId: string;
+  modelId?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+}): Promise<PaginatedResult<SaleableSerialItem>> {
   const session = await requirePermission(SC_SALES_CREATE);
-  const scopedIds = await resolveScIdsForUser(
-    session.user.tenantId,
-    session.user.id,
-    session.user.permissions,
-  );
-  try {
-    assertScInScope(serviceCenterId, scopedIds);
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "Out of scope" as const };
+  const tenantId = session.user.tenantId;
+  const scopedIds = await scScopeForSession(session);
+  const location = await prisma.serviceCenterLocation.findFirst({
+    where: {
+      id: input.serviceCenterLocationId.trim(),
+      serviceCenter: { tenantId, deletedAt: null },
+    },
+    select: { id: true, serviceCenterId: true },
+  });
+  const page = resolveSaleableSerialPage(input);
+  if (!location) {
+    return toPaginatedResult<SaleableSerialItem>([], 0, page.page, page.limit);
   }
+  assertScInScope(location.serviceCenterId, scopedIds);
 
   const stkCodeId = await reasonStatusService.requireCodeId(
-    session.user.tenantId,
+    tenantId,
     "inventory_system",
     "STK",
   );
-
-  const rows = await prisma.serviceCenterInventory.findMany({
-    where: {
-      tenantId: session.user.tenantId,
-      serviceCenterId,
-      serviceCenterLocationId,
-      statusCodeId: stkCodeId,
-    },
-    include: {
-      serialNumber: {
-        include: { model: { select: { skuCode: true, name: true } } },
-      },
-    },
-    orderBy: { serialNumber: { serialNo: "asc" } },
-    take: 200,
+  return queryScSaleableSerials(prisma, {
+    tenantId,
+    serviceCenterLocationId: location.id,
+    modelId: input.modelId,
+    search: input.search,
+    page: input.page,
+    limit: input.limit,
+    stkCodeId,
   });
-
-  return {
-    success: true as const,
-    items: rows.map((r) => ({
-      serialNumberId: r.serialNumberId,
-      serialNo: r.serialNumber.serialNo,
-      skuCode: r.serialNumber.model.skuCode,
-      modelName: r.serialNumber.model.name,
-    })),
-  };
 }
 
 export async function createScSaleAction(input: unknown) {
   const session = await requirePermission(SC_SALES_CREATE);
-  const parsed = z
-    .object({
-      serviceCenterId: z.string().min(1),
-      serviceCenterLocationId: z.string().min(1),
-      serialNumberId: z.string().min(1),
-      customerName: z.string().max(120).optional().nullable(),
-      amount: z.number().nonnegative().optional().default(0),
-      reserved: z.boolean().optional().default(false),
-      notes: z.string().max(500).optional().nullable(),
-    })
-    .safeParse(input);
-  if (!parsed.success) return { error: "Invalid input" as const };
+  const parsed = scSaleSchema.safeParse(input);
+  if (!parsed.success) return { error: "Invalid sale" };
+  const tenantId = session.user.tenantId;
+  const { serviceCenterId, serviceCenterLocationId } = parsed.data;
 
-  const scopedIds = await resolveScIdsForUser(
-    session.user.tenantId,
-    session.user.id,
-    session.user.permissions,
-  );
   try {
-    assertScInScope(parsed.data.serviceCenterId, scopedIds);
+    await assertScStockSource(tenantId, await scScopeForSession(session), parsed.data);
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "Out of scope" as const };
+    return { error: errorMessage(e, "Access denied") };
   }
 
-  const location = await prisma.serviceCenterLocation.findFirst({
-    where: {
-      id: parsed.data.serviceCenterLocationId,
-      serviceCenterId: parsed.data.serviceCenterId,
-      serviceCenter: { tenantId: session.user.tenantId, deletedAt: null },
-    },
-    select: { id: true },
-  });
-  if (!location) return { error: "Service center location not found" as const };
+  const resolvedDate = resolveSaleTransactionDate(parsed.data.transactionDate);
+  if ("error" in resolvedDate) return { error: resolvedDate.error };
+  const transactionDate = resolvedDate.date;
 
-  const stkCodeId = await reasonStatusService.requireCodeId(
-    session.user.tenantId,
-    "inventory_system",
-    "STK",
-  );
-  const targetCodeId = await reasonStatusService.requireCodeId(
-    session.user.tenantId,
-    "inventory_system",
-    parsed.data.reserved ? "RSV" : "SLD",
-  );
+  const details = await priceSaleDetails(tenantId, parsed.data.details, transactionDate);
+  const realSerialIds = realSaleSerialIds(details);
+  if (hasDuplicateSaleSerials(realSerialIds)) {
+    return { error: DUPLICATE_SALE_SERIAL_ERROR };
+  }
 
-  const transactionNo = nextTxnNo();
+  if (
+    await isScTransactionNoTaken({
+      tenantId,
+      serviceCenterId,
+      transactionNo: parsed.data.transactionNo,
+    })
+  ) {
+    return { error: TRANSACTION_NO_TAKEN };
+  }
 
+  const hasToFollow = details.some((d) => isToFollowSerial(d.serialNumberId));
+  const { stkCodeId, targetStatusCodeId, fwCodeId } =
+    await resolveSaleEncodeStatusCodes(tenantId, {
+      hasRealSerials: realSerialIds.length > 0,
+      hasToFollow,
+      reserved: Boolean(parsed.data.reserved),
+    });
+
+  const realDetails = details.filter((detail) => !isToFollowSerial(detail.serialNumberId));
+  if (stkCodeId) {
+    try {
+      for (const detail of realDetails) {
+        await assertScSerialSellable(prisma, {
+          tenantId,
+          serialNumberId: detail.serialNumberId,
+          serviceCenterLocationId,
+          stkCodeId,
+          expectedModelId: detail.modelId,
+        });
+      }
+    } catch (e) {
+      return { error: errorMessage(e, "Serial is not sellable") };
+    }
+  }
+
+  let row;
   try {
-    const sale = await prisma.$transaction(async (tx) => {
-      await lockSerialNumbers(tx, [parsed.data.serialNumberId]);
-      const moved = await tx.serviceCenterInventory.updateMany({
-        where: {
-          tenantId: session.user.tenantId,
-          serviceCenterId: parsed.data.serviceCenterId,
-          serviceCenterLocationId: parsed.data.serviceCenterLocationId,
-          serialNumberId: parsed.data.serialNumberId,
-          statusCodeId: stkCodeId,
-        },
-        data: { statusCodeId: targetCodeId },
-      });
-      if (moved.count === 0) {
-        throw new Error("Serial is not STK at this service center location");
+    row = await prisma.$transaction(async (tx) => {
+      const { deliveryMethodName } = await assertSaleLookups(
+        tx,
+        tenantId,
+        parsed.data,
+        details,
+      );
+
+      if (realDetails.length > 0) {
+        await lockSerialNumbers(
+          tx,
+          realDetails.map((detail) => detail.serialNumberId),
+        );
+        for (const detail of realDetails) {
+          // The service center and location were loaded under this tenant above.
+          await assertSerialLinkForSaleLine(tx, {
+            tenantId,
+            saleTenantId: tenantId,
+            stockTenantId: tenantId,
+            detailModelId: detail.modelId,
+            detailBrandId: detail.brandId,
+            serialNumberId: detail.serialNumberId,
+          });
+        }
       }
 
-      return tx.serviceCenterSalesTransaction.create({
+      const keepsDeliveryReceipt = capturesDeliveryReceipt(deliveryMethodName);
+      const created = await tx.serviceCenterSalesTransaction.create({
         data: {
-          tenantId: session.user.tenantId,
-          serviceCenterId: parsed.data.serviceCenterId,
-          serviceCenterLocationId: parsed.data.serviceCenterLocationId,
-          serialNumberId: parsed.data.serialNumberId,
-          transactionNo,
-          transactionDate: new Date(),
-          customerName: parsed.data.customerName?.trim() || null,
-          amount: parsed.data.amount,
-          atrStatus: "open",
-          notes: parsed.data.notes?.trim() || null,
+          tenantId,
+          serviceCenterId,
+          serviceCenterLocationId,
+          ...saleHeaderCreateData(parsed.data, {
+            transactionDate,
+            details,
+            createdById: session.user.id,
+          }),
         },
       });
-    });
 
-    await auditService.log({
-      tenantId: session.user.tenantId,
-      userId: session.user.id,
-      action: parsed.data.reserved ? "sc_sale.reserved" : "sc_sale.created",
-      entityType: "ServiceCenterSalesTransaction",
-      entityId: sale.id,
-      metadata: { transactionNo },
-    });
+      for (const detail of details) {
+        if (isToFollowSerial(detail.serialNumberId)) {
+          await tx.serviceCenterSalesTransactionDetail.create({
+            data: {
+              salesId: created.id,
+              ...saleDetailRowData(detail, {
+                serialNumberId: null,
+                statusCodeId: fwCodeId,
+                keepsDeliveryReceipt,
+              }),
+            },
+          });
+          continue;
+        }
 
-    revalidateScSales();
-    return { success: true as const, id: sale.id, transactionNo };
+        if (!stkCodeId || !targetStatusCodeId) {
+          throw new Error("Inventory status codes are not configured");
+        }
+        await markScSerialSold(tx, {
+          tenantId,
+          serialNumberId: detail.serialNumberId,
+          serviceCenterLocationId,
+          stkCodeId,
+          targetStatusCodeId,
+          expectedModelId: detail.modelId,
+        });
+        await tx.serviceCenterSalesTransactionDetail.create({
+          data: {
+            salesId: created.id,
+            ...saleDetailRowData(detail, {
+              serialNumberId: detail.serialNumberId,
+              statusCodeId: targetStatusCodeId,
+              keepsDeliveryReceipt,
+            }),
+          },
+        });
+      }
+
+      return created;
+    });
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "Failed to record sale" as const };
+    return { error: errorMessage(e, "Failed to record sale") };
   }
+
+  await auditService.log({
+    tenantId,
+    userId: session.user.id,
+    action: parsed.data.reserved ? "sc_sale.reserved" : "sc_sale.created",
+    entityType: "ServiceCenterSalesTransaction",
+    entityId: row.id,
+    metadata: {
+      transactionNo: row.transactionNo,
+      reserved: Boolean(parsed.data.reserved),
+      detailCount: details.length,
+      toFollowCount: details.filter((d) => isToFollowSerial(d.serialNumberId)).length,
+      placeholder: TO_FOLLOW_SERIAL_ID,
+      serviceCenterId,
+      serviceCenterLocationId,
+    },
+  });
+
+  revalidateScSales();
+  return { success: true as const };
 }
 
-export async function requestScReturnAction(saleId: string, notes?: string) {
-  const session = await requireAnyPermission([
-    RETURNS_REQUEST,
-    SC_RETURN_REQUEST,
-    SC_SALES_CREATE,
-  ]);
-  const reason = notes?.trim() || "";
-  if (!reason) return { error: "Return reason is required" as const };
+export async function updateScSaleHeaderAction(input: unknown) {
+  const session = await requirePermission(SC_SALES_UPDATE);
+  const parsed = updateScSaleHeaderSchema.safeParse(input);
+  if (!parsed.success) return { error: "Invalid sale header update" as const };
+  const data = parsed.data;
+  const tenantId = session.user.tenantId;
+  const scopedIds = await scScopeForSession(session);
 
   const sale = await prisma.serviceCenterSalesTransaction.findFirst({
-    where: { id: saleId, tenantId: session.user.tenantId },
+    where: {
+      id: data.saleId,
+      tenantId,
+      ...(scopedIds ? { serviceCenterId: { in: scopedIds } } : {}),
+    },
     select: {
       id: true,
+      serviceCenterId: true,
+      serviceCenterLocationId: true,
       transactionNo: true,
-      serialNumberId: true,
-      atrStatus: true,
-      notes: true,
-      returnRequest: { select: { id: true } },
+      transactionDate: true,
+      details: {
+        select: {
+          id: true,
+          serialNumberId: true,
+          statusCode: { select: { code: true } },
+        },
+      },
     },
   });
   if (!sale) return { error: "Sale not found" as const };
-  if (sale.returnRequest) return { error: "Return already requested" as const };
-  if (sale.atrStatus !== "open") {
-    return { error: "Sale is not eligible for return" as const };
+  if (saleHasOfficialSoldLine(sale.details)) {
+    return { error: "Official Sold sales cannot have their header edited" as const };
   }
 
-  await prisma.$transaction(async (tx) => {
-    const request = await tx.serviceCenterReturnRequest.create({
-      data: {
-        tenantId: session.user.tenantId,
-        saleId,
-        requestedById: session.user.id,
-        requestNotes: reason,
-      },
-      select: { id: true },
-    });
-    await tx.serviceCenterSalesTransaction.update({
-      where: { id: saleId },
-      data: {
-        atrStatus: "reserve",
-        notes: [sale.notes, `[Return requested] ${reason}`]
-          .filter(Boolean)
-          .join("\n"),
-      },
-    });
-    await recordReturnRequested(tx, scReturnApproval(session.user.tenantId, { id: request.id, sale }), {
-      requestedById: session.user.id,
-      remarks: reason,
-    });
-    if (sale.serialNumberId) {
-      await tx.serialNumberHistory.create({
+  try {
+    await assertScStockSource(tenantId, scopedIds, data);
+  } catch (e) {
+    return { error: errorMessage(e, "Access denied") };
+  }
+
+  const hasRealSerials = sale.details.some((d) => d.serialNumberId);
+  if (
+    hasRealSerials &&
+    (data.serviceCenterId !== sale.serviceCenterId ||
+      data.serviceCenterLocationId !== sale.serviceCenterLocationId)
+  ) {
+    return {
+      error:
+        "Service center and location can only change when every line is still TO-FOLLOW",
+    };
+  }
+
+  const resolvedDate = resolveSaleTransactionDate(
+    data.transactionDate,
+    toDateInputValue(sale.transactionDate),
+  );
+  if ("error" in resolvedDate) return { error: resolvedDate.error };
+  const transactionDate = resolvedDate.date;
+
+  if (
+    (data.transactionNo !== sale.transactionNo ||
+      data.serviceCenterId !== sale.serviceCenterId) &&
+    (await isScTransactionNoTaken({
+      tenantId,
+      serviceCenterId: data.serviceCenterId,
+      transactionNo: data.transactionNo,
+      exceptSaleId: sale.id,
+    }))
+  ) {
+    return { error: TRANSACTION_NO_TAKEN };
+  }
+
+  try {
+    await assertSaleHeaderLookups(prisma, tenantId, data);
+  } catch (e) {
+    return { error: errorMessage(e, "Invalid sale header") };
+  }
+
+  const currentlyReserved = isSaleReserved(sale.details);
+  const reservedToggle = resolveReservedToggle(sale.details, data.reserved);
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.serviceCenterSalesTransaction.update({
+        where: { id: sale.id },
         data: {
-          tenantId: session.user.tenantId,
-          serialNumberId: sale.serialNumberId,
-          txnType: "return",
-          details: `Service return ${sale.transactionNo} (request ${request.id})`,
-          status: returnHistoryStatusLabel(true),
-          createdById: session.user.id,
+          serviceCenterId: data.serviceCenterId,
+          serviceCenterLocationId: data.serviceCenterLocationId,
+          ...saleHeaderUpdateData(data, transactionDate),
         },
       });
-    }
-  });
+
+      if (!reservedToggle) return;
+      const [fromCodeId, toCodeId] = await Promise.all([
+        reasonStatusService.requireCodeId(tenantId, "inventory_system", reservedToggle.fromCode),
+        reasonStatusService.requireCodeId(tenantId, "inventory_system", reservedToggle.toCode),
+      ]);
+      for (const line of reservedToggle.lines) {
+        await tx.serviceCenterSalesTransactionDetail.update({
+          where: { id: line.id },
+          data: { statusCodeId: toCodeId },
+        });
+        await moveScSoldSerialStatus(tx, {
+          tenantId,
+          serialNumberId: line.serialNumberId,
+          fromCodeId,
+          toCodeId,
+        });
+      }
+    });
+  } catch (e) {
+    return { error: errorMessage(e, "Failed to update sale header") };
+  }
 
   await auditService.log({
-    tenantId: session.user.tenantId,
+    tenantId,
     userId: session.user.id,
-    action: "sc_sale.return_requested",
+    action: "sc_sale.header_updated",
     entityType: "ServiceCenterSalesTransaction",
-    entityId: saleId,
-    metadata: { transactionNo: sale.transactionNo },
+    entityId: sale.id,
+    metadata: {
+      transactionNo: data.transactionNo,
+      previousTransactionNo: sale.transactionNo,
+      reserved: data.reserved ?? currentlyReserved,
+    },
   });
 
   revalidateScSales();
   return { success: true as const };
 }
 
-export async function evaluateScReturnAction(
-  returnRequestId: string,
-  notes?: string,
-) {
-  const session = await requireAnyPermission([
-    RETURNS_EVALUATE,
-    SC_RETURN_EVALUATE,
-  ]);
-  const row = await prisma.serviceCenterReturnRequest.findFirst({
-    where: { id: returnRequestId, tenantId: session.user.tenantId },
-    include: { sale: { select: { transactionNo: true, serialNumberId: true } } },
+/**
+ * Per-line Edit on a TO-FOLLOW line: assign its serial from the sale's SC location
+ * (STK → SLD) and/or record its delivery receipt. Real-serial lines cannot be edited.
+ */
+export async function updateScSaleSerialAction(input: unknown) {
+  const session = await requirePermission(SC_SALES_CREATE);
+  const parsed = updateSaleSerialSchema.safeParse(input);
+  if (!parsed.success) return { error: "Invalid sale line update" };
+  const tenantId = session.user.tenantId;
+  const scopedIds = await scScopeForSession(session);
+
+  const { saleId, detailId, serialNumberId } = parsed.data;
+  const nextSerialId = isToFollowSerial(serialNumberId) ? null : serialNumberId;
+
+  const sale = await prisma.serviceCenterSalesTransaction.findFirst({
+    where: {
+      id: saleId,
+      tenantId,
+      ...(scopedIds ? { serviceCenterId: { in: scopedIds } } : {}),
+    },
+    select: {
+      id: true,
+      transactionNo: true,
+      serviceCenterLocationId: true,
+      customerDeliveryMethod: { select: { name: true } },
+      details: {
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          modelId: true,
+          brandId: true,
+          serialNumberId: true,
+          deliveryNo: true,
+          deliveryDate: true,
+        },
+      },
+    },
   });
-  if (!row || row.status !== "pending_cs") {
-    return { error: "Return request not found or not pending CS evaluation" as const };
+  if (!sale) return { error: "Sale not found" };
+  const targetDetail = detailId
+    ? sale.details.find((d) => d.id === detailId)
+    : sale.details[0];
+  if (!targetDetail) return { error: "Sale detail line not found" };
+  if (targetDetail.serialNumberId) {
+    return { error: "Only TO-FOLLOW sale lines can be edited" };
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.serviceCenterReturnRequest.update({
-      where: { id: returnRequestId },
-      data: {
-        status: "pending_tl",
-        evaluatedById: session.user.id,
-        evaluatedAt: new Date(),
-        evaluationNotes: notes,
+  const { deliveryNo, deliveryDate, changed: deliveryChanged } = resolveLineDeliveryEdit({
+    deliveryMethodName: sale.customerDeliveryMethod?.name,
+    submitted: parsed.data,
+    current: targetDetail,
+  });
+
+  if (!nextSerialId) {
+    if (!deliveryChanged) return { success: true as const };
+    await prisma.serviceCenterSalesTransactionDetail.update({
+      where: { id: targetDetail.id },
+      data: { deliveryNo, deliveryDate },
+    });
+    await auditService.log({
+      tenantId,
+      userId: session.user.id,
+      action: "sc_sale.delivery_updated",
+      entityType: "ServiceCenterSalesTransaction",
+      entityId: sale.id,
+      metadata: {
+        transactionNo: sale.transactionNo,
+        detailId: targetDetail.id,
+        deliveryNo: deliveryNo ?? null,
+        deliveryDate: toDateInputValue(deliveryDate),
       },
     });
-    await recordReturnEvaluated(tx, scReturnApproval(session.user.tenantId, row), {
-      decidedById: session.user.id,
-      remarks: notes,
-      needsTl: true,
-    });
-  });
+    revalidateScSales();
+    return { success: true as const };
+  }
 
-  await auditService.log({
-    tenantId: session.user.tenantId,
-    userId: session.user.id,
-    action: "sc_return.evaluated",
-    entityType: "ServiceCenterReturnRequest",
-    entityId: returnRequestId,
-  });
+  const serviceCenterLocationId = sale.serviceCenterLocationId;
+  const modelId = targetDetail.modelId;
+  if (!serviceCenterLocationId) {
+    return { error: "This sale has no stock-source location" };
+  }
+  if (!modelId) return { error: "Choose a model before assigning a serial." };
 
-  revalidateScSales();
-  return { success: true as const };
-}
-
-export async function approveScReturnAction(returnRequestId: string) {
-  const session = await requireAnyPermission([
-    RETURNS_APPROVE,
-    SC_RETURN_APPROVE,
-    SC_ORDERS_APPROVE,
+  const [stkCodeId, sldCodeId] = await Promise.all([
+    reasonStatusService.requireCodeId(tenantId, "inventory_system", "STK"),
+    reasonStatusService.requireCodeId(tenantId, "inventory_system", "SLD"),
   ]);
-  const row = await prisma.serviceCenterReturnRequest.findFirst({
-    where: { id: returnRequestId, tenantId: session.user.tenantId },
-    include: { sale: { select: { transactionNo: true, serialNumberId: true } } },
-  });
-  if (!row || row.status !== "pending_tl") {
-    return { error: "Return request not found or not pending TL approval" as const };
+
+  try {
+    await assertScSerialSellable(prisma, {
+      tenantId,
+      serialNumberId: nextSerialId,
+      serviceCenterLocationId,
+      stkCodeId,
+      expectedModelId: modelId,
+    });
+  } catch (e) {
+    return { error: errorMessage(e, "Serial is not sellable") };
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.serviceCenterReturnRequest.update({
-      where: { id: returnRequestId },
-      data: {
-        status: "approved",
-        approvedById: session.user.id,
-        approvedAt: new Date(),
-      },
+  try {
+    await prisma.$transaction(async (tx) => {
+      await lockSerialNumbers(tx, [nextSerialId]);
+      await assertSerialLinkForSaleLine(tx, {
+        tenantId,
+        saleTenantId: tenantId,
+        stockTenantId: tenantId,
+        detailModelId: modelId,
+        detailBrandId: targetDetail.brandId,
+        serialNumberId: nextSerialId,
+      });
+      await claimToFollowSaleLine(tx.serviceCenterSalesTransactionDetail, {
+        detailId: targetDetail.id,
+        saleId: sale.id,
+        serialNumberId: nextSerialId,
+        statusCodeId: sldCodeId,
+        deliveryNo,
+        deliveryDate,
+      });
+      // Inventory consume commits only after this line was claimed.
+      await markScSerialSold(tx, {
+        tenantId,
+        serialNumberId: nextSerialId,
+        serviceCenterLocationId,
+        stkCodeId,
+        targetStatusCodeId: sldCodeId,
+        expectedModelId: modelId,
+      });
     });
-    await recordReturnApproved(tx, scReturnApproval(session.user.tenantId, row), session.user.id);
-  });
+  } catch (e) {
+    return { error: errorMessage(e, "Failed to update serial") };
+  }
 
   await auditService.log({
-    tenantId: session.user.tenantId,
+    tenantId,
     userId: session.user.id,
-    action: "sc_return.approved",
-    entityType: "ServiceCenterReturnRequest",
-    entityId: returnRequestId,
-  });
-
-  revalidateScSales();
-  return { success: true as const };
-}
-
-export async function rejectScReturnAction(
-  returnRequestId: string,
-  notes?: string,
-) {
-  const session = await requireAnyPermission([
-    RETURNS_EVALUATE,
-    RETURNS_APPROVE,
-    SC_RETURN_EVALUATE,
-    SC_RETURN_APPROVE,
-    SC_SALES_CREATE,
-    SC_ORDERS_APPROVE,
-  ]);
-  const row = await prisma.serviceCenterReturnRequest.findFirst({
-    where: { id: returnRequestId, tenantId: session.user.tenantId },
-    include: { sale: true },
-  });
-  if (!row || !["pending_cs", "pending_tl"].includes(row.status)) {
-    return { error: "Return request cannot be rejected" as const };
-  }
-
-  const allowed = scReturnRejectPermissions(row.status);
-  if (!allowed.some((slug) => hasPermission(session.user.permissions, slug))) {
-    return { error: "You do not have permission to reject this return" as const };
-  }
-
-  await prisma.$transaction(async (tx) => {
-    await tx.serviceCenterReturnRequest.update({
-      where: { id: returnRequestId },
-      data: { status: "rejected", evaluationNotes: notes ?? row.evaluationNotes },
-    });
-    await tx.serviceCenterSalesTransaction.update({
-      where: { id: row.saleId },
-      data: { atrStatus: "open" },
-    });
-    await recordReturnRejected(tx, scReturnApproval(session.user.tenantId, row), {
-      fromStatus: row.status,
-      decidedById: session.user.id,
-      remarks: notes,
-    });
-  });
-
-  await auditService.log({
-    tenantId: session.user.tenantId,
-    userId: session.user.id,
-    action: "sc_return.rejected",
-    entityType: "ServiceCenterReturnRequest",
-    entityId: returnRequestId,
-  });
-
-  revalidateScSales();
-  return { success: true as const };
-}
-
-export async function completeScReturnRestoreAction(returnRequestId: string) {
-  const session = await requireAnyPermission([
-    RETURNS_COMPLETE,
-    SC_RETURN_COMPLETE,
-    SC_LOGISTICS_MANAGE,
-    SC_SALES_CREATE,
-  ]);
-  const row = await prisma.serviceCenterReturnRequest.findFirst({
-    where: { id: returnRequestId, tenantId: session.user.tenantId },
-    include: { sale: true },
-  });
-  if (!row || row.status !== "approved") {
-    return { error: "Return must be TL-approved before inventory restore" as const };
-  }
-  if (!row.sale.serialNumberId || !row.sale.serviceCenterLocationId) {
-    return {
-      error: "Cannot restore stock — sale has no linked serial or location",
-    } as const;
-  }
-
-  const stkCodeId = await reasonStatusService.requireCodeId(
-    session.user.tenantId,
-    "inventory_system",
-    "STK",
-  );
-
-  await prisma.$transaction(async (tx) => {
-    await placeServiceCenterUnit(tx, {
-      tenantId: session.user.tenantId,
-      serviceCenterId: row.sale.serviceCenterId,
-      serviceCenterLocationId: row.sale.serviceCenterLocationId!,
-      serialNumberId: row.sale.serialNumberId!,
-      statusCodeId: stkCodeId,
-    });
-    await tx.serviceCenterReturnRequest.update({
-      where: { id: returnRequestId },
-      data: { status: "completed", completedAt: new Date() },
-    });
-    await tx.serviceCenterSalesTransaction.update({
-      where: { id: row.saleId },
-      data: { atrStatus: "closed" },
-    });
-  });
-
-  await auditService.log({
-    tenantId: session.user.tenantId,
-    userId: session.user.id,
-    action: "sc_return.completed",
-    entityType: "ServiceCenterReturnRequest",
-    entityId: returnRequestId,
-    metadata: { transactionNo: row.sale.transactionNo },
+    action: "sc_sale.serial_updated",
+    entityType: "ServiceCenterSalesTransaction",
+    entityId: sale.id,
+    metadata: {
+      transactionNo: sale.transactionNo,
+      detailId: targetDetail.id,
+      toSerialId: nextSerialId,
+      serviceCenterLocationId,
+      deliveryNo: deliveryNo ?? null,
+      deliveryDate: toDateInputValue(deliveryDate),
+    },
   });
 
   revalidateScSales();

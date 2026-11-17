@@ -25,7 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { updateSaleSerialAction } from "@/features/sales/actions/sales.actions";
+import { useSalesSource } from "@/app/(app)/sales/_components/sales-source";
 import {
   isToFollowSerial,
   TO_FOLLOW_SERIAL_ID,
@@ -58,6 +58,7 @@ export function EditSaleSerialDialog({
   showDelivery: boolean;
   onClose: () => void;
 }) {
+  const { updateSaleSerial } = useSalesSource().actions;
   const [pending, startTransition] = useTransition();
   const [saveConfirmOpen, setSaveConfirmOpen] = useState(false);
   // The line is already TO-FOLLOW. Keep that choice; do not replace it when
@@ -79,7 +80,7 @@ export function EditSaleSerialDialog({
   function save() {
     setSaveConfirmOpen(false);
     startTransition(async () => {
-      const result = await updateSaleSerialAction({
+      const result = await updateSaleSerial({
         saleId,
         detailId,
         serialNumberId,

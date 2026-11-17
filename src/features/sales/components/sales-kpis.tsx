@@ -11,6 +11,8 @@ interface SalesKpisStripProps {
   limit: number;
   sort?: string;
   sortDir?: string;
+  /** List page the cards link to. Defaults to branch Sales. */
+  basePath?: string;
 }
 
 export function SalesKpisStrip({
@@ -20,6 +22,7 @@ export function SalesKpisStrip({
   limit,
   sort,
   sortDir,
+  basePath,
 }: SalesKpisStripProps) {
   const items = buildStatusKpiItems({
     totalLabel: "Total lines",
@@ -31,6 +34,7 @@ export function SalesKpisStrip({
     return {
       ...item,
       href: buildSalesPageHref({
+        basePath,
         limit,
         sort,
         sortDir: sort ? sortDir : undefined,

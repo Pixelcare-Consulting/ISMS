@@ -23,7 +23,7 @@ export default async function PulloutDetailPage({
     loadWorkflowCatalog(session.user.tenantId, "pullout_workflow"),
   ]);
   if ("error" in result || !result.detail) notFound();
-  const branchScope = isBranchScopeUnrestricted(session.user.permissions)
+  const placeScope = isBranchScopeUnrestricted(session.user.permissions)
     ? null
     : await getUserBranchIds(session.user.tenantId, session.user.id);
 
@@ -31,7 +31,7 @@ export default async function PulloutDetailPage({
     <PulloutDetailView
       detail={result.detail}
       capabilities={resolveLogisticsCapabilities(session.user.permissions)}
-      branchScope={branchScope}
+      placeScope={placeScope}
       workflowStatuses={workflowStatuses}
     />
   );

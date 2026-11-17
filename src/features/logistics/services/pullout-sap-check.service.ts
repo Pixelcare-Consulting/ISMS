@@ -6,12 +6,9 @@ import {
 } from "@/features/logistics/constants/workflow-codes";
 import {
   formatPulloutSapDoc,
-  planPulloutLinks,
-  planPulloutRedeliveries,
   type PulloutCheckLine,
   type PulloutLinkPlan,
   type PulloutSapCheckResult,
-  type SapRedelivery,
 } from "@/features/logistics/lib/pullout-sap-document";
 import { txWorkflowCodeId } from "@/features/logistics/services/delivery-settle";
 import { nextDeliveryNo } from "@/features/logistics/services/logistics.service";
@@ -19,31 +16,25 @@ import {
   authorizePosting,
   claimHeader,
   claimInventory,
-  postingError,
   type PostingActor,
 } from "@/features/logistics/services/posting-support";
 import { writePulloutHistory } from "@/features/logistics/services/pullout-posting.service";
 import {
-  findPulloutSapDocuments,
-  findSapRedeliveries,
-} from "@/features/logistics/services/pullout-sap-document.service";
+  PULLOUT_SAP_CHECK_CLAIM_LOST as CLAIM_LOST,
+  pulloutSapCheckCodeIds,
+  runPulloutSapCheck,
+  type PulloutRedeliveryTarget,
+  type PulloutSapCheckLedger,
+} from "@/features/logistics/services/pullout-sap-check.runner";
 import { SAP_FOLLOW_STATUS } from "@/features/logistics/services/sap-copy-to-follow.planner";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
-import { sapServiceLayerService } from "@/features/sap/services/sap-service-layer.service";
 import { prisma } from "@/lib/database/client";
-import { logger } from "@/lib/shared/logger";
 
 /**
- * "Check SAP" on a sent pull-out. SAP users create the IT or Return by hand with the pull-out
- * number in the row UDF; this finds them, links each unit (DIT → PO, header Pulled out once
- * every unit is in SAP), then follows any DR that redelivers a pulled-out unit: a new ISMS
- * delivery at the DR's branch, units PO → DIT, so the branch accepts them as usual.
- * Manual on purpose: SAP reads only run when a person asks.
+ * "Check SAP" on a sent branch pull-out (rules in `pullout-sap-check.runner.ts`). Branch
+ * ledger writes: links on `branch_pullout_lines`, DIT → PO on Branch Inventory, and a DR that
+ * redelivers a pulled-out unit becomes an order-less ISMS delivery at the DR's branch.
  */
-
-const NOT_CONNECTED =
-  "SAP is not connected, so the pull-out cannot be checked. Ask an admin to set up the Service Layer in Settings.";
-const CLAIM_LOST = "One or more units changed in ISMS while SAP was checked. Check again.";
 
 type LoadedPullout = Awaited<ReturnType<typeof loadPullout>>;
 
@@ -94,30 +85,13 @@ async function loadPullout(actor: PostingActor, pulloutId: string) {
   return { ...pullout, checkLines: lines };
 }
 
-async function inventoryCodeIds(tenantId: string) {
-  const [dit, po] = await Promise.all([
-    reasonStatusService.requireCodeId(tenantId, "inventory_system", "DIT"),
-    reasonStatusService.requireCodeId(tenantId, "inventory_system", "PO"),
-  ]);
-  return { DIT: dit, PO: po };
-}
-
-/** Every unit that still counts (not legacy-settled) is in SAP: linked or already redelivered. */
-function everyUnitInSap(pullout: LoadedPullout, plan: PulloutLinkPlan): boolean {
-  const counted = pullout.checkLines.filter((line) => !line.legacySettled);
-  return counted.length > 0 && plan.waitingSerialNos.length === 0;
-}
-
 async function applyLinks(
   actor: PostingActor,
   pullout: LoadedPullout,
   plan: PulloutLinkPlan,
+  finishHeader: boolean,
   codes: { DIT: string; PO: string },
-): Promise<boolean> {
-  const finishHeader =
-    pullout.statusCode.code === PULLOUT_WORKFLOW_CODE.in_transit && everyUnitInSap(pullout, plan);
-  if (plan.links.length === 0 && plan.pullOutIds.length === 0 && !finishHeader) return false;
-
+): Promise<void> {
   const [inTransitId, pulledOutId] = finishHeader
     ? await Promise.all([
         reasonStatusService.requireCodeId(actor.tenantId, "pullout_workflow", PULLOUT_WORKFLOW_CODE.in_transit),
@@ -200,17 +174,16 @@ async function applyLinks(
       },
     });
   });
-  return true;
 }
 
 /** One redelivery DR: a new ISMS delivery at the DR's branch, units PO → DIT there. */
 async function applyRedelivery(
   actor: PostingActor,
   pullout: LoadedPullout,
-  redelivery: { dr: SapRedelivery; branchId: string; serialNumberIds: string[] },
+  redelivery: PulloutRedeliveryTarget,
   codes: { DIT: string; PO: string },
 ): Promise<{ deliveryNo: string; drNo: string; unitCount: number }> {
-  const { dr, branchId, serialNumberIds } = redelivery;
+  const { dr, placeId: branchId, serialNumberIds } = redelivery;
   return prisma.$transaction(async (tx) => {
     await lockSerialNumbers(tx, serialNumberIds);
     const pendingId = await txWorkflowCodeId(tx, actor.tenantId, DELIVERY_WORKFLOW_CODE.pending);
@@ -313,11 +286,7 @@ async function applyRedelivery(
   });
 }
 
-async function branchIdsBySapCode(tenantId: string, redeliveries: readonly SapRedelivery[]) {
-  const codes = [
-    ...new Set(redeliveries.flatMap((dr) => dr.lines.map((line) => line.branchCode)).filter(Boolean)),
-  ];
-  if (codes.length === 0) return new Map<string, string>();
+async function branchIdsBySapCode(tenantId: string, codes: string[]) {
   const branches = await prisma.branch.findMany({
     where: { tenantId, deletedAt: null, sapCode: { in: codes } },
     select: { id: true, sapCode: true },
@@ -340,78 +309,26 @@ export async function checkPulloutInSap(
   pulloutId: string,
 ): Promise<PulloutSapCheckResult> {
   const pullout = await loadPullout(actor, pulloutId);
-  const creds = await sapServiceLayerService.getCredentials(actor.tenantId);
-  if (!creds) throw new Error(NOT_CONNECTED);
-
-  const documents = await findPulloutSapDocuments(creds, pullout.pulloutNo);
-  const linkPlan = planPulloutLinks({
-    pulloutNo: pullout.pulloutNo,
-    lines: pullout.checkLines,
-    documents,
-  });
-  const notes = linkPlan.cancelledDocs.map(
-    (doc) => `${formatPulloutSapDoc(doc.type, doc.docNum)} is cancelled in SAP, so it was not used`,
-  );
-
-  // Units that are PO once the links apply: already PO, or moving from DIT now.
-  const movingToPo = new Set(linkPlan.pullOutIds);
-  const pulledOut = pullout.checkLines.filter(
-    (line) => !line.redelivered && (line.inventoryCode === "PO" || movingToPo.has(line.serialNumberId)),
-  );
-  const returnDocEntries = [
-    ...documents.filter((doc) => doc.type === "RETURN" && !doc.cancelled).map((doc) => doc.docEntry),
-    ...pullout.lines.flatMap((line) =>
-      line.sapDocType === "RETURN" && line.sapDocEntry != null ? [line.sapDocEntry] : [],
-    ),
-  ];
-  const redeliveries =
-    pulledOut.length > 0 ? await findSapRedeliveries(creds, pullout.pulloutNo, returnDocEntries) : [];
-
-  const codes = await inventoryCodeIds(actor.tenantId);
-  try {
-    await applyLinks(actor, pullout, linkPlan, codes);
-  } catch (error) {
-    throw postingError(error, "Failed to save what SAP shows for this pull-out");
-  }
-
-  const [branchIdByCode, applied] = await Promise.all([
-    branchIdsBySapCode(actor.tenantId, redeliveries),
-    appliedDrEntries(
-      actor.tenantId,
-      redeliveries.map((dr) => dr.docEntry),
-    ),
-  ]);
-  const plan = planPulloutRedeliveries({
-    pulloutNo: pullout.pulloutNo,
-    pulloutBranchId: pullout.branchId,
-    pulledOut,
-    returnDocEntries,
-    redeliveries: redeliveries.filter((dr) => !applied.has(dr.docEntry)),
-    branchIdBySapCode: branchIdByCode,
-  });
-  notes.push(...plan.skipped.map((skip) => skip.reason));
-
-  const made: PulloutSapCheckResult["redeliveries"] = [];
-  for (const redelivery of plan.deliveries) {
-    try {
-      made.push(await applyRedelivery(actor, pullout, redelivery, codes));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      logger.warn(
-        { tenantId: actor.tenantId, pulloutId, drDocEntry: redelivery.dr.docEntry, err: message },
-        "pullout sap check: redelivery not applied",
-      );
-      notes.push(`DR ${redelivery.dr.displayNo} was not applied: ${message}`);
-    }
-  }
-
-  return {
-    id: pullout.id,
-    linkedDocuments: linkPlan.links.map(({ doc }) => formatPulloutSapDoc(doc.type, doc.docNum)),
-    linkedCount: linkPlan.links.reduce((sum, link) => sum + link.serialNumberIds.length, 0),
-    pulledOutCount: linkPlan.pullOutIds.length,
-    redeliveries: made,
-    waitingCount: linkPlan.waitingSerialNos.length,
-    notes,
+  const codes = await pulloutSapCheckCodeIds(actor.tenantId);
+  const ledger: PulloutSapCheckLedger = {
+    placeNoun: "branch",
+    applyLinks: (plan, finishHeader) => applyLinks(actor, pullout, plan, finishHeader, codes),
+    placeIdsBySapCode: (sapCodes) => branchIdsBySapCode(actor.tenantId, sapCodes),
+    appliedDrEntries: (docEntries) => appliedDrEntries(actor.tenantId, docEntries),
+    applyRedelivery: (redelivery) => applyRedelivery(actor, pullout, redelivery, codes),
   };
+  return runPulloutSapCheck(
+    actor.tenantId,
+    {
+      id: pullout.id,
+      pulloutNo: pullout.pulloutNo,
+      status: pullout.statusCode.code,
+      placeId: pullout.branchId,
+      lines: pullout.checkLines,
+      linkedReturnEntries: pullout.lines.flatMap((line) =>
+        line.sapDocType === "RETURN" && line.sapDocEntry != null ? [line.sapDocEntry] : [],
+      ),
+    },
+    ledger,
+  );
 }

@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 
+import type { CustomDashboardNavItem } from "@/features/custom-dashboards/lib/custom-dashboard-nav";
 import type {
   CustomDashboardPeriod,
   CustomDashboardVisibility,
@@ -76,6 +77,15 @@ export const customDashboardService = {
       orderBy: { updatedAt: "desc" },
     });
     return rows.map((row) => toSummary(row, userId));
+  },
+
+  /** Sidebar links: same visibility rule as `list`, sorted by name so the menu stays stable. */
+  async listNavItems(tenantId: string, userId: string): Promise<CustomDashboardNavItem[]> {
+    return prisma.customDashboard.findMany({
+      where: readableWhere(tenantId, userId),
+      select: { id: true, name: true },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+    });
   },
 
   async findReadable(tenantId: string, userId: string, id: string): Promise<CustomDashboardDetail | null> {

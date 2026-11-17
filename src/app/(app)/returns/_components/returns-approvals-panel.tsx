@@ -5,7 +5,7 @@ import { ScReturnsPanel } from "@/app/(app)/returns/_components/sc-returns-panel
 import type { ReturnsActionCapabilities } from "@/features/returns/constants/returns-permissions";
 import type { SalesActionCapabilities } from "@/features/sales/constants/sales-permissions";
 import type { listSalesReturnsAction } from "@/features/sales/actions/sales.actions";
-import type { listScReturnsAction } from "@/features/service-center-ops/actions/sc-sales.actions";
+import type { listScReturnsAction } from "@/features/service-center-ops/actions/sc-returns.actions";
 import { Badge } from "@/components/ui/badge";
 
 type BranchResult = Awaited<ReturnType<typeof listSalesReturnsAction>>;

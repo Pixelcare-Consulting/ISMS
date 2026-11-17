@@ -51,6 +51,48 @@ export function assertSaleSerialLink(input: SaleSerialLinkInput): void {
   if (error) throw new Error(error);
 }
 
+/** Load the serial and model, then apply the link guard for already-resolved places. */
+export async function assertSerialLinkForSaleLine(
+  tx: Pick<SaleSerialLinkClient, "serialNumber">,
+  input: {
+    tenantId: string;
+    /** Tenant of the sold place (branch or service center). */
+    saleTenantId: string;
+    /** Tenant of the stock source (branch or service center location). */
+    stockTenantId: string;
+    detailModelId: string;
+    detailBrandId: string | null;
+    serialNumberId: string;
+  },
+): Promise<void> {
+  const serial = await tx.serialNumber.findFirst({
+    where: { id: input.serialNumberId },
+    select: {
+      serialNo: true,
+      tenantId: true,
+      modelId: true,
+      deletedAt: true,
+      model: { select: { tenantId: true, brandId: true } },
+    },
+  });
+  if (!serial) {
+    throw new Error("Serial is not in this company.");
+  }
+  assertSaleSerialLink({
+    tenantId: input.tenantId,
+    saleTenantId: input.saleTenantId,
+    stockBranchTenantId: input.stockTenantId,
+    detailModelId: input.detailModelId,
+    detailBrandId: input.detailBrandId,
+    serialNo: serial.serialNo,
+    serialTenantId: serial.tenantId,
+    serialModelId: serial.modelId,
+    serialDeleted: serial.deletedAt != null,
+    modelTenantId: serial.model.tenantId,
+    modelBrandId: serial.model.brandId,
+  });
+}
+
 /** Load the serial, model, sale branch, and stock branch, then apply the link guard. */
 export async function assertSaleSerialLinkRecord(
   tx: SaleSerialLinkClient,
@@ -63,17 +105,7 @@ export async function assertSaleSerialLinkRecord(
     serialNumberId: string;
   },
 ): Promise<void> {
-  const [serial, saleBranch, stockBranch] = await Promise.all([
-    tx.serialNumber.findFirst({
-      where: { id: input.serialNumberId },
-      select: {
-        serialNo: true,
-        tenantId: true,
-        modelId: true,
-        deletedAt: true,
-        model: { select: { tenantId: true, brandId: true } },
-      },
-    }),
+  const [saleBranch, stockBranch] = await Promise.all([
     tx.branch.findFirst({
       where: { id: input.saleBranchId },
       select: { tenantId: true },
@@ -83,36 +115,38 @@ export async function assertSaleSerialLinkRecord(
       select: { tenantId: true },
     }),
   ]);
-  if (!serial || !saleBranch || !stockBranch) {
+  if (!saleBranch || !stockBranch) {
     throw new Error("Serial is not in this company.");
   }
-  assertSaleSerialLink({
+  await assertSerialLinkForSaleLine(tx, {
     tenantId: input.tenantId,
     saleTenantId: saleBranch.tenantId,
-    stockBranchTenantId: stockBranch.tenantId,
+    stockTenantId: stockBranch.tenantId,
     detailModelId: input.detailModelId,
     detailBrandId: input.detailBrandId,
-    serialNo: serial.serialNo,
-    serialTenantId: serial.tenantId,
-    serialModelId: serial.modelId,
-    serialDeleted: serial.deletedAt != null,
-    modelTenantId: serial.model.tenantId,
-    modelBrandId: serial.model.brandId,
+    serialNumberId: input.serialNumberId,
   });
 }
 
-type SaleDetailClaimClient = {
-  branchSalesTransactionDetail: {
-    updateMany: Prisma.TransactionClient["branchSalesTransactionDetail"]["updateMany"];
-  };
-};
+/** The detail-line delegate a TO-FOLLOW claim writes through (branch or SC sale lines). */
+export interface SaleDetailClaimDelegate {
+  updateMany(args: {
+    where: { id: string; salesId: string; serialNumberId: null };
+    data: {
+      serialNumberId: string;
+      statusCodeId: string;
+      deliveryNo?: string | null;
+      deliveryDate?: Date | null;
+    };
+  }): PromiseLike<{ count: number }>;
+}
 
 /**
  * Claim a TO-FOLLOW line that still has no serial. A second assigner gets a
  * conflict and the surrounding transaction rolls the inventory change back.
  */
 export async function claimToFollowSaleLine(
-  tx: SaleDetailClaimClient,
+  detailDelegate: SaleDetailClaimDelegate,
   input: {
     detailId: string;
     saleId: string;
@@ -122,7 +156,7 @@ export async function claimToFollowSaleLine(
     deliveryDate?: Date | null;
   },
 ): Promise<void> {
-  const claimed = await tx.branchSalesTransactionDetail.updateMany({
+  const claimed = await detailDelegate.updateMany({
     where: {
       id: input.detailId,
       salesId: input.saleId,

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { toast } from "sonner";
 
 import { SaleSerialField } from "@/app/(app)/sales/_components/sale-serial-field";
+import { useSalesSource } from "@/app/(app)/sales/_components/sales-source";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,7 +20,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
-  countAgingSellableStockAction,
   listModelsForSalesAction,
   listPackageTypesForSalesAction,
   resolveModelPriceForSalesAction,
@@ -188,6 +188,7 @@ export function AddTransactionDetailDialog({
   onAdd: (rows: DraftSaleDetail[]) => void;
   onClose: () => void;
 }) {
+  const { countAgingSellableStock } = useSalesSource().actions;
   const isEdit = Boolean(initialRows && initialRows.length > 0);
   const editGroupKey = initialRows?.[0]?.packageGroupKey;
   const initialRowsRef = useRef(initialRows);
@@ -302,15 +303,15 @@ export function AddTransactionDetailDialog({
       agingRequestBySet.current[index] = requestId;
       const epoch = agingEpoch.current;
       writeAgedSerials(index, []);
-      if (!modelId || !stockBranchId) return;
+      if (!countAgingSellableStock || !modelId || !stockBranchId) return;
 
       const stillCurrent = () =>
         agingEpoch.current === epoch &&
         agingRequestBySet.current[index] === requestId;
 
       try {
-        const result = await countAgingSellableStockAction({
-          branchId: stockBranchId,
+        const result = await countAgingSellableStock({
+          stockSourceId: stockBranchId,
           modelId,
         });
         if (!stillCurrent()) return;
@@ -333,7 +334,7 @@ export function AddTransactionDetailDialog({
         toast.error("Failed to check model aging");
       }
     },
-    [stockBranchId, writeAgedSerials],
+    [countAgingSellableStock, stockBranchId, writeAgedSerials],
   );
 
   useEffect(() => {

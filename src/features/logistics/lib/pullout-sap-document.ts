@@ -252,8 +252,17 @@ export function planPulloutLinks(input: {
   };
 }
 
+/**
+ * Every unit that still counts (not legacy-settled) is in SAP: linked or already redelivered.
+ * The header moves In transit → Pulled out then.
+ */
+export function pulloutFullyInSap(lines: readonly PulloutCheckLine[], plan: PulloutLinkPlan): boolean {
+  return lines.some((line) => !line.legacySettled) && plan.waitingSerialNos.length === 0;
+}
+
 export interface RedeliveryPlan {
-  deliveries: { dr: SapRedelivery; branchId: string; serialNumberIds: string[] }[];
+  /** `placeId` is the branch (branch pull-outs) or service center (SC pull-outs) the DR delivers to. */
+  deliveries: { dr: SapRedelivery; placeId: string; serialNumberIds: string[] }[];
   /** DRs that relate to this pull-out but cannot be applied, with why. */
   skipped: { dr: SapRedelivery; reason: string }[];
 }
@@ -262,17 +271,25 @@ export interface RedeliveryPlan {
  * DRs that bring pulled-out units back. A DR line relates to the pull-out when it was copied
  * from one of the pull-out's Returns (SAP Copy To) or carries the pull-out number itself.
  * Only units that are PO now (or become PO in this check) and not redelivered yet move.
- * The branch is the line's `CostingCode2`; a blank one means the pull-out's own branch.
+ * The place is the line's `CostingCode2`; a blank one means the pull-out's own branch or
+ * service center.
  */
 export function planPulloutRedeliveries(input: {
   pulloutNo: string;
-  pulloutBranchId: string;
+  /** The branch or service center the pull-out left. */
+  pulloutPlaceId: string;
   /** Units that are PO after the link step. */
   pulledOut: readonly { serialNumberId: string; serialNo: string }[];
   returnDocEntries: readonly number[];
   redeliveries: readonly SapRedelivery[];
-  branchIdBySapCode: ReadonlyMap<string, string>;
+  placeIdBySapCode: ReadonlyMap<string, string>;
+  /** "branch" or "service center", for the skip reasons. */
+  placeNoun?: string;
+  /** Why a `CostingCode2` with no place in `placeIdBySapCode` is skipped. */
+  unknownPlaceReason?: (code: string) => string;
 }): RedeliveryPlan {
+  const noun = input.placeNoun ?? "branch";
+  const unknownPlace = input.unknownPlaceReason ?? ((code: string) => `branch "${code}" is not an ISMS branch`);
   const idBySerial = new Map(input.pulledOut.map((unit) => [serialKey(unit.serialNo), unit.serialNumberId]));
   const returns = new Set(input.returnDocEntries);
   const claimed = new Set<string>();
@@ -296,18 +313,18 @@ export function planPulloutRedeliveries(input: {
 
     const codes = [...new Set(units.map((unit) => unit.branchCode))];
     if (codes.length > 1) {
-      skipped.push({ dr, reason: `DR ${dr.displayNo} sends these units to more than one branch` });
+      skipped.push({ dr, reason: `DR ${dr.displayNo} sends these units to more than one ${noun}` });
       continue;
     }
     const [code] = codes;
-    const branchId = code ? input.branchIdBySapCode.get(code) : input.pulloutBranchId;
-    if (!branchId) {
-      skipped.push({ dr, reason: `DR ${dr.displayNo}: branch "${code}" is not an ISMS branch` });
+    const placeId = code ? input.placeIdBySapCode.get(code) : input.pulloutPlaceId;
+    if (!placeId) {
+      skipped.push({ dr, reason: `DR ${dr.displayNo}: ${unknownPlace(code)}` });
       continue;
     }
     const serialNumberIds = [...new Set(units.map((unit) => unit.id))];
     for (const id of serialNumberIds) claimed.add(id);
-    deliveries.push({ dr, branchId, serialNumberIds });
+    deliveries.push({ dr, placeId, serialNumberIds });
   }
   return { deliveries, skipped };
 }

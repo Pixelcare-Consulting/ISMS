@@ -87,6 +87,15 @@ export type LogisticsActionCapabilities = ResolvedCapabilities<
   typeof LOGISTICS_ACTION_CAPABILITIES
 >;
 
+/**
+ * The buttons the shared pull-out list and detail page show. Branch pull-outs resolve them
+ * from logistics permissions, service center pull-outs from SC logistics permissions.
+ */
+export type PulloutActionCapabilities = Pick<
+  LogisticsActionCapabilities,
+  "canCreate" | "canManage" | "canApproveTl" | "canRejectTransfer"
+>;
+
 export function resolveLogisticsCapabilities(
   permissions: string[] | undefined,
 ): LogisticsActionCapabilities {

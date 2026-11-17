@@ -1,4 +1,4 @@
-import { letterheadHtml, printDocumentHtml } from "@/utils/print-document";
+import { letterheadHtml, printableLetterhead, printDocumentHtml } from "@/utils/print-document";
 import { splitDocumentHeader } from "@/features/tenants/types/tenant-branding";
 
 const letterhead = {
@@ -23,6 +23,20 @@ describe("letterheadHtml", () => {
   it("prints no header when the tenant has neither logo nor lines", () => {
     expect(letterheadHtml({ logo: null, companyName: "Acme", lines: ["  "] })).toBe("");
     expect(letterheadHtml(null)).toBe("");
+  });
+});
+
+describe("printableLetterhead", () => {
+  it("drops blank lines and keeps the logo and name", () => {
+    expect(printableLetterhead({ ...letterhead, lines: [" A ", "  ", "B"] })).toEqual({
+      ...letterhead,
+      lines: ["A", "B"],
+    });
+  });
+
+  it("is null when there is nothing to print", () => {
+    expect(printableLetterhead({ logo: null, companyName: "Acme", lines: [" "] })).toBeNull();
+    expect(printableLetterhead(null)).toBeNull();
   });
 });
 

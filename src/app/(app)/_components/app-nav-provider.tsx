@@ -27,6 +27,10 @@ import {
   type NavEntry,
 } from "@/config/app-navigation";
 import { setupNavigation } from "@/config/setup-navigation";
+import {
+  withCustomDashboardNav,
+  type CustomDashboardNavItem,
+} from "@/features/custom-dashboards/lib/custom-dashboard-nav";
 
 type AppNavContextValue = {
   entries: NavEntry[];
@@ -69,6 +73,8 @@ export function AppNavProvider(props: {
   permissions: string[];
   isPlatformOperator: boolean;
   countBadges: NavCountBadges;
+  /** Dashboards the viewer can open (own + shared with the company). */
+  customDashboards: CustomDashboardNavItem[];
   secondaryPreference: ContextualSidebarPreference;
   children: ReactNode;
 }) {
@@ -80,11 +86,19 @@ export function AppNavProvider(props: {
   const entries = useMemo(
     () =>
       filterNavByPermissions(
-        props.useSetupNavigation ? setupNavigation : appNavigation,
+        withCustomDashboardNav(
+          props.useSetupNavigation ? setupNavigation : appNavigation,
+          props.customDashboards,
+        ),
         props.permissions,
         props.isPlatformOperator,
       ),
-    [props.isPlatformOperator, props.permissions, props.useSetupNavigation],
+    [
+      props.customDashboards,
+      props.isPlatformOperator,
+      props.permissions,
+      props.useSetupNavigation,
+    ],
   );
 
   const activeEntry = useMemo(
