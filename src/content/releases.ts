@@ -70,22 +70,28 @@ export const RELEASES: ReleaseNote[] = [
   {
     version: "0.95.5",
     date: "2026-11-17",
-    releasedAt: "2026-11-17T18:55:00+08:00",
-    title: "New Update for roles and permissions!",
+    releasedAt: "2026-11-17T19:30:00+08:00",
+    title: "Review permissions on each role",
     highlights: [
       "Open Settings → Roles and review the permissions on each role.",
-      "This update is the permission list on Roles. Inventory, orders, sales, and deliveries stay the same.",
+      "Pull-out and transfer actions sit on their own cards.",
+      "Inventory, orders, sales, and deliveries pages stay the same. This is the permission list on Roles.",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "Monthly SIR has a separate permission from Branch Inventory. Enable this permission for roles that need access to Monthly SIR.",
+          "Monthly SIR is its own permission, separate from Branch inventory. Turn it on for roles that need Monthly SIR.",
       },
       {
         type: "improvement",
         description:
-          "Permissions already assigned to a role will continue to function. Branch and Service Center permissions are now listed separately for Inventory, Deliveries, Pull-Outs, Orders, and Sales.",
+          "Branch and service center permissions are listed separately for inventory, deliveries, pull-outs, orders, and sales.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Older duplicate order and return permissions are hidden. Access already saved on a role still works.",
       },
       {
         type: "improvement",
@@ -95,14 +101,32 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "improvement",
         description:
-          "Description on Modules permissions is now clearer and easier to understand. ",
+          "Branch pull-outs now has Create, Approve, and Manage on the role. Create starts a pull-out, Approve covers approve and reject, and Manage covers the list, Send, and Check SAP. Sending still ends the pull-out.",
+      },
+      {
+        type: "improvement",
+        description:
+          "On Branch transfers, Create, Approve, and Receive control the Transfers page.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Service center pull-outs have their own Approve on the service center deliveries and pull-outs card.",
+      },
+      {
+        type: "improvement",
+        description: "Descriptions on module permissions are clearer.",
+      },
+      {
+        type: "fix",
+        description:
+          "People who could already create, approve, send, or receive keep those buttons.",
       },
       {
         type: "fix",
         description:
           "New roles and permissions remain compatible with the existing setup. This ensures that legacy permissions continue to be supported, preventing conflicts.",
       },
-      
     ],
   },
   {

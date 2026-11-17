@@ -293,7 +293,7 @@ export const appModules: AppModule[] = [
     slugPrefix: "logistics.delivery_transfer",
     area: "Inventory",
     description:
-      "Steps for units not accepted on a delivery. Opening Transfers uses Branch deliveries View, Create, or Manage.",
+      "Opens Transfers in Inventory. Create, Approve, and Receive control this page and also cover units not accepted on a delivery. Opening Transfers uses Branch deliveries View, Create, or Manage.",
     actions: [
       { value: "create", label: "Create" },
       { value: "approve", label: "Approve" },
@@ -308,8 +308,8 @@ export const appModules: AppModule[] = [
     navPermission: "pullouts.view",
     area: "Inventory",
     description:
-      "Opens Pull-outs in Inventory. Creating, approving, and receiving use Branch deliveries or Branch orders.",
-    actions: permissionActions("view"),
+      "Opens Pull-outs in Inventory. Create, Approve, and Manage cover new pull-outs, approval, and sending.",
+    actions: permissionActions("view", "create", "approve", "manage"),
   },
   {
     id: "service_centers_inventory",
@@ -328,8 +328,9 @@ export const appModules: AppModule[] = [
     slugPrefix: "service_centers.logistics",
     navPermission: "service_centers.logistics.view",
     area: "Inventory",
-    description: "Opens service center Deliveries and Pull-outs. The same access covers both pages.",
-    actions: permissionActions("view", "create", "manage"),
+    description:
+      "Opens service center Deliveries and Pull-outs. Approve covers pull-out approve and reject. View, Create, and Manage cover both pages.",
+    actions: permissionActions("view", "create", "manage", "approve"),
   },
   {
     id: "orders",

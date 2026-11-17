@@ -19,6 +19,7 @@ import {
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import {
   SC_LOGISTICS_ACCESS,
+  SC_LOGISTICS_APPROVE,
   SC_LOGISTICS_CREATE,
   SC_LOGISTICS_MANAGE,
   SC_ORDERS_APPROVE,
@@ -41,7 +42,7 @@ import { prisma } from "@/lib/database/client";
  */
 
 const CREATE_PERMISSIONS = [SC_LOGISTICS_CREATE, SC_LOGISTICS_MANAGE] as const;
-const TL_PERMISSIONS = [SC_ORDERS_APPROVE, SC_LOGISTICS_MANAGE] as const;
+const TL_PERMISSIONS = [SC_LOGISTICS_APPROVE, SC_ORDERS_APPROVE, SC_LOGISTICS_MANAGE] as const;
 const SORT_FIELDS = new Set<ScPulloutListSort>(["pulloutNo", "serviceCenter", "reason", "status"]);
 
 const scPulloutSchema = z.object({

@@ -46,7 +46,11 @@ export function getTransferActionableStatusCodes(
  * end of a pull-out, so it needs nobody.
  */
 export function getPulloutActionableStatusCodes(
-  capabilities: LogisticsActionCapabilities,
+  capabilities: {
+    canApproveTl: boolean;
+    canManage: boolean;
+    canSchedulePullout?: boolean;
+  },
 ): string[] {
   const codes: string[] = [];
   if (capabilities.canApproveTl) codes.push(PULLOUT_WORKFLOW_CODE.pending_tl);

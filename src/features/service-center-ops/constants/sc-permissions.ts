@@ -21,6 +21,8 @@ export const SC_ORDERS_APPROVE = "service_centers.orders.approve";
 export const SC_LOGISTICS_VIEW = "service_centers.logistics.view";
 export const SC_LOGISTICS_CREATE = "service_centers.logistics.create";
 export const SC_LOGISTICS_MANAGE = "service_centers.logistics.manage";
+/** Service center pull-out Approve and Reject. */
+export const SC_LOGISTICS_APPROVE = "service_centers.logistics.approve";
 export const SC_MANAGE = "service_centers.manage";
 
 /** SC Sales list / encode / header edit. Returns are handled outside SC Sales. */
@@ -49,7 +51,7 @@ export const SC_LOGISTICS_ACTION_CAPABILITIES = {
   canCreate: [SC_LOGISTICS_CREATE, SC_LOGISTICS_MANAGE],
   canManage: SC_LOGISTICS_MANAGE,
   canAcceptDelivery: [SC_LOGISTICS_CREATE, SC_LOGISTICS_MANAGE],
-  canApprovePullout: [SC_ORDERS_APPROVE, SC_LOGISTICS_MANAGE],
+  canApprovePullout: [SC_LOGISTICS_APPROVE, SC_ORDERS_APPROVE, SC_LOGISTICS_MANAGE],
 } as const;
 
 export type ScLogisticsActionCapabilities = ResolvedCapabilities<
