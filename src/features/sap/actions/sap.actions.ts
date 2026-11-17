@@ -2,13 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 
-import { sapService } from "@/features/sap/services/sap.service";
-import { sapServiceLayerService } from "@/features/sap/services/sap-service-layer.service";
+import { parseTablePageSize } from "@/components/data-table/table-page-size";
+import { parseSapQueueView } from "@/features/sap/constants/sap-job-types";
+import { SAP_MANAGE } from "@/features/sap/constants/sap-permissions";
 import type {
   SapJobListSort,
   SapJobListSortDir,
 } from "@/features/sap/repositories/sap-integration.repository";
-import { SAP_MANAGE } from "@/features/sap/constants/sap-permissions";
+import { sapService } from "@/features/sap/services/sap.service";
+import { sapServiceLayerService } from "@/features/sap/services/sap-service-layer.service";
 import { requirePermission } from "@/lib/auth/permissions";
 import { logger } from "@/lib/shared/logger";
 
@@ -81,15 +83,41 @@ export async function getSapConnectionStateAction(): Promise<{
 
 export async function listSapJobsAction(input?: {
   page?: number;
+  limit?: string | number;
   sort?: string;
   sortDir?: string;
+  view?: string;
+  q?: string;
 }) {
   const session = await requirePermission(SAP_MANAGE);
+  const q = input?.q?.trim();
   return sapService.listJobs(
     session.user.tenantId,
-    { page: input?.page },
+    {
+      page: input?.page,
+      limit: parseTablePageSize(input?.limit),
+      view: parseSapQueueView(input?.view),
+      q: q || undefined,
+    },
     { field: parseSapJobSort(input?.sort), dir: parseSapJobSortDir(input?.sortDir) },
   );
+}
+
+export async function countSapJobsByStatusAction() {
+  const session = await requirePermission(SAP_MANAGE);
+  return sapService.countByStatus(session.user.tenantId);
+}
+
+/** Who sent this job, and who queued it when that is a different person. Tenant-scoped. */
+export async function getSapJobPeopleAction(jobId: string) {
+  const session = await requirePermission(SAP_MANAGE);
+  return sapService.getJobPeople(session.user.tenantId, jobId);
+}
+
+/** SAP codes and document keys on the record this job posted. Tenant-scoped. */
+export async function getSapJobSupportAction(jobId: string) {
+  const session = await requirePermission(SAP_MANAGE);
+  return sapService.getJobSupportFields(session.user.tenantId, jobId);
 }
 
 export async function processSapQueueAction() {
@@ -113,11 +141,3 @@ export async function retrySapJobAction(jobId: string) {
   }
 }
 
-export async function syncInventoryFromSapAction(input?: { warehouseCode?: string }) {
-  const session = await requirePermission(SAP_MANAGE);
-  await sapService.syncInventoryFromSap(session.user.tenantId, {
-    warehouseCode: input?.warehouseCode,
-  });
-  revalidatePath("/settings/sap-integration");
-  return { success: true as const };
-}

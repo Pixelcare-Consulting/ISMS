@@ -66,6 +66,18 @@ export type SalesReturnsListSort =
   | "returnStatus"
   | "createdAt";
 
+function salesDetailListOrderBy(sort?: {
+  field?: SalesListSort;
+  dir?: SalesListSortDir;
+}): Prisma.BranchSalesTransactionDetailOrderByWithRelationInput[] {
+  return sort?.field
+    ? [
+        salesDetailPrismaOrderBy(sort.field, sort.dir ?? "desc"),
+        { createdAt: "asc" },
+      ]
+    : [{ sale: { createdAt: "desc" } }, { createdAt: "asc" }];
+}
+
 function salesDetailPrismaOrderBy(
   field: SalesListSort,
   dir: SalesListSortDir,
@@ -124,6 +136,70 @@ const detailStatusCodeSelect = {
   statusCode: { select: { code: true, name: true, color: true } },
 } as const;
 
+const salesDetailListInclude = {
+  ...detailStatusCodeSelect,
+  serialNumber: {
+    select: {
+      id: true,
+      serialNo: true,
+    },
+  },
+  packageType: { select: { id: true, name: true } },
+  brand: { select: { id: true, name: true } },
+  model: { select: { id: true, skuCode: true, name: true } },
+  sale: {
+    select: {
+      id: true,
+      transactionNo: true,
+      transactionDate: true,
+      customerName: true,
+      atrStatus: true,
+      branchId: true,
+      alternateBranchId: true,
+      branch: { select: { id: true, name: true } },
+      stockSourceBranch: { select: { id: true, name: true } },
+      returnRequest: {
+        select: {
+          id: true,
+          status: true,
+          saleDetailId: true,
+          documentType: { select: { name: true } },
+        },
+      },
+    },
+  },
+} satisfies Prisma.BranchSalesTransactionDetailInclude;
+
+const salesDetailStatusSourceSelect = {
+  id: true,
+  serialNumberId: true,
+  saleAmount: true,
+  amount: true,
+  modelPrice: true,
+  statusCode: { select: { code: true, name: true, color: true } },
+  serialNumber: { select: { serialNo: true } },
+  packageType: { select: { name: true } },
+  brand: { select: { name: true } },
+  model: { select: { skuCode: true, name: true } },
+  sale: {
+    select: {
+      id: true,
+      transactionNo: true,
+      customerName: true,
+      atrStatus: true,
+      branch: { select: { name: true } },
+      stockSourceBranch: { select: { name: true } },
+      returnRequest: {
+        select: {
+          status: true,
+          saleDetailId: true,
+          documentType: { select: { name: true } },
+        },
+      },
+    },
+  },
+} satisfies Prisma.BranchSalesTransactionDetailSelect;
+
 export const salesRepository = {
   /**
    * One list row per transaction detail (serial line), newest sales first by default.
@@ -137,49 +213,12 @@ export const salesRepository = {
   ) {
     const { limit, page, skip } = resolvePagination(pagination);
     const where = salesListDetailWhere(tenantId, { includeReturnHistory: true });
-    const orderBy = sort?.field
-      ? [
-          salesDetailPrismaOrderBy(sort.field, sort.dir ?? "desc"),
-          { createdAt: "asc" as const },
-        ]
-      : [{ sale: { createdAt: "desc" as const } }, { createdAt: "asc" as const }];
+    const orderBy = salesDetailListOrderBy(sort);
 
     const [items, total] = await Promise.all([
       prisma.branchSalesTransactionDetail.findMany({
         where,
-        include: {
-          ...detailStatusCodeSelect,
-          serialNumber: {
-            select: {
-              id: true,
-              serialNo: true,
-            },
-          },
-          packageType: { select: { id: true, name: true } },
-          brand: { select: { id: true, name: true } },
-          model: { select: { id: true, skuCode: true, name: true } },
-          sale: {
-            select: {
-              id: true,
-              transactionNo: true,
-              transactionDate: true,
-              customerName: true,
-              atrStatus: true,
-              branchId: true,
-              alternateBranchId: true,
-              branch: { select: { id: true, name: true } },
-              stockSourceBranch: { select: { id: true, name: true } },
-              returnRequest: {
-                select: {
-                  id: true,
-                  status: true,
-                  saleDetailId: true,
-                  documentType: { select: { name: true } },
-                },
-              },
-            },
-          },
-        },
+        include: salesDetailListInclude,
         orderBy,
         skip,
         take: limit,
@@ -188,6 +227,37 @@ export const salesRepository = {
     ]);
 
     return toPaginatedResult(items, total, page, limit);
+  },
+
+  /**
+   * Every sales-list line, in list order, with only the fields STATUS needs.
+   * Callers resolve Returned/Replaced before counting or filtering.
+   */
+  listDetailStatusSources(
+    tenantId: string,
+    sort?: { field?: SalesListSort; dir?: SalesListSortDir },
+  ) {
+    return prisma.branchSalesTransactionDetail.findMany({
+      where: salesListDetailWhere(tenantId, { includeReturnHistory: true }),
+      select: salesDetailStatusSourceSelect,
+      orderBy: salesDetailListOrderBy(sort),
+    });
+  },
+
+  /** Full list rows for an already ordered page of detail ids. */
+  async listDetailsByIds(tenantId: string, ids: string[]) {
+    if (ids.length === 0) return [];
+    const items = await prisma.branchSalesTransactionDetail.findMany({
+      where: {
+        id: { in: ids },
+        sale: { tenantId },
+      },
+      include: salesDetailListInclude,
+    });
+    const order = new Map(ids.map((id, index) => [id, index]));
+    return items.sort(
+      (left, right) => (order.get(left.id) ?? 0) - (order.get(right.id) ?? 0),
+    );
   },
 
   /**

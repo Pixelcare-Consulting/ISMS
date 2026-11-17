@@ -24,6 +24,7 @@ export function GlobalKpiCards({
           label={item.label}
           value={item.value}
           href={item.href}
+          selected={item.selected}
           icon={item.icon}
           tone={item.tone}
           hint={item.hint}

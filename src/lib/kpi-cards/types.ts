@@ -10,6 +10,8 @@ export interface KpiCardItem {
   value: ReactNode;
   /** When set, the card navigates on click. */
   href?: string;
+  /** Marks the card that matches the current filter. */
+  selected?: boolean;
   /** Optional leading icon (e.g. Lucide). */
   icon?: ReactNode;
   /** Subtle severity styling for alert metrics. */

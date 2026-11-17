@@ -3,6 +3,7 @@ import { Plus } from "lucide-react";
 import { redirect } from "next/navigation";
 
 import { listSalesAction, getSalesKpisAction } from "@/features/sales/actions/sales.actions";
+import { parseSalesListStatusFilter } from "@/features/sales/constants/sales-list-status";
 import {
   canAccessSales,
   resolveSalesCapabilities,
@@ -30,6 +31,8 @@ interface SalesPageProps {
     limit?: string;
     sort?: string;
     dir?: string;
+    status?: string;
+    q?: string;
   }>;
 }
 
@@ -51,14 +54,23 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
 
   const page = Number(params.page) || 1;
   const limit = parseTablePageSize(params.limit);
+  const status = parseSalesListStatusFilter(params.status);
+  const q = params.q?.trim() || undefined;
+  const sortDir = params.sort
+    ? params.dir === "asc"
+      ? "asc"
+      : "desc"
+    : undefined;
   const [result, kpis] = await Promise.all([
     listSalesAction({
       page,
       limit,
       sort: params.sort,
       sortDir: params.dir,
+      status,
+      q,
     }),
-    getSalesKpisAction(),
+    getSalesKpisAction(q),
   ]);
 
   return (
@@ -80,12 +92,20 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
         }
       />
       <ModuleGuide {...SALES_MODULE_GUIDE} />
-      <SalesKpisStrip kpis={kpis} />
+      <SalesKpisStrip
+        kpis={kpis}
+        status={status}
+        q={q}
+        limit={limit}
+        sort={params.sort}
+        sortDir={sortDir}
+      />
       <SalesTable
         result={result}
         capabilities={capabilities}
         initialSort={params.sort ?? ""}
         initialSortDir={params.dir ?? "desc"}
+        searchQuery={q ?? ""}
       />
     </div>
   );

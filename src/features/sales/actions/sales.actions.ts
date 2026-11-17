@@ -56,11 +56,21 @@ import {
   isServiceDocumentTypeName,
 } from "@/features/sales/constants/process-return";
 import {
-  isReturnHistoryStatus,
   returnHistoryStatusLabel,
   returnHistoryStatusRef,
-  returnRequestAppliesToLine,
 } from "@/features/sales/constants/return-history-status";
+import {
+  parseSalesListStatusFilter,
+  salesListStatusCodesMatch,
+  type SalesListStatusFilter,
+} from "@/features/sales/constants/sales-list-status";
+import { matchesSalesListSearch } from "@/features/sales/utils/sales-list-search";
+import {
+  loadSalesAtrCodesByCode,
+  resolveListedLineStatus,
+  resolveSalesAtrStatusCode,
+  resolveToFollowStatusCode,
+} from "@/features/sales/utils/resolve-line-status";
 import { generateAndStoreAtrOdrfPdf } from "@/features/sales/services/atr-odrf-pdf";
 import {
   SALES_ACCESS_PERMISSIONS,
@@ -101,6 +111,7 @@ import { hasPermission, requireAnyPermission, requirePermission } from "@/lib/au
 import { prisma } from "@/lib/database/client";
 import type { Prisma } from "@/lib/database/generated/prisma/client";
 import {
+  resolvePagination,
   toPaginatedResult,
   type PaginatedResult,
 } from "@/lib/shared/pagination";
@@ -111,121 +122,7 @@ export type {
   ResolvedModelPriceSource,
 } from "@/features/sales/services/model-price";
 
-export type SaleStatusCodeRef = {
-  code: string;
-  name: string;
-  color: string | null;
-};
-
-const TO_FOLLOW_STATUS_FALLBACK: SaleStatusCodeRef = {
-  code: "FW",
-  name: "TO FOLLOW",
-  color: "orange",
-};
-
-/** Tiny fallbacks when sales_atr Settings codes are missing (unseeded tenant). */
-const SALES_ATR_STATUS_FALLBACK: Record<string, SaleStatusCodeRef> = {
-  pending_cs: { code: "pending_cs", name: "Pending CS", color: "amber" },
-  pending_tl: { code: "pending_tl", name: "Pending TL", color: "amber" },
-  approved: { code: "approved", name: "Approved", color: "emerald" },
-  rejected: { code: "rejected", name: "Rejected", color: "rose" },
-  completed: { code: "completed", name: "Completed", color: "emerald" },
-  open: { code: "open", name: "Open", color: "sky" },
-  reserve: { code: "reserve", name: "Reserve", color: "amber" },
-  closed: { code: "closed", name: "Closed", color: "slate" },
-};
-
-async function resolveToFollowStatusCode(
-  tenantId: string,
-): Promise<SaleStatusCodeRef> {
-  const fw = await reasonStatusRepository.findCodeId(
-    tenantId,
-    "inventory_system",
-    "FW",
-  );
-  if (!fw) return TO_FOLLOW_STATUS_FALLBACK;
-  return { code: fw.code, name: fw.name, color: fw.color };
-}
-
-async function loadSalesAtrCodesByCode(
-  tenantId: string,
-): Promise<Map<string, SaleStatusCodeRef>> {
-  const codes = await reasonStatusRepository.listActiveCodesByCategory(
-    tenantId,
-    "sales_atr",
-    
-  );
-  return new Map(
-    codes.map((row) => [
-      row.code,
-      { code: row.code, name: row.name, color: row.color },
-    ]),
-  );
-}
-
-function resolveSalesAtrStatusCode(
-  code: string,
-  codesByCode: Map<string, SaleStatusCodeRef>,
-): SaleStatusCodeRef {
-  return (
-    codesByCode.get(code) ??
-    SALES_ATR_STATUS_FALLBACK[code] ?? {
-      code,
-      name: code.replaceAll("_", " "),
-      color: "amber",
-    }
-  );
-}
-
-/**
- * List/details STATUS preference (never live inventory):
- * 1) Returned/Replaced or Service Returned/Replaced while a return is open or finished
- * 2) Closed ATR header (no return history status)
- * 3) Frozen detail.statusCode (FW / SLD / RSV / OFS)
- * 4) Legacy derive from serial + atrStatus
- *
- * The product return status stays through request, approval, and completion.
- * Rejected requests fall through so the sale shows its inventory status again.
- */
-function resolveLineStatusCode(
-  detail: {
-    serialNumberId: string | null;
-    statusCode?: { code: string; name: string; color: string | null } | null;
-  },
-  atrStatus: string,
-  toFollowStatus: SaleStatusCodeRef,
-  salesAtrCodes: Map<string, SaleStatusCodeRef>,
-  returnStatus?: string | null,
-  documentTypeName?: string | null,
-  /**
-   * Another line on this sale is Returned/Replaced. Keep this line's own
-   * Sold / TO FOLLOW status instead of flipping it to Closed.
-   */
-  keepFrozenStatus?: boolean,
-): SaleStatusCodeRef | null {
-  const historyStatus = returnHistoryStatusRef(returnStatus, documentTypeName);
-  if (historyStatus) return historyStatus;
-
-  if (atrStatus === "closed" && !keepFrozenStatus) {
-    return resolveSalesAtrStatusCode("closed", salesAtrCodes);
-  }
-
-  if (detail.statusCode) {
-    return {
-      code: detail.statusCode.code,
-      name: detail.statusCode.name,
-      color: detail.statusCode.color,
-    };
-  }
-
-  if (!detail.serialNumberId) {
-    if (atrStatus === "reserve") {
-      return resolveSalesAtrStatusCode("reserve", salesAtrCodes);
-    }
-    return toFollowStatus;
-  }
-  return resolveSalesAtrStatusCode(atrStatus, salesAtrCodes);
-}
+export type { SaleStatusCodeRef } from "@/features/sales/utils/resolve-line-status";
 
 const DATE_INPUT_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -449,9 +346,57 @@ function parseSalesSortDir(value?: string): SalesListSortDir | undefined {
   return undefined;
 }
 
-export async function getSalesKpisAction() {
+export async function getSalesKpisAction(q?: string) {
   const session = await requireAnyPermission([...SALES_LIST_PERMISSIONS]);
-  return salesKpiService.getKpis(session.user.tenantId);
+  return salesKpiService.getKpis(session.user.tenantId, q);
+}
+
+type SalesListDetail = Awaited<
+  ReturnType<typeof salesRepository.listDetailsForTenant>
+>["items"][number];
+
+function mapSalesListItem(
+  detail: SalesListDetail,
+  toFollowStatus: Parameters<typeof resolveListedLineStatus>[2],
+  salesAtrCodes: Parameters<typeof resolveListedLineStatus>[3],
+) {
+  const sale = detail.sale;
+  const lineAmount = detail.saleAmount ?? detail.amount;
+  const modelPrice = detail.modelPrice;
+  return {
+    // Row identity is the detail line (one serial / TO-FOLLOW per row).
+    id: detail.id,
+    detailId: detail.id,
+    saleId: sale.id,
+    transactionNo: sale.transactionNo,
+    transactionDate: sale.transactionDate
+      ? sale.transactionDate.toISOString()
+      : null,
+    customerName: sale.customerName,
+    packageName: detail.packageType?.name ?? null,
+    brandName: detail.brand?.name ?? null,
+    modelLabel: detail.model ? detail.model.skuCode || detail.model.name : null,
+    saleAmount: (lineAmount ?? 0).toString(),
+    modelPrice: modelPrice != null ? modelPrice.toString() : null,
+    atrStatus: sale.atrStatus,
+    // Stock source drives edit-serial inventory picks; fall back to sold branch.
+    branchId: sale.alternateBranchId ?? sale.branchId,
+    branch: sale.branch,
+    alternateBranch: sale.stockSourceBranch ?? sale.branch,
+    serialNumberId: detail.serialNumberId,
+    serialNumber: detail.serialNumber
+      ? { id: detail.serialNumber.id, serialNo: detail.serialNumber.serialNo }
+      : null,
+    statusCode: resolveListedLineStatus(
+      detail,
+      sale,
+      toFollowStatus,
+      salesAtrCodes,
+    ),
+    returnRequest: sale.returnRequest
+      ? { id: sale.returnRequest.id, status: sale.returnRequest.status }
+      : null,
+  };
 }
 
 export async function listSalesAction(input?: {
@@ -459,75 +404,105 @@ export async function listSalesAction(input?: {
   limit?: number;
   sort?: string;
   sortDir?: string;
+  /** Card filter. Includes return-history statuses, not only Sold / Official Sold / TO FOLLOW. */
+  status?: string;
+  /** Same text as the sales table search box. */
+  q?: string;
 }) {
   const session = await requireAnyPermission([...SALES_LIST_PERMISSIONS]);
-  const [result, toFollowStatus, salesAtrCodes] = await Promise.all([
-    salesRepository.listDetailsForTenant(
-      session.user.tenantId,
+  const tenantId = session.user.tenantId;
+  const sort = {
+    field: parseSalesSort(input?.sort),
+    dir: parseSalesSortDir(input?.sortDir),
+  };
+  const status = parseSalesListStatusFilter(input?.status);
+  const query = input?.q?.trim() || undefined;
+  const [toFollowStatus, salesAtrCodes] = await Promise.all([
+    resolveToFollowStatusCode(tenantId),
+    loadSalesAtrCodesByCode(tenantId),
+  ]);
+
+  if (!status && !query) {
+    const result = await salesRepository.listDetailsForTenant(
+      tenantId,
       {
         page: input?.page,
         limit: parseTablePageSize(input?.limit),
       },
-      { field: parseSalesSort(input?.sort), dir: parseSalesSortDir(input?.sortDir) },
-    ),
-    resolveToFollowStatusCode(session.user.tenantId),
-    loadSalesAtrCodesByCode(session.user.tenantId),
-  ]);
+      sort,
+    );
+    return {
+      ...result,
+      items: result.items.map((detail) =>
+        mapSalesListItem(detail, toFollowStatus, salesAtrCodes),
+      ),
+    };
+  }
 
-  return {
-    ...result,
-    items: result.items.map((detail) => {
-      const sale = detail.sale;
-      const lineAmount = detail.saleAmount ?? detail.amount;
-      const modelPrice = detail.modelPrice;
-      return {
-        // Row identity is the detail line (one serial / TO-FOLLOW per row).
-        id: detail.id,
-        detailId: detail.id,
-        saleId: sale.id,
-        transactionNo: sale.transactionNo,
-        transactionDate: sale.transactionDate
-          ? sale.transactionDate.toISOString()
-          : null,
-        customerName: sale.customerName,
-        packageName: detail.packageType?.name ?? null,
-        brandName: detail.brand?.name ?? null,
-        modelLabel: detail.model
-          ? detail.model.skuCode || detail.model.name
-          : null,
-        saleAmount: (lineAmount ?? 0).toString(),
-        modelPrice: modelPrice != null ? modelPrice.toString() : null,
-        atrStatus: sale.atrStatus,
-        // Stock source drives edit-serial inventory picks; fall back to sold branch.
-        branchId: sale.alternateBranchId ?? sale.branchId,
-        branch: sale.branch,
-        alternateBranch: sale.stockSourceBranch ?? sale.branch,
-        serialNumberId: detail.serialNumberId,
-        serialNumber: detail.serialNumber
-          ? { id: detail.serialNumber.id, serialNo: detail.serialNumber.serialNo }
-          : null,
-        statusCode: resolveLineStatusCode(
-          detail,
-          sale.atrStatus,
-          toFollowStatus,
-          salesAtrCodes,
-          sale.returnRequest &&
-            returnRequestAppliesToLine(sale.returnRequest.saleDetailId, detail.id)
-            ? sale.returnRequest.status
-            : null,
-          sale.returnRequest?.documentType?.name,
-          Boolean(
-            sale.returnRequest &&
-              isReturnHistoryStatus(sale.returnRequest.status) &&
-              !returnRequestAppliesToLine(sale.returnRequest.saleDetailId, detail.id),
-          ),
-        ),
-        returnRequest: sale.returnRequest
-          ? { id: sale.returnRequest.id, status: sale.returnRequest.status }
-          : null,
-      };
-    }),
-  };
+  return listSalesForStatus({
+    tenantId,
+    page: input?.page,
+    limit: parseTablePageSize(input?.limit),
+    sort,
+    status,
+    query,
+    toFollowStatus,
+    salesAtrCodes,
+  });
+}
+
+async function listSalesForStatus(input: {
+  tenantId: string;
+  page?: number;
+  limit?: number;
+  sort: { field?: SalesListSort; dir?: SalesListSortDir };
+  status?: SalesListStatusFilter;
+  query?: string;
+  toFollowStatus: Parameters<typeof resolveListedLineStatus>[2];
+  salesAtrCodes: Parameters<typeof resolveListedLineStatus>[3];
+}) {
+  const sources = await salesRepository.listDetailStatusSources(
+    input.tenantId,
+    input.sort,
+  );
+  const matchingIds = sources
+    .filter((source) => {
+      const resolved = resolveListedLineStatus(
+        source,
+        source.sale,
+        input.toFollowStatus,
+        input.salesAtrCodes,
+      );
+      if (
+        input.query &&
+        !matchesSalesListSearch(input.query, source, resolved)
+      ) {
+        return false;
+      }
+      if (!input.status) return true;
+      return (
+        resolved != null &&
+        salesListStatusCodesMatch(resolved.code, input.status)
+      );
+    })
+    .map((source) => source.id);
+
+  const { page, limit, skip } = resolvePagination({
+    page: input.page,
+    limit: input.limit,
+  });
+  const details = await salesRepository.listDetailsByIds(
+    input.tenantId,
+    matchingIds.slice(skip, skip + limit),
+  );
+  return toPaginatedResult(
+    details.map((detail) =>
+      mapSalesListItem(detail, input.toFollowStatus, input.salesAtrCodes),
+    ),
+    matchingIds.length,
+    page,
+    limit,
+  );
 }
 
 /**
@@ -743,21 +718,11 @@ export async function getSaleDetailsAction(saleId: string) {
         deliveryNo: detail.deliveryNo,
         // YYYY-MM-DD so <input type="date"> round-trips without timezone drift.
         deliveryDate: toDateInputValue(detail.deliveryDate),
-        statusCode: resolveLineStatusCode(
+        statusCode: resolveListedLineStatus(
           detail,
-          sale.atrStatus,
+          sale,
           toFollowStatus,
           salesAtrCodes,
-          sale.returnRequest &&
-            returnRequestAppliesToLine(sale.returnRequest.saleDetailId, detail.id)
-            ? sale.returnRequest.status
-            : null,
-          sale.returnRequest?.documentType?.name,
-          Boolean(
-            sale.returnRequest &&
-              isReturnHistoryStatus(sale.returnRequest.status) &&
-              !returnRequestAppliesToLine(sale.returnRequest.saleDetailId, detail.id),
-          ),
         ),
       };
     }),

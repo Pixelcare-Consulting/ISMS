@@ -3,6 +3,7 @@ import { resolveSapOutboundPort } from "@/features/sap/adapters/resolve-sap-outb
 import { SAP_REFERENCE_TYPES } from "@/features/sap/constants/sap-job-types";
 import {
   sapIntegrationRepository,
+  type SapJobListQuery,
   type SapJobListSort,
   type SapJobListSortDir,
   type SapJobTarget,
@@ -215,36 +216,25 @@ async function processInventoryPostingJob(
   return sapDocRef;
 }
 
-async function processLegacyStubJob(
-  tenantId: string,
-  userId: string | undefined,
-  job: SapIntegrationJob,
-  entityType: string,
-) {
-  const refId = job.referenceId ?? job.id;
-  const sapDocRef = `SAP-${job.jobType.toUpperCase().slice(0, 3)}-${refId.slice(-8).toUpperCase()}`;
-
-  await sapIntegrationRepository.markCompleted(job.id, sapDocRef);
-
-  await auditService.log({
-    tenantId,
-    userId,
-    action: `sap.${job.jobType}_processed`,
-    entityType,
-    entityId: refId,
-    metadata: { sapDocRef, jobId: job.id, stub: true },
-  });
-
-  return sapDocRef;
-}
-
 export const sapService = {
   listJobs(
     tenantId: string,
-    pagination?: { page?: number; status?: string },
+    pagination?: SapJobListQuery,
     sort?: { field?: SapJobListSort; dir?: SapJobListSortDir },
   ) {
     return sapIntegrationRepository.listJobs(tenantId, pagination, sort);
+  },
+
+  countByStatus(tenantId: string) {
+    return sapIntegrationRepository.countByStatus(tenantId);
+  },
+
+  getJobPeople(tenantId: string, jobId: string) {
+    return sapIntegrationRepository.findJobPeople(tenantId, jobId);
+  },
+
+  getJobSupportFields(tenantId: string, jobId: string) {
+    return sapIntegrationRepository.findJobSupportFields(tenantId, jobId);
   },
 
   /** Process II — enqueue ITR (OWTQ) / SO (ORDR) after SP approval. */
@@ -322,17 +312,6 @@ export const sapService = {
     return enqueueJob({
       tenantId,
       jobType: "sales_summary",
-      idempotencyKey: key,
-      payload: input,
-    });
-  },
-
-  /** CSV steps 1–2 — inventory sync from SAP (stub). */
-  async syncInventoryFromSap(tenantId: string, input: { warehouseCode?: string }) {
-    const key = `inventory_sync:${input.warehouseCode ?? "default"}:${new Date().toISOString().slice(0, 10)}`;
-    return enqueueJob({
-      tenantId,
-      jobType: "inventory_sync_inbound",
       idempotencyKey: key,
       payload: input,
     });
@@ -497,8 +476,7 @@ export const sapService = {
           case "sales_summary":
           case "inventory_sync_inbound":
           case "delivery_sync_inbound":
-            sapDocRef = await processLegacyStubJob(tenantId, userId, updated, updated.jobType);
-            break;
+            throw new Error("This older item is not sent to SAP from this page.");
           default: {
             const _exhaustive: never = updated.jobType;
             throw new Error(`Unsupported job type: ${_exhaustive}`);
