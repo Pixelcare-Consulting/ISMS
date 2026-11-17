@@ -644,6 +644,7 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
   const [createdOn] = useState(() => formatTransferDate(new Date()));
   const [draftTransferNo] = useState(() => (mode === "create" ? nextTransferNo() : ""));
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
+  const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
 
   const lockedModelId = rows[0]?.modelId ?? "";
   const serialSource =
@@ -864,8 +865,14 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
     removeKeys(new Set(rows.filter((row) => selectedKeys.has(row.key)).map((row) => row.key)));
   }
 
+  function requestSubmit() {
+    if (mode !== "create" || !ready || !onSubmit || pending) return;
+    setSubmitConfirmOpen(true);
+  }
+
   function submit() {
-    if (!ready || !onSubmit) return;
+    if (!ready || !onSubmit || pending) return;
+    setSubmitConfirmOpen(false);
     const serialNumberIds = rows.map((row) => row.serialNumberId);
     const lineRemarks = Object.fromEntries(
       rows.map((row) => [row.serialNumberId, row.remarks]),
@@ -1050,7 +1057,7 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
       className={pageLayout ? "space-y-6" : "space-y-4"}
       onSubmit={(event) => {
         event.preventDefault();
-        if (mode === "create") submit();
+        if (mode === "create") requestSubmit();
       }}
     >
       {pageLayout && detail ? (
@@ -1333,6 +1340,37 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
       ) : null}
         </>
       )}
+
+      <AlertDialog
+        open={submitConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open && !pending) setSubmitConfirmOpen(false);
+        }}
+      >
+        <AlertDialogContent className="z-[80]" overlayClassName="z-[70]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure you want to submit this transfer?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The selected serials are reserved until this transfer is approved.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel type="button" disabled={pending}>
+              No
+            </AlertDialogCancel>
+            <AlertDialogAction
+              type="button"
+              disabled={pending}
+              onClick={(event) => {
+                event.preventDefault();
+                submit();
+              }}
+            >
+              Yes
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={pendingConfirm !== null}

@@ -18,6 +18,16 @@ import {
   type DataTableColumn,
   type DataTableFeatures,
 } from "@/lib/data-table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,6 +77,7 @@ export function ScDeliveriesPanel({
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
   const [accepting, setAccepting] = useState<DeliveryRow | null>(null);
+  const [acceptConfirmOpen, setAcceptConfirmOpen] = useState(false);
   const [serialQuery, setSerialQuery] = useState("");
   const [serialOptions, setSerialOptions] = useState<
     { id: string; label: string }[]
@@ -138,10 +149,26 @@ export function ScDeliveriesPanel({
       toast.error("Select at least one serial");
       return;
     }
+    if (
+      isFromSap(accepting) &&
+      !accepting.serviceCenterLocation &&
+      !locationId
+    ) {
+      return;
+    }
+    setAcceptConfirmOpen(true);
+  }
+
+  function confirmAccept() {
+    if (!accepting) return;
+    const deliveryId = accepting.id;
+    const serialNumberIds = selectedSerialIds;
+    const serviceCenterLocationId = locationId || null;
+    setAcceptConfirmOpen(false);
     startTransition(async () => {
-      const result = await acceptScDeliveryAction(accepting.id, {
-        serialNumberIds: selectedSerialIds,
-        serviceCenterLocationId: locationId || null,
+      const result = await acceptScDeliveryAction(deliveryId, {
+        serialNumberIds,
+        serviceCenterLocationId,
       });
       if (result.error) {
         toast.error(result.error);
@@ -260,7 +287,12 @@ export function ScDeliveriesPanel({
 
       <Sheet
         open={Boolean(accepting)}
-        onOpenChange={(open) => !open && setAccepting(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setAccepting(null);
+            setAcceptConfirmOpen(false);
+          }
+        }}
       >
         <SheetContent className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
           <SheetHeader className="border-b px-4 py-4 text-left">
@@ -358,6 +390,25 @@ export function ScDeliveriesPanel({
           </SheetFooter>
         </SheetContent>
       </Sheet>
+      <AlertDialog
+        open={acceptConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open) setAcceptConfirmOpen(false);
+        }}
+      >
+        <AlertDialogContent className="z-60" overlayClassName="z-60">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Accept this delivery?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to accept this delivery?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmAccept}>Yes</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

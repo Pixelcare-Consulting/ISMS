@@ -597,8 +597,8 @@ export function SalesReturnsTable({
                   onClick={() => startRowComplete(row.original)}
                 >
                   {row.original.actionType === "replacement"
-                    ? "Replacement"
-                    : "Return"}
+                    ? "Replace Stock"
+                    : "Return Stock"}
                 </Button>
               ) : null}
             </div>

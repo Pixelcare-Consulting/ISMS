@@ -9,10 +9,14 @@ export const SALES_LIST_STATUS_CODES = ["SLD", "OFS", "FW"] as const;
 /**
  * STATUS values the sales table shows for a return that is requested,
  * approved, or finished. These are not inventory reason codes.
+ * Older `returned_replaced` and `service_returned_replaced` links are not
+ * in this list, so they open the sales list with no status filter.
  */
 export const SALES_RETURN_HISTORY_LIST_CODES = [
-  "returned_replaced",
-  "service_returned_replaced",
+  "returned",
+  "replaced",
+  "service_returned",
+  "service_replaced",
 ] as const;
 
 export type SalesListStatusFilter =
@@ -56,7 +60,7 @@ export function salesListStatusCodesMatch(
   return canonicalSalesListStatusCode(resolvedCode) === filter;
 }
 
-/** Return steps that keep Returned/Replaced on the sales list. */
+/** Return steps that keep Returned or Replaced on the sales list. */
 const RETURN_HISTORY_STATUSES = [
   "pending_cs",
   "pending_tl",
@@ -72,7 +76,7 @@ const RETURN_HISTORY_STATUSES = [
  * in-progress returns stay off those counts.
  *
  * Sales list (`includeReturnHistory`): also keeps returned and replaced sales,
- * including a closed ATR, so their status can stay Returned/Replaced. A rejected
+ * including a closed ATR, so their status can stay Returned or Replaced. A rejected
  * return comes back as a normal open sale.
  */
 export function salesListDetailWhere(

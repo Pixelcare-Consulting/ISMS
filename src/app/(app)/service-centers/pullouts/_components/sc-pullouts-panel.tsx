@@ -22,6 +22,16 @@ import {
   type DataTableColumn,
   type DataTableFeatures,
 } from "@/lib/data-table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -53,6 +63,7 @@ export function ScPulloutsPanel({
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [createConfirmOpen, setCreateConfirmOpen] = useState(false);
   const [serviceCenterId, setServiceCenterId] = useState("");
   const [locationId, setLocationId] = useState("");
   const [serialOptions, setSerialOptions] = useState<
@@ -129,11 +140,24 @@ export function ScPulloutsPanel({
       toast.error("Select center, location, and serials");
       return;
     }
+    setCreateConfirmOpen(true);
+  }
+
+  function confirmCreate() {
+    if (!serviceCenterId || !locationId || selectedSerialIds.length === 0) {
+      setCreateConfirmOpen(false);
+      toast.error("Select center, location, and serials");
+      return;
+    }
+    const centerId = serviceCenterId;
+    const locId = locationId;
+    const serialNumberIds = selectedSerialIds;
+    setCreateConfirmOpen(false);
     startTransition(async () => {
       const result = await createScPulloutAction({
-        serviceCenterId,
-        serviceCenterLocationId: locationId,
-        serialNumberIds: selectedSerialIds,
+        serviceCenterId: centerId,
+        serviceCenterLocationId: locId,
+        serialNumberIds,
       });
       if (result.error) {
         toast.error(result.error);
@@ -284,7 +308,13 @@ export function ScPulloutsPanel({
         }}
       />
 
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+      <Sheet
+        open={sheetOpen}
+        onOpenChange={(open) => {
+          setSheetOpen(open);
+          if (!open) setCreateConfirmOpen(false);
+        }}
+      >
         <SheetContent className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
           <SheetHeader className="border-b px-4 py-4 text-left">
             <SheetTitle>New service center pull-out</SheetTitle>
@@ -347,6 +377,25 @@ export function ScPulloutsPanel({
           </SheetFooter>
         </SheetContent>
       </Sheet>
+      <AlertDialog
+        open={createConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open) setCreateConfirmOpen(false);
+        }}
+      >
+        <AlertDialogContent className="z-60" overlayClassName="z-60">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Submit this pull-out?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to submit this pull-out?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmCreate}>Yes</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

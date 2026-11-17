@@ -1,18 +1,25 @@
 import {
+  Barcode,
   Building2,
   CalendarClock,
   ChartColumn,
+  ClipboardCheck,
+  ClipboardList,
   Clock,
+  History,
   KeyRound,
   LayoutDashboard,
   LayoutGrid,
   LayoutTemplate,
   MapPin,
   Network,
+  Plug,
+  ScrollText,
   Settings,
   Shield,
   Store,
   Tags,
+  Truck,
   Users,
 } from "lucide-react";
 
@@ -204,6 +211,13 @@ export const setupNavigation: NavEntry[] = [
             anyPermissions: BRANCH_QUOTA_ACCESS,
           },
           {
+            href: "/settings/planning",
+            label: "Planning & Forecast",
+            icon: LayoutGrid,
+            anyPermissions: ["forecast.manage", "planogram.manage"],
+            exact: true,
+          },
+          {
             href: "/settings/ordering",
             label: "Ordering policy",
             icon: CalendarClock,
@@ -214,6 +228,65 @@ export const setupNavigation: NavEntry[] = [
             label: "Planogram",
             icon: LayoutGrid,
             anyPermissions: ["planogram.view", "planogram.manage"],
+          },
+        ],
+      },
+    ],
+  },
+  {
+    type: "group",
+    label: "Audit Logs",
+    icon: History,
+    defaultOpen: true,
+    items: [
+      {
+        label: "Logs",
+        icon: History,
+        items: [
+          {
+            href: "/audit-logs/system",
+            label: "System logs",
+            icon: ClipboardList,
+            permission: "audit_logs.view",
+          },
+          {
+            href: "/audit-logs/serial-numbers",
+            label: "Serial number logs",
+            icon: Barcode,
+            permission: "serial_logs.view",
+          },
+          {
+            href: "/audit-logs/inventory-approvals",
+            label: "Inventory approvals",
+            icon: ClipboardCheck,
+            permission: "inventory_approvals.view",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    type: "link",
+    href: "/policies",
+    label: "Policies",
+    icon: ScrollText,
+    anyPermissions: ["policies.view", "policies.create", "policies.approve"],
+  },
+  {
+    type: "group",
+    label: "Integrations",
+    icon: Plug,
+    defaultOpen: true,
+    items: [
+      {
+        label: "Integrations",
+        icon: Plug,
+        items: [
+          {
+            href: "/settings/sap-integration",
+            label: "SAP integration",
+            icon: Truck,
+            permission: "sap.manage",
           },
         ],
       },

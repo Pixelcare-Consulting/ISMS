@@ -1,7 +1,9 @@
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import {
-  RETURNED_REPLACED_STATUS,
-  SERVICE_RETURNED_REPLACED_STATUS,
+  REPLACED_STATUS,
+  RETURNED_STATUS,
+  SERVICE_REPLACED_STATUS,
+  SERVICE_RETURNED_STATUS,
 } from "@/features/sales/constants/return-history-status";
 import {
   canonicalSalesListStatusCode,
@@ -32,17 +34,31 @@ function returnHistoryCard(
   code: (typeof SALES_RETURN_HISTORY_LIST_CODES)[number],
 ): KpiStatusCount {
   switch (code) {
-    case "returned_replaced":
+    case "returned":
       return {
         code,
-        name: RETURNED_REPLACED_STATUS,
+        name: RETURNED_STATUS,
         count: 0,
         color: "violet",
       };
-    case "service_returned_replaced":
+    case "replaced":
       return {
         code,
-        name: SERVICE_RETURNED_REPLACED_STATUS,
+        name: REPLACED_STATUS,
+        count: 0,
+        color: "violet",
+      };
+    case "service_returned":
+      return {
+        code,
+        name: SERVICE_RETURNED_STATUS,
+        count: 0,
+        color: "teal",
+      };
+    case "service_replaced":
+      return {
+        code,
+        name: SERVICE_REPLACED_STATUS,
         count: 0,
         color: "teal",
       };

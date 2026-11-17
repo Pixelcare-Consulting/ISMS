@@ -9,6 +9,16 @@ import {
   type ReplacementInvoiceHeaderValue,
   type ReplacementProofAttachment,
 } from "@/app/(app)/sales/_components/replacement-invoice-header-fields";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -108,6 +118,9 @@ export function ReplacementFlowDialogs({
 }: ReplacementFlowDialogsProps) {
   const [pending, startTransition] = useTransition();
   const [choice, setChoice] = useState<ReplacementChoice>(null);
+  const [confirmChoice, setConfirmChoice] = useState<"same" | "new" | null>(
+    null,
+  );
   const [models, setModels] = useState<{ id: string; label: string }[]>([]);
   const [serials, setSerials] = useState<{ id: string; label: string }[]>([]);
   const [modelId, setModelId] = useState("");
@@ -220,6 +233,7 @@ export function ReplacementFlowDialogs({
 
   function handleClose() {
     if (pending) return;
+    setConfirmChoice(null);
     setChoice(null);
     setHeaderReady(false);
     onClose();
@@ -274,6 +288,12 @@ export function ReplacementFlowDialogs({
       toast.error("Model and serial are required");
       return;
     }
+    setConfirmChoice("same");
+  }
+
+  function confirmSame() {
+    if (!target) return;
+    setConfirmChoice(null);
     startTransition(async () => {
       const res = await completeReplacementSameInvoiceAction({
         returnRequestId: target.returnRequestId,
@@ -323,6 +343,12 @@ export function ReplacementFlowDialogs({
       toast.error("Model and serial are required");
       return;
     }
+    setConfirmChoice("new");
+  }
+
+  function confirmNew() {
+    if (!target) return;
+    setConfirmChoice(null);
     startTransition(async () => {
       const res = await completeReplacementNewInvoiceAction({
         returnRequestId: target.returnRequestId,
@@ -362,7 +388,7 @@ export function ReplacementFlowDialogs({
       >
         <DialogContent className="z-60 max-w-md" overlayClassName="z-60">
           <DialogHeader>
-            <DialogTitle>Complete replacement</DialogTitle>
+            <DialogTitle>Replace Stock</DialogTitle>
             <DialogDescription>
               Choose how to issue the replacement unit for transaction{" "}
               <span className="font-medium text-foreground">
@@ -399,7 +425,8 @@ export function ReplacementFlowDialogs({
       <Dialog
         open={target !== null && choice === "same"}
         onOpenChange={(open) => {
-          if (!open && !pending) setChoice(null);
+          if (!open && (pending || confirmChoice)) return;
+          if (!open) setChoice(null);
         }}
       >
         <DialogContent className={invoiceDialogClassName} overlayClassName="z-60">
@@ -484,7 +511,8 @@ export function ReplacementFlowDialogs({
       <Dialog
         open={target !== null && choice === "new"}
         onOpenChange={(open) => {
-          if (!open && !pending) setChoice(null);
+          if (!open && (pending || confirmChoice)) return;
+          if (!open) setChoice(null);
         }}
       >
         <DialogContent className={invoiceDialogClassName} overlayClassName="z-60">
@@ -568,6 +596,30 @@ export function ReplacementFlowDialogs({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={confirmChoice !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmChoice(null);
+        }}
+      >
+        <AlertDialogContent className="z-70" overlayClassName="z-70">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Save this record?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to save this record?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmChoice === "new" ? confirmNew : confirmSame}
+            >
+              Yes
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

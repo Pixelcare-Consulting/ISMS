@@ -19,6 +19,8 @@ import {
   sellableStkDefectReportsFilter,
 } from "@/features/inventory/services/inventory-sellable-guards";
 import { statusUpdatedStamp } from "@/features/inventory/lib/status-updated-stamp";
+import { inventoryRepository } from "@/features/inventory/repositories/inventory.repository";
+import { wholeDaysBetween } from "@/features/inventory/utils/sku-series";
 import {
   markSerialSoldFromStockSource,
   restoreSerialToStockSource,
@@ -589,8 +591,11 @@ export async function listSalesReturnsAction(input?: {
         atrStatusCode: resolveSalesAtrStatusCode(sale.atrStatus, salesAtrCodes),
         returnStatus: row.status,
         returnStatusCode:
-          returnHistoryStatusRef(row.status, row.documentType?.name) ??
-          resolveSalesAtrStatusCode(row.status, salesAtrCodes),
+          returnHistoryStatusRef(
+            row.status,
+            row.documentType?.name,
+            row.actionType,
+          ) ?? resolveSalesAtrStatusCode(row.status, salesAtrCodes),
         actionType: row.actionType ?? "return",
         stockStatusCode: row.stockStatusCode ?? "STK",
         documentTypeName: row.documentType?.name ?? null,
@@ -646,6 +651,7 @@ export async function getSaleDetailsAction(saleId: string) {
     ? (returnHistoryStatusRef(
         sale.returnRequest.status,
         sale.returnRequest.documentType?.name,
+        sale.returnRequest.actionType,
       ) ?? resolveSalesAtrStatusCode(sale.returnRequest.status, salesAtrCodes))
     : null;
 
@@ -982,6 +988,71 @@ export async function listSaleableSerialsAction(
     limit: input.limit,
     stkCodeId,
   });
+}
+
+/** Sellable units whose latest DR date is strictly older than this many days. */
+const MODEL_AGING_DR_DAYS = 30;
+const MODEL_AGING_LOOKUP_CHUNK = 500;
+
+/**
+ * Count sellable STK serials for one model at the stock source whose latest
+ * delivery receipt date is more than 30 days ago. Serials with no DR date
+ * are omitted. Uses the same latest-receipt lookup as inventory aging.
+ */
+export async function countAgingSellableStockAction(input: {
+  branchId: string;
+  modelId: string;
+}): Promise<{ count: number }> {
+  const session = await requirePermission("sales.create");
+  const branchId = input.branchId.trim();
+  const modelId = input.modelId.trim();
+  if (!branchId || !modelId) return { count: 0 };
+
+  await assertStockLocationReadable(
+    session.user.tenantId,
+    session.user.id,
+    branchId,
+    session.user.permissions,
+  );
+
+  const stkCodeId = await reasonStatusService.requireCodeId(
+    session.user.tenantId,
+    "inventory_system",
+    "STK",
+  );
+
+  const rows = await prisma.branchInventory.findMany({
+    where: {
+      tenantId: session.user.tenantId,
+      branchId,
+      statusCodeId: stkCodeId,
+      defectReports: sellableStkDefectReportsFilter,
+      serialNumber: { modelId },
+    },
+    select: { serialNumberId: true },
+  });
+
+  const serialNumberIds = [
+    ...new Set(rows.map((row) => row.serialNumberId)),
+  ];
+  if (serialNumberIds.length === 0) return { count: 0 };
+
+  let count = 0;
+  for (let i = 0; i < serialNumberIds.length; i += MODEL_AGING_LOOKUP_CHUNK) {
+    const chunk = serialNumberIds.slice(i, i + MODEL_AGING_LOOKUP_CHUNK);
+    const deliveries = await inventoryRepository.findLatestDeliveryReceipts(
+      session.user.tenantId,
+      chunk,
+    );
+    for (const receipt of deliveries) {
+      if (!receipt.deliveryDate) continue;
+      if (wholeDaysBetween(receipt.deliveryDate) > MODEL_AGING_DR_DAYS) {
+        count += 1;
+      }
+    }
+  }
+
+  return { count };
 }
 
 export async function uploadSaleProofAction(formData: FormData) {
@@ -1435,6 +1506,165 @@ const processReturnPayloadSchema = z.object({
 
 export type ProcessReturnPayload = z.infer<typeof processReturnPayloadSchema>;
 
+const RETURN_RESERVE_FROM_CODES = ["SLD", "OFS", "RSV"] as const;
+type ReturnReserveFromCode = (typeof RETURN_RESERVE_FROM_CODES)[number];
+
+const PRIOR_INVENTORY_STATUS =
+  /· was (Official Sold|Sold|Reserved) \(request /u;
+
+const PRIOR_STATUS_LABEL: Record<ReturnReserveFromCode, string> = {
+  SLD: "Sold",
+  OFS: "Official Sold",
+  RSV: "Reserved",
+};
+
+function isReturnReserveFromCode(code: string): code is ReturnReserveFromCode {
+  return (RETURN_RESERVE_FROM_CODES as readonly string[]).includes(code);
+}
+
+function priorInventoryStatusFromHistory(
+  details: string | null | undefined,
+): ReturnReserveFromCode | null {
+  const label = PRIOR_INVENTORY_STATUS.exec(details ?? "")?.[1];
+  if (label === "Official Sold") return "OFS";
+  if (label === "Sold") return "SLD";
+  if (label === "Reserved") return "RSV";
+  return null;
+}
+
+function returnRequestHistoryDetails(
+  actionLabel: string,
+  transactionNo: string,
+  returnRequestId: string,
+  priorStatus: ReturnReserveFromCode | null,
+): string {
+  const prior = priorStatus ? ` · was ${PRIOR_STATUS_LABEL[priorStatus]}` : "";
+  return `${actionLabel} ${transactionNo}${prior} (request ${returnRequestId})`;
+}
+
+function reserveFromCodeId(
+  code: ReturnReserveFromCode,
+  ids: { sldCodeId: string; ofsCodeId: string; rsvCodeId: string },
+): string {
+  switch (code) {
+    case "SLD":
+      return ids.sldCodeId;
+    case "OFS":
+      return ids.ofsCodeId;
+    case "RSV":
+      return ids.rsvCodeId;
+    default: {
+      const _exhaustive: never = code;
+      return _exhaustive;
+    }
+  }
+}
+
+async function loadReturnReserveCodeIds(tenantId: string) {
+  const [sldCodeId, ofsCodeId, rsvCodeId] = await Promise.all([
+    reasonStatusService.findCodeId(tenantId, "inventory_system", "SLD"),
+    reasonStatusService.findCodeId(tenantId, "inventory_system", "OFS"),
+    reasonStatusService.findCodeId(tenantId, "inventory_system", "RSV"),
+  ]);
+  if (!sldCodeId || !ofsCodeId || !rsvCodeId) return null;
+  return { sldCodeId, ofsCodeId, rsvCodeId };
+}
+
+type ReturnReserveTx = Pick<
+  Prisma.TransactionClient,
+  "branchInventory" | "serialNumberHistory" | "$queryRaw"
+>;
+
+/**
+ * Sold, Official Sold, or Reserved at the branch sold becomes Reserved.
+ * Returns the status the unit had, so a later reject can put it back.
+ */
+async function markSoldSerialReserved(
+  tx: ReturnReserveTx,
+  input: {
+    tenantId: string;
+    userId: string;
+    soldBranchId: string;
+    serialNumberId: string;
+    sldCodeId: string;
+    ofsCodeId: string;
+    rsvCodeId: string;
+  },
+): Promise<ReturnReserveFromCode | null> {
+  await lockSerialNumbers(tx, [input.serialNumberId]);
+  const row = await tx.branchInventory.findFirst({
+    where: {
+      tenantId: input.tenantId,
+      branchId: input.soldBranchId,
+      serialNumberId: input.serialNumberId,
+      statusCodeId: {
+        in: [input.sldCodeId, input.ofsCodeId, input.rsvCodeId],
+      },
+    },
+    select: {
+      id: true,
+      statusCode: { select: { code: true } },
+    },
+  });
+  if (!row || !isReturnReserveFromCode(row.statusCode.code)) return null;
+
+  await tx.branchInventory.updateMany({
+    where: {
+      id: row.id,
+      statusCodeId: {
+        in: [input.sldCodeId, input.ofsCodeId, input.rsvCodeId],
+      },
+    },
+    data: {
+      statusCodeId: input.rsvCodeId,
+      updatedById: input.userId,
+      ...statusUpdatedStamp(row.statusCode.code, "RSV"),
+    },
+  });
+  return row.statusCode.code;
+}
+
+/** Put a requested unit back to the status remembered on its request history row. */
+async function restoreSerialAfterReturnReject(
+  tx: ReturnReserveTx,
+  input: {
+    tenantId: string;
+    userId: string;
+    soldBranchId: string;
+    returnRequestId: string;
+    sldCodeId: string;
+    ofsCodeId: string;
+    rsvCodeId: string;
+  },
+): Promise<void> {
+  const history = await tx.serialNumberHistory.findFirst({
+    where: {
+      tenantId: input.tenantId,
+      txnType: { in: ["return", "replacement"] },
+      details: { contains: `(request ${input.returnRequestId})` },
+    },
+    orderBy: { createdAt: "asc" },
+    select: { serialNumberId: true, details: true },
+  });
+  const prior = priorInventoryStatusFromHistory(history?.details);
+  if (!history || !prior) return;
+
+  await lockSerialNumbers(tx, [history.serialNumberId]);
+  await tx.branchInventory.updateMany({
+    where: {
+      tenantId: input.tenantId,
+      branchId: input.soldBranchId,
+      serialNumberId: history.serialNumberId,
+      statusCodeId: input.rsvCodeId,
+    },
+    data: {
+      statusCodeId: reserveFromCodeId(prior, input),
+      updatedById: input.userId,
+      ...statusUpdatedStamp("RSV", prior),
+    },
+  });
+}
+
 export async function requestReturnAction(
   saleId: string,
   payload: ProcessReturnPayload | string,
@@ -1537,6 +1767,7 @@ export async function requestReturnAction(
     where: { id: saleId, tenantId: session.user.tenantId },
     select: {
       id: true,
+      branchId: true,
       transactionNo: true,
       transactionDate: true,
       customerName: true,
@@ -1571,6 +1802,14 @@ export async function requestReturnAction(
   const summaryNote = `[${data.actionType === "replacement" ? "Replacement" : "Return"} requested] ${documentType.name} · ${data.stockStatusCode} · ${problemDescriptionText}`;
   const needsTeamLeader = isDealerInitiatedDocumentTypeName(documentType.name);
   const requestedAt = new Date();
+  const reserveCodes = targetDetail.serialNumberId
+    ? await loadReturnReserveCodeIds(session.user.tenantId)
+    : null;
+  if (targetDetail.serialNumberId && !reserveCodes) {
+    return {
+      error: "Sold, Official Sold, and Reserved are not ready for this return" as const,
+    };
+  }
 
   const created = await prisma.$transaction(async (tx) => {
     const returnRequest = await tx.branchReturnRequest.create({
@@ -1633,15 +1872,27 @@ export async function requestReturnAction(
       );
     }
 
-    if (targetDetail.serialNumberId) {
+    if (targetDetail.serialNumberId && reserveCodes) {
+      const priorStatus = await markSoldSerialReserved(tx, {
+        tenantId: session.user.tenantId,
+        userId: session.user.id,
+        soldBranchId: sale.branchId,
+        serialNumberId: targetDetail.serialNumberId,
+        ...reserveCodes,
+      });
       const actionLabel = data.actionType === "replacement" ? "Replacement" : "Return";
       await tx.serialNumberHistory.create({
         data: {
           tenantId: session.user.tenantId,
           serialNumberId: targetDetail.serialNumberId,
           txnType: data.actionType === "replacement" ? "replacement" : "return",
-          details: `${actionLabel} ${sale.transactionNo} (request ${returnRequest.id})`,
-          status: returnHistoryStatusLabel(serviceReturn),
+          details: returnRequestHistoryDetails(
+            actionLabel,
+            sale.transactionNo,
+            returnRequest.id,
+            priorStatus,
+          ),
+          status: returnHistoryStatusLabel(serviceReturn, data.actionType),
           createdById: session.user.id,
         },
       });
@@ -1761,6 +2012,7 @@ export async function requestReturnAction(
 
   revalidatePath("/sales");
   revalidatePath("/returns");
+  revalidatePath("/inventory");
   return { success: true as const, returnRequestId: created.id };
 }
 
@@ -1791,7 +2043,7 @@ async function restoreOriginalSerialsAtBranchSold(
     soldStatusCodeIds: string[];
     historyTxnType: "return" | "replacement";
     historyDetails: string;
-    /** Kept as Returned/Replaced (or the service label). Not the stock code. */
+    /** Sale status label (Returned, Replaced, or the service label). Not the stock code. */
     historyStatus: string;
   },
 ): Promise<number> {
@@ -2113,6 +2365,7 @@ export async function rejectReturnAction(returnRequestId: string, notes?: string
   }
 
   const approval = await salesReturnApproval(session.user.tenantId, row);
+  const reserveCodes = await loadReturnReserveCodeIds(session.user.tenantId);
   await prisma.$transaction(async (tx) => {
     await tx.branchReturnRequest.update({
       where: { id: returnRequestId },
@@ -2122,6 +2375,15 @@ export async function rejectReturnAction(returnRequestId: string, notes?: string
       where: { id: row.saleId },
       data: { atrStatus: "open" },
     });
+    if (reserveCodes) {
+      await restoreSerialAfterReturnReject(tx, {
+        tenantId: session.user.tenantId,
+        userId: session.user.id,
+        soldBranchId: row.sale.branchId,
+        returnRequestId,
+        ...reserveCodes,
+      });
+    }
     await recordReturnRejected(tx, approval, {
       fromStatus: row.status,
       decidedById: session.user.id,
@@ -2139,6 +2401,7 @@ export async function rejectReturnAction(returnRequestId: string, notes?: string
 
   revalidatePath("/sales");
   revalidatePath("/returns");
+  revalidatePath("/inventory");
   return { success: true as const };
 }
 
@@ -2192,6 +2455,7 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
     saleDetailId: row.saleDetailId,
     historyStatus: returnHistoryStatusLabel(
       isServiceDocumentTypeName(row.documentType?.name),
+      row.actionType,
     ),
   });
   if ("error" in restored) return restored;
@@ -2333,7 +2597,7 @@ async function completeReplacementCore(input: {
   }
   if ((row.actionType ?? "return") !== "replacement") {
     return {
-      error: "This request is a Return — use Restore stock instead" as const,
+      error: "This request is a Return — use Return Stock instead" as const,
     };
   }
 
@@ -2539,6 +2803,7 @@ async function completeReplacementCore(input: {
         historyDetails: `Replacement ${row.sale.transactionNo} → ${stockStatusCode} at branch sold (request ${input.returnRequestId})`,
         historyStatus: returnHistoryStatusLabel(
           isServiceDocumentTypeName(row.documentType?.name),
+          row.actionType,
         ),
       });
 

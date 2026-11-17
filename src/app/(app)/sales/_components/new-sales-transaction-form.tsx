@@ -142,6 +142,7 @@ export function NewSalesTransactionForm({
   const [editingGroupKey, setEditingGroupKey] = useState<string | null>(null);
   const [deleteGroupKey, setDeleteGroupKey] = useState<string | null>(null);
   const [deleteSelectedOpen, setDeleteSelectedOpen] = useState(false);
+  const [saveConfirmOpen, setSaveConfirmOpen] = useState(false);
   const detailKeys = useMemo(() => details.map((d) => d.key), [details]);
   const selection = useTableSelection(detailKeys);
 
@@ -323,7 +324,7 @@ export function NewSalesTransactionForm({
     setProofs((prev) => prev.filter((p) => p.path !== path));
   }
 
-  function submit() {
+  function requestSave() {
     if (!transactionNo.trim()) {
       toast.error("Transaction number is required");
       return;
@@ -356,7 +357,11 @@ export function NewSalesTransactionForm({
       toast.error("Add at least one transaction detail");
       return;
     }
+    setSaveConfirmOpen(true);
+  }
 
+  function submit() {
+    setSaveConfirmOpen(false);
     startTransition(async () => {
       const result = await createSaleAction({
         transactionNo: transactionNo.trim(),
@@ -416,7 +421,7 @@ export function NewSalesTransactionForm({
       <SalesEncodeBanner
         pending={pending}
         saveDisabled={pending || !branchId || !alternateBranchId}
-        onSave={submit}
+        onSave={requestSave}
       />
       <div className="rounded-xl border border-border/70 bg-card shadow-sm">
         <div className="space-y-8 p-5 sm:p-6">
@@ -807,6 +812,26 @@ export function NewSalesTransactionForm({
             >
               Yes, delete
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={saveConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open) setSaveConfirmOpen(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Save this record?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to save this record?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No</AlertDialogCancel>
+            <AlertDialogAction onClick={submit}>Yes</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -5,6 +5,16 @@ import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import type { SaleDetailsPayload } from "@/app/(app)/sales/_components/sale-details-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -73,6 +83,7 @@ export function EditSaleHeaderDialog({
 }) {
   const [pending, startTransition] = useTransition();
   const [loading, setLoading] = useState(true);
+  const [saveConfirmOpen, setSaveConfirmOpen] = useState(false);
   const [branches, setBranches] = useState<LookupOption[]>([]);
   const [stockSources, setStockSources] = useState<LookupOption[]>([]);
   const [paymentTypes, setPaymentTypes] = useState<LookupOption[]>([]);
@@ -200,7 +211,7 @@ export function EditSaleHeaderDialog({
     }
   }
 
-  function submit() {
+  function requestSave() {
     if (!transactionNo.trim()) {
       toast.error("Transaction number is required");
       return;
@@ -229,7 +240,11 @@ export function EditSaleHeaderDialog({
       toast.error("Customer delivery method is required");
       return;
     }
+    setSaveConfirmOpen(true);
+  }
 
+  function submit() {
+    setSaveConfirmOpen(false);
     startTransition(async () => {
       const result = await updateSaleHeaderAction({
         saleId: sale.id,
@@ -259,7 +274,13 @@ export function EditSaleHeaderDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next && saveConfirmOpen) return;
+        onOpenChange(next);
+      }}
+    >
       <DialogContent className="flex max-h-[90svh] w-[min(calc(100vw-2rem),40rem)] max-w-2xl flex-col gap-0 overflow-hidden p-4 sm:p-6">
         <DialogHeader className="shrink-0 space-y-1.5 pr-8 pb-4 text-left">
           <DialogTitle>Edit transaction header</DialogTitle>
@@ -483,12 +504,31 @@ export function EditSaleHeaderDialog({
           <Button
             type="button"
             disabled={pending || loading}
-            onClick={submit}
+            onClick={requestSave}
           >
             Save header
           </Button>
         </DialogFooter>
       </DialogContent>
+      <AlertDialog
+        open={saveConfirmOpen}
+        onOpenChange={(next) => {
+          if (!next) setSaveConfirmOpen(false);
+        }}
+      >
+        <AlertDialogContent className="z-60" overlayClassName="z-60">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Save this record?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to save this record?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No</AlertDialogCancel>
+            <AlertDialogAction onClick={submit}>Yes</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }

@@ -26,6 +26,16 @@ import {
   type DataTableColumn,
   type DataTableFeatures,
 } from "@/lib/data-table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { matchesTableSearch } from "@/utils/match-table-search";
@@ -56,6 +66,10 @@ export function ScOrdersPanel({
   // Like branch orders: the setup popup opens over this list, and only Continue opens the
   // create page.
   const [setupOpen, setSetupOpen] = useState(false);
+  const [orderConfirm, setOrderConfirm] = useState<{
+    orderId: string;
+    action: "approve" | "reject";
+  } | null>(null);
   const scSetup = useScOrderSetup(setupOpen);
   const filtered = useMemo(
     () =>
@@ -103,6 +117,23 @@ export function ScOrdersPanel({
       toast.success(typeof ok === "function" ? ok(result) : ok);
       router.refresh();
     });
+  }
+
+  function confirmOrderDecision() {
+    const decision = orderConfirm;
+    if (!decision) return;
+    setOrderConfirm(null);
+    if (decision.action === "approve") {
+      run(
+        () => approveScOrderAction(decision.orderId),
+        (result) =>
+          "sapDocNum" in result && result.sapDocNum != null
+            ? `Approved. SO ${result.sapDocNum} created in SAP`
+            : "Order approved and posted to SAP",
+      );
+      return;
+    }
+    run(() => rejectScOrderAction(decision.orderId), "Order rejected");
   }
 
   function checkSap() {
@@ -201,13 +232,7 @@ export function ScOrdersPanel({
                     variant="outline"
                     disabled={pending}
                     onClick={() =>
-                      run(
-                        () => approveScOrderAction(order.id),
-                        (result) =>
-                          "sapDocNum" in result && result.sapDocNum != null
-                            ? `Approved. SO ${result.sapDocNum} created in SAP`
-                            : "Order approved and posted to SAP",
-                      )
+                      setOrderConfirm({ orderId: order.id, action: "approve" })
                     }
                   >
                     Approve
@@ -216,7 +241,9 @@ export function ScOrdersPanel({
                     size="sm"
                     variant="ghost"
                     disabled={pending}
-                    onClick={() => run(() => rejectScOrderAction(order.id), "Order rejected")}
+                    onClick={() =>
+                      setOrderConfirm({ orderId: order.id, action: "reject" })
+                    }
                   >
                     Reject
                   </Button>
@@ -295,6 +322,40 @@ export function ScOrdersPanel({
           }}
         />
       ) : null}
+      <AlertDialog
+        open={orderConfirm !== null}
+        onOpenChange={(open) => {
+          if (!open) setOrderConfirm(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {orderConfirm?.action === "reject"
+                ? "Reject this order?"
+                : "Approve this order?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {orderConfirm?.action === "reject"
+                ? "Are you sure you want to reject this order?"
+                : "Are you sure you want to approve this order?"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmOrderDecision}
+              className={
+                orderConfirm?.action === "reject"
+                  ? "bg-destructive text-white hover:bg-destructive/90"
+                  : undefined
+              }
+            >
+              Yes
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

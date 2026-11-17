@@ -66,6 +66,81 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.95.1",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T15:15:00+08:00",
+    title: "Confirm before you continue",
+    highlights: [
+      "Choosing a model on a new sale warns you when that model still has units older than 30 days from the delivery receipt.",
+      "Sales, returns, transfers, pull-outs, and deliveries ask you to confirm before they continue.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "On a new sale, choosing a model shows Model Aging Validation when that model has stock older than 30 days from the delivery receipt. OK lets you keep encoding.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Saving a sale, a header, or a serial, finishing a replacement, and requesting a return or replacement each ask Yes or No first. No leaves the form open.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Submitting a transfer or pull-out, saving or sending a pull-out, approving or rejecting one, and receiving or rejecting a delivery now ask before they continue. Service center orders, deliveries, pull-outs, and sales, and Official Sales processing, ask the same way.",
+      },
+    ],
+  },
+  {
+    version: "0.95.0",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T14:30:00+08:00",
+    title: "Super Admin oversight",
+    highlights: [
+      "Super Admin can open audit logs, SAP integration, policies, and planning from the setup menu.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Super Admin can open audit logs, SAP integration, policies, and planning from the setup menu.",
+      },
+      {
+        type: "improvement",
+        description:
+          "If you already use Super Admin, sign out and back in once to see the new menus.",
+      },
+    ],
+  },
+  {
+    version: "0.94.7",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T13:15:00+08:00",
+    title: "Return and replacement status",
+    highlights: [
+      "A requested return or replacement holds the unit as Reserved until you finish or reject it.",
+      "Sales show Returned or Replaced, and you finish them with Return Stock or Replace Stock.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Requesting a return or replacement holds that unit as Reserved. If the request is rejected, the unit goes back to the status it had before.",
+      },
+      {
+        type: "improvement",
+        description:
+          "A return shows Returned and a replacement shows Replaced. A service return shows Service Returned, and a service replacement shows Service Replaced. You can filter the sales list by each status.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Finish a return with Return Stock, or a replacement with Replace Stock. A replacement still asks you to choose Same Invoice or New Invoice.",
+      },
+    ],
+  },
+  {
     version: "0.94.6",
     date: "2026-11-17",
     releasedAt: "2026-11-17T11:45:00+08:00",

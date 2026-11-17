@@ -9,6 +9,16 @@ import {
   createScSaleAction,
   listScStkSerialsAction,
 } from "@/features/service-center-ops/actions/sc-sales.actions";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -28,6 +38,7 @@ export function ScNewSaleForm({ centers }: { centers: CenterOption[] }) {
   const [customerName, setCustomerName] = useState("");
   const [amount, setAmount] = useState("0");
   const [reserved, setReserved] = useState(false);
+  const [saveConfirmOpen, setSaveConfirmOpen] = useState(false);
   const [serialOptions, setSerialOptions] = useState<
     { id: string; label: string }[]
   >([]);
@@ -84,6 +95,22 @@ export function ScNewSaleForm({ centers }: { centers: CenterOption[] }) {
       toast.error("Enter a valid amount");
       return;
     }
+    setSaveConfirmOpen(true);
+  }
+
+  function confirmSave() {
+    const parsedAmount = Number(amount);
+    if (!serviceCenterId || !locationId || !serialNumberId) {
+      setSaveConfirmOpen(false);
+      toast.error("Select center, location, and serial");
+      return;
+    }
+    if (Number.isNaN(parsedAmount) || parsedAmount < 0) {
+      setSaveConfirmOpen(false);
+      toast.error("Enter a valid amount");
+      return;
+    }
+    setSaveConfirmOpen(false);
     startTransition(async () => {
       const result = await createScSaleAction({
         serviceCenterId,
@@ -188,6 +215,25 @@ export function ScNewSaleForm({ centers }: { centers: CenterOption[] }) {
           {pending ? "Saving…" : "Record sale"}
         </Button>
       </div>
+      <AlertDialog
+        open={saveConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open) setSaveConfirmOpen(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Save this record?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to save this record?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmSave}>Yes</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

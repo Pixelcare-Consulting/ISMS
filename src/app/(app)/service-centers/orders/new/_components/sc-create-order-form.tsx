@@ -11,6 +11,16 @@ import {
   scOrderSetupHref,
   useScOrderSetup,
 } from "@/app/(app)/service-centers/orders/new/_components/sc-order-setup";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LoadingModal } from "@/components/ui/loading-modal";
@@ -80,6 +90,7 @@ export function ScCreateOrderForm({
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [query, setQuery] = useState("");
   const [brandId, setBrandId] = useState("");
+  const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -152,6 +163,15 @@ export function ScCreateOrderForm({
 
   function submit() {
     if (submitDisabled) return;
+    setSubmitConfirmOpen(true);
+  }
+
+  function confirmSubmit() {
+    if (submitDisabled) {
+      setSubmitConfirmOpen(false);
+      return;
+    }
+    setSubmitConfirmOpen(false);
     startTransition(async () => {
       const result = await createScOrderAction({
         serviceCenterId,
@@ -463,6 +483,25 @@ export function ScCreateOrderForm({
           router.push(scOrderSetupHref(choice));
         }}
       />
+      <AlertDialog
+        open={submitConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open) setSubmitConfirmOpen(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Submit this order?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to submit this order?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmSubmit}>Yes</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <LoadingModal
         open={pending}
         variant="minimal"
