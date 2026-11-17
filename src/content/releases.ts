@@ -66,6 +66,22 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.94.4",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T09:30:00+08:00",
+    title: "New sale page matches Create Order",
+    highlights: [
+      "Recording a new sale now opens with the same header and card as Create Order.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "When you record a new sale, Back to sales and Save Transaction sit together in the header. The sale details and the line items stay on one card, in the same places as before.",
+      },
+    ],
+  },
+  {
     version: "0.94.3",
     date: "2026-11-16",
     releasedAt: "2026-11-16T09:50:00+08:00",

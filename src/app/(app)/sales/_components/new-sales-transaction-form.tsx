@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { ChevronLeft, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
@@ -51,6 +51,50 @@ type ProofAttachment = {
   path: string;
   name: string;
 };
+
+function SalesEncodeBanner({
+  pending,
+  saveDisabled,
+  onSave,
+}: {
+  pending: boolean;
+  saveDisabled: boolean;
+  onSave: () => void;
+}) {
+  return (
+    <header className="flex flex-col gap-4 rounded-xl bg-sidebar px-5 py-5 text-sidebar-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6">
+      <div className="min-w-0">
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
+          New sales transaction
+        </h1>
+        <p className="mt-1 text-sm text-sidebar-muted">
+          Enter header details, add package line sets, then save to update stock.
+        </p>
+      </div>
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
+        <Link
+          href="/sales"
+          aria-disabled={pending || undefined}
+          tabIndex={pending ? -1 : undefined}
+          onClick={(event) => {
+            if (pending) event.preventDefault();
+          }}
+          className={
+            pending
+              ? "pointer-events-none inline-flex h-9 items-center gap-1 rounded-full bg-sidebar-accent px-3.5 text-sm font-medium text-sidebar-foreground opacity-50"
+              : "inline-flex h-9 items-center gap-1 rounded-full bg-sidebar-accent px-3.5 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-white/10"
+          }
+        >
+          <ChevronLeft className="size-4" aria-hidden />
+          Back to sales
+        </Link>
+        <Button type="button" disabled={saveDisabled} onClick={onSave}>
+          Save Transaction
+        </Button>
+      </div>
+    </header>
+  );
+}
 
 interface NewSalesTransactionFormProps {
   branches: SalesBranchOption[];
@@ -354,8 +398,11 @@ export function NewSalesTransactionForm({
 
   if (branches.length === 0) {
     return (
-      <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground shadow-sm">
-        No branch in your area of responsibility. Assign an AOR before recording sales.
+      <div className="space-y-6">
+        <SalesEncodeBanner pending={false} saveDisabled onSave={() => undefined} />
+        <div className="rounded-xl border border-border/70 bg-card p-5 text-sm text-muted-foreground shadow-sm sm:p-6">
+          No branch in your area of responsibility. Assign an AOR before recording sales.
+        </div>
       </div>
     );
   }
@@ -365,12 +412,24 @@ export function NewSalesTransactionForm({
   const deletePackageName = deleteGroupRows[0]?.packageTypeName ?? "this package";
 
   return (
-    <div className="space-y-4">
-      <div className="space-y-4 rounded-xl border bg-card p-4 shadow-sm sm:p-6">
-        <h2 className="text-lg font-semibold">Transaction header</h2>
-        <div className="grid gap-4 sm:grid-cols-2">
+    <div className="space-y-6">
+      <SalesEncodeBanner
+        pending={pending}
+        saveDisabled={pending || !branchId || !alternateBranchId}
+        onSave={submit}
+      />
+      <div className="rounded-xl border border-border/70 bg-card shadow-sm">
+        <div className="space-y-8 p-5 sm:p-6">
+          <section className="space-y-5">
+            <div>
+              <h2 className="text-base font-semibold text-foreground">Transaction</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Branch, customer, payment, and proof for this sale.
+              </p>
+            </div>
+            <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="sale-txn-no">Transaction number *</Label>
+            <Label className="font-normal text-muted-foreground" htmlFor="sale-txn-no">Transaction number *</Label>
             <Input
               id="sale-txn-no"
               value={transactionNo}
@@ -382,10 +441,18 @@ export function NewSalesTransactionForm({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sale-branch">Branch sold *</Label>
             {resolvedBranch ? (
-              <Input id="sale-branch" value={resolvedBranch.name} readOnly disabled className="bg-muted" />
+              <>
+                <p className="text-sm text-muted-foreground">Branch sold *</p>
+                <p className="mt-1.5 min-h-10 break-words rounded-lg bg-muted/70 px-3 py-2.5 text-sm font-medium leading-5 text-foreground">
+                  {resolvedBranch.name}
+                </p>
+              </>
             ) : showBranchPicker ? (
+              <>
+                <Label className="font-normal text-muted-foreground" htmlFor="sale-branch">
+                  Branch sold *
+                </Label>
               <SearchableSelect
                 id="sale-branch"
                 options={branches.map((b) => ({ id: b.id, label: b.name }))}
@@ -394,10 +461,11 @@ export function NewSalesTransactionForm({
                 placeholder="Select branch…"
                 searchPlaceholder="Search branches…"
               />
+              </>
             ) : null}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sale-stock-source">Branch or alternate branch *</Label>
+            <Label className="font-normal text-muted-foreground" htmlFor="sale-stock-source">Branch or alternate branch *</Label>
             <SearchableSelect
               id="sale-stock-source"
               options={stockSources.map((b) => ({ id: b.id, label: b.name }))}
@@ -413,7 +481,7 @@ export function NewSalesTransactionForm({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sale-date">Transaction date</Label>
+            <Label className="font-normal text-muted-foreground" htmlFor="sale-date">Transaction date</Label>
             <Input
               id="sale-date"
               type="date"
@@ -423,7 +491,7 @@ export function NewSalesTransactionForm({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sale-customer">Customer name *</Label>
+            <Label className="font-normal text-muted-foreground" htmlFor="sale-customer">Customer name *</Label>
             <Input
               id="sale-customer"
               value={customerName}
@@ -432,7 +500,7 @@ export function NewSalesTransactionForm({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sale-contact">Contact no.</Label>
+            <Label className="font-normal text-muted-foreground" htmlFor="sale-contact">Contact no.</Label>
             <Input
               id="sale-contact"
               type="tel"
@@ -443,7 +511,7 @@ export function NewSalesTransactionForm({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sale-info-slip">Info slip / VSO / RR released</Label>
+            <Label className="font-normal text-muted-foreground" htmlFor="sale-info-slip">Info slip / VSO / RR released</Label>
             <Input
               id="sale-info-slip"
               value={infoSlipVsoRrReleased}
@@ -452,7 +520,7 @@ export function NewSalesTransactionForm({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sale-rr-receive">RR receive / deliver</Label>
+            <Label className="font-normal text-muted-foreground" htmlFor="sale-rr-receive">RR receive / deliver</Label>
             <Input
               id="sale-rr-receive"
               value={rrReceiveDeliver}
@@ -461,7 +529,7 @@ export function NewSalesTransactionForm({
             />
           </div>
           <div className="space-y-2">
-            <Label>Payment type *</Label>
+            <Label className="font-normal text-muted-foreground">Payment type *</Label>
             <SearchableSelect
               options={paymentTypes.map((p) => ({ id: p.id, label: p.name }))}
               value={paymentTypeId}
@@ -472,7 +540,7 @@ export function NewSalesTransactionForm({
             />
           </div>
           <div className="space-y-2">
-            <Label>Sale type *</Label>
+            <Label className="font-normal text-muted-foreground">Sale type *</Label>
             <SearchableSelect
               options={saleTypes.map((p) => ({ id: p.id, label: p.name }))}
               value={saleTypeId}
@@ -483,7 +551,7 @@ export function NewSalesTransactionForm({
             />
           </div>
           <div className="space-y-2">
-            <Label>Customer delivery method *</Label>
+            <Label className="font-normal text-muted-foreground">Customer delivery method *</Label>
             <SearchableSelect
               options={deliveryMethods.map((p) => ({ id: p.id, label: p.name }))}
               value={customerDeliveryMethodId}
@@ -494,7 +562,7 @@ export function NewSalesTransactionForm({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sale-proof">Proof</Label>
+            <Label className="font-normal text-muted-foreground" htmlFor="sale-proof">Proof</Label>
             <Input
               id="sale-proof"
               type="file"
@@ -538,20 +606,27 @@ export function NewSalesTransactionForm({
           </div>
         </div>
 
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={reserved}
-            onChange={(e) => setReserved(e.target.checked)}
-          />
-          Reserved (RSV)
-        </label>
-      </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={reserved}
+                onChange={(e) => setReserved(e.target.checked)}
+              />
+              Reserved (RSV)
+            </label>
+          </section>
 
-      <div className="space-y-3 rounded-xl border bg-card p-4 shadow-sm sm:p-6">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold">Transaction details</h2>
-          <div className="flex flex-wrap items-center gap-2">
+          <section className="space-y-4 border-t border-border/70 pt-8">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="text-base font-semibold text-foreground">Transaction details</h2>
+                {details.length === 0 ? (
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    No details yet. Click Add Detail to add line items.
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
             {selection.selectedCount > 0 ? (
               <Button
                 type="button"
@@ -575,11 +650,7 @@ export function NewSalesTransactionForm({
           </div>
         </div>
 
-        {details.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No details yet. Click Add Detail to add line items.
-          </p>
-        ) : (
+            {details.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full min-w-200 text-sm">
               <thead>
@@ -682,20 +753,13 @@ export function NewSalesTransactionForm({
               </tbody>
             </table>
           </div>
-        )}
+            ) : null}
 
-        <div className="flex justify-end border-t pt-3 text-sm font-medium font-mono tabular-nums">
-          Total sale amount: {formatPeso(totalSaleAmount)}
+            <div className="flex justify-end border-t pt-3 text-sm font-medium font-mono tabular-nums">
+              Total sale amount: {formatPeso(totalSaleAmount)}
+            </div>
+          </section>
         </div>
-      </div>
-
-      <div className="flex flex-wrap justify-end gap-2">
-        <Button asChild variant="outline" disabled={pending}>
-          <Link href="/sales">Back</Link>
-        </Button>
-        <Button disabled={pending || !branchId || !alternateBranchId} onClick={submit}>
-          Save Transaction
-        </Button>
       </div>
 
       {detailOpen && branchId && alternateBranchId ? (
