@@ -669,14 +669,11 @@ export const scServiceReturnService = {
         stkCodeId,
       });
 
+      // The sale line keeps the original serial; the replacement is on the request
+      // (replacementSerialNumberId), like branch replacements.
       await tx.serviceCenterSalesTransactionDetail.update({
         where: { id: line.id },
-        data: {
-          modelId: replacement.model.id,
-          brandId: replacement.model.brandId ?? line.brandId,
-          serialNumberId: replacement.id,
-          statusCodeId: sldCodeId,
-        },
+        data: { statusCodeId: sldCodeId },
       });
       await tx.serviceCenterSalesTransaction.update({ where: { id: request.sale.id }, data: { atrStatus: "closed" } });
 

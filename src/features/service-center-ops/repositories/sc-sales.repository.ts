@@ -18,7 +18,15 @@ import { resolvePagination, toPaginatedResult } from "@/lib/shared/pagination";
 const SC_RETURN_DOCUMENT_TYPE = { name: "Service Return" } as const;
 
 const returnRefSelect = {
-  select: { id: true, status: true, saleDetailId: true, documentType: { select: { name: true } } },
+  select: {
+    id: true,
+    status: true,
+    saleDetailId: true,
+    actionType: true,
+    stockStatusCode: true,
+    atrOdrfPdfPath: true,
+    documentType: { select: { name: true } },
+  },
 } as const;
 
 type ScSort = { field?: SalesListSort; dir?: SalesListSortDir };
@@ -71,6 +79,9 @@ function toReturnRef(
     id: string;
     status: string;
     saleDetailId: string | null;
+    actionType: "return" | "replacement" | null;
+    stockStatusCode: "STK" | "DEF" | null;
+    atrOdrfPdfPath: string | null;
     documentType: { name: string } | null;
   } | null,
 ) {
@@ -79,6 +90,9 @@ function toReturnRef(
         id: request.id,
         status: request.status,
         saleDetailId: request.saleDetailId,
+        actionType: request.actionType,
+        stockStatusCode: request.stockStatusCode,
+        atrOdrfPdfPath: request.atrOdrfPdfPath,
         documentType: request.documentType ?? SC_RETURN_DOCUMENT_TYPE,
       }
     : null;
