@@ -22,7 +22,7 @@ export default async function CompetitorsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Competitors"
-        description="Manual market price observations by competitor and product. Branch is set from your AOR."
+        description="Manual market price observations by competitor and product. Choose a branch from your AOR."
       />
       <CompetitorKpisStrip kpis={kpis} />
       <CompetitorsTable
@@ -30,6 +30,7 @@ export default async function CompetitorsPage() {
         canManage={canManage}
         competitors={options.competitors}
         branches={options.branches}
+        aorBranches={options.aorBranches}
         brands={options.brands}
         models={options.models}
       />
