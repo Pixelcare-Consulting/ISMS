@@ -654,7 +654,7 @@ export const appNavigation: NavEntry[] = [
         items: [
           {
             href: "/service-centers/returns",
-            label: "SC Returns",
+            label: "SC Returns and Replacement",
             icon: ArrowLeftRight,
             permission: "service_centers.returns.process",
             countBadgeKey: "scServiceReturns",
