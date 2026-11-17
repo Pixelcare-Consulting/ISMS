@@ -87,6 +87,14 @@ function submitButton() {
   return screen.getByRole("button", { name: "Submit" });
 }
 
+async function confirmSubmit(question: string) {
+  fireEvent.click(submitButton());
+  expect(await screen.findByRole("heading", { name: question })).toBeInTheDocument();
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Yes" }));
+  });
+}
+
 async function pickUnit(serialNo: string) {
   fireEvent.click(await screen.findByRole("checkbox", { name: `Select ${serialNo}` }));
 }
@@ -292,9 +300,7 @@ describe("PulloutRequestDialog units", () => {
     expect(submitButton()).toBeDisabled();
     await fillProblem("BRANCH-A-DEF");
 
-    await act(async () => {
-      fireEvent.click(submitButton());
-    });
+    await confirmSubmit("Are you sure you want to submit this pull-out?");
 
     expect(props.onSubmit).toHaveBeenCalledTimes(1);
     const [input] = props.onSubmit.mock.calls[0] as unknown as [
@@ -381,9 +387,8 @@ describe("PulloutRequestDialog branch", () => {
     await pickUnitDetails("BRANCH-A-UNIT");
     expect(screen.queryByText("Destination warehouse")).not.toBeInTheDocument();
 
-    await act(async () => {
-      fireEvent.click(submitButton());
-    });
+    expect(props.onSubmit).not.toHaveBeenCalled();
+    await confirmSubmit("Are you sure you want to submit this pull-out?");
 
     expect(props.onSubmit).toHaveBeenCalledTimes(1);
     const [input] = props.onSubmit.mock.calls[0] as unknown as [Record<string, unknown>];

@@ -176,8 +176,13 @@ describe("Add serials on the Logistics step", () => {
     });
 
     expect(saveButton()).toBeEnabled();
+    fireEvent.click(saveButton());
+    expect(saveList).not.toHaveBeenCalled();
+    expect(
+      await screen.findByRole("heading", { name: "Are you sure you want to save this list?" }),
+    ).toBeInTheDocument();
     await act(async () => {
-      fireEvent.click(saveButton());
+      fireEvent.click(screen.getByRole("button", { name: "Yes" }));
     });
 
     expect(saveList).toHaveBeenCalledWith(

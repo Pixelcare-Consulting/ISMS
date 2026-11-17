@@ -164,6 +164,13 @@ describe("new transfer request form", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Submit" })).toBeEnabled());
 
     fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(
+      await screen.findByRole("heading", { name: "Are you sure you want to submit this transfer?" }),
+    ).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Yes" }));
+    });
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     expect(onSubmit).toHaveBeenCalledWith(
