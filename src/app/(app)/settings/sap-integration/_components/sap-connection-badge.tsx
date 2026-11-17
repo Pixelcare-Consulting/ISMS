@@ -1,57 +1,47 @@
-import { Badge } from "@/components/ui/badge";
-import { SAP_NO_CONNECTION_MESSAGE } from "@/config/platform";
+import { PLATFORM_OPERATOR_NAME } from "@/config/platform";
 import { getSapConnectionStateAction } from "@/features/sap/actions/sap.actions";
+import { cn } from "@/utils/cn";
+
+type SapConnectionState = "no_config" | "idle" | "connected";
 
 /**
- * Read-only connection indicator for the tenant queue page.
+ * Full-width connection note for the SAP integration page.
  *
- * Answers "is SAP reachable right now?" while troubleshooting a stalled queue,
- * without exposing the connection details or offering a connect/disconnect
- * control — those are platform-operator concerns. Rendered on the server so it
- * costs no client polling; it refreshes whenever the page does, which is on
- * every queue action.
+ * Tenants can see whether SAP is reachable. They do not connect or disconnect
+ * it — Pixelcare keeps that. Refreshes with the page, including after Send.
  */
 export async function SapConnectionBadge() {
   const state = await getSapConnectionStateAction();
-
-  if (state.state === "connected") {
-    return (
-      <Badge
-        variant="outline"
-        className="border-emerald-600/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-      >
-        <span
-          aria-hidden
-          className="mr-1.5 inline-block size-1.5 rounded-full bg-emerald-500"
-        />
-        SAP connected
-      </Badge>
-    );
-  }
-
-  if (state.state === "idle") {
-    return (
-      <Badge variant="secondary" title="Credentials are configured; no session is open right now.">
-        <span
-          aria-hidden
-          className="mr-1.5 inline-block size-1.5 rounded-full bg-muted-foreground/60"
-        />
-        SAP idle
-      </Badge>
-    );
-  }
+  const note = connectionNote(state.state);
 
   return (
-    <Badge
-      variant="outline"
-      className="border-amber-600/30 bg-amber-500/10 text-amber-700 dark:text-amber-400"
-      title={SAP_NO_CONNECTION_MESSAGE}
-    >
-      <span
-        aria-hidden
-        className="mr-1.5 inline-block size-1.5 rounded-full bg-amber-500"
-      />
-      SAP not configured
-    </Badge>
+    <p role="status" className={cn("rounded-lg border px-4 py-3 text-sm", note.className)}>
+      {note.text}
+    </p>
   );
+}
+
+function connectionNote(state: SapConnectionState): { text: string; className: string } {
+  switch (state) {
+    case "connected":
+      return {
+        text: "SAP is connected right now.",
+        className:
+          "border-emerald-600/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300",
+      };
+    case "idle":
+      return {
+        text: "SAP is ready. A connection opens when a document is sent.",
+        className: "bg-muted/40 text-foreground",
+      };
+    case "no_config":
+      return {
+        text: `SAP is not set up yet. ${PLATFORM_OPERATOR_NAME} sets this up.`,
+        className: "border-amber-600/30 bg-amber-500/10 text-amber-800 dark:text-amber-300",
+      };
+    default: {
+      const _exhaustive: never = state;
+      return _exhaustive;
+    }
+  }
 }

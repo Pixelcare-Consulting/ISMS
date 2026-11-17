@@ -23,11 +23,6 @@ export interface SectionTabGroupDefinition {
   items: SectionTabDefinition[];
 }
 
-/** SAP integration sub-routes (not listed separately in header nav). */
-export const SAP_INTEGRATION_TABS: SectionTabDefinition[] = [
-  { href: "/settings/sap-integration", label: "Integration queue", exact: true },
-];
-
 /** Master data landing route — the card hub linking to every lookup table. */
 export const MASTER_DATA_ROOT = "/settings/master-data";
 
