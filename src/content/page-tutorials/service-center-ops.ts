@@ -108,7 +108,7 @@ export const SC_PULLOUTS_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "What this page is for",
       description:
-        "Pull-outs take units out of a service center. Flow: service center requests → TL approves → Logistics saves the list → Logistics sends it. Sending is the last step: there is no SAP check.",
+        "Pull-outs take units out of a service center. Flow: service center requests → TL approves → Logistics saves the list → Logistics sends it. After Send, Check SAP marks the units Pulled out once SAP shows them on an IT or Return.",
     },
     {
       title: "How to use it",
@@ -117,6 +117,8 @@ export const SC_PULLOUTS_PAGE_TUTORIAL: PageTutorialContent = {
         "Team Lead approves or deletes each unit, or approves them all.",
         "After approval, Logistics enters the waybill and schedule and saves the list.",
         "Send puts every unit in transit (DIT). Sent units no longer count in Service Center Inventory.",
+        "In SAP, put the pull-out no. in the \"Pull Out Number Generated in ISMS\" row field of the IT or Return, then select Check SAP on the pull-out: the units it lists become Pulled out (PO).",
+        "A DR copied from that Return back to the service center becomes a delivery under Deliveries the next time you select Check SAP; accept it there.",
       ],
     },
     {

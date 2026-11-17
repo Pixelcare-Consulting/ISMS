@@ -222,6 +222,7 @@ function ReceivedCell({ row }: { row: ItemRow }) {
 }
 
 function SapDocumentCell({ row }: { row: ItemRow }) {
+  const { deliveryHref } = usePulloutSource();
   const doc = row.sapDocument;
   const redelivery = row.redelivery;
   if (!doc && !redelivery) return <span className="text-muted-foreground">Not in SAP yet</span>;
@@ -232,9 +233,9 @@ function SapDocumentCell({ row }: { row: ItemRow }) {
       {date ? <p className="text-xs text-muted-foreground">{date}</p> : null}
       {redelivery ? (
         <p className="text-xs">
-          {`Redelivered${redelivery.drNo ? ` on DR ${redelivery.drNo}` : ""} to ${redelivery.branchName}: `}
+          {`Redelivered${redelivery.drNo ? ` on DR ${redelivery.drNo}` : ""} to ${redelivery.placeName}: `}
           <Link
-            href={`/logistics/deliveries/${redelivery.deliveryId}`}
+            href={deliveryHref(redelivery.deliveryId)}
             className="font-mono font-medium hover:underline"
           >
             {redelivery.deliveryNo}

@@ -41,6 +41,8 @@ export interface PulloutSource {
   listHref: string;
   detailHref: (pulloutId: string) => string;
   attachmentHref: (attachmentId: string) => string;
+  /** Where a redelivery made by Check SAP opens. */
+  deliveryHref: (deliveryId: string) => string;
   copy: {
     /** Request form and detail readout label. */
     placeLabel: string;
@@ -80,7 +82,7 @@ export interface PulloutSource {
     updateList: (pulloutId: string, input: unknown) => Promise<ActionResult>;
     release: (pulloutId: string) => Promise<ActionResult>;
     /** Null where the pull-out ends at Send with no SAP follow-up. */
-    checkSap: typeof checkPulloutSapAction | null;
+    checkSap: ((pulloutId: string) => ReturnType<typeof checkPulloutSapAction>) | null;
   };
 }
 
@@ -89,6 +91,7 @@ export const BRANCH_PULLOUT_SOURCE: PulloutSource = {
   detailHref: (pulloutId) => `${LOGISTICS_PICKUPS_PATH}/${pulloutId}`,
   attachmentHref: (attachmentId) =>
     `/api/logistics/pullout-attachments/${encodeURIComponent(attachmentId)}`,
+  deliveryHref: (deliveryId) => `/logistics/deliveries/${deliveryId}`,
   copy: {
     placeLabel: "Branch Name",
     placeColumn: "Branch",

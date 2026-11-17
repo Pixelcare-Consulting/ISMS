@@ -11,6 +11,7 @@ import {
 } from "@/features/logistics/constants/pullout-attachments";
 import {
   asWorkflowCode,
+  PULLOUT_SETTLED_CODES,
   PULLOUT_WORKFLOW_CODE,
 } from "@/features/logistics/constants/workflow-codes";
 import { assertExclusiveClaim } from "@/features/logistics/services/delivery-posting.planner";
@@ -54,6 +55,7 @@ import {
   type PulloutStatus,
 } from "@/features/logistics/services/pullout-posting.planner";
 import {
+  pulloutLineSapDocumentView,
   writePulloutHistory,
   type PulloutDetail,
   type PulloutSerialOption,
@@ -72,7 +74,7 @@ import { buildPulloutAttachmentPath, getObjectStorage } from "@/lib/storage";
  * Service center pull-outs. The branch pull-out flow (request → Team Lead → logistics list →
  * Send) on `ServiceCenterInventory`: units at any location of one service center, STK → RSV
  * → FPO → DIT and DEF → DEF → DIT. It ends at Send, like branch pull-outs, and posts nothing
- * to SAP (no Check SAP).
+ * to SAP. Check SAP afterwards lives in `sc-pullout-sap-check.service.ts`.
  */
 
 const CLAIM_LOST = "One or more serials changed before this pull-out could be saved";
@@ -81,7 +83,7 @@ const DENIED = "You do not have permission for this service center pull-out acti
 const NOT_FOUND = "Pull-out not found";
 const UPDATED_ELSEWHERE = "This pull-out was updated by someone else";
 
-type ScPulloutAction = "create" | "approve" | "reject" | "updateList" | "finalize";
+type ScPulloutAction = "create" | "approve" | "reject" | "updateList" | "finalize" | "checkSap";
 
 export interface ScPulloutCreateInput {
   serviceCenterId: string;
@@ -120,6 +122,7 @@ function permissionError(actor: PostingActor, action: ScPulloutAction): string |
       return caps.canRejectTransfer ? null : DENIED;
     case "updateList":
     case "finalize":
+    case "checkSap":
       return caps.canManage ? null : DENIED;
     default: {
       const unreachable: never = action;
@@ -129,7 +132,7 @@ function permissionError(actor: PostingActor, action: ScPulloutAction): string |
 }
 
 /** Same gates as branch pull-outs: Team Lead decisions are not scoped, the rest are. */
-async function authorize(
+export async function authorizeScPullout(
   actor: PostingActor,
   action: ScPulloutAction,
   serviceCenterId: string | null,
@@ -212,7 +215,7 @@ async function assertNotOnOtherPullout(
 }
 
 /** Serial masters first, in id order, then the SC ledger rows: the branch lock order. */
-async function lockSerialsThenScRows(
+export async function lockSerialsThenScRows(
   tx: PostingDb,
   tenantId: string,
   serviceCenterId: string,
@@ -232,7 +235,7 @@ async function lockSerialsThenScRows(
 }
 
 /** Moves units on the SC ledger only if every one is still at `from`. */
-async function claimScInventory(
+export async function claimScInventory(
   tx: PostingDb,
   input: {
     tenantId: string;
@@ -256,7 +259,7 @@ async function claimScInventory(
   assertExclusiveClaim(moved.count, input.serialNumberIds.length, input.message);
 }
 
-async function claimHeader(
+export async function claimScPulloutHeader(
   tx: PostingDb,
   input: { id: string; tenantId: string; fromStatusCodeIds: string[]; toStatusCodeId: string },
 ): Promise<void> {
@@ -408,7 +411,7 @@ async function approveInTx(
     toStatusCodeId: codes.FPO,
     message: "A serial on this pull-out is not reserved",
   });
-  await claimHeader(tx, {
+  await claimScPulloutHeader(tx, {
     id: pulloutId,
     tenantId: actor.tenantId,
     fromStatusCodeIds: [pendingId],
@@ -440,7 +443,7 @@ async function approveInTx(
 export const scPulloutPostingService = {
   /** STK and DEF units at any location of the center that no open pull-out holds. */
   async listSerials(actor: PostingActor, serviceCenterId: string): Promise<PulloutSerialOption[]> {
-    await authorize(actor, "create", serviceCenterId);
+    await authorizeScPullout(actor, "create", serviceCenterId);
     const codes = await pulloutInventoryIds(actor.tenantId);
     const rows = await prisma.serviceCenterInventory.findMany({
       where: {
@@ -506,7 +509,17 @@ export const scPulloutPostingService = {
         reasonStatusCode: { select: { id: true, code: true, name: true, color: true } },
         attachments: { select: { id: true, fileName: true }, orderBy: { createdAt: "asc" } },
         details: {
-          select: PULLOUT_LINE_CHECKLIST_SELECT,
+          select: {
+            ...PULLOUT_LINE_CHECKLIST_SELECT,
+            sapDocType: true,
+            sapDocNum: true,
+            sapDocDate: true,
+            sapDocLinkedAt: true,
+            sapDocLinkedBy: { select: { name: true } },
+            redeliveryDelivery: {
+              select: { id: true, deliveryNo: true, sapDocNo: true, serviceCenter: { select: { name: true } } },
+            },
+          },
           orderBy: { serialNumber: { serialNo: "asc" } },
         },
       },
@@ -563,10 +576,17 @@ export const scPulloutPostingService = {
         rejectedAt: null,
         rejectedByName: null,
         rejectionRemarks: null,
-        sapDocument: null,
-        redelivery: null,
+        sapDocument: pulloutLineSapDocumentView(line),
+        redelivery: line.redeliveryDelivery
+          ? {
+              deliveryId: line.redeliveryDelivery.id,
+              deliveryNo: line.redeliveryDelivery.deliveryNo,
+              drNo: line.redeliveryDelivery.sapDocNo,
+              placeName: line.redeliveryDelivery.serviceCenter.name,
+            }
+          : null,
       })),
-      canCheckSap: false,
+      canCheckSap: (PULLOUT_SETTLED_CODES as readonly string[]).includes(pullout.statusCode.code),
       history: history.map((row) => ({
         id: row.id,
         action: row.action,
@@ -577,7 +597,7 @@ export const scPulloutPostingService = {
   },
 
   async create(actor: PostingActor, input: ScPulloutCreateInput) {
-    await authorize(actor, "create", input.serviceCenterId);
+    await authorizeScPullout(actor, "create", input.serviceCenterId);
     const checklist = checklistBySerial(input.lines);
     const problemNames = await assertActiveChecklist(actor.tenantId, input.lines);
 
@@ -658,7 +678,7 @@ export const scPulloutPostingService = {
   },
 
   async approve(actor: PostingActor, pulloutId: string) {
-    await authorize(actor, "approve", null);
+    await authorizeScPullout(actor, "approve", null);
     const current = await requirePullout(prisma, actor.tenantId, pulloutId);
     const preview = planPulloutApprove(current);
     if (!preview.ok) throw new Error(preview.error);
@@ -673,7 +693,7 @@ export const scPulloutPostingService = {
   },
 
   async approveLine(actor: PostingActor, pulloutId: string, serialNumberId: string) {
-    await authorize(actor, "approve", null);
+    await authorizeScPullout(actor, "approve", null);
     const current = await requirePullout(prisma, actor.tenantId, pulloutId);
     const preview = planPulloutLineApprove({ ...current, serialNumberId });
     if (!preview.ok) throw new Error(preview.error);
@@ -711,7 +731,7 @@ export const scPulloutPostingService = {
   },
 
   async deleteLine(actor: PostingActor, pulloutId: string, serialNumberId: string) {
-    await authorize(actor, "reject", null);
+    await authorizeScPullout(actor, "reject", null);
     const current = await requirePullout(prisma, actor.tenantId, pulloutId);
     const preview = planPulloutLineDelete({ ...current, serialNumberId });
     if (!preview.ok) throw new Error(preview.error);
@@ -760,7 +780,7 @@ export const scPulloutPostingService = {
   },
 
   async reject(actor: PostingActor, pulloutId: string) {
-    await authorize(actor, "reject", null);
+    await authorizeScPullout(actor, "reject", null);
     const current = await requirePullout(prisma, actor.tenantId, pulloutId);
     const preview = planPulloutReject(current);
     if (!preview.ok) throw new Error(preview.error);
@@ -802,7 +822,7 @@ export const scPulloutPostingService = {
             details: `Hold released on ${fresh.pulloutNo}`,
           });
         }
-        await claimHeader(tx, {
+        await claimScPulloutHeader(tx, {
           id: pulloutId,
           tenantId: actor.tenantId,
           fromStatusCodeIds: fromIds,
@@ -836,7 +856,7 @@ export const scPulloutPostingService = {
       },
     });
     if (!pullout) throw new Error(NOT_FOUND);
-    await authorize(actor, "create", pullout.serviceCenterId);
+    await authorizeScPullout(actor, "create", pullout.serviceCenterId);
     if (!pullout.statusCode || !PULLOUT_ATTACHMENT_OPEN_CODES.includes(pullout.statusCode.code)) {
       throw new Error("Files can only be attached to an open pull-out");
     }
@@ -892,7 +912,7 @@ export const scPulloutPostingService = {
 
   async updateList(actor: PostingActor, input: ScPulloutListInput) {
     const current = await requirePullout(prisma, actor.tenantId, input.pulloutId);
-    await authorize(actor, "updateList", current.serviceCenterId);
+    await authorizeScPullout(actor, "updateList", current.serviceCenterId);
 
     const nextIds = input.serialNumberIds ?? current.lines.map((line) => line.serialNumberId);
     const nextSet = new Set(nextIds);
@@ -984,7 +1004,7 @@ export const scPulloutPostingService = {
           });
         }
 
-        await claimHeader(tx, {
+        await claimScPulloutHeader(tx, {
           id: fresh.id,
           tenantId: actor.tenantId,
           fromStatusCodeIds: fromIds,
@@ -1029,7 +1049,7 @@ export const scPulloutPostingService = {
   /** Send: FPO and DEF units go DIT and the pull-out ends In transit. */
   async finalize(actor: PostingActor, pulloutId: string) {
     const current = await requirePullout(prisma, actor.tenantId, pulloutId);
-    await authorize(actor, "finalize", current.serviceCenterId);
+    await authorizeScPullout(actor, "finalize", current.serviceCenterId);
     const preview = planPulloutFinalize(current);
     if (!preview.ok) throw new Error(preview.error);
     if (preview.idempotent) return { id: current.id };
@@ -1061,7 +1081,7 @@ export const scPulloutPostingService = {
             message: "Some serials are not ready to leave the service center",
           });
         }
-        await claimHeader(tx, {
+        await claimScPulloutHeader(tx, {
           id: pulloutId,
           tenantId: actor.tenantId,
           fromStatusCodeIds: [pendingLogisticsId],

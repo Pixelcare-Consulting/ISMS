@@ -436,6 +436,7 @@ model User {
   serviceCenterPulloutsCreated       ServiceCenterPullout[]        @relation("ServiceCenterPulloutCreatedBy")
   serviceCenterPulloutsScheduled     ServiceCenterPullout[]        @relation("ServiceCenterPulloutScheduledBy")
   serviceCenterPulloutDetailsDecided ServiceCenterPulloutDetail[]  @relation("ServiceCenterPulloutDetailDecidedBy")
+  serviceCenterPulloutDetailsSapDocLinked ServiceCenterPulloutDetail[] @relation("ServiceCenterPulloutDetailSapDocLinkedBy")
   serviceCenterPulloutAttachmentsUploaded ServiceCenterPulloutAttachment[] @relation("ServiceCenterPulloutAttachmentUploadedBy")
   branchDeliveriesScheduled          BranchDelivery[]              @relation("BranchDeliveryScheduledBy")
   branchTransfersScheduled           BranchTransfer[]              @relation("BranchTransferScheduledBy")
@@ -3811,6 +3812,7 @@ model ServiceCenterDelivery {
   statusCode            ReasonStatusCode?           @relation(fields: [statusCodeId], references: [id], onDelete: SetNull)
   backloads             ServiceBackload[]
   lines                 ServiceCenterDeliveryLine[]
+  redeliveredPulloutDetails ServiceCenterPulloutDetail[] @relation("ServiceCenterPulloutDetailRedelivery")
 
   @@unique([tenantId, deliveryNo])
   /// One ISMS delivery per SAP DR, so a repeated Check SAP never applies a DR twice.
@@ -3970,7 +3972,8 @@ model ServiceCenterReturnRequest {
 }
 
 /// Service center pull-out. Same flow as `BranchPullout` (request → TL approval → logistics
-/// list → Send), on the SC ledger. It ends at Send with the units DIT; nothing posts to SAP.
+/// list → Send), on the SC ledger. Send leaves the units DIT; nothing posts to SAP. Check SAP
+/// then finds the IT/Return SAP users made by hand (DIT → PO) and any redelivery DR.
 model ServiceCenterPullout {
   id                      String    @id @default(cuid())
   tenantId                String    @map("tenant_id")
@@ -4013,7 +4016,7 @@ model ServiceCenterPullout {
 }
 
 /// One unit on a service center pull-out. Mirrors `BranchPulloutLine` without the receiving
-/// and SAP columns: SC pull-outs end at Send.
+/// columns: SC pull-outs end at Send, and Check SAP follows them from there.
 model ServiceCenterPulloutDetail {
   id                String    @id @default(cuid())
   pulloutId         String    @map("pullout_id")
@@ -4027,12 +4030,25 @@ model ServiceCenterPulloutDetail {
   remarks           String?
   /// Pull-out reason. A defective unit is always the DEF reason, with problem descriptions saying why.
   reasonCodeId      String?   @map("reason_code_id")
+  /// The IT or Return Check SAP found for this sent unit (row UDF `U_ISMS_Pullout_Number`).
+  /// One SAP document can cover units from several pull-outs.
+  sapDocType        PulloutSapDocType? @map("sap_doc_type")
+  sapDocEntry       Int?      @map("sap_doc_entry")
+  sapDocNum         Int?      @map("sap_doc_num")
+  sapDocDate        DateTime? @map("sap_doc_date") @db.Date
+  sapDocLinkedAt    DateTime? @map("sap_doc_linked_at")
+  sapDocLinkedById  String?   @map("sap_doc_linked_by_id")
+  /// SC delivery made when SAP redelivered this pulled-out unit to the service center (a DR
+  /// copied from its Return, or carrying the pull-out number). The unit went PO → DIT.
+  redeliveryDeliveryId String? @map("redelivery_delivery_id")
 
   pullout                 ServiceCenterPullout                              @relation(fields: [pulloutId], references: [id], onDelete: Cascade)
   serialNumber            SerialNumber                                      @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
   priorStatusCode         ReasonStatusCode?                                 @relation("ScPulloutDetailPriorStatus", fields: [priorStatusCodeId], references: [id], onDelete: SetNull)
   decidedBy               User?                                             @relation("ServiceCenterPulloutDetailDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
   reasonCode              ReasonStatusCode?                                 @relation("ScPulloutDetailReason", fields: [reasonCodeId], references: [id], onDelete: SetNull)
+  sapDocLinkedBy          User?                                             @relation("ServiceCenterPulloutDetailSapDocLinkedBy", fields: [sapDocLinkedById], references: [id], onDelete: SetNull)
+  redeliveryDelivery      ServiceCenterDelivery?                            @relation("ServiceCenterPulloutDetailRedelivery", fields: [redeliveryDeliveryId], references: [id], onDelete: SetNull)
   classifications         ServiceCenterPulloutDetailClassification[]
   problemDescriptions     ServiceCenterPulloutDetailProblemDescription[]
   packingConditions       ServiceCenterPulloutDetailPackingCondition[]
@@ -4043,6 +4059,9 @@ model ServiceCenterPulloutDetail {
   @@index([priorStatusCodeId])
   @@index([decidedById])
   @@index([reasonCodeId])
+  @@index([sapDocLinkedById])
+  @@index([sapDocType, sapDocNum])
+  @@index([redeliveryDeliveryId])
   @@map("service_center_pullout_details")
 }
 

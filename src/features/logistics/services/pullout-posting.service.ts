@@ -93,7 +93,26 @@ export interface PulloutLineRedelivery {
   deliveryId: string;
   deliveryNo: string;
   drNo: string | null;
-  branchName: string;
+  /** The branch or service center the DR delivered to. */
+  placeName: string;
+}
+
+/** A line's stored IT/Return link, as the detail page shows it. Same columns on both ledgers. */
+export function pulloutLineSapDocumentView(line: {
+  sapDocType: PulloutSapDocType | null;
+  sapDocNum: number | null;
+  sapDocDate: Date | null;
+  sapDocLinkedAt: Date | null;
+  sapDocLinkedBy: { name: string | null } | null;
+}): PulloutLineSapDocument | null {
+  if (!line.sapDocType || line.sapDocNum == null) return null;
+  return {
+    type: line.sapDocType,
+    docNum: line.sapDocNum,
+    docDate: dateOnly(line.sapDocDate),
+    linkedAt: line.sapDocLinkedAt?.toISOString() ?? null,
+    linkedByName: displayName(line.sapDocLinkedBy?.name),
+  };
 }
 
 export interface PulloutCreateInput {
@@ -560,22 +579,13 @@ export const pulloutPostingService = {
         rejectedAt: line.rejectedAt?.toISOString() ?? null,
         rejectedByName: displayName(line.rejectedBy?.name),
         rejectionRemarks: line.rejectionRemarks,
-        sapDocument:
-          line.sapDocType && line.sapDocNum != null
-            ? {
-                type: line.sapDocType,
-                docNum: line.sapDocNum,
-                docDate: dateOnly(line.sapDocDate),
-                linkedAt: line.sapDocLinkedAt?.toISOString() ?? null,
-                linkedByName: displayName(line.sapDocLinkedBy?.name),
-              }
-            : null,
+        sapDocument: pulloutLineSapDocumentView(line),
         redelivery: line.redeliveryDelivery
           ? {
               deliveryId: line.redeliveryDelivery.id,
               deliveryNo: line.redeliveryDelivery.deliveryNo,
               drNo: line.redeliveryDelivery.drNo,
-              branchName: line.redeliveryDelivery.branch.name,
+              placeName: line.redeliveryDelivery.branch.name,
             }
           : null,
       })),

@@ -43,12 +43,18 @@ function scopeIds(serviceCenterIds: string[] | null, serviceCenterId?: string): 
 
 /**
  * A unit sent on an SC pull-out (`sci` = service_center_inventories). Sending ends the
- * pull-out with the unit still DIT on its SC row, so Service Center Inventory leaves it out,
- * as Branch Inventory does with `sentOnPulloutSql`. A row changed after the send (a later
- * delivery of the same serial, say) is not the sent unit any more and shows again.
+ * pull-out with the unit still DIT on its SC row, and Check SAP turns it PO once SAP shows it,
+ * so Service Center Inventory leaves both out, as Branch Inventory does with `sentOnPulloutSql`.
+ * A row changed after the send (a later delivery of the same serial, say) is not the sent unit
+ * any more and shows again.
  */
 function scSentOnPulloutSql(): Prisma.Sql {
-  return Prisma.sql`EXISTS (
+  return Prisma.sql`(EXISTS (
+    SELECT 1
+    FROM reason_status_codes pulled
+    WHERE pulled.id = sci.status_code_id
+      AND pulled.code = 'PO'
+  ) OR EXISTS (
     SELECT 1
     FROM service_center_pullout_details scpd
     INNER JOIN service_center_pullouts scp ON scp.id = scpd.pullout_id
@@ -59,8 +65,9 @@ function scSentOnPulloutSql(): Prisma.Sql {
       AND scp.service_center_id = sci.service_center_id
       AND psc.code = 'in_transit'
       AND isc.code = 'DIT'
+      AND scpd.redelivery_delivery_id IS NULL
       AND sci.updated_at <= scp.updated_at
-  )`;
+  ))`;
 }
 
 /** SC inventory ids of the units sent on a pull-out, for Prisma-built queries. */

@@ -76,7 +76,7 @@ function sentDetail(
   lines = [
     line("s1"),
     line("s2", RETURN_14402),
-    line("s3", RETURN_14402, { deliveryId: "d1", deliveryNo: "DLV-9", drNo: "168206", branchName: "Branch B" }),
+    line("s3", RETURN_14402, { deliveryId: "d1", deliveryNo: "DLV-9", drNo: "168206", placeName: "Branch B" }),
   ],
 ) {
   return {

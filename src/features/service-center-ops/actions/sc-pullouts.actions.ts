@@ -28,6 +28,7 @@ import {
   type ScPulloutListSort,
 } from "@/features/service-center-ops/repositories/sc-ops.repository";
 import { scPulloutPostingService } from "@/features/service-center-ops/services/sc-pullout-posting.service";
+import { checkScPulloutInSap } from "@/features/service-center-ops/services/sc-pullout-sap-check.service";
 import { resolveScIdsForUser } from "@/features/service-center-ops/services/sc-scope";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
@@ -35,7 +36,8 @@ import { prisma } from "@/lib/database/client";
 
 /**
  * Service center pull-outs. Same actions as branch pull-outs (`logistics.actions`), gated by
- * SC logistics permissions and SC area of responsibility. No Check SAP: the flow ends at Send.
+ * SC logistics permissions and SC area of responsibility. The flow ends at Send; Check SAP
+ * then follows the IT/Return and any redelivery DR, as on branch pull-outs.
  */
 
 const CREATE_PERMISSIONS = [SC_LOGISTICS_CREATE, SC_LOGISTICS_MANAGE] as const;
@@ -276,5 +278,22 @@ export async function releaseScPulloutAction(id: string): Promise<ActionResult> 
     return { success: true as const };
   } catch (error) {
     return actionError(error, "Failed to send the pull-out");
+  }
+}
+
+/**
+ * Looks up the IT/Return SAP users made for a sent SC pull-out (row UDF `ISMS_Pullout_Number`),
+ * links the units and marks them Pulled out, then follows any DR that redelivered them.
+ */
+export async function checkScPulloutSapAction(id: string) {
+  const session = await requirePermission(SC_LOGISTICS_MANAGE);
+  if (!id) return { error: "Choose a pull-out" };
+  try {
+    const result = await checkScPulloutInSap(actor(session), id);
+    revalidateScPullout(id);
+    if (result.redeliveries.length > 0) revalidatePath("/service-centers/deliveries");
+    return { success: true as const, result };
+  } catch (error) {
+    return actionError(error, "Failed to check SAP");
   }
 }

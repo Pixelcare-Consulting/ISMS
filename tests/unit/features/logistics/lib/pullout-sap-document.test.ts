@@ -160,25 +160,25 @@ describe("planPulloutLinks", () => {
 describe("planPulloutRedeliveries", () => {
   const base = {
     pulloutNo: "PLT-1",
-    pulloutBranchId: "b1",
+    pulloutPlaceId: "b1",
     pulledOut: [
       { serialNumberId: "s1", serialNo: "SN-1" },
       { serialNumberId: "s2", serialNo: "SN-2" },
     ],
     returnDocEntries: [12668],
-    branchIdBySapCode: new Map([["B002", "b2"]]),
+    placeIdBySapCode: new Map([["B002", "b2"]]),
   };
 
   it("follows a DR copied from the pull-out's Return to the pull-out's branch when it names none", () => {
     const copied = dr({ lines: [docLine({ pulloutRef: "", baseType: 16, baseEntry: 12668, serialNos: ["sn-1"] })] });
     const plan = planPulloutRedeliveries({ ...base, redeliveries: [copied] });
-    expect(plan).toEqual({ deliveries: [{ dr: copied, branchId: "b1", serialNumberIds: ["s1"] }], skipped: [] });
+    expect(plan).toEqual({ deliveries: [{ dr: copied, placeId: "b1", serialNumberIds: ["s1"] }], skipped: [] });
   });
 
   it("follows a DR carrying the pull-out number to the branch it names", () => {
     const tagged = dr({ lines: [docLine({ branchCode: "B002", serialNos: ["SN-2"] })] });
     expect(planPulloutRedeliveries({ ...base, redeliveries: [tagged] }).deliveries).toEqual([
-      { dr: tagged, branchId: "b2", serialNumberIds: ["s2"] },
+      { dr: tagged, placeId: "b2", serialNumberIds: ["s2"] },
     ]);
   });
 
@@ -216,8 +216,8 @@ describe("planPulloutRedeliveries", () => {
     const second = dr({ docEntry: 950, docDate: "2026-11-14", lines: [docLine({ serialNos: ["SN-1", "SN-2"] })] });
     const plan = planPulloutRedeliveries({ ...base, redeliveries: [second, first] });
     expect(plan.deliveries).toEqual([
-      { dr: first, branchId: "b1", serialNumberIds: ["s1"] },
-      { dr: second, branchId: "b1", serialNumberIds: ["s2"] },
+      { dr: first, placeId: "b1", serialNumberIds: ["s1"] },
+      { dr: second, placeId: "b1", serialNumberIds: ["s2"] },
     ]);
   });
 });
