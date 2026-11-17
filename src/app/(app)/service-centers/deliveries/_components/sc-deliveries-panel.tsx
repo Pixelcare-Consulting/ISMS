@@ -1,202 +1,125 @@
 "use client";
 
 import { createColumnHelper } from "@tanstack/react-table";
-import { RefreshCw } from "lucide-react";
-import { useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useMemo, useState } from "react";
 
+import { formatInventoryDrDate } from "@/app/(app)/inventory/_components/inventory-list-format";
+import { CompactProgressRail } from "@/app/(app)/logistics/_components/compact-progress-rail";
+import { buildDeliveryTracker } from "@/app/(app)/logistics/_components/delivery-tracker";
+import { DrNoText } from "@/app/(app)/logistics/_components/dr-no-text";
 import {
-  acceptScDeliveryAction,
-  checkScOrdersInSapAction,
-  listScDeliveriesAction,
-} from "@/features/service-center-ops/actions/sc-logistics.actions";
-import { summarizeScOrderSapCheck } from "@/features/service-center-ordering/lib/sc-order-sap-check";
-import { searchSerialsForScStockInAction } from "@/features/service-center-ops/actions/sc-inventory.actions";
-import type { ScLogisticsActionCapabilities } from "@/features/service-center-ops/constants/sc-permissions";
-import { useClientTablePagination } from "@/components/data-table";
+  LogisticsListViewSwitch,
+  useLogisticsListProgressView,
+} from "@/app/(app)/logistics/_components/logistics-list-view-switch";
+import { buildLogisticsPageHref } from "@/app/(app)/logistics/_components/logistics-paths";
+import { ScCheckSapNowButton } from "@/app/(app)/service-centers/deliveries/_components/sc-check-sap-now-button";
+import {
+  parseTablePageSize,
+  type TablePageSize,
+} from "@/components/data-table/table-page-size";
+import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
+import { Button } from "@/components/ui/button";
+import type { WorkflowStatusOption } from "@/features/logistics/constants/workflow-codes";
+import { DR_DATE_LABEL, DR_NO_LABEL } from "@/features/logistics/lib/sap-doc-number";
+import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
+import type { listScDeliveriesAction } from "@/features/service-center-ops/actions/sc-logistics.actions";
+import type { ScDeliveryListSort } from "@/features/service-center-ops/repositories/sc-ops.repository";
 import {
   DataTable,
-  useClientTableSort,
+  nextTableSort,
   type DataTableColumn,
   type DataTableFeatures,
 } from "@/lib/data-table";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { SearchableSelect } from "@/components/ui/searchable-select";
-import { SearchableMultiSelect } from "@/features/aors/components/searchable-multi-select";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
-type DeliveryRow = Awaited<
-  ReturnType<typeof listScDeliveriesAction>
->["items"][number];
+type DeliveryList = Awaited<ReturnType<typeof listScDeliveriesAction>>;
+type DeliveryRow = DeliveryList["items"][number];
+
+export const SC_DELIVERIES_PATH = "/service-centers/deliveries";
 
 const deliveryColumn = createColumnHelper<DataTableFeatures, DeliveryRow>();
 
-/** A delivery Check SAP made from a SAP DR carries the DR's serials. */
-function isFromSap(row: DeliveryRow): boolean {
-  return row.lines.length > 0;
+/** A delivery without a status code reads as Pending, the status Check SAP gives new ones. */
+function rowStatus(row: DeliveryRow) {
+  return {
+    code: row.statusCode?.code ?? "pending",
+    name: row.statusCode?.name ?? "Pending",
+    color: row.statusCode?.color ?? null,
+  };
 }
 
-function openSapLines(row: DeliveryRow) {
-  return row.lines.filter((line) => line.acceptedAt === null);
-}
-
-function drLabel(row: DeliveryRow): string {
-  if (!row.sapDocNo) return "—";
-  return row.sapDocDate
-    ? `${row.sapDocNo} · ${new Date(row.sapDocDate).toLocaleDateString("en-PH", { timeZone: "UTC" })}`
-    : row.sapDocNo;
+function receivedLabel(row: DeliveryRow): string {
+  if (row.lines.length === 0) return "—";
+  const received = row.lines.filter((line) => line.acceptedAt !== null).length;
+  return `${received} / ${row.lines.length}`;
 }
 
 export function ScDeliveriesPanel({
-  items,
-  capabilities,
+  deliveries,
+  workflowStatuses,
+  canCheckSap,
+  initialSort = "",
+  initialSortDir = "desc",
 }: {
-  items: DeliveryRow[];
-  capabilities: ScLogisticsActionCapabilities;
+  deliveries: DeliveryList;
+  workflowStatuses: readonly WorkflowStatusOption[];
+  canCheckSap: boolean;
+  initialSort?: string;
+  initialSortDir?: string;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const [progressView] = useLogisticsListProgressView();
   const [query, setQuery] = useState("");
-  const [pending, startTransition] = useTransition();
-  const [accepting, setAccepting] = useState<DeliveryRow | null>(null);
-  const [acceptConfirmOpen, setAcceptConfirmOpen] = useState(false);
-  const [serialQuery, setSerialQuery] = useState("");
-  const [serialOptions, setSerialOptions] = useState<
-    { id: string; label: string }[]
-  >([]);
-  const [selectedSerialIds, setSelectedSerialIds] = useState<string[]>([]);
-  const [locationId, setLocationId] = useState("");
+  const pageSize = parseTablePageSize(deliveries.limit);
+  const sort = (searchParams.get("sort") ?? initialSort) || "";
+  const sortDir = (searchParams.get("dir") ?? initialSortDir) === "asc" ? "asc" : "desc";
+
+  function hrefFor(page: number, limit: number = pageSize, nextSort = sort, nextDir = sortDir) {
+    return buildLogisticsPageHref(
+      SC_DELIVERIES_PATH,
+      page,
+      limit,
+      nextSort,
+      nextSort ? nextDir : undefined,
+    );
+  }
+
+  function toggleSort(field: ScDeliveryListSort) {
+    const next = nextTableSort(field, sort, sortDir);
+    router.push(hrefFor(1, pageSize, next.sort, next.dir));
+  }
 
   const filtered = useMemo(
     () =>
-      items.filter((row) =>
+      deliveries.items.filter((row) =>
         matchesTableSearch(query, [
           row.deliveryNo,
-          row.sapDocNo ?? "",
+          row.sapDocNo,
           row.serviceCenter.name,
-          row.order?.orderNumber ?? "",
-          row.statusCode?.code ?? "",
+          row.order?.orderNumber,
+          row.statusCode?.name,
+          row.statusCode?.code,
         ]),
       ),
-    [items, query],
+    [deliveries.items, query],
   );
 
-  const sort = useClientTableSort(filtered, {
-    delivery: (row) => row.deliveryNo,
-    center: (row) => row.serviceCenter.name,
-    status: (row) => row.statusCode?.code ?? "",
-  });
-  const {
-    page,
-    setPage,
-    pageSize,
-    setPageSize,
-    total,
-    totalPages,
-    pageItems,
-    indexOffset,
-  } = useClientTablePagination(sort.sorted, {
-    resetKey: `${query}:${sort.sortKey}:${sort.sortDir}`,
-  });
+  const suggestions = useMemo(
+    () =>
+      uniqueSearchSuggestions(
+        deliveries.items.map((row) => row.deliveryNo),
+        deliveries.items.map((row) => row.sapDocNo),
+        deliveries.items.map((row) => row.serviceCenter.name),
+        deliveries.items.map((row) => row.order?.orderNumber),
+        deliveries.items.map((row) => row.statusCode?.name),
+      ),
+    [deliveries.items],
+  );
 
-  function openAccept(row: DeliveryRow) {
-    setAccepting(row);
-    // A SAP delivery starts with every unit on the DR that is not accepted yet.
-    setSelectedSerialIds(openSapLines(row).map((line) => line.serialNumberId));
-    setLocationId("");
-    setSerialQuery("");
-    setSerialOptions([]);
-  }
-
-  function searchSerials(value: string) {
-    setSerialQuery(value);
-    if (value.trim().length < 2) {
-      setSerialOptions([]);
-      return;
-    }
-    startTransition(async () => {
-      const rows = await searchSerialsForScStockInAction(value);
-      setSerialOptions(
-        rows.map((r) => ({
-          id: r.id,
-          label: `${r.serialNo} · ${r.model.skuCode}`,
-        })),
-      );
-    });
-  }
-
-  function submitAccept() {
-    if (!accepting) return;
-    if (selectedSerialIds.length === 0) {
-      toast.error("Select at least one serial");
-      return;
-    }
-    if (
-      isFromSap(accepting) &&
-      !accepting.serviceCenterLocation &&
-      !locationId
-    ) {
-      return;
-    }
-    setAcceptConfirmOpen(true);
-  }
-
-  function confirmAccept() {
-    if (!accepting) return;
-    const deliveryId = accepting.id;
-    const serialNumberIds = selectedSerialIds;
-    const serviceCenterLocationId = locationId || null;
-    setAcceptConfirmOpen(false);
-    startTransition(async () => {
-      const result = await acceptScDeliveryAction(deliveryId, {
-        serialNumberIds,
-        serviceCenterLocationId,
-      });
-      if (result.error) {
-        toast.error(result.error);
-        return;
-      }
-      toast.success(`Accepted ${result.movedCount} serial(s) as STK`);
-      setAccepting(null);
-      router.refresh();
-    });
-  }
-
-  /** DRs SAP users copied from approved SC orders' Sales Orders become deliveries here. */
-  function checkSap() {
-    startTransition(async () => {
-      const result = await checkScOrdersInSapAction();
-      if ("error" in result) {
-        toast.error("Could not check SAP", { description: result.error });
-        return;
-      }
-      const summary = summarizeScOrderSapCheck(result);
-      toast[summary.tone](summary.title, { description: summary.description });
-      router.refresh();
-    });
-  }
-
+  const indexOffset = (deliveries.page - 1) * deliveries.limit;
   const columns = useMemo(() => {
     const cols: DataTableColumn<DeliveryRow>[] = [
       deliveryColumn.display({
@@ -207,233 +130,130 @@ export function ScDeliveriesPanel({
         meta: { className: "text-center tabular-nums text-muted-foreground" },
       }),
       deliveryColumn.accessor((row) => row.deliveryNo, {
-        id: "delivery",
-        header: "Delivery",
+        id: "deliveryNo",
+        header: "No.",
         enableSorting: true,
-        meta: { className: "font-medium" },
+        cell: ({ row }) => (
+          <Link
+            href={`${SC_DELIVERIES_PATH}/${row.original.id}`}
+            className="font-medium hover:underline"
+          >
+            {row.original.deliveryNo}
+          </Link>
+        ),
       }),
       deliveryColumn.display({
-        id: "dr",
-        header: "DR no.",
+        id: "progress",
+        header: "Progress",
         enableSorting: false,
-        cell: ({ row }) => drLabel(row.original),
-        meta: { className: "tabular-nums" },
+        cell: ({ row }) => (
+          <CompactProgressRail
+            ariaLabel={`${row.original.deliveryNo} progress`}
+            items={buildDeliveryTracker(rowStatus(row.original), [], workflowStatuses)}
+          />
+        ),
+        meta: { className: "w-52 min-w-52" },
+      }),
+      deliveryColumn.accessor((row) => row.sapDocNo ?? "", {
+        id: "drNo",
+        header: DR_NO_LABEL,
+        enableSorting: false,
+        cell: ({ row }) => <DrNoText value={row.original.sapDocNo} />,
+      }),
+      deliveryColumn.accessor((row) => row.sapDocDate ?? "", {
+        id: "drDate",
+        header: DR_DATE_LABEL,
+        enableSorting: false,
+        cell: ({ row }) => formatInventoryDrDate(row.original.sapDocDate),
+      }),
+      deliveryColumn.accessor((row) => row.order?.orderNumber ?? "", {
+        id: "orderNumber",
+        header: "Order",
+        enableSorting: true,
+        cell: ({ row }) => row.original.order?.orderNumber ?? "—",
       }),
       deliveryColumn.accessor((row) => row.serviceCenter.name, {
-        id: "center",
-        header: "Center",
+        id: "serviceCenter",
+        header: "Service center",
         enableSorting: true,
-      }),
-      deliveryColumn.display({
-        id: "order",
-        header: "Order",
-        enableSorting: false,
-        cell: ({ row }) => row.original.order?.orderNumber ?? "—",
       }),
       deliveryColumn.display({
         id: "status",
         header: "Status",
         enableSorting: true,
-        cell: ({ row }) => (
-          <Badge variant="secondary">{row.original.statusCode?.code ?? "—"}</Badge>
-        ),
+        cell: ({ row }) => {
+          const status = rowStatus(row.original);
+          return <StatusCodeBadge code={status.code} name={status.name} color={status.color} />;
+        },
       }),
       deliveryColumn.display({
-        id: "serials",
-        header: "Serials",
+        id: "received",
+        header: "Received",
         enableSorting: false,
-        // A SAP delivery shows accepted of shipped; an older one, what was received.
-        cell: ({ row }) =>
-          isFromSap(row.original)
-            ? `${row.original.lines.length - openSapLines(row.original).length} / ${row.original.lines.length} accepted`
-            : row.original._count.backloads,
+        cell: ({ row }) => receivedLabel(row.original),
         meta: { className: "tabular-nums" },
       }),
       deliveryColumn.display({
         id: "actions",
         header: "Actions",
         enableSorting: false,
-        cell: ({ row }) => {
-          const isAccepted = row.original.statusCode?.code === "accepted";
-          return capabilities.canAcceptDelivery && !isAccepted ? (
-            <Button size="sm" disabled={pending} onClick={() => openAccept(row.original)}>
-              Accept
-            </Button>
-          ) : null;
-        },
+        cell: ({ row }) => (
+          <Button size="sm" variant="outline" asChild>
+            <Link href={`${SC_DELIVERIES_PATH}/${row.original.id}`}>Open</Link>
+          </Button>
+        ),
       }),
     ];
-    return cols;
-  }, [capabilities.canAcceptDelivery, indexOffset, pending]);
+    if (!progressView) return cols.filter((column) => column.id !== "progress");
+    const progressIds = new Set([
+      "deliveryNo",
+      "progress",
+      "orderNumber",
+      "serviceCenter",
+      "status",
+      "actions",
+    ]);
+    return cols.filter((column) => column.id != null && progressIds.has(column.id));
+  }, [indexOffset, progressView, workflowStatuses]);
 
   return (
-    <div className="space-y-4">
-      <DataTable
-        data={pageItems}
-        columns={columns}
-        getRowId={(row) => row.id}
-        manualSorting
-        manualPagination
-        enableSorting
-        sorting={{
-          sortKey: sort.sortKey,
-          sortDir: sort.sortDir,
-          onSort: sort.toggleSort,
-        }}
-        stickyHeader
-        search={{
-          value: query,
-          onChange: setQuery,
-          placeholder: "Search delivery or center…",
-        }}
-        toolbarActions={
-          capabilities.canCheckSap ? (
-            <Button type="button" variant="outline" disabled={pending} onClick={checkSap}>
-              <RefreshCw className={`mr-1 size-4 ${pending ? "animate-spin" : ""}`} aria-hidden />
-              Check SAP now
-            </Button>
-          ) : null
-        }
-        empty={pageItems.length === 0}
-        emptyMessage={
-          items.length === 0
-            ? "No service center deliveries yet. Check SAP now adds the DRs SAP copied from approved SC orders."
-            : "No deliveries match your search."
-        }
-        pageSize={{ value: pageSize, onChange: setPageSize }}
-        pagination={{
-          total,
-          page,
-          totalPages,
-          itemLabel: "delivery",
-          onPageChange: setPage,
-        }}
-      />
-
-      <Sheet
-        open={Boolean(accepting)}
-        onOpenChange={(open) => {
-          if (!open) {
-            setAccepting(null);
-            setAcceptConfirmOpen(false);
-          }
-        }}
-      >
-        <SheetContent className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
-          <SheetHeader className="border-b px-4 py-4 text-left">
-            <SheetTitle>Accept delivery</SheetTitle>
-            <SheetDescription>
-              {accepting && isFromSap(accepting)
-                ? "Units on the SAP DR. The ones you accept become STK at the service center."
-                : "Supply serials to receive. Each becomes STK inventory at the delivery location."}
-            </SheetDescription>
-          </SheetHeader>
-          <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
-            <p className="text-sm text-muted-foreground">
-              {accepting?.deliveryNo}
-              {accepting?.sapDocNo ? ` · DR ${accepting.sapDocNo}` : ""} · {accepting?.serviceCenter.name}
-            </p>
-            {accepting && isFromSap(accepting) ? (
-              <>
-                {accepting.serviceCenterLocation ? (
-                  <p className="text-sm">
-                    Location: {accepting.serviceCenterLocation.code} · {accepting.serviceCenterLocation.name}
-                  </p>
-                ) : (
-                  <SearchableSelect
-                    label="Receiving location"
-                    className="w-full"
-                    options={accepting.serviceCenter.locations.map((location) => ({
-                      id: location.id,
-                      label: location.name,
-                      description: location.code,
-                    }))}
-                    value={locationId}
-                    onChange={setLocationId}
-                    placeholder="Select location…"
-                    searchPlaceholder="Search locations…"
-                    emptyMessage="This service center has no locations."
-                    disabled={pending}
-                  />
-                )}
-                <SearchableMultiSelect
-                  label="Units to accept"
-                  options={openSapLines(accepting).map((line) => ({
-                    id: line.serialNumberId,
-                    label: `${line.serialNumber.serialNo} · ${line.serialNumber.model.skuCode}`,
-                  }))}
-                  selectedIds={selectedSerialIds}
-                  onChange={setSelectedSerialIds}
-                  placeholder="Select units…"
-                  searchPlaceholder="Filter serials…"
-                  emptyMessage="Every unit on this DR is accepted."
-                  disabled={pending}
-                />
-              </>
-            ) : (
-              <>
-                <div className="space-y-2">
-                  <Label>Search serials</Label>
-                  <Input
-                    value={serialQuery}
-                    onChange={(e) => searchSerials(e.target.value)}
-                    placeholder="Type at least 2 characters…"
-                    disabled={pending}
-                  />
-                </div>
-                <SearchableMultiSelect
-                  label="Serials to receive"
-                  options={serialOptions}
-                  selectedIds={selectedSerialIds}
-                  onChange={setSelectedSerialIds}
-                  placeholder="Select serials…"
-                  searchPlaceholder="Filter…"
-                  emptyMessage="Search to load serials."
-                  disabled={pending}
-                />
-              </>
-            )}
-          </div>
-          <SheetFooter className="border-t">
-            <Button
-              variant="outline"
-              onClick={() => setAccepting(null)}
-              disabled={pending}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={submitAccept}
-              disabled={
-                pending ||
-                selectedSerialIds.length === 0 ||
-                Boolean(accepting && isFromSap(accepting) && !accepting.serviceCenterLocation && !locationId)
-              }
-            >
-              {pending ? "Saving…" : "Accept & stock in"}
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
-      <AlertDialog
-        open={acceptConfirmOpen}
-        onOpenChange={(open) => {
-          if (!open) setAcceptConfirmOpen(false);
-        }}
-      >
-        <AlertDialogContent className="z-60" overlayClassName="z-60">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Accept this delivery?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to accept this delivery?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>No</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmAccept}>Yes</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+    <DataTable
+      data={filtered}
+      columns={columns}
+      getRowId={(row) => row.id}
+      manualSorting
+      manualPagination
+      enableSorting
+      sorting={{
+        sortKey: sort,
+        sortDir,
+        onSort: (columnId) => toggleSort(columnId as ScDeliveryListSort),
+      }}
+      stickyHeader
+      search={{ value: query, onChange: setQuery, placeholder: "Search deliveries…", suggestions }}
+      toolbarActions={
+        <>
+          {canCheckSap ? <ScCheckSapNowButton /> : null}
+          <LogisticsListViewSwitch />
+        </>
+      }
+      pagination={{
+        total: deliveries.total,
+        page: deliveries.page,
+        totalPages: deliveries.totalPages,
+        itemLabel: "delivery",
+        buildHref: (page) => hrefFor(page),
+      }}
+      pageSize={{
+        value: pageSize,
+        onChange: (limit: TablePageSize) => router.push(hrefFor(1, limit)),
+      }}
+      empty={filtered.length === 0}
+      emptyMessage={
+        query.trim()
+          ? "No results match your search."
+          : "No service center deliveries yet. Check SAP now adds the DRs SAP copied from approved SC orders."
+      }
+    />
   );
 }

@@ -19,7 +19,15 @@ import {
   SC_LOGISTICS_VIEW,
 } from "@/features/service-center-ops/constants/sc-permissions";
 import { checkScOrdersInSap } from "@/features/service-center-ordering/services/sc-order-sap-check.service";
-import { scOpsRepository } from "@/features/service-center-ops/repositories/sc-ops.repository";
+import {
+  SC_DELIVERY_LIST_SORTS,
+  scOpsRepository,
+} from "@/features/service-center-ops/repositories/sc-ops.repository";
+import {
+  scDeliveryHistory,
+  scDeliveryReceiptLines,
+} from "@/features/service-center-ops/lib/sc-delivery-detail";
+import type { LogisticsKpis } from "@/features/logistics/actions/logistics.actions";
 import {
   blockedPlacementMessage,
   scDeliveryStatusAfterAccept,
@@ -63,6 +71,8 @@ export async function checkScOrdersInSapAction() {
 export async function listScDeliveriesAction(input?: {
   page?: number;
   limit?: number;
+  sort?: string;
+  sortDir?: string;
 }) {
   const session = await requireAnyPermission([
     SC_LOGISTICS_VIEW,
@@ -74,10 +84,124 @@ export async function listScDeliveriesAction(input?: {
     session.user.id,
     session.user.permissions,
   );
-  return scOpsRepository.listDeliveries(session.user.tenantId, scopedIds, {
-    page: input?.page,
-    limit: parseTablePageSize(input?.limit),
-  });
+  const field = SC_DELIVERY_LIST_SORTS.find((sort) => sort === input?.sort);
+  return scOpsRepository.listDeliveries(
+    session.user.tenantId,
+    scopedIds,
+    { page: input?.page, limit: parseTablePageSize(input?.limit) },
+    { field, dir: input?.sortDir === "asc" ? "asc" : "desc" },
+  );
+}
+
+const SC_LOGISTICS_PAGE_PERMISSIONS = [SC_LOGISTICS_VIEW, SC_LOGISTICS_CREATE, SC_LOGISTICS_MANAGE];
+
+/** Deliveries per Delivery workflow status, for the KPI strip (same shape as branch deliveries). */
+export async function getScDeliveryKpisAction(): Promise<LogisticsKpis> {
+  const session = await requireAnyPermission(SC_LOGISTICS_PAGE_PERMISSIONS);
+  const tenantId = session.user.tenantId;
+  const scopedIds = await resolveScIdsForUser(tenantId, session.user.id, session.user.permissions);
+  const [codes, groups] = await Promise.all([
+    reasonStatusService.listActiveCodes(tenantId, "delivery_workflow"),
+    scOpsRepository.countDeliveriesByStatus(tenantId, scopedIds),
+  ]);
+  const countByCodeId = new Map(groups.map((group) => [group.statusCodeId, group._count.id]));
+  return {
+    total: groups.reduce((sum, group) => sum + group._count.id, 0),
+    statuses: codes.map((code) => ({
+      code: code.code,
+      name: code.name,
+      color: code.color,
+      sortOrder: code.sortOrder,
+      count: countByCodeId.get(code.id) ?? 0,
+    })),
+  };
+}
+
+type ScopedDelivery =
+  | { error: string }
+  | { found: NonNullable<Awaited<ReturnType<typeof scOpsRepository.findDeliveryDetail>>> };
+
+async function loadScopedDelivery(deliveryId: string): Promise<ScopedDelivery> {
+  const session = await requireAnyPermission(SC_LOGISTICS_PAGE_PERMISSIONS);
+  const found = await scOpsRepository.findDeliveryDetail(session.user.tenantId, deliveryId);
+  if (!found) return { error: "Delivery not found" };
+  const scopedIds = await resolveScIdsForUser(
+    session.user.tenantId,
+    session.user.id,
+    session.user.permissions,
+  );
+  try {
+    assertScInScope(found.delivery.serviceCenterId, scopedIds);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Out of scope" };
+  }
+  return { found };
+}
+
+/** One SC delivery for its detail page: DR, order, units, and progress history. */
+export async function getScDeliveryDetailAction(deliveryId: string) {
+  const loaded = await loadScopedDelivery(deliveryId);
+  if ("error" in loaded) return { error: loaded.error };
+  const { delivery, audits } = loaded.found;
+  const units = delivery.lines.map((line) => ({
+    serialNumberId: line.serialNumberId,
+    serialNo: line.serialNumber.serialNo,
+    skuCode: line.serialNumber.model.skuCode,
+    modelName: line.serialNumber.model.name,
+    acceptedAt: line.acceptedAt,
+  }));
+  return {
+    success: true as const,
+    detail: {
+      id: delivery.id,
+      deliveryNo: delivery.deliveryNo,
+      serviceCenterName: delivery.serviceCenter.name,
+      locations: delivery.serviceCenter.locations,
+      location: delivery.serviceCenterLocation,
+      status: delivery.statusCode ?? { code: "pending", name: "Pending", color: null },
+      orderNumber: delivery.order?.orderNumber ?? null,
+      sapSoNum: delivery.order?.sapDocNum ?? null,
+      drNo: delivery.sapDocNo,
+      drDate: delivery.sapDocDate?.toISOString() ?? null,
+      units: units.map((unit) => ({ ...unit, acceptedAt: unit.acceptedAt?.toISOString() ?? null })),
+      history: scDeliveryHistory({
+        deliveryId: delivery.id,
+        createdAt: delivery.createdAt,
+        orderApprovedAt: delivery.order?.approvalLevels[0]?.approvedAt ?? null,
+        audits: audits.map((audit) => ({
+          id: audit.id,
+          action: audit.action,
+          createdAt: audit.createdAt,
+          userName: audit.user?.name ?? null,
+        })),
+      }),
+    },
+  };
+}
+
+export type ScDeliveryDetail = Extract<
+  Awaited<ReturnType<typeof getScDeliveryDetailAction>>,
+  { success: true }
+>["detail"];
+
+/** The DR's units for the branch receive dialog. */
+export async function listScDeliveryReceiptLinesAction(deliveryId: string) {
+  const loaded = await loadScopedDelivery(deliveryId);
+  if ("error" in loaded) return { error: loaded.error };
+  const { delivery } = loaded.found;
+  return {
+    success: true as const,
+    status: delivery.statusCode?.code ?? "pending",
+    lines: scDeliveryReceiptLines(
+      delivery.lines.map((line) => ({
+        serialNumberId: line.serialNumberId,
+        serialNo: line.serialNumber.serialNo,
+        skuCode: line.serialNumber.model.skuCode,
+        modelName: line.serialNumber.model.name,
+        acceptedAt: line.acceptedAt,
+      })),
+    ),
+  };
 }
 
 const acceptDeliverySchema = z.object({
@@ -163,6 +287,7 @@ export async function acceptScDeliveryAction(
   ]);
 
   let heldForReturn: Awaited<ReturnType<typeof holdSpecialOrderUnitForReturn>> = null;
+  let outcome: "accepted" | "partial" = "accepted";
   try {
     await prisma.$transaction(async (tx) => {
       await lockSerialNumbers(tx, serialNumberIds);
@@ -207,7 +332,8 @@ export async function acceptScDeliveryAction(
           where: { deliveryId },
           select: { acceptedAt: true },
         });
-        statusCodeId = scDeliveryStatusAfterAccept(lines) === "accepted" ? acceptedCodeId : partialCodeId;
+        outcome = scDeliveryStatusAfterAccept(lines);
+        statusCodeId = outcome === "accepted" ? acceptedCodeId : partialCodeId;
       }
       await tx.serviceCenterDelivery.update({
         where: { id: deliveryId },
@@ -257,5 +383,6 @@ export async function acceptScDeliveryAction(
   return {
     success: true as const,
     movedCount: serialNumberIds.length,
+    status: outcome as "accepted" | "partial",
   };
 }

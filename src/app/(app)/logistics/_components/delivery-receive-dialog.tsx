@@ -45,6 +45,7 @@ import {
 export interface ReceiveTarget {
   id: string;
   deliveryNo: string;
+  /** Where the units go: the branch, or the service center for an SC delivery. */
   branchName: string;
   /** SO deliveries go back on a return request, ITR ones on a transfer request. */
   sapDocType?: OrderSapDocType | null;
@@ -126,12 +127,13 @@ type LoadState =
 
 function receiveConfirmCopy(
   kind: "accept" | "reject",
-  sapDocType: ReceiveTarget["sapDocType"],
+  target: ReceiveTarget,
 ): { question: string; detail: string } {
+  const sapDocType = target.sapDocType;
   if (kind === "accept") {
     return {
       question: "Are you sure you want to receive this delivery?",
-      detail: "The ticked units move into this branch's stock.",
+      detail: `The ticked units move into ${target.branchName} stock.`,
     };
   }
   return {
@@ -237,7 +239,7 @@ function ReceiveBody({
       toast.success(
         result.status === "partial"
           ? `Received ${serialCount(result.movedCount)}. The rest stay in transit.`
-          : `Received ${serialCount(result.movedCount)} into branch stock.`,
+          : `Received ${serialCount(result.movedCount)} into ${target.branchName} stock.`,
       );
       onReceived();
       onClose();
@@ -266,7 +268,7 @@ function ReceiveBody({
     });
   }
 
-  const confirmCopy = confirmKind ? receiveConfirmCopy(confirmKind, target.sapDocType) : null;
+  const confirmCopy = confirmKind ? receiveConfirmCopy(confirmKind, target) : null;
   const confirmDialog = (
     <AlertDialog
       open={confirmKind !== null}

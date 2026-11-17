@@ -91,7 +91,7 @@ export const SC_DELIVERIES_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "What this page is for",
       description:
-        "Select Check SAP now to bring in the DRs SAP users copied from approved SC orders' Sales Orders; each one becomes a delivery here with its serials DIT. Accept lists the DR's serials; the ones you accept become STK at the service center location, and the delivery stays partly accepted until every unit is in. If the order named no location, Accept asks for one.",
+        "Select Check SAP now to bring in the DRs SAP users copied from approved SC orders' Sales Orders; each one becomes a delivery here with its serials DIT. Open a delivery to see its progress, units and history, then select Receive: the units you tick become STK at the service center location, and the delivery stays partly received until every unit is in. If the order named no location and the center has several, choose the receiving location on the delivery first.",
     },
   ],
 };

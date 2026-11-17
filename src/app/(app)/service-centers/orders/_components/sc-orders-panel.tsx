@@ -37,12 +37,24 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { LoadingModal } from "@/components/ui/loading-modal";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
 type OrderRow = Awaited<ReturnType<typeof listScOrdersAction>>["items"][number];
 type CenterOption = Awaited<ReturnType<typeof listScCentersForOpsAction>>[number];
 
 const orderColumn = createColumnHelper<DataTableFeatures, OrderRow>();
+
+const SC_ORDER_APPROVE_FEED = [
+  { atSecond: 0, label: "Recording approval", hint: "Saving your decision to the order." },
+  { atSecond: 1, label: "Posting the Sales Order to SAP", hint: "SAP can take a few seconds." },
+  { atSecond: 3, label: "Refreshing orders list" },
+];
+
+const SC_ORDER_REJECT_FEED = [
+  { atSecond: 0, label: "Recording rejection", hint: "Saving the order status." },
+  { atSecond: 1, label: "Refreshing orders list" },
+];
 
 
 export function ScOrdersPanel({
@@ -63,6 +75,7 @@ export function ScOrdersPanel({
   // Like branch orders: the setup popup opens over this list, and only Continue opens the
   // create page.
   const [setupOpen, setSetupOpen] = useState(false);
+  const [processingAction, setProcessingAction] = useState<"approve" | "reject" | null>(null);
   const [orderConfirm, setOrderConfirm] = useState<{
     orderId: string;
     action: "approve" | "reject";
@@ -101,36 +114,37 @@ export function ScOrdersPanel({
     resetKey: `${query}:${sort.sortKey}:${sort.sortDir}`,
   });
 
-  function run<T extends { error?: string; success?: true }>(
-    action: () => Promise<T>,
-    ok: string | ((result: T) => string),
-  ) {
-    startTransition(async () => {
-      const result = await action();
-      if (result.error) {
-        toast.error(result.error);
-        return;
-      }
-      toast.success(typeof ok === "function" ? ok(result) : ok);
-      router.refresh();
-    });
-  }
-
   function confirmOrderDecision() {
     const decision = orderConfirm;
     if (!decision) return;
     setOrderConfirm(null);
-    if (decision.action === "approve") {
-      run(
-        () => approveScOrderAction(decision.orderId),
-        (result) =>
-          "sapDocNum" in result && result.sapDocNum != null
-            ? `Approved. SO ${result.sapDocNum} created in SAP`
-            : "Order approved and posted to SAP",
-      );
-      return;
-    }
-    run(() => rejectScOrderAction(decision.orderId), "Order rejected");
+    setProcessingAction(decision.action);
+    startTransition(async () => {
+      try {
+        if (decision.action === "approve") {
+          const result = await approveScOrderAction(decision.orderId);
+          if ("error" in result) {
+            toast.error(result.error);
+            return;
+          }
+          toast.success(
+            result.sapDocNum != null
+              ? `Approved. SO ${result.sapDocNum} created in SAP`
+              : "Order approved and posted to SAP",
+          );
+        } else {
+          const result = await rejectScOrderAction(decision.orderId);
+          if ("error" in result) {
+            toast.error(result.error);
+            return;
+          }
+          toast.success("Order rejected");
+        }
+        router.refresh();
+      } finally {
+        setProcessingAction(null);
+      }
+    });
   }
 
   const columns = useMemo(() => {
@@ -329,6 +343,12 @@ export function ScOrdersPanel({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <LoadingModal
+        open={pending && processingAction !== null}
+        title={processingAction === "reject" ? "Rejecting order" : "Processing approval"}
+        description="Please wait while the order is saved."
+        feedItems={processingAction === "reject" ? SC_ORDER_REJECT_FEED : SC_ORDER_APPROVE_FEED}
+      />
     </div>
   );
 }
