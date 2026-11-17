@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.95.4`
+**Current version:** `0.95.5`
 
 ## Stack
 
@@ -194,6 +194,7 @@ Public `/register` is closed by default. Set `ALLOW_PUBLIC_REGISTER=true` in `.e
 | `pnpm run db:generate` | Prisma client |
 | `pnpm run db:migrate` | Dev migrations |
 | `pnpm run db:deploy` | Deploy migrations |
+| `pnpm run db:grant:monthly-sir` | Once on the client server after deploy: grant Monthly SIR where branch Inventory is already allowed. Do not run `pnpm run db:seed` or `pnpm run db:seed:full` there. See [`database/seed-users.md`](database/seed-users.md) |
 | `pnpm run db:seed` | Core seed (permissions, demo tenant, roles) + PH regions/provinces |
 | `pnpm run db:seed:full` | Full BRS demo + PH geo + PSG branches (~1k; may take a bit) |
 | `pnpm run db:seed:brs` | BRS data only |

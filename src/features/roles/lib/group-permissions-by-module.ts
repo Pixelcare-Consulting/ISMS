@@ -1,7 +1,9 @@
 import {
   appModules,
-  formatPermissionName,
+  permissionActionLabel,
   parsePermissionSlug,
+  roleSectionKey,
+  roleSectionModule,
 } from "@/config/app-modules";
 import type { PermissionRow } from "@/features/roles/types/role.types";
 
@@ -17,6 +19,8 @@ export interface GroupedPermissionItem {
 export interface PermissionModuleGroup {
   moduleId: string;
   moduleName: string;
+  /** Sidebar menu, when this module is placed under one. */
+  area?: string;
   description?: string;
   permissions: GroupedPermissionItem[];
 }
@@ -34,19 +38,22 @@ export function groupPermissionsByModule(
 
   for (const permission of permissions) {
     const { module, action } = parsePermissionSlug(permission.slug);
-    const moduleId = module?.id ?? OTHER_MODULE_ID;
-    const moduleName = module?.name ?? "Other";
+    if (module?.hidden || (module && roleSectionModule(module).hidden)) {
+      continue;
+    }
+    const section = module ? roleSectionModule(module) : null;
+    const moduleId = section ? roleSectionKey(section) : OTHER_MODULE_ID;
+    const moduleName = section?.name ?? "Other";
     const label =
-      module && action
-        ? formatPermissionName(module, action)
-        : permission.name;
+      module && action ? permissionActionLabel(module, action) : permission.name;
 
     let group = groups.get(moduleId);
     if (!group) {
       group = {
         moduleId,
         moduleName,
-        description: module?.description,
+        area: section?.area,
+        description: section?.description,
         permissions: [],
       };
       groups.set(moduleId, group);
@@ -61,8 +68,13 @@ export function groupPermissionsByModule(
   }
 
   const ordered: PermissionModuleGroup[] = [];
+  const seenSection = new Set<string>();
   for (const appModule of appModules) {
-    const group = groups.get(appModule.id);
+    if (appModule.hidden) continue;
+    const key = roleSectionKey(appModule);
+    if (seenSection.has(key)) continue;
+    seenSection.add(key);
+    const group = groups.get(key);
     if (group) {
       ordered.push(group);
     }

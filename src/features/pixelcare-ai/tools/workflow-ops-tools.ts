@@ -55,6 +55,7 @@ export function buildWorkflowOpsTools(
   const unrestricted = isUnrestrictedBranchAccess(permissions);
 
   const canInventory = hasPermission(permissions, "inventory.view");
+  const canMonthlySir = hasPermission(permissions, "inventory.monthly_sir.view");
   const canReturns =
     hasPermission(permissions, "returns.view") ||
     hasPermission(permissions, "returns.branch.view") ||
@@ -290,9 +291,9 @@ export function buildWorkflowOpsTools(
           .describe("Optional request status filter"),
       }),
       execute: async ({ branchId, status }) => {
-        if (!canInventory && !sampleMode) {
+        if (!canMonthlySir && !sampleMode) {
           return {
-            error: "You do not have inventory view permission.",
+            error: "You do not have Monthly SIR view permission.",
             sourceHref: "/inventory/monthly-sir",
           };
         }

@@ -243,7 +243,7 @@ describe("workflow-ops tools", () => {
 
   it("lists Monthly SIR with allowance for permitted branch", async () => {
     const tools = buildWorkflowOpsTools(
-      sessionWithPermissions(["inventory.view"]),
+      sessionWithPermissions(["inventory.monthly_sir.view"]),
     );
     const result = (await tools.listMonthlySirStatus.execute!(
       { branchId: "ABP001" },

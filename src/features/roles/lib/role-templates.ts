@@ -36,9 +36,8 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     permissionSlugs: [
       "dashboard.manage",
       "inventory.view",
-      "orders.view",
+      "inventory.monthly_sir.view",
       "pullouts.view",
-      "orders.create",
       "orders.manual.view",
       "orders.manual.create",
       "orders.special.view",
@@ -55,9 +54,8 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     permissionSlugs: [
       "dashboard.manage",
       "inventory.view",
-      "orders.view",
+      "inventory.monthly_sir.view",
       "pullouts.view",
-      "orders.approve",
       "orders.manual.view",
       "orders.manual.approve",
       "orders.special.view",

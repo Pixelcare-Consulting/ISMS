@@ -35,7 +35,8 @@ export function GroupedPermissionsChecklist({
 }: GroupedPermissionsChecklistProps) {
   return (
     <div className={cn("space-y-4", className)}>
-      {groups.map((group) => {
+      {groups.map((group, index) => {
+        const showArea = Boolean(group.area) && groups[index - 1]?.area !== group.area;
         const assignedCount = group.permissions.filter((p) =>
           assignedSlugs.has(p.slug),
         ).length;
@@ -45,8 +46,13 @@ export function GroupedPermissionsChecklist({
         const noneSelected = assignedCount === 0;
 
         return (
+          <div key={group.moduleId} className="space-y-2">
+            {showArea ? (
+              <h2 className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {group.area}
+              </h2>
+            ) : null}
           <section
-            key={group.moduleId}
             className="rounded-lg border border-border/70 bg-card/40"
           >
             <div className="flex flex-wrap items-start justify-between gap-2 border-b border-border/60 px-3 py-2.5">
@@ -107,7 +113,7 @@ export function GroupedPermissionsChecklist({
                         if (mode === "live") {
                           onToggle?.({
                             permissionSlug: permission.slug,
-                            permissionName: permission.label,
+                            permissionName: `${permission.label} — ${group.moduleName}`,
                             enabled,
                           });
                           return;
@@ -131,6 +137,7 @@ export function GroupedPermissionsChecklist({
               })}
             </ul>
           </section>
+          </div>
         );
       })}
     </div>

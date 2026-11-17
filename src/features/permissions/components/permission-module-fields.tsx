@@ -71,7 +71,9 @@ export function PermissionModuleFields({
     if (!q) return modules;
     return modules.filter((appModule) => {
       const haystack = [
+        appModule.area ?? "",
         appModule.name,
+        appModule.description ?? "",
         appModule.route ?? "",
         appModule.slugPrefix,
         appModule.id,

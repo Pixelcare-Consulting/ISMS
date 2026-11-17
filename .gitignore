@@ -41,15 +41,18 @@ yarn-error.log*
 # vercel
 .vercel
 
-# scripts
-/scripts
+# scripts — ignore the folder, but keep the listed files so they can ship
 /scripts/*
 !/scripts/check-migrations.mjs
 !/scripts/generate-modules-workflow-excel.mjs
+!/scripts/grant-monthly-sir-view.ts
+!/scripts/monthly-sir-grant.ts
 .scripts/
 .scripts/*
 !/scripts/check-migrations.mjs
 !/scripts/generate-modules-workflow-excel.mjs
+!/scripts/grant-monthly-sir-view.ts
+!/scripts/monthly-sir-grant.ts
 
 # typescript
 *.tsbuildinfo

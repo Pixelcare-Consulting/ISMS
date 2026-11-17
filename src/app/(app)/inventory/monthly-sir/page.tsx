@@ -20,7 +20,7 @@ interface MonthlySirPageProps {
 export default async function MonthlySirPage({
   searchParams,
 }: MonthlySirPageProps) {
-  const session = await requirePermission("inventory.view");
+  const session = await requirePermission("inventory.monthly_sir.view");
   const params = await searchParams;
   const tab = params.tab === "approval" ? "approval" : "all";
   const [requests, branches] = await Promise.all([

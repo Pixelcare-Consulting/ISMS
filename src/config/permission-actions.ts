@@ -59,13 +59,13 @@ export const PERMISSION_ACTIONS: Record<
   },
   "branch.view": {
     value: "branch.view",
-    label: "Branch",
-    description: "View the Branch Returns tab",
+    label: "Branch tab",
+    description: "View the branch tab on Returns",
   },
   "service.view": {
     value: "service.view",
-    label: "Service",
-    description: "View the Service Returns tab",
+    label: "Service center tab",
+    description: "View the service center tab on Returns",
   },
   "custom.view": {
     value: "custom.view",

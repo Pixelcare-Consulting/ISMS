@@ -68,6 +68,44 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.95.5",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T18:55:00+08:00",
+    title: "New Update for roles and permissions!",
+    highlights: [
+      "Open Settings → Roles and review the permissions on each role.",
+      "This update is the permission list on Roles. Inventory, orders, sales, and deliveries stay the same.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Monthly SIR has a separate permission from Branch Inventory. Enable this permission for roles that need access to Monthly SIR.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Permissions already assigned to a role will continue to function. Branch and Service Center permissions are now listed separately for Inventory, Deliveries, Pull-Outs, Orders, and Sales.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Legacy duplicate Order and Return permissions have been hidden. When editing a role, ensure that the latest permission updates are used.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Description on Modules permissions is now clearer and easier to understand. ",
+      },
+      {
+        type: "fix",
+        description:
+          "New roles and permissions remain compatible with the existing setup. This ensures that legacy permissions continue to be supported, preventing conflicts.",
+      },
+      
+    ],
+  },
+  {
     version: "0.95.4",
     date: "2026-11-17",
     releasedAt: "2026-11-17T17:55:00+08:00",

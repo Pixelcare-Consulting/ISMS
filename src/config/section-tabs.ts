@@ -154,12 +154,12 @@ export const MASTER_DATA_TAB_GROUPS: SectionTabGroupDefinition[] = [
     ],
   },
   {
-    label: "Service",
+    label: "Service returns",
     items: [
       {
         href: "/settings/master-data/problem-descriptions",
         label: "Problem descriptions",
-        description: "Problem description lookup for service requests.",
+        description: "Problem description lookup for the Service Returns tab.",
       },
     ],
   },

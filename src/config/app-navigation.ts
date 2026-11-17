@@ -144,18 +144,12 @@ const MANUAL_ORDER_ACCESS = [
   "orders.manual.view",
   "orders.manual.create",
   "orders.manual.approve",
-  "orders.view",
-  "orders.create",
-  "orders.approve",
 ] as const;
 
 const SPECIAL_ORDER_ACCESS = [
   "orders.special.view",
   "orders.special.create",
   "orders.special.approve",
-  "orders.view",
-  "orders.create",
-  "orders.approve",
 ] as const;
 
 /** Kept here so the client sidebar does not import service-center server helpers. */
@@ -278,9 +272,6 @@ export const appNavigation: NavEntry[] = [
               "orders.auto_replenish.view",
               "orders.auto_replenish.create",
               "orders.auto_replenish.approve",
-              "orders.view",
-              "orders.create",
-              "orders.approve",
             ],
             countBadgeKey: "ordersAutoReplenishQueue",
           },
@@ -381,7 +372,7 @@ export const appNavigation: NavEntry[] = [
             href: "/inventory/monthly-sir",
             label: "Monthly SIR",
             icon: ClipboardList,
-            permission: "inventory.view",
+            permission: "inventory.monthly_sir.view",
             countBadgeKey: "monthlySirPending",
           },
           // { DO NOT UNCOMMENT THIS, NO NEED TO SHOW IN THE NAVIGATION
