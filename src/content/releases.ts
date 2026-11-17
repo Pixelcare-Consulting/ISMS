@@ -66,6 +66,51 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.94.5",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T11:00:00+08:00",
+    title: "SAP integration in plain language",
+    highlights: [
+      "SAP integration shows what was sent, what is waiting, and what needs another try.",
+      "Each row uses the order or document number people already know.",
+      "The list shows a row number, search, and 10 rows per page. Opening a row explains whether it was sent or what went wrong.",
+      "Opening a SAP row shows who sent it and the document details.",
+      "The extra details on a SAP row include the codes and record ids support uses.",
+      "The practice inventory-sync button is gone.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "SAP integration shows what was sent, what is waiting, and what needs another try. Choose a card to see that group.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Each row uses the order or document number people already know.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The list shows a row number, search, and 10 rows per page. Opening a row explains whether it was sent or what went wrong.",
+      },
+      {
+        type: "improvement",
+        description: "Opening a SAP row shows who sent it and the document details.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The extra details on a SAP row include the codes and record ids support uses.",
+      },
+      {
+        type: "fix",
+        description:
+          "The practice inventory-sync button is gone. Send no longer marks an older practice item as sent with a number that was not really in SAP.",
+      },
+    ],
+  },
+  {
     version: "0.94.4",
     date: "2026-11-17",
     releasedAt: "2026-11-17T09:55:00+08:00",
