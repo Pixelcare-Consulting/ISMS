@@ -68,12 +68,24 @@ export const RELEASES: ReleaseNote[] = [
   {
     version: "0.94.4",
     date: "2026-11-17",
-    releasedAt: "2026-11-17T09:30:00+08:00",
-    title: "New sale page matches Create Order",
+    releasedAt: "2026-11-17T09:55:00+08:00",
+    title: "Sales list and new sale page",
     highlights: [
+      "Sales status cards match the list. Choose a status to see only those lines.",
+      "Search on Sales updates the cards and the list to the lines that match.",
       "Recording a new sale now opens with the same header and card as Create Order.",
     ],
     changes: [
+      {
+        type: "improvement",
+        description:
+          "On Sales, the cards count the same lines as the list, including returned and replaced sales. Sold, Official Sold, and TO FOLLOW stay on the cards. Returned/Replaced and Service Returned/Replaced show when you have those sales. Choose a card to see only that status. Total lines brings the full list back, and the sale columns stay on the list.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Searching Sales updates the cards and the list to the matching lines. A status card still narrows that search, and Total lines keeps your search while showing every status again.",
+      },
       {
         type: "improvement",
         description:
