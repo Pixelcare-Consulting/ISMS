@@ -55,6 +55,8 @@ export const SC_LOGISTICS_ACTION_CAPABILITIES = {
   canCreate: [SC_LOGISTICS_CREATE, SC_LOGISTICS_MANAGE],
   canManage: SC_LOGISTICS_MANAGE,
   canAcceptDelivery: [SC_LOGISTICS_CREATE, SC_LOGISTICS_MANAGE],
+  /** Reject DR units at receipt: ISMS posts the SAP Return and the units go back to SAP. */
+  canRejectDelivery: [SC_LOGISTICS_CREATE, SC_LOGISTICS_MANAGE],
   /** Check SAP now on Deliveries: DRs copied from SC Sales Orders become SC deliveries. */
   canCheckSap: [SC_LOGISTICS_CREATE, SC_LOGISTICS_MANAGE],
   canApprovePullout: [SC_ORDERS_APPROVE, SC_LOGISTICS_MANAGE],

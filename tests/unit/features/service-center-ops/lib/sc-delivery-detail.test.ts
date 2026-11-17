@@ -1,6 +1,5 @@
 import {
   scDeliveryHistory,
-  scDeliveryReceiptLines,
 } from "@/features/service-center-ops/lib/sc-delivery-detail";
 
 const at = (iso: string) => new Date(iso);
@@ -41,20 +40,5 @@ describe("scDeliveryHistory", () => {
         userName: null,
       },
     ]);
-  });
-});
-
-describe("scDeliveryReceiptLines", () => {
-  it("lists open units as in transit and accepted ones as received", () => {
-    const lines = scDeliveryReceiptLines([
-      { serialNumberId: "s1", serialNo: "SN1", skuCode: "M1", modelName: "Model 1", acceptedAt: null },
-      { serialNumberId: "s2", serialNo: "SN2", skuCode: "M1", modelName: "Model 1", acceptedAt: at("2026-11-17T05:00:00Z") },
-    ]);
-
-    expect(lines.map((line) => [line.serialNumberId, line.state, line.inTransit])).toEqual([
-      ["s1", "IN_TRANSIT", true],
-      ["s2", "RECEIVED", false],
-    ]);
-    expect(lines.every((line) => line.openTransfer === null && line.openReturn === null)).toBe(true);
   });
 });

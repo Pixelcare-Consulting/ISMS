@@ -12,6 +12,7 @@ export const INVENTORY_APPROVAL_SOURCES = [
   "DELIVERY_TRANSFER",
   "SC_PULLOUT",
   "SC_RETURN",
+  "SC_DELIVERY_RETURN",
 ] as const;
 export type InventoryApprovalSource = (typeof INVENTORY_APPROVAL_SOURCES)[number];
 
@@ -40,6 +41,7 @@ export const INVENTORY_APPROVAL_SOURCE_LABELS: Record<InventoryApprovalSource, s
   DELIVERY_TRANSFER: "Unit transfer",
   SC_PULLOUT: "Service center pull-out",
   SC_RETURN: "Service center return",
+  SC_DELIVERY_RETURN: "Service center delivery reject",
 };
 
 export const INVENTORY_APPROVAL_STEP_LABELS: Record<InventoryApprovalStep, string> = {

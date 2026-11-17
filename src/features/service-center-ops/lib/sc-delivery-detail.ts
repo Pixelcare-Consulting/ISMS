@@ -1,5 +1,3 @@
-import type { DeliveryReceiptLine } from "@/features/logistics/services/delivery-posting.service";
-
 /** One progress event, in the action names the branch delivery tracker reads. */
 export interface ScDeliveryHistoryRow {
   id: string;
@@ -19,6 +17,7 @@ export interface ScDeliveryAuditRow {
 const AUDIT_TO_TRACKER_ACTION: Readonly<Record<string, string>> = {
   "sc_delivery.created_from_sap": "delivery.dispatched_in_sap",
   "sc_delivery.accepted": "delivery.accepted",
+  "sc_delivery.rejected": "delivery.rejected",
 };
 
 /**
@@ -57,26 +56,4 @@ export function scDeliveryHistory(input: {
     });
   }
   return [...rows, ...mapped].sort((a, b) => a.at.localeCompare(b.at));
-}
-
-export interface ScDeliveryUnit {
-  serialNumberId: string;
-  serialNo: string;
-  skuCode: string;
-  modelName: string;
-  acceptedAt: Date | null;
-}
-
-/** The DR's units as the branch receive dialog lists them: still DIT, or received. */
-export function scDeliveryReceiptLines(units: readonly ScDeliveryUnit[]): DeliveryReceiptLine[] {
-  return units.map((unit) => ({
-    serialNumberId: unit.serialNumberId,
-    serialNo: unit.serialNo,
-    skuCode: unit.skuCode,
-    modelName: unit.modelName,
-    inTransit: unit.acceptedAt === null,
-    openTransfer: null,
-    openReturn: null,
-    state: unit.acceptedAt === null ? "IN_TRANSIT" : "RECEIVED",
-  }));
 }

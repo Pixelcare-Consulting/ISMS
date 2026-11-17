@@ -27,6 +27,7 @@ import {
   completeDeliveryReturn,
   type DeliveryReturnSapKind,
 } from "@/features/logistics/services/delivery-return-completion";
+import { completeScDeliveryReturn } from "@/features/service-center-ops/services/sc-delivery-return-completion";
 import { sapServiceLayerService } from "@/features/sap/services/sap-service-layer.service";
 import { mockSapOutbound } from "@/features/sap/adapters/mock-sap-outbound";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
@@ -66,6 +67,124 @@ function groupSerialsBySku(rows: SerialRow[]): SapSerialLine[] {
 /** Consignment rejects post an Inventory Transfer; outright ones a standalone Return. */
 function returnKind(docType: "ITR" | "SO"): DeliveryReturnSapKind {
   return docType === "SO" ? "RETURN" : "IT";
+}
+
+/**
+ * Units a service center rejected on an SC order's DR: a standalone Return for the SO's customer
+ * into the order's warehouse, each line carrying the SO line's dimensions. The SO is named in
+ * the remarks; nothing is based on the DR.
+ */
+async function postScDeliveryReturn(
+  tenantId: string,
+  userId: string | undefined,
+  job: SapIntegrationJob,
+  returnId: string,
+): Promise<string> {
+  const creds = await sapServiceLayerService.getCredentials(tenantId);
+  if (!creds) throw new Error("SAP Service Layer is not configured");
+
+  const request = await prisma.serviceCenterDeliveryReturnRequest.findFirst({
+    where: { id: returnId, tenantId },
+    select: {
+      requestNo: true,
+      reason: true,
+      status: true,
+      sapDocNo: true,
+      lines: {
+        select: {
+          remarks: true,
+          serialNumber: { select: { serialNo: true, model: { select: { skuCode: true } } } },
+        },
+        orderBy: { serialNumber: { serialNo: "asc" } },
+      },
+      delivery: {
+        select: {
+          serviceCenter: { select: { name: true, sapCode: true } },
+          order: {
+            select: {
+              sapDocNum: true,
+              sapCardCode: true,
+              sapWarehouseCode: true,
+              sapBranchCode: true,
+              sapDepartmentCode: true,
+              sapCogsBranchCode: true,
+              projectCode: true,
+              poNumber: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!request) throw new Error("Service center reject not found");
+  if (request.status === "COMPLETED" && request.sapDocNo) {
+    // Finished on an earlier attempt that stopped before the job was marked.
+    const done = `RETURN-${request.sapDocNo}`;
+    await sapIntegrationRepository.markCompleted(job.id, done);
+    return done;
+  }
+  if (request.status !== "APPROVED") throw new Error("Only an approved reject can be posted to SAP");
+  if (request.lines.length === 0) throw new Error("This reject has no units");
+
+  const { serviceCenter, order } = request.delivery;
+  if (!order) throw new Error("This delivery has no SC order");
+  if (!order.sapCardCode || !order.sapWarehouseCode) {
+    throw new Error("The SC order has no SAP customer or warehouse stored");
+  }
+  const docText = { requestNo: request.requestNo, orderDocType: "SO" as const, orderDocNum: order.sapDocNum };
+  const body = buildReturnBody({
+    ismsRef: request.requestNo,
+    remarks: deliveryReturnRemarks({ ...docText, reason: request.reason }),
+    journalMemo: deliveryReturnJournalMemo(docText),
+    cardCode: order.sapCardCode,
+    whs: order.sapWarehouseCode,
+    branchCode: order.sapBranchCode,
+    branchName: serviceCenter.name,
+    lines: groupSerialsBySku(
+      request.lines.map((line) => ({
+        serialNo: line.serialNumber.serialNo,
+        skuCode: line.serialNumber.model.skuCode,
+        remarks: line.remarks,
+      })),
+    ),
+    extraLine: serviceCenterSoExtra({
+      serviceCenterCode: serviceCenter.sapCode,
+      departmentCode: order.sapDepartmentCode,
+      cogsBranchCode: order.sapCogsBranchCode,
+      projectCode: order.projectCode,
+      poNumber: order.poNumber,
+    }).line,
+  });
+
+  const ref = await postSapDocument(creds, "RETURN", request.requestNo, body);
+  await prisma.serviceCenterDeliveryReturnRequest.update({
+    where: { id: returnId },
+    data: {
+      sapDocEntry: ref.docEntry,
+      sapDocNo: ref.displayNo,
+      sapDocDate: ref.docDate ? new Date(ref.docDate) : null,
+      sapError: null,
+    },
+  });
+  try {
+    await completeScDeliveryReturn({ tenantId, userId, returnId, sapDocNo: ref.displayNo });
+  } catch (error) {
+    // SAP has the document; only the local move failed. Say so, so nobody re-posts it by hand.
+    const message = error instanceof Error ? error.message : "unknown error";
+    throw new Error(`SAP posted Return ${ref.displayNo}; moving units failed: ${message}`);
+  }
+
+  const sapDocRef = `RETURN-${ref.displayNo}`;
+  await sapIntegrationRepository.markCompleted(job.id, sapDocRef);
+  await auditService.log({
+    tenantId,
+    userId,
+    action: "sap.sc_delivery_return_processed",
+    entityType: SAP_REFERENCE_TYPES.ScDeliveryReturnRequest,
+    entityId: returnId,
+    metadata: { sapDocRef, sapDocEntry: ref.docEntry, adapter: "service_layer" },
+  });
+  return sapDocRef;
 }
 
 /** Approved reject: IT branch → source warehouse (consignment) or a standalone Return (outright). */
@@ -465,6 +584,22 @@ export const serviceLayerSapOutbound: SapOutboundPort = {
       const message = error instanceof Error ? error.message : "SAP posting failed";
       // Never mark a completed (or cancelled) request as failed.
       await prisma.deliveryReturnRequest.updateMany({
+        where: { id: returnId, tenantId, status: "APPROVED" },
+        data: { sapError: message },
+      });
+      throw error;
+    }
+  },
+
+  async createScDeliveryReturnDocument({ tenantId, userId, job }) {
+    const returnId = job.referenceId;
+    if (!returnId) throw new Error("Missing service center reject reference");
+    try {
+      return await postScDeliveryReturn(tenantId, userId, job, returnId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "SAP posting failed";
+      // Never mark a completed (or cancelled) request as failed.
+      await prisma.serviceCenterDeliveryReturnRequest.updateMany({
         where: { id: returnId, tenantId, status: "APPROVED" },
         data: { sapError: message },
       });

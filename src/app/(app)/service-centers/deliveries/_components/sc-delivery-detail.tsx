@@ -12,6 +12,12 @@ import {
   DeliveryReceiveDialog,
   type ReceiveTarget,
 } from "@/app/(app)/logistics/_components/delivery-receive-dialog";
+import {
+  DeliveryReturnReviewDialog,
+  type ReturnTarget,
+  type ReviewReturnActions,
+} from "@/app/(app)/logistics/_components/delivery-return-dialogs";
+import { DeliveryReturnStatusBadge } from "@/app/(app)/logistics/_components/delivery-transfer-status-badge";
 import { DrNoText } from "@/app/(app)/logistics/_components/dr-no-text";
 import {
   DocumentDetailBand,
@@ -33,16 +39,37 @@ import {
   DELIVERY_WORKFLOW_CODE,
   type WorkflowStatusOption,
 } from "@/features/logistics/constants/workflow-codes";
-import { DR_DATE_LABEL, DR_NO_LABEL } from "@/features/logistics/lib/sap-doc-number";
+import { needsSapRetry } from "@/features/logistics/constants/delivery-workflow-labels";
+import { DR_DATE_LABEL, DR_NO_LABEL, formatRejectSapDocNo } from "@/features/logistics/lib/sap-doc-number";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import {
   acceptScDeliveryAction,
+  cancelScDeliveryReturnAction,
+  getScDeliveryReturnAction,
   listScDeliveryReceiptLinesAction,
+  requestScDeliveryReturnAction,
+  retryScDeliveryReturnSapAction,
   type ScDeliveryDetail,
 } from "@/features/service-center-ops/actions/sc-logistics.actions";
 import type { ScLogisticsActionCapabilities } from "@/features/service-center-ops/constants/sc-permissions";
 
 type Unit = ScDeliveryDetail["units"][number];
+type RejectRow = ScDeliveryDetail["returns"][number];
+
+/** SC rejects are approved when confirmed, so there is never a request to decide. */
+const REVIEW_ACTIONS: ReviewReturnActions = {
+  load: getScDeliveryReturnAction,
+  decide: async () => ({ error: "Service center rejects need no approval" }),
+  retry: retryScDeliveryReturnSapAction,
+  cancel: cancelScDeliveryReturnAction,
+};
+
+function unitState(unit: Unit) {
+  if (unit.returnedAt) return <span>Returned {formatInventoryDrDate(unit.returnedAt)}</span>;
+  if (unit.acceptedAt) return <span>Received {formatInventoryDrDate(unit.acceptedAt)}</span>;
+  if (unit.openReturn) return <span className="text-muted-foreground">Rejecting ({unit.openReturn.requestNo})</span>;
+  return <span className="text-muted-foreground">In transit</span>;
+}
 
 const UNIT_COLUMNS: CompactLineColumn<Unit>[] = [
   {
@@ -59,13 +86,8 @@ const UNIT_COLUMNS: CompactLineColumn<Unit>[] = [
   {
     id: "state",
     header: "Status",
-    className: "w-32",
-    cell: (unit) =>
-      unit.acceptedAt ? (
-        <span>Received {formatInventoryDrDate(unit.acceptedAt)}</span>
-      ) : (
-        <span className="text-muted-foreground">In transit</span>
-      ),
+    className: "w-44",
+    cell: unitState,
   },
 ];
 
@@ -99,17 +121,23 @@ export function ScDeliveryDetailView({
 }) {
   const router = useRouter();
   const [receiveTarget, setReceiveTarget] = useState<ReceiveTarget | null>(null);
+  const [reviewTarget, setReviewTarget] = useState<ReturnTarget | null>(null);
   // A delivery from an order without a location: the center's only one, or the one picked here.
   const onlyLocationId = detail.locations.length === 1 ? detail.locations[0].id : "";
   const [pickedLocationId, setPickedLocationId] = useState(onlyLocationId);
   const receivingLocationId = detail.location?.id ?? pickedLocationId;
 
   const code = detail.status.code;
-  const hasOpenUnits = detail.units.some((unit) => unit.acceptedAt === null);
+  const hasOpenUnits = detail.units.some(
+    (unit) => unit.acceptedAt === null && unit.returnedAt === null && unit.openReturn === null,
+  );
+  const canReject = capabilities.canRejectDelivery && detail.canRejectUnits;
   const canReceive =
-    capabilities.canAcceptDelivery &&
+    (capabilities.canAcceptDelivery || canReject) &&
     hasOpenUnits &&
     (code === DELIVERY_WORKFLOW_CODE.pending || code === DELIVERY_WORKFLOW_CODE.partial);
+  // Rejecting needs no location; receiving does.
+  const blockedOnLocation = !receivingLocationId && !canReject;
   const needsLocation = !detail.location && detail.locations.length > 1;
 
   return (
@@ -130,13 +158,15 @@ export function ScDeliveryDetailView({
             {canReceive ? (
               <Button
                 className="bg-emerald-600 text-white hover:bg-emerald-700"
-                disabled={!receivingLocationId}
-                title={receivingLocationId ? undefined : "Choose the receiving location first"}
+                disabled={blockedOnLocation}
+                title={blockedOnLocation ? "Choose the receiving location first" : undefined}
                 onClick={() =>
                   setReceiveTarget({
                     id: detail.id,
                     deliveryNo: detail.deliveryNo,
                     branchName: detail.serviceCenterName,
+                    // SC orders post a Sales Order, so a reject posts a Return.
+                    sapDocType: "SO",
                   })
                 }
               >
@@ -221,6 +251,15 @@ export function ScDeliveryDetailView({
             noMatchMessage="No matching serials."
           />
         </RecordSection>
+        {detail.returns.length > 0 ? (
+          <RejectedUnitsSection
+            returns={detail.returns}
+            canRetry={capabilities.canRejectDelivery}
+            onOpen={(returnId) =>
+              setReviewTarget({ returnId, deliveryNo: detail.deliveryNo, branchName: detail.serviceCenterName })
+            }
+          />
+        ) : null}
         <RecordSection title="History" divided>
           <LogisticsHistoryBody
             groupByLabel={false}
@@ -239,15 +278,64 @@ export function ScDeliveryDetailView({
         onClose={() => setReceiveTarget(null)}
         onReceived={() => router.refresh()}
         loadLines={listScDeliveryReceiptLinesAction}
-        accept={(deliveryId, input) =>
-          acceptScDeliveryAction(deliveryId, {
+        accept={async (deliveryId, input) => {
+          if (!receivingLocationId) return { error: "Choose the receiving location first" };
+          return acceptScDeliveryAction(deliveryId, {
             serialNumberIds: input.serialNumberIds,
-            serviceCenterLocationId: receivingLocationId || null,
-          })
-        }
+            serviceCenterLocationId: receivingLocationId,
+          });
+        }}
         canReceive={capabilities.canAcceptDelivery}
+        requestReturn={canReject ? requestScDeliveryReturnAction : undefined}
+      />
+
+      <DeliveryReturnReviewDialog
+        target={reviewTarget}
+        canApprove={false}
+        canRetry={capabilities.canRejectDelivery}
+        actions={REVIEW_ACTIONS}
+        onClose={() => setReviewTarget(null)}
+        onDone={() => router.refresh()}
       />
     </div>
+  );
+}
+
+/** Each reject with its SAP Return; a failed post can be retried or cancelled from here. */
+function RejectedUnitsSection({
+  returns,
+  canRetry,
+  onOpen,
+}: {
+  returns: readonly RejectRow[];
+  canRetry: boolean;
+  onOpen: (returnId: string) => void;
+}) {
+  return (
+    <RecordSection
+      title="Rejected units"
+      description="Each reject posts its own SAP Return as soon as it is confirmed."
+      divided
+    >
+      <ul className="divide-y rounded-md border">
+        {returns.map((row) => (
+          <li key={row.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2 text-sm">
+            <span className="font-mono">{row.requestNo}</span>
+            <DeliveryReturnStatusBadge status={row.status} />
+            <span className="text-muted-foreground">
+              {row.unitCount} unit{row.unitCount === 1 ? "" : "s"}
+              {row.sapDocNo ? ` · ${formatRejectSapDocNo(row.sapDocNo, "SO")}` : ""}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-muted-foreground" title={row.remarks}>
+              {row.remarks}
+            </span>
+            <Button size="sm" variant="outline" className="max-sm:h-11" onClick={() => onOpen(row.id)}>
+              {needsSapRetry(row) && canRetry ? "Retry SAP posting" : "View"}
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </RecordSection>
   );
 }
 

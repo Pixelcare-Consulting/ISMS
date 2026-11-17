@@ -303,6 +303,18 @@ export const sapService = {
     });
   },
 
+  /** Units a service center rejected on an SC order's DR → a standalone Return for the SO's customer. */
+  async emitScDeliveryReturn(tenantId: string, request: { id: string; requestNo: string }) {
+    return enqueueJob({
+      tenantId,
+      jobType: "sc_delivery_return",
+      idempotencyKey: `sc_delivery_return:${request.id}`,
+      referenceType: SAP_REFERENCE_TYPES.ScDeliveryReturnRequest,
+      referenceId: request.id,
+      payload: request,
+    });
+  },
+
   /** CSV step 26 — sales summary export (stub). */
   async emitSalesSummary(
     tenantId: string,
@@ -461,6 +473,13 @@ export const sapService = {
             break;
           case "service_center_order":
             sapDocRef = await outbound.createServiceCenterOrderDocument({
+              tenantId,
+              userId,
+              job: updated,
+            });
+            break;
+          case "sc_delivery_return":
+            sapDocRef = await outbound.createScDeliveryReturnDocument({
               tenantId,
               userId,
               job: updated,

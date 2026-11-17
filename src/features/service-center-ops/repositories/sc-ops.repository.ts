@@ -142,11 +142,17 @@ export const scOpsRepository = {
             select: {
               serialNumberId: true,
               acceptedAt: true,
+              returnedAt: true,
               serialNumber: {
                 select: { serialNo: true, model: { select: { skuCode: true } } },
               },
             },
             orderBy: { serialNumber: { serialNo: "asc" } },
+          },
+          // Rejected column, newest first.
+          returnRequests: {
+            select: { id: true, requestNo: true, status: true, sapError: true },
+            orderBy: { requestedAt: "desc" },
           },
           _count: { select: { backloads: true } },
         },
@@ -206,11 +212,24 @@ export const scOpsRepository = {
           select: {
             serialNumberId: true,
             acceptedAt: true,
+            returnedAt: true,
             serialNumber: {
               select: { serialNo: true, model: { select: { skuCode: true, name: true } } },
             },
           },
           orderBy: { serialNumber: { serialNo: "asc" } },
+        },
+        returnRequests: {
+          select: {
+            id: true,
+            requestNo: true,
+            status: true,
+            reason: true,
+            sapDocNo: true,
+            sapError: true,
+            lines: { select: { serialNumberId: true } },
+          },
+          orderBy: { requestedAt: "desc" },
         },
       },
     });

@@ -135,9 +135,9 @@ async function applyDeliveryNote(
     const serialIds = [...new Set(idBySerial.values())];
     await lockSerialNumbers(tx, serialIds);
 
-    // Already on another SC delivery that is not yet accepted: the DR would double count it.
+    // Already on another SC delivery, neither accepted nor rejected back: the DR would double count it.
     const onOpenDelivery = await tx.serviceCenterDeliveryLine.findMany({
-      where: { serialNumberId: { in: serialIds }, acceptedAt: null },
+      where: { serialNumberId: { in: serialIds }, acceptedAt: null, returnedAt: null },
       select: { serialNumber: { select: { serialNo: true } }, delivery: { select: { deliveryNo: true } } },
     });
     if (onOpenDelivery.length > 0) {

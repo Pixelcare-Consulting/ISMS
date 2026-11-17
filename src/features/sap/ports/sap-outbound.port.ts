@@ -57,4 +57,15 @@ export interface SapOutboundPort {
     userId?: string;
     job: SapIntegrationJob;
   }): Promise<string>;
+
+  /**
+   * Units a service center rejected on an SC order's DR (`sc_delivery_return`) → a standalone
+   * Return for the SO's customer into the order's warehouse. On success the units go back in
+   * the same call.
+   */
+  createScDeliveryReturnDocument(input: {
+    tenantId: string;
+    userId?: string;
+    job: SapIntegrationJob;
+  }): Promise<string>;
 }

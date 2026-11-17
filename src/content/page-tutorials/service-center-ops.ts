@@ -91,7 +91,7 @@ export const SC_DELIVERIES_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "What this page is for",
       description:
-        "Select Check SAP now to bring in the DRs SAP users copied from approved SC orders' Sales Orders; each one becomes a delivery here with its serials DIT. Open a delivery to see its progress, units and history, then select Receive: the units you tick become STK at the service center location, and the delivery stays partly received until every unit is in. If the order named no location and the center has several, choose the receiving location on the delivery first.",
+        "Select Check SAP now to bring in the DRs SAP users copied from approved SC orders' Sales Orders; each one becomes a delivery here with its serials DIT. Open a delivery to see its progress, units and history, then select Receive: the units you tick become STK at the service center location, and the delivery stays partly received until every unit is in. To send units back, tick them and select Reject, with optional remarks and DEF per unit: confirming posts a SAP Return for the order's customer right away and the units go back to the order's SAP warehouse. A failed SAP post shows under Rejected units, where you can retry it or cancel the reject. If the order named no location and the center has several, choose the receiving location on the delivery first.",
     },
   ],
 };

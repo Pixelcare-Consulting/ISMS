@@ -8,6 +8,7 @@ import { useMemo, useState } from "react";
 import { formatInventoryDrDate } from "@/app/(app)/inventory/_components/inventory-list-format";
 import { CompactProgressRail } from "@/app/(app)/logistics/_components/compact-progress-rail";
 import { buildDeliveryTracker } from "@/app/(app)/logistics/_components/delivery-tracker";
+import { DeliveryReturnCell } from "@/app/(app)/logistics/_components/delivery-return-dialogs";
 import { DrNoText } from "@/app/(app)/logistics/_components/dr-no-text";
 import {
   LogisticsListViewSwitch,
@@ -192,6 +193,12 @@ export function ScDeliveriesPanel({
         enableSorting: false,
         cell: ({ row }) => receivedLabel(row.original),
         meta: { className: "tabular-nums" },
+      }),
+      deliveryColumn.display({
+        id: "rejected",
+        header: "Rejected",
+        enableSorting: false,
+        cell: ({ row }) => <DeliveryReturnCell returns={row.original.returnRequests} />,
       }),
       deliveryColumn.display({
         id: "actions",

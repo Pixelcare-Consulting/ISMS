@@ -3,7 +3,7 @@ import {
   blockedPlacementMessage,
   scDeliveryLocationId,
   scDeliveryNoForDr,
-  scDeliveryStatusAfterAccept,
+  scDeliverySettledStatus,
   scPlacementsToReplace,
   summarizeScOrderSapCheck,
 } from "@/features/service-center-ordering/lib/sc-order-sap-check";
@@ -58,11 +58,15 @@ describe("scDeliveryLocationId", () => {
   });
 });
 
-describe("scDeliveryStatusAfterAccept", () => {
+describe("scDeliverySettledStatus", () => {
   it("is accepted only once every DR serial is", () => {
     const now = new Date();
-    expect(scDeliveryStatusAfterAccept([{ acceptedAt: now }, { acceptedAt: now }])).toBe("accepted");
-    expect(scDeliveryStatusAfterAccept([{ acceptedAt: now }, { acceptedAt: null }])).toBe("partial");
+    expect(scDeliverySettledStatus([{ acceptedAt: now }, { acceptedAt: now }])).toBe("accepted");
+    expect(scDeliverySettledStatus([{ acceptedAt: now }, { acceptedAt: null }])).toBe("partial");
+    // Returned units count as settled: accepted when any reached stock, rejected when all went back.
+    expect(scDeliverySettledStatus([{ acceptedAt: now }, { acceptedAt: null, returnedAt: now }])).toBe("accepted");
+    expect(scDeliverySettledStatus([{ acceptedAt: null, returnedAt: now }])).toBe("rejected");
+    expect(scDeliverySettledStatus([{ acceptedAt: null, returnedAt: now }, { acceptedAt: null }])).toBe("partial");
   });
 });
 

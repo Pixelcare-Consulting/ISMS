@@ -132,6 +132,7 @@ enum SapIntegrationJobType {
   delivery_return
   delivery_transfer
   service_center_order
+  sc_delivery_return
 }
 
 enum ModeOfPaymentKind {
@@ -248,6 +249,7 @@ enum InventoryApprovalSource {
   DELIVERY_TRANSFER
   SC_PULLOUT
   SC_RETURN
+  SC_DELIVERY_RETURN
 }
 
 enum InventoryApprovalStep {
@@ -328,6 +330,7 @@ model Tenant {
   branchDeliveries            BranchDelivery[]
   deliverySapDocuments        DeliverySapDocument[]
   deliveryReturnRequests      DeliveryReturnRequest[]
+  scDeliveryReturnRequests    ServiceCenterDeliveryReturnRequest[]
   deliveryTransfers           DeliveryTransfer[]
   branchTransfers             BranchTransfer[]
   branchPullouts              BranchPullout[]
@@ -412,6 +415,8 @@ model User {
   branchOrdersCreated                BranchOrder[]                 @relation("BranchOrderCreatedBy")
   deliveryReturnsRequested           DeliveryReturnRequest[]       @relation("DeliveryReturnRequestedBy")
   deliveryReturnsDecided             DeliveryReturnRequest[]       @relation("DeliveryReturnDecidedBy")
+  scDeliveryReturnsRequested         ServiceCenterDeliveryReturnRequest[] @relation("ScDeliveryReturnRequestedBy")
+  scDeliveryReturnsDecided           ServiceCenterDeliveryReturnRequest[] @relation("ScDeliveryReturnDecidedBy")
   deliveryTransfersCreated           DeliveryTransfer[]            @relation("DeliveryTransferCreatedBy")
   deliveryTransferLinesDecided       DeliveryTransferLine[]        @relation("DeliveryTransferLineDecidedBy")
   branchOrdersApproved               BranchOrder[]                 @relation("BranchOrderApprovedBy")
@@ -1841,6 +1846,7 @@ model SerialNumber {
   serviceCenterPulloutDetails  ServiceCenterPulloutDetail[]
   serviceBackloads             ServiceBackload[]
   serviceCenterDeliveryLines   ServiceCenterDeliveryLine[]
+  scDeliveryReturnLines        ServiceCenterDeliveryReturnLine[]
 
   @@unique([tenantId, serialNo])
   @@index([tenantId])
@@ -3838,6 +3844,7 @@ model ServiceCenterDelivery {
   statusCode            ReasonStatusCode?           @relation(fields: [statusCodeId], references: [id], onDelete: SetNull)
   backloads             ServiceBackload[]
   lines                 ServiceCenterDeliveryLine[]
+  returnRequests        ServiceCenterDeliveryReturnRequest[]
   redeliveredPulloutDetails ServiceCenterPulloutDetail[] @relation("ServiceCenterPulloutDetailRedelivery")
 
   @@unique([tenantId, deliveryNo])
@@ -3853,6 +3860,8 @@ model ServiceCenterDeliveryLine {
   deliveryId     String    @map("delivery_id")
   serialNumberId String    @map("serial_number_id")
   acceptedAt     DateTime? @map("accepted_at")
+  /// Set when the unit went back to SAP on a completed reject (SC delivery return).
+  returnedAt     DateTime? @map("returned_at")
   createdAt      DateTime  @default(now()) @map("created_at")
 
   delivery     ServiceCenterDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
@@ -3861,6 +3870,56 @@ model ServiceCenterDeliveryLine {
   @@unique([deliveryId, serialNumberId])
   @@index([serialNumberId])
   @@map("service_center_delivery_lines")
+}
+
+/// Units a service center rejected at receipt of a SAP DR. Confirming the reject approves it;
+/// ISMS posts a SAP Return for the SC order's customer, then the units go back to the order's
+/// SAP warehouse. Mirrors DeliveryReturnRequest for branch deliveries.
+model ServiceCenterDeliveryReturnRequest {
+  id            String               @id @default(cuid())
+  tenantId      String               @map("tenant_id")
+  deliveryId    String               @map("delivery_id")
+  requestNo     String               @map("request_no")
+  status        DeliveryReturnStatus @default(APPROVED)
+  reason        String
+  requestedById String               @map("requested_by_id")
+  requestedAt   DateTime             @default(now()) @map("requested_at")
+  decidedById   String?              @map("decided_by_id")
+  decidedAt     DateTime?            @map("decided_at")
+  decisionNote  String?              @map("decision_note")
+  sapDocEntry   Int?                 @map("sap_doc_entry")
+  sapDocNo      String?              @map("sap_doc_no")
+  sapDocDate    DateTime?            @db.Date @map("sap_doc_date")
+  sapError      String?              @map("sap_error")
+  createdAt     DateTime             @default(now()) @map("created_at")
+  updatedAt     DateTime             @updatedAt @map("updated_at")
+
+  tenant      Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  delivery    ServiceCenterDelivery             @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  requestedBy User                              @relation("ScDeliveryReturnRequestedBy", fields: [requestedById], references: [id])
+  decidedBy   User?                             @relation("ScDeliveryReturnDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+  lines       ServiceCenterDeliveryReturnLine[]
+
+  @@unique([tenantId, requestNo])
+  @@index([tenantId, deliveryId])
+  @@map("sc_delivery_return_requests")
+}
+
+model ServiceCenterDeliveryReturnLine {
+  id             String  @id @default(cuid())
+  returnId       String  @map("return_id")
+  serialNumberId String  @map("serial_number_id")
+  /// Why this unit was rejected at receipt; defaults to the request remarks.
+  remarks        String?
+  /// Rejected as defective; it goes back to the warehouse as DEF.
+  markDefective  Boolean @default(false) @map("mark_defective")
+
+  returnRequest ServiceCenterDeliveryReturnRequest @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  serialNumber  SerialNumber                       @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
+
+  @@unique([returnId, serialNumberId])
+  @@index([serialNumberId])
+  @@map("sc_delivery_return_lines")
 }
 
 model ServiceBackload {
