@@ -8,7 +8,10 @@ import {
   loadCurrentPlacements,
   lockSerialNumbers,
 } from "@/features/inventory/services/serial-placement";
-import { placeServiceCenterUnit } from "@/features/service-center-ops/services/service-center-placement";
+import {
+  placeServiceCenterUnits,
+  SC_DR_TRANSACTION_OPTIONS,
+} from "@/features/service-center-ops/services/service-center-placement";
 import { holdSpecialOrderUnitForReturn } from "@/features/service-center-ops/services/sc-service-return.service";
 import { notifyScSpecialOrderOutcome } from "@/features/service-center-ops/services/sc-service-return-notify";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
@@ -303,24 +306,22 @@ export async function acceptScDeliveryAction(
           await tx.warehouseInventory.deleteMany({ where: { id: { in: warehouseRowIds } } });
         }
       }
-      for (const serialNumberId of serialNumberIds) {
-        await tx.serviceBackload.create({
-          data: {
-            tenantId,
-            serviceCenterId: delivery.serviceCenterId,
-            serviceCenterLocationId: locationId,
-            deliveryId: delivery.id,
-            serialNumberId,
-          },
-        });
-        await placeServiceCenterUnit(tx, {
+      await tx.serviceBackload.createMany({
+        data: serialNumberIds.map((serialNumberId) => ({
           tenantId,
           serviceCenterId: delivery.serviceCenterId,
           serviceCenterLocationId: locationId,
+          deliveryId: delivery.id,
           serialNumberId,
-          statusCodeId: stkCodeId,
-        });
-      }
+        })),
+      });
+      await placeServiceCenterUnits(tx, {
+        tenantId,
+        serviceCenterId: delivery.serviceCenterId,
+        serviceCenterLocationId: locationId,
+        serialNumberIds,
+        statusCodeId: stkCodeId,
+      });
 
       let statusCodeId = acceptedCodeId;
       if (fromSap) {
@@ -345,7 +346,7 @@ export async function acceptScDeliveryAction(
         orderId: delivery.orderId,
         acceptedSerialNumberIds: serialNumberIds,
       });
-    });
+    }, SC_DR_TRANSACTION_OPTIONS);
   } catch (e) {
     return {
       error: e instanceof Error ? e.message : "Failed to accept delivery",
