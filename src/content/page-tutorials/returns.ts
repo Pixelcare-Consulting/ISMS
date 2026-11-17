@@ -12,7 +12,7 @@ export const RETURNS_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "What this page is for",
       description:
-        "After someone submits Process Return from a sale’s View details, use this page to approve Dealer Initiated returns, restore stock, or complete a replacement. Other sales returns are already approved. Service center returns are still evaluated by Customer Service. Branch, Service, and Approvals tabs keep the queues organized.",
+        "After someone submits Process Return from a sale’s View details, use this page to approve Dealer Initiated returns, restore stock, or complete a replacement. Other sales returns are already approved. Service Return and Service Replacement go to the chosen service center, which inspects the unit and finishes them under Service → SC Returns. Service center sale returns are still evaluated by Customer Service. Branch, Service, and Approvals tabs keep the queues organized.",
     },
     {
       title: "How to use it",

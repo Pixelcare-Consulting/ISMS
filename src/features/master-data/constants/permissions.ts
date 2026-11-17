@@ -11,6 +11,7 @@ export const BRS_PERMISSIONS = [
   { slug: "service_centers.return.evaluate", name: "Evaluate service center return (CS)" },
   { slug: "service_centers.return.approve", name: "Approve service center return (TL)" },
   { slug: "service_centers.return.complete", name: "Complete service center return / restore stock" },
+  { slug: "service_centers.returns.process", name: "Process service center returns and replacements" },
   { slug: "service_centers.orders.view", name: "View service center orders" },
   { slug: "service_centers.orders.create", name: "Create service center orders" },
   { slug: "service_centers.orders.approve", name: "Approve service center orders" },

@@ -24,21 +24,52 @@ export const SERVICE_RETURNED_REPLACED_STATUS = "Service Returned/Replaced";
 export type ReturnHistoryAction = "return" | "replacement";
 
 /**
- * Return-request steps during which the sale keeps the product status above.
- * Rejected sales go back to their sale status. Later steps must not clear this.
+ * Service Return / Replacement steps at the service center (Process V-b). The unit is
+ * Reserve ODRF until the service center finishes or rejects the request.
  */
-const RETURN_HISTORY_STATUSES = new Set([
+export const SC_SERVICE_OPEN_RETURN_STATUSES = ["pending_sc", "awaiting_stock"] as const;
+
+export type ScServiceOpenReturnStatus = (typeof SC_SERVICE_OPEN_RETURN_STATUSES)[number];
+
+/** Every return-request step that is still in progress (not completed or rejected). */
+export const OPEN_RETURN_REQUEST_STATUSES = [
   "pending_cs",
   "pending_tl",
   "approved",
-  "completed",
-]);
+  ...SC_SERVICE_OPEN_RETURN_STATUSES,
+] as const;
+
+/**
+ * Return-request steps during which the sale keeps a return status (open or finished).
+ * Rejected sales go back to their sale status. Later steps must not clear this.
+ */
+export const RETURN_HISTORY_STATUSES = [...OPEN_RETURN_REQUEST_STATUSES, "completed"] as const;
+
+const RETURN_HISTORY_STATUS_SET = new Set<string>(RETURN_HISTORY_STATUSES);
+const SC_SERVICE_OPEN_STATUS_SET = new Set<string>(SC_SERVICE_OPEN_RETURN_STATUSES);
 
 export function isReturnHistoryStatus(
   status: string | null | undefined,
 ): boolean {
-  return status != null && RETURN_HISTORY_STATUSES.has(status);
+  return status != null && RETURN_HISTORY_STATUS_SET.has(status);
 }
+
+/** The service center still has to finish this Service Return / Replacement. */
+export function isScServiceOpenReturnStatus(
+  status: string | null | undefined,
+): status is ScServiceOpenReturnStatus {
+  return status != null && SC_SERVICE_OPEN_STATUS_SET.has(status);
+}
+
+/** Inventory code of a sold unit sent to a service center for a service return. */
+export const RESERVE_ODRF_CODE = "ODRF";
+
+/** Sale-line status while the service center has the unit (fallback when the code is unseeded). */
+export const RESERVE_ODRF_STATUS: ReturnHistoryStatusRef = {
+  code: RESERVE_ODRF_CODE,
+  name: "Reserve ODRF",
+  color: "orange",
+};
 
 /** A return without a line id covers the sale; otherwise only that line. */
 export function returnRequestAppliesToLine(
@@ -75,6 +106,7 @@ export interface ReturnHistoryStatusRef {
 
 /**
  * Stable sale status for a return that is requested, approved, or finished.
+ * Reserve ODRF while a service center still has the unit.
  * Null when there is no return, or the request was rejected.
  */
 export function returnHistoryStatusRef(
@@ -83,6 +115,7 @@ export function returnHistoryStatusRef(
   actionType?: ReturnHistoryAction | null,
 ): ReturnHistoryStatusRef | null {
   if (!isReturnHistoryStatus(status)) return null;
+  if (isScServiceOpenReturnStatus(status)) return RESERVE_ODRF_STATUS;
   const service = isServiceDocumentTypeName(documentTypeName);
   const kind: ReturnHistoryAction =
     actionType === "replacement" ? "replacement" : "return";

@@ -185,7 +185,7 @@ export function ProcessReturnDialog({
 
   function approvalNote(documentTypeName: string | null | undefined): string {
     if (isServiceDocumentTypeName(documentTypeName)) {
-      return "This request is subject for approval of the service department.";
+      return "The unit becomes Reserve ODRF. The service center inspects it and finishes this request.";
     }
     if (isDealerInitiatedDocumentTypeName(documentTypeName)) {
       return "This request waits for the Team Leader Approval.";

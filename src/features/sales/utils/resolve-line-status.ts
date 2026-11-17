@@ -1,6 +1,8 @@
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import {
   isReturnHistoryStatus,
+  isScServiceOpenReturnStatus,
+  RESERVE_ODRF_STATUS,
   returnRequestAppliesToLine,
   type ReturnHistoryAction,
 } from "@/features/sales/constants/return-history-status";
@@ -31,6 +33,8 @@ const SALES_ATR_STATUS_FALLBACK: Record<string, SaleStatusCodeRef> = {
   approved: { code: "approved", name: "Approved", color: "emerald" },
   rejected: { code: "rejected", name: "Rejected", color: "rose" },
   completed: { code: "completed", name: "Completed", color: "emerald" },
+  pending_sc: { code: "pending_sc", name: "Pending SC", color: "amber" },
+  awaiting_stock: { code: "awaiting_stock", name: "Awaiting Stock", color: "sky" },
   open: { code: "open", name: "Open", color: "sky" },
   reserve: { code: "reserve", name: "Reserve", color: "amber" },
   closed: { code: "closed", name: "Closed", color: "slate" },
@@ -118,7 +122,8 @@ export interface ListedLineStatusSale {
 
 /**
  * List/details STATUS preference (never live inventory):
- * 1) Open return on this line: Pending CS, Pending TL, or Approved from Sales & ATR
+ * 1) Open return on this line: Pending CS, Pending TL, or Approved from Sales & ATR;
+ *    Reserve ODRF while a service center has the unit (Pending SC, Awaiting Stock)
  * 2) Finished return on this line: Returned or Replaced (settings codes RETURNED, REPLACED)
  * 3) No return and a closed sale: Closed
  * 4) No return, no serial, and a reserve sale: Reserve
@@ -146,6 +151,9 @@ export function resolveLineStatusCode(
   actionType?: ReturnHistoryAction | null,
 ): SaleStatusCodeRef | null {
   const requestStep = returnStatus?.trim().toLowerCase() ?? "";
+  if (isScServiceOpenReturnStatus(requestStep)) {
+    return RESERVE_ODRF_STATUS;
+  }
   if (OPEN_RETURN_REQUEST_CODES.has(requestStep)) {
     return resolveSalesAtrStatusCode(requestStep, salesAtrCodes);
   }

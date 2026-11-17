@@ -19,6 +19,8 @@ import { loadScOrderWorksheet } from "@/features/service-center-ordering/service
 import { scOrderingSettingsService } from "@/features/service-center-ordering/services/sc-ordering-settings.service";
 import { checkScOrdersInSap } from "@/features/service-center-ordering/services/sc-order-sap-check.service";
 import { scOrderService } from "@/features/service-center-ordering/services/sc-order.service";
+import { releaseReturnFromRejectedOrder } from "@/features/service-center-ops/services/sc-service-return.service";
+import { notifyScSpecialOrderOutcome } from "@/features/service-center-ops/services/sc-service-return-notify";
 import {
   assertScInScope,
   resolveScIdsForUser,
@@ -154,20 +156,35 @@ export async function rejectScOrderAction(orderId: string, comment?: string) {
     return { error: "Order cannot be rejected" as const };
   }
 
-  await prisma.$transaction([
-    prisma.serviceCenterOrder.update({
+  const released = await prisma.$transaction(async (tx) => {
+    await tx.serviceCenterOrder.update({
       where: { id: orderId },
       data: { status: "rejected" },
-    }),
-    prisma.serviceCenterOrderApprovalLevel.updateMany({
+    });
+    await tx.serviceCenterOrderApprovalLevel.updateMany({
       where: { orderId, approvedAt: null, rejectedAt: null },
       data: {
         rejectedAt: new Date(),
         approvedById: session.user.id,
         comment: comment?.trim() || null,
       },
-    }),
-  ]);
+    });
+    // A special order for a Service Replacement: the request goes back to the service center.
+    return releaseReturnFromRejectedOrder(tx, { tenantId: session.user.tenantId, orderId });
+  });
+
+  if (released) {
+    await notifyScSpecialOrderOutcome({
+      tenantId: session.user.tenantId,
+      actorUserId: session.user.id,
+      returnRequestId: released.returnRequestId,
+      serviceCenterId: released.serviceCenterId,
+      transactionNo: released.transactionNo,
+      orderNumber: order.orderNumber,
+      outcome: "REJECTED",
+    });
+    revalidatePath("/service-centers/returns");
+  }
 
   revalidateScOrders();
   return { success: true as const };

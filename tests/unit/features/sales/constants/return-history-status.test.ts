@@ -1,5 +1,8 @@
 import {
+  isReturnHistoryStatus,
+  isScServiceOpenReturnStatus,
   REPLACED_STATUS,
+  RESERVE_ODRF_STATUS,
   RETURNED_STATUS,
   returnHistoryStatusRef,
   SERVICE_REPLACED_STATUS,
@@ -66,5 +69,33 @@ describe("returnHistoryStatusRef", () => {
     expect(parseSalesListStatusFilter("service_returned_replaced")).toBeUndefined();
     expect(parseSalesListStatusFilter("returned")).toBe("RETURNED");
     expect(parseSalesListStatusFilter("replaced")).toBe("REPLACED");
+  });
+});
+
+describe("service center steps (Process V-b)", () => {
+  it.each(["pending_sc", "awaiting_stock"])(
+    "shows Reserve ODRF while the service center has the unit (%s)",
+    (status) => {
+      expect(returnHistoryStatusRef(status, "Service Replacement", "replacement")).toEqual(
+        RESERVE_ODRF_STATUS,
+      );
+      expect(isScServiceOpenReturnStatus(status)).toBe(true);
+      expect(isReturnHistoryStatus(status)).toBe(true);
+    },
+  );
+
+  it("keeps Service Returned once the service center completes it", () => {
+    expect(returnHistoryStatusRef("completed", "Service Return", "return")).toMatchObject({
+      name: SERVICE_RETURNED_STATUS,
+    });
+  });
+
+  it("drops the return status when the service center rejects it", () => {
+    expect(returnHistoryStatusRef("rejected", "Service Return", "return")).toBeNull();
+    expect(isScServiceOpenReturnStatus("rejected")).toBe(false);
+  });
+
+  it("filters the sales list by Reserve ODRF", () => {
+    expect(parseSalesListStatusFilter("odrf")).toBe("ODRF");
   });
 });

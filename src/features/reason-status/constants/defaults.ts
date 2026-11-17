@@ -38,6 +38,7 @@ export const REASON_STATUS_DEFAULTS: ReasonStatusDefaultGroup[] = [
       { code: "FW", name: "TO FOLLOW", sortOrder: 9, color: "orange" },
       { code: "FTR", name: "For transfer", sortOrder: 10, color: "violet" },
       { code: "PO", name: "Pulled out", sortOrder: 11, color: "slate" },
+      { code: "ODRF", name: "Reserve ODRF", sortOrder: 12, color: "orange" },
     ],
   },
   {
@@ -122,6 +123,8 @@ export const REASON_STATUS_DEFAULTS: ReasonStatusDefaultGroup[] = [
       { code: "open", name: "Open", sortOrder: 6, color: "sky" },
       { code: "reserve", name: "Reserve", sortOrder: 7, color: "amber" },
       { code: "closed", name: "Closed", sortOrder: 8, color: "slate" },
+      { code: "pending_sc", name: "Pending SC", sortOrder: 9, color: "amber" },
+      { code: "awaiting_stock", name: "Awaiting Stock", sortOrder: 10, color: "sky" },
     ],
   },
 ];

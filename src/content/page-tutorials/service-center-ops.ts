@@ -128,3 +128,30 @@ export const SC_PULLOUTS_PAGE_TUTORIAL: PageTutorialContent = {
     },
   ],
 };
+
+export const SC_RETURNS_PAGE_TUTORIAL: PageTutorialContent = {
+  id: "service-centers-returns",
+  triggerLabel: "Open service returns tutorial",
+  dialogTitle: "Service center returns: quick guide",
+  dialogDescription:
+    "Finish the Service Returns and Service Replacements a CSR sent to your service center.",
+  helpHref: "/help",
+  helpLinkLabel: "Full Help & Support portal",
+  sections: [
+    {
+      title: "What this page is for",
+      description:
+        "A CSR requests a Service Return or Service Replacement on a branch sale (Sales → View details → Request Return) and picks your service center. The unit becomes Reserve ODRF and the request waits here as Pending SC. You get a notification for each new request.",
+    },
+    {
+      title: "How to use it",
+      bullets: [
+        "Inspect the returned unit, then open the request from the notification or search by SI, serial or customer.",
+        "Service Return: choose the location that receives the unit and Submit Return. The unit goes into your stock as the STK or DEF the CSR chose.",
+        "Service Replacement, unit in stock: pick the model and serial from your STK and Replace Unit. The returned unit goes into your stock and the new unit is Sold on the same invoice.",
+        "Service Replacement, no unit in stock: Raise Special Order. It follows the service center order flow (approval, SAP, delivery). The request shows Awaiting Stock until you accept that delivery; the unit is then held for it and the request is back to Pending SC.",
+        "Reject with a reason when the unit does not qualify. It goes back to Sold or Official Sold and the CSR is notified.",
+      ],
+    },
+  ],
+};

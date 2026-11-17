@@ -44,6 +44,7 @@ export type NavCountBadgeKey =
   | "ordersSpecialQueue"
   | "ordersAutoReplenishQueue"
   | "returnsApprovals"
+  | "scServiceReturns"
   | "logisticsDeliveries"
   | "logisticsTransfers"
   | "logisticsPullouts";
@@ -644,6 +645,19 @@ export const appNavigation: NavEntry[] = [
               "service_centers.sales.create",
               "service_centers.sales.update",
             ],
+          },
+        ],
+      },
+      {
+        label: "Returns",
+        icon: ArrowLeftRight,
+        items: [
+          {
+            href: "/service-centers/returns",
+            label: "SC Returns",
+            icon: ArrowLeftRight,
+            permission: "service_centers.returns.process",
+            countBadgeKey: "scServiceReturns",
           },
         ],
       },

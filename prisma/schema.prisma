@@ -177,6 +177,10 @@ enum ReturnRequestStatus {
   approved
   rejected
   completed
+  /// Service Return / Replacement: the service center inspects and finishes it.
+  pending_sc
+  /// Service Replacement waiting for its special service center order to arrive.
+  awaiting_stock
 }
 
 /// Captured at Sales Process Return submit: restore path vs replacement path.
@@ -445,6 +449,7 @@ model User {
   returnRequestsEvaluated            BranchReturnRequest[]         @relation("ReturnEvaluatedBy")
   returnRequestsApproved             BranchReturnRequest[]         @relation("ReturnApprovedBy")
   returnRequestsAccepted             BranchReturnRequest[]         @relation("ReturnAcceptedBy")
+  returnRequestsInspected            BranchReturnRequest[]         @relation("ReturnInspectedBy")
   scReturnRequestsSubmitted          ServiceCenterReturnRequest[]  @relation("ScReturnRequestedBy")
   scReturnRequestsEvaluated          ServiceCenterReturnRequest[]  @relation("ScReturnEvaluatedBy")
   scReturnRequestsApproved           ServiceCenterReturnRequest[]  @relation("ScReturnApprovedBy")
@@ -1352,6 +1357,7 @@ model ServiceCenter {
   sales                ServiceCenterSalesTransaction[]
   pullouts             ServiceCenterPullout[]
   branchReturnRequests BranchReturnRequest[]
+  salesReplacements    SalesReplacement[]
 
   @@unique([tenantId, sapCode])
   @@index([tenantId])
@@ -1823,6 +1829,7 @@ model SerialNumber {
   serviceCenterSalesDetails    ServiceCenterSalesTransactionDetail[]
   salesReplacementsOriginal    SalesReplacement[]              @relation("SalesReplacementOriginalSn")
   salesReplacementsReplacement SalesReplacement[]              @relation("SalesReplacementReplacementSn")
+  heldForBranchReturns         BranchReturnRequest[]           @relation("BranchReturnHeldSerial")
   branchBackloads              BranchBackload[]
   warehouseInventories         WarehouseInventory[]
   deliveryLines                BranchDeliveryLine[]
@@ -3242,6 +3249,13 @@ model BranchReturnRequest {
   evaluatedAt             DateTime?              @map("evaluated_at")
   approvedAt              DateTime?              @map("approved_at")
   completedAt             DateTime?              @map("completed_at")
+  /// Service center user who finished or rejected a Service Return / Replacement.
+  inspectedById           String?                @map("inspected_by_id")
+  inspectedAt             DateTime?              @map("inspected_at")
+  /// Special service center order raised when the replacement was not in SC stock.
+  specialOrderId          String?                @unique @map("special_order_id")
+  /// Unit from the special order's delivery, held (RSV) at the service center for this request.
+  heldSerialNumberId      String?                @map("held_serial_number_id")
   createdAt               DateTime               @default(now()) @map("created_at")
   updatedAt               DateTime               @updatedAt @map("updated_at")
 
@@ -3259,10 +3273,16 @@ model BranchReturnRequest {
   evaluatedBy           User?                         @relation("ReturnEvaluatedBy", fields: [evaluatedById], references: [id], onDelete: SetNull)
   approvedBy            User?                         @relation("ReturnApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
   acceptedBy            User?                         @relation("ReturnAcceptedBy", fields: [acceptedById], references: [id], onDelete: SetNull)
+  inspectedBy           User?                         @relation("ReturnInspectedBy", fields: [inspectedById], references: [id], onDelete: SetNull)
+  specialOrder          ServiceCenterOrder?           @relation(fields: [specialOrderId], references: [id], onDelete: SetNull)
+  heldSerialNumber      SerialNumber?                 @relation("BranchReturnHeldSerial", fields: [heldSerialNumberId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, status])
   @@index([tenantId, actionType])
   @@index([documentTypeId])
+  @@index([tenantId, serviceCenterId, status])
+  @@index([inspectedById])
+  @@index([heldSerialNumberId])
   @@index([serviceCenterId])
   @@index([serviceModelId])
   @@index([warehouseLocationId])
@@ -3321,6 +3341,8 @@ model SalesReplacement {
   replacementSerialNumberId String?   @map("replacement_serial_number_id")
   replacementDealerId       String?   @map("replacement_dealer_id")
   replacementBranchId       String?   @map("replacement_branch_id")
+  /// Service Replacement: the service center whose stock gave the replacement unit.
+  replacementServiceCenterId String?  @map("replacement_service_center_id")
   replacementAmount         Decimal?  @map("replacement_amount") @db.Decimal(12, 2)
   replacementModelPrice     Decimal?  @map("replacement_model_price") @db.Decimal(12, 2)
   replacementInvoiceDate    DateTime? @map("replacement_invoice_date")
@@ -3336,10 +3358,12 @@ model SalesReplacement {
   replacementSerialNumber SerialNumber?          @relation("SalesReplacementReplacementSn", fields: [replacementSerialNumberId], references: [id], onDelete: SetNull)
   replacementDealer       Dealer?                @relation(fields: [replacementDealerId], references: [id], onDelete: SetNull)
   replacementBranch       Branch?                @relation(fields: [replacementBranchId], references: [id], onDelete: SetNull)
+  replacementServiceCenter ServiceCenter?        @relation(fields: [replacementServiceCenterId], references: [id], onDelete: SetNull)
   transactedBy            User?                  @relation("SalesReplacementTransactedBy", fields: [transactedById], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, replacementNo])
   @@index([tenantId, saleId])
+  @@index([replacementServiceCenterId])
   @@map("sales_replacements")
 }
 
@@ -3711,6 +3735,8 @@ model ServiceCenterOrder {
   details               ServiceCenterOrderDetail[]
   approvalLevels        ServiceCenterOrderApprovalLevel[]
   deliveries            ServiceCenterDelivery[]
+  /// The Service Replacement this special order was raised for.
+  branchReturnRequest   BranchReturnRequest?
 
   @@unique([tenantId, orderNumber])
   @@index([tenantId, serviceCenterId, status])

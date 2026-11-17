@@ -22,6 +22,11 @@ export const SC_LOGISTICS_VIEW = "service_centers.logistics.view";
 export const SC_LOGISTICS_CREATE = "service_centers.logistics.create";
 export const SC_LOGISTICS_MANAGE = "service_centers.logistics.manage";
 export const SC_MANAGE = "service_centers.manage";
+/**
+ * Finish a Service Return / Replacement the CSR sent to a service center (Process V-b):
+ * submit the return into SC stock, replace from SC stock, raise a special order, or reject.
+ */
+export const SC_RETURNS_PROCESS = "service_centers.returns.process";
 
 /** SC Sales list / encode / header edit. Returns are handled outside SC Sales. */
 export const SC_SALES_ACCESS = [
@@ -125,4 +130,8 @@ export function scReturnRejectPermissions(status: string): string[] {
     SC_SALES_CREATE,
     SC_ORDERS_APPROVE,
   ];
+}
+
+export function canProcessScServiceReturns(permissions: string[] | undefined): boolean {
+  return hasPermission(permissions, SC_RETURNS_PROCESS);
 }

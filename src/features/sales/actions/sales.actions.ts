@@ -62,6 +62,8 @@ import {
   isServiceDocumentTypeName,
 } from "@/features/sales/constants/process-return";
 import {
+  isScServiceOpenReturnStatus,
+  RESERVE_ODRF_CODE,
   returnHistoryStatusLabel,
   returnHistoryStatusRef,
 } from "@/features/sales/constants/return-history-status";
@@ -70,6 +72,15 @@ import {
   resolveSalesAtrStatusCode,
 } from "@/features/sales/utils/resolve-line-status";
 import { generateAndStoreAtrOdrfPdf } from "@/features/sales/services/atr-odrf-pdf";
+import { nextReplacementNo } from "@/features/sales/services/replacement-no";
+import {
+  holdCodeId,
+  loadReturnReserveCodeIds,
+  markSoldSerialReserved,
+  restoreSerialAfterReturnReject,
+  returnRequestHistoryDetails,
+} from "@/features/sales/services/return-unit-hold";
+import { notifyScServiceReturnRequested } from "@/features/service-center-ops/services/sc-service-return-notify";
 import {
   assertSaleHeaderLookups,
   assertSaleLookups,
@@ -395,12 +406,12 @@ export async function listSalesReturnsAction(input?: {
         atrStatus: sale.atrStatus,
         atrStatusCode: resolveSalesAtrStatusCode(sale.atrStatus, salesAtrCodes),
         returnStatus: row.status,
+        // The service center steps read better as the step than as Reserve ODRF here.
         returnStatusCode:
-          returnHistoryStatusRef(
-            row.status,
-            row.documentType?.name,
-            row.actionType,
-          ) ?? resolveSalesAtrStatusCode(row.status, salesAtrCodes),
+          (isScServiceOpenReturnStatus(row.status)
+            ? null
+            : returnHistoryStatusRef(row.status, row.documentType?.name, row.actionType)) ??
+          resolveSalesAtrStatusCode(row.status, salesAtrCodes),
         actionType: row.actionType ?? "return",
         stockStatusCode: row.stockStatusCode ?? "STK",
         documentTypeName: row.documentType?.name ?? null,
@@ -417,7 +428,10 @@ export async function listSalesReturnsAction(input?: {
         origSerialNos,
         origPrice,
         replSerialNo: replacement?.replacementSerialNumber?.serialNo ?? null,
-        replBranchName: replacement?.replacementBranch?.name ?? null,
+        replBranchName:
+          replacement?.replacementBranch?.name ??
+          replacement?.replacementServiceCenter?.name ??
+          null,
         replAmount: replacement?.replacementAmount?.toString() ?? null,
         replInvoiceNo: replacement?.replacementInvoiceNo ?? null,
         createdAt: row.createdAt.toISOString(),
@@ -1132,165 +1146,6 @@ const processReturnPayloadSchema = z.object({
 
 export type ProcessReturnPayload = z.infer<typeof processReturnPayloadSchema>;
 
-const RETURN_RESERVE_FROM_CODES = ["SLD", "OFS", "RSV"] as const;
-type ReturnReserveFromCode = (typeof RETURN_RESERVE_FROM_CODES)[number];
-
-const PRIOR_INVENTORY_STATUS =
-  /· was (Official Sold|Sold|Reserved) \(request /u;
-
-const PRIOR_STATUS_LABEL: Record<ReturnReserveFromCode, string> = {
-  SLD: "Sold",
-  OFS: "Official Sold",
-  RSV: "Reserved",
-};
-
-function isReturnReserveFromCode(code: string): code is ReturnReserveFromCode {
-  return (RETURN_RESERVE_FROM_CODES as readonly string[]).includes(code);
-}
-
-function priorInventoryStatusFromHistory(
-  details: string | null | undefined,
-): ReturnReserveFromCode | null {
-  const label = PRIOR_INVENTORY_STATUS.exec(details ?? "")?.[1];
-  if (label === "Official Sold") return "OFS";
-  if (label === "Sold") return "SLD";
-  if (label === "Reserved") return "RSV";
-  return null;
-}
-
-function returnRequestHistoryDetails(
-  actionLabel: string,
-  transactionNo: string,
-  returnRequestId: string,
-  priorStatus: ReturnReserveFromCode | null,
-): string {
-  const prior = priorStatus ? ` · was ${PRIOR_STATUS_LABEL[priorStatus]}` : "";
-  return `${actionLabel} ${transactionNo}${prior} (request ${returnRequestId})`;
-}
-
-function reserveFromCodeId(
-  code: ReturnReserveFromCode,
-  ids: { sldCodeId: string; ofsCodeId: string; rsvCodeId: string },
-): string {
-  switch (code) {
-    case "SLD":
-      return ids.sldCodeId;
-    case "OFS":
-      return ids.ofsCodeId;
-    case "RSV":
-      return ids.rsvCodeId;
-    default: {
-      const _exhaustive: never = code;
-      return _exhaustive;
-    }
-  }
-}
-
-async function loadReturnReserveCodeIds(tenantId: string) {
-  const [sldCodeId, ofsCodeId, rsvCodeId] = await Promise.all([
-    reasonStatusService.findCodeId(tenantId, "inventory_system", "SLD"),
-    reasonStatusService.findCodeId(tenantId, "inventory_system", "OFS"),
-    reasonStatusService.findCodeId(tenantId, "inventory_system", "RSV"),
-  ]);
-  if (!sldCodeId || !ofsCodeId || !rsvCodeId) return null;
-  return { sldCodeId, ofsCodeId, rsvCodeId };
-}
-
-type ReturnReserveTx = Pick<
-  Prisma.TransactionClient,
-  "branchInventory" | "serialNumberHistory" | "$queryRaw"
->;
-
-/**
- * Sold, Official Sold, or Reserved at the branch sold becomes Reserved.
- * Returns the status the unit had, so a later reject can put it back.
- */
-async function markSoldSerialReserved(
-  tx: ReturnReserveTx,
-  input: {
-    tenantId: string;
-    userId: string;
-    soldBranchId: string;
-    serialNumberId: string;
-    sldCodeId: string;
-    ofsCodeId: string;
-    rsvCodeId: string;
-  },
-): Promise<ReturnReserveFromCode | null> {
-  await lockSerialNumbers(tx, [input.serialNumberId]);
-  const row = await tx.branchInventory.findFirst({
-    where: {
-      tenantId: input.tenantId,
-      branchId: input.soldBranchId,
-      serialNumberId: input.serialNumberId,
-      statusCodeId: {
-        in: [input.sldCodeId, input.ofsCodeId, input.rsvCodeId],
-      },
-    },
-    select: {
-      id: true,
-      statusCode: { select: { code: true } },
-    },
-  });
-  if (!row || !isReturnReserveFromCode(row.statusCode.code)) return null;
-
-  await tx.branchInventory.updateMany({
-    where: {
-      id: row.id,
-      statusCodeId: {
-        in: [input.sldCodeId, input.ofsCodeId, input.rsvCodeId],
-      },
-    },
-    data: {
-      statusCodeId: input.rsvCodeId,
-      updatedById: input.userId,
-      ...statusUpdatedStamp(row.statusCode.code, "RSV"),
-    },
-  });
-  return row.statusCode.code;
-}
-
-/** Put a requested unit back to the status remembered on its request history row. */
-async function restoreSerialAfterReturnReject(
-  tx: ReturnReserveTx,
-  input: {
-    tenantId: string;
-    userId: string;
-    soldBranchId: string;
-    returnRequestId: string;
-    sldCodeId: string;
-    ofsCodeId: string;
-    rsvCodeId: string;
-  },
-): Promise<void> {
-  const history = await tx.serialNumberHistory.findFirst({
-    where: {
-      tenantId: input.tenantId,
-      txnType: { in: ["return", "replacement"] },
-      details: { contains: `(request ${input.returnRequestId})` },
-    },
-    orderBy: { createdAt: "asc" },
-    select: { serialNumberId: true, details: true },
-  });
-  const prior = priorInventoryStatusFromHistory(history?.details);
-  if (!history || !prior) return;
-
-  await lockSerialNumbers(tx, [history.serialNumberId]);
-  await tx.branchInventory.updateMany({
-    where: {
-      tenantId: input.tenantId,
-      branchId: input.soldBranchId,
-      serialNumberId: history.serialNumberId,
-      statusCodeId: input.rsvCodeId,
-    },
-    data: {
-      statusCodeId: reserveFromCodeId(prior, input),
-      updatedById: input.userId,
-      ...statusUpdatedStamp("RSV", prior),
-    },
-  });
-}
-
 export async function requestReturnAction(
   saleId: string,
   payload: ProcessReturnPayload | string,
@@ -1427,13 +1282,17 @@ export async function requestReturnAction(
 
   const summaryNote = `[${data.actionType === "replacement" ? "Replacement" : "Return"} requested] ${documentType.name} · ${data.stockStatusCode} · ${problemDescriptionText}`;
   const needsTeamLeader = isDealerInitiatedDocumentTypeName(documentType.name);
+  // Service Return / Replacement: the chosen service center inspects and finishes it.
+  const holdCode = serviceReturn ? RESERVE_ODRF_CODE : "RSV";
   const requestedAt = new Date();
   const reserveCodes = targetDetail.serialNumberId
     ? await loadReturnReserveCodeIds(session.user.tenantId)
     : null;
-  if (targetDetail.serialNumberId && !reserveCodes) {
+  if (targetDetail.serialNumberId && (!reserveCodes || !holdCodeId(holdCode, reserveCodes))) {
     return {
-      error: "Sold, Official Sold, and Reserved are not ready for this return" as const,
+      error: serviceReturn
+        ? ("Sold, Official Sold, and Reserve ODRF are not ready for this return" as const)
+        : ("Sold, Official Sold, and Reserved are not ready for this return" as const),
     };
   }
 
@@ -1444,13 +1303,15 @@ export async function requestReturnAction(
         saleId,
         saleDetailId: targetDetail.id,
         requestedById: session.user.id,
-        ...(needsTeamLeader
-          ? { status: "pending_tl" as const }
-          : {
-              status: "approved" as const,
-              approvedById: session.user.id,
-              approvedAt: requestedAt,
-            }),
+        ...(serviceReturn
+          ? { status: "pending_sc" as const }
+          : needsTeamLeader
+            ? { status: "pending_tl" as const }
+            : {
+                status: "approved" as const,
+                approvedById: session.user.id,
+                approvedAt: requestedAt,
+              }),
         actionType: data.actionType,
         stockStatusCode: data.stockStatusCode,
         documentTypeId: documentType.id,
@@ -1483,7 +1344,7 @@ export async function requestReturnAction(
         notes: [sale.notes, summaryNote].filter(Boolean).join("\n"),
       },
     });
-    if (needsTeamLeader) {
+    if (needsTeamLeader || serviceReturn) {
       await recordReturnRequested(
         tx,
         {
@@ -1494,7 +1355,7 @@ export async function requestReturnAction(
           serialNumberId: targetDetail.serialNumberId,
         },
         { requestedById: session.user.id, problemDescription: problemDescriptionText },
-        "TL_APPROVAL",
+        serviceReturn ? "INSPECTION" : "TL_APPROVAL",
       );
     }
 
@@ -1504,7 +1365,8 @@ export async function requestReturnAction(
         userId: session.user.id,
         soldBranchId: sale.branchId,
         serialNumberId: targetDetail.serialNumberId,
-        ...reserveCodes,
+        codes: reserveCodes,
+        holdCode,
       });
       const actionLabel = data.actionType === "replacement" ? "Replacement" : "Return";
       await tx.serialNumberHistory.create({
@@ -1627,6 +1489,7 @@ export async function requestReturnAction(
     metadata: {
       transactionNo: sale.transactionNo,
       atrStatus: "reserve",
+      status: serviceReturn ? "pending_sc" : needsTeamLeader ? "pending_tl" : "approved",
       actionType: data.actionType,
       stockStatusCode: data.stockStatusCode,
       documentTypeId: documentType.id,
@@ -1635,6 +1498,19 @@ export async function requestReturnAction(
       hasAtrOdrfPdf: Boolean(atrOdrfPdfPath),
     },
   });
+
+  if (serviceReturn && data.serviceCenterId) {
+    await notifyScServiceReturnRequested({
+      tenantId: session.user.tenantId,
+      actorUserId: session.user.id,
+      returnRequestId: created.id,
+      serviceCenterId: data.serviceCenterId,
+      transactionNo: sale.transactionNo,
+      actionType: data.actionType,
+      serialNo: targetDetail.serialNumber?.serialNo ?? null,
+    });
+    revalidatePath("/service-centers/returns");
+  }
 
   revalidatePath("/sales");
   revalidatePath("/returns");
@@ -2007,7 +1883,8 @@ export async function rejectReturnAction(returnRequestId: string, notes?: string
         userId: session.user.id,
         soldBranchId: row.sale.branchId,
         returnRequestId,
-        ...reserveCodes,
+        codes: reserveCodes,
+        holdCode: "RSV",
       });
     }
     await recordReturnRejected(tx, approval, {
@@ -2103,14 +1980,6 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
   revalidatePath("/returns");
   revalidatePath("/inventory");
   return { success: true as const };
-}
-
-async function nextReplacementNo(
-  tenantId: string,
-  tx: Pick<typeof prisma, "salesReplacement">,
-): Promise<string> {
-  const count = await tx.salesReplacement.count({ where: { tenantId } });
-  return `REPL-${String(count + 1).padStart(6, "0")}`;
 }
 
 const replacementSameInvoiceSchema = z.object({

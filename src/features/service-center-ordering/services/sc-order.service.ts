@@ -35,6 +35,8 @@ export interface CreateScOrderInput {
   projectCode?: string | null;
   notes?: string | null;
   lines: { modelId: string; quantity: number }[];
+  /** `special` for a unit ordered for one customer (a Service Replacement). Default `manual`. */
+  orderType?: "manual" | "special";
 }
 
 export const scOrderService = {
@@ -76,7 +78,7 @@ export const scOrderService = {
         tenantId,
         serviceCenterId: input.serviceCenterId,
         serviceCenterLocationId: input.serviceCenterLocationId ?? null,
-        orderType: "manual",
+        orderType: input.orderType ?? "manual",
         status: "pending_tl",
         orderNumber,
         notes: input.notes?.trim() || null,
@@ -102,7 +104,12 @@ export const scOrderService = {
       action: "sc_order.created",
       entityType: "ServiceCenterOrder",
       entityId: order.id,
-      metadata: { orderNumber, cardCode: snapshot.sapCardCode, poNumber: input.poNumber ?? null },
+      metadata: {
+        orderNumber,
+        orderType: input.orderType ?? "manual",
+        cardCode: snapshot.sapCardCode,
+        poNumber: input.poNumber ?? null,
+      },
     });
     return order;
   },

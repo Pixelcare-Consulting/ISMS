@@ -9,6 +9,8 @@ import {
   lockSerialNumbers,
 } from "@/features/inventory/services/serial-placement";
 import { placeServiceCenterUnit } from "@/features/service-center-ops/services/service-center-placement";
+import { holdSpecialOrderUnitForReturn } from "@/features/service-center-ops/services/sc-service-return.service";
+import { notifyScSpecialOrderOutcome } from "@/features/service-center-ops/services/sc-service-return-notify";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import {
   SC_LOGISTICS_CREATE,
@@ -138,6 +140,7 @@ export async function acceptScDeliveryAction(
     reasonStatusService.requireCodeId(tenantId, "inventory_system", "STK"),
   ]);
 
+  let heldForReturn: Awaited<ReturnType<typeof holdSpecialOrderUnitForReturn>> = null;
   try {
     await prisma.$transaction(async (tx) => {
       await lockSerialNumbers(tx, serialNumberIds);
@@ -188,6 +191,12 @@ export async function acceptScDeliveryAction(
         where: { id: deliveryId },
         data: { statusCodeId, serviceCenterLocationId: locationId },
       });
+      // A special order raised by a Service Replacement: hold its unit for that request.
+      heldForReturn = await holdSpecialOrderUnitForReturn(tx, {
+        tenantId,
+        orderId: delivery.orderId,
+        acceptedSerialNumberIds: serialNumberIds,
+      });
     });
   } catch (e) {
     return {
@@ -207,6 +216,20 @@ export async function acceptScDeliveryAction(
       drNo: delivery.sapDocNo,
     },
   });
+
+  const held = heldForReturn as Awaited<ReturnType<typeof holdSpecialOrderUnitForReturn>>;
+  if (held) {
+    await notifyScSpecialOrderOutcome({
+      tenantId,
+      actorUserId: session.user.id,
+      returnRequestId: held.returnRequestId,
+      serviceCenterId: held.serviceCenterId,
+      transactionNo: held.transactionNo,
+      orderNumber: held.orderNumber,
+      outcome: "DELIVERED",
+    });
+    revalidatePath("/service-centers/returns");
+  }
 
   revalidateScLogistics();
   return {

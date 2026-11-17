@@ -334,6 +334,7 @@ export const salesRepository = {
                   replacementInvoiceNo: true,
                   replacementInvoiceDate: true,
                   replacementBranch: { select: { id: true, name: true } },
+                  replacementServiceCenter: { select: { id: true, name: true } },
                   replacementSerialNumber: {
                     select: { id: true, serialNo: true },
                   },
