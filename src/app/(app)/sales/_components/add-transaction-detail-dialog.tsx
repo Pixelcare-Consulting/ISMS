@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { SaleSerialField } from "@/app/(app)/sales/_components/sale-serial-field";
@@ -23,6 +23,7 @@ import {
   listModelsForSalesAction,
   listPackageTypesForSalesAction,
   resolveModelPriceForSalesAction,
+  type AgingSellableSerial,
 } from "@/features/sales/actions/sales.actions";
 import {
   isToFollowSerial,
@@ -212,7 +213,13 @@ export function AddTransactionDetailDialog({
   );
   const [hydrated, setHydrated] = useState(!isEdit);
   const [agingCount, setAgingCount] = useState<number | null>(null);
+  const [agedSerialsBySet, setAgedSerialsBySet] = useState<
+    AgingSellableSerial[][]
+  >([]);
   const agingCheckRef = useRef(0);
+  const agingEpoch = useRef(0);
+  const agingRequestBySet = useRef<number[]>([]);
+  const setsRef = useRef(sets);
 
   const selectedPackage = useMemo(
     () => packages.find((p) => p.id === packageTypeId) ?? null,
@@ -261,7 +268,9 @@ export function AddTransactionDetailDialog({
     if (stockBranchRef.current === stockBranchId) return;
     stockBranchRef.current = stockBranchId;
     agingCheckRef.current += 1;
+    agingEpoch.current += 1;
     setAgingCount(null);
+    setAgedSerialsBySet([]);
     setSets((prev) =>
       prev.map((set) => ({
         ...set,
@@ -272,6 +281,75 @@ export function AddTransactionDetailDialog({
     );
   }, [stockBranchId]);
 
+  useEffect(() => {
+    setsRef.current = sets;
+  }, [sets]);
+
+  const writeAgedSerials = useCallback(
+    (index: number, serials: AgingSellableSerial[]) => {
+      setAgedSerialsBySet((prev) => {
+        const next = prev.slice();
+        next[index] = serials;
+        return next;
+      });
+    },
+    [],
+  );
+
+  const fetchSetAging = useCallback(
+    async (index: number, modelId: string, alertRequestId: number | null) => {
+      const requestId = (agingRequestBySet.current[index] ?? 0) + 1;
+      agingRequestBySet.current[index] = requestId;
+      const epoch = agingEpoch.current;
+      writeAgedSerials(index, []);
+      if (!modelId || !stockBranchId) return;
+
+      const stillCurrent = () =>
+        agingEpoch.current === epoch &&
+        agingRequestBySet.current[index] === requestId;
+
+      try {
+        const result = await countAgingSellableStockAction({
+          branchId: stockBranchId,
+          modelId,
+        });
+        if (!stillCurrent()) return;
+        writeAgedSerials(index, result.serials);
+        if (
+          alertRequestId != null &&
+          alertRequestId === agingCheckRef.current
+        ) {
+          setAgingCount(result.count > 0 ? result.count : null);
+        }
+      } catch {
+        if (!stillCurrent()) return;
+        writeAgedSerials(index, []);
+        if (
+          alertRequestId != null &&
+          alertRequestId === agingCheckRef.current
+        ) {
+          setAgingCount(null);
+        }
+        toast.error("Failed to check model aging");
+      }
+    },
+    [stockBranchId, writeAgedSerials],
+  );
+
+  useEffect(() => {
+    if (!hydrated) return;
+    setsRef.current.forEach((set, index) => {
+      if (!set.modelId) return;
+      void fetchSetAging(index, set.modelId, null);
+    });
+  }, [hydrated, stockBranchId, fetchSetAging]);
+
+  useEffect(() => {
+    return () => {
+      agingEpoch.current += 1;
+    };
+  }, []);
+
   function dismissAgingCheck() {
     agingCheckRef.current += 1;
     setAgingCount(null);
@@ -279,6 +357,8 @@ export function AddTransactionDetailDialog({
 
   function onPackageChange(id: string) {
     dismissAgingCheck();
+    agingEpoch.current += 1;
+    setAgedSerialsBySet([]);
     setPackageTypeId(id);
     const pkg = packages.find((p) => p.id === id);
     const n = Math.max(1, pkg?.quantity ?? 1);
@@ -293,6 +373,7 @@ export function AddTransactionDetailDialog({
 
   function onSetBrandChange(index: number, brandId: string) {
     dismissAgingCheck();
+    void fetchSetAging(index, "", null);
     updateSet(index, {
       brandId,
       modelId: "",
@@ -312,14 +393,16 @@ export function AddTransactionDetailDialog({
       serialNo: "",
       serialSkuCode: "",
     });
-    const requestId = ++agingCheckRef.current;
+    const alertRequestId = ++agingCheckRef.current;
     setAgingCount(null);
+    const agingTask = fetchSetAging(index, modelId, alertRequestId);
     if (!modelId) {
       updateSet(index, {
         modelPrice: "",
         noPriceList: false,
         priceFallbackDate: null,
       });
+      await agingTask;
       return;
     }
 
@@ -353,21 +436,6 @@ export function AddTransactionDetailDialog({
           noPriceList: true,
           priceFallbackDate: null,
         });
-      }
-    })();
-
-    const agingTask = (async () => {
-      try {
-        const result = await countAgingSellableStockAction({
-          branchId: stockBranchId,
-          modelId,
-        });
-        if (requestId !== agingCheckRef.current) return;
-        setAgingCount(result.count > 0 ? result.count : null);
-      } catch {
-        if (requestId !== agingCheckRef.current) return;
-        setAgingCount(null);
-        toast.error("Failed to check model aging");
       }
     })();
 
@@ -577,6 +645,7 @@ export function AddTransactionDetailDialog({
             </div>
           ) : null}
 
+          {packageTypeId ? (
           <div className="space-y-3">
             {sets.map((set, index) => {
               const modelOpts = modelOptionsForSet(set);
@@ -618,6 +687,7 @@ export function AddTransactionDetailDialog({
                       stockBranchId={stockBranchId}
                       modelId={set.modelId}
                       value={set.serialNumberId}
+                      agedSerials={agedSerialsBySet[index] ?? []}
                       excludeSerialIds={excludedSerialIdsFor(index)}
                       selectedSerial={
                         set.serialNumberId &&
@@ -748,6 +818,7 @@ export function AddTransactionDetailDialog({
               );
             })}
           </div>
+          ) : null}
         </div>
 
         <div className="flex shrink-0 flex-wrap justify-end gap-2 rounded-b-xl border-t bg-card p-4 sm:p-6">
@@ -775,12 +846,11 @@ export function AddTransactionDetailDialog({
         if (!open) setAgingCount(null);
       }}
     >
-      <AlertDialogContent className="z-60" overlayClassName="z-60">
+      <AlertDialogContent className="z-[80]" overlayClassName="z-[80]">
         <AlertDialogHeader>
           <AlertDialogTitle>MODEL AGING VALIDATION</AlertDialogTitle>
           <AlertDialogDescription>
-            ({agingCount ?? 0}) serial(s) on this model are over 30 days from dr
-            date.
+            ({agingCount ?? 0}) serial(s) on this model are over 30 days from dr date.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

@@ -1,14 +1,8 @@
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import {
-  REPLACED_STATUS,
-  RETURNED_STATUS,
-  SERVICE_REPLACED_STATUS,
-  SERVICE_RETURNED_STATUS,
-} from "@/features/sales/constants/return-history-status";
-import {
   canonicalSalesListStatusCode,
+  SALES_ATR_LIST_CODES,
   SALES_LIST_STATUS_CODES,
-  SALES_RETURN_HISTORY_LIST_CODES,
 } from "@/features/sales/constants/sales-list-status";
 import { salesRepository } from "@/features/sales/repositories/sales.repository";
 import { matchesSalesListSearch } from "@/features/sales/utils/sales-list-search";
@@ -16,6 +10,7 @@ import {
   loadSalesAtrCodesByCode,
   resolveListedLineStatus,
   resolveToFollowStatusCode,
+  type SaleStatusCodeRef,
 } from "@/features/sales/utils/resolve-line-status";
 import type { KpiStatusCount } from "@/lib/kpi-cards";
 
@@ -25,48 +20,83 @@ const SALE_STATUS_FALLBACK: Record<string, string> = {
   FW: "TO FOLLOW",
 };
 
+/** Card order for Sales & ATR steps that have at least one row. */
+const SALES_ATR_CARD_ORDER = [
+  ...SALES_ATR_LIST_CODES,
+  "service_returned",
+  "service_replaced",
+] as const;
+
 export interface SalesKpis {
   totalLines: number;
   statuses: KpiStatusCount[];
 }
 
-function returnHistoryCard(
-  code: (typeof SALES_RETURN_HISTORY_LIST_CODES)[number],
-): KpiStatusCount {
-  switch (code) {
-    case "returned":
-      return {
-        code,
-        name: RETURNED_STATUS,
-        count: 0,
-        color: "violet",
-      };
-    case "replaced":
-      return {
-        code,
-        name: REPLACED_STATUS,
-        count: 0,
-        color: "violet",
-      };
-    case "service_returned":
-      return {
-        code,
-        name: SERVICE_RETURNED_STATUS,
-        count: 0,
-        color: "teal",
-      };
-    case "service_replaced":
-      return {
-        code,
-        name: SERVICE_REPLACED_STATUS,
-        count: 0,
-        color: "teal",
-      };
-    default: {
-      const _exhaustive: never = code;
-      return _exhaustive;
+function salesAtrCardRank(code: string): number {
+  const index = SALES_ATR_CARD_ORDER.indexOf(
+    code as (typeof SALES_ATR_CARD_ORDER)[number],
+  );
+  return index === -1 ? SALES_ATR_CARD_ORDER.length : index;
+}
+
+/**
+ * Sold, Official Sold, and TO FOLLOW always have a card.
+ * Other resolved statuses (the Sales & ATR step the table shows) are added
+ * only when at least one line counts toward them.
+ */
+export function assembleSalesKpiStatuses(
+  inventoryCodes: Array<{ code: string; name: string; color: string | null }>,
+  lines: Array<SaleStatusCodeRef | null>,
+): KpiStatusCount[] {
+  const buckets = new Map<
+    string,
+    { name: string; color: string | null; count: number }
+  >();
+  for (const status of lines) {
+    if (!status) continue;
+    const code = canonicalSalesListStatusCode(status.code);
+    const existing = buckets.get(code);
+    if (existing) {
+      existing.count += 1;
+      continue;
     }
+    buckets.set(code, {
+      name: status.name,
+      color: status.color,
+      count: 1,
+    });
   }
+
+  const statuses: KpiStatusCount[] = SALES_LIST_STATUS_CODES.map((code) => {
+    const bucket = buckets.get(code);
+    const meta = inventoryCodes.find((row) => row.code.toUpperCase() === code);
+    return {
+      code,
+      name: bucket?.name ?? meta?.name ?? SALE_STATUS_FALLBACK[code] ?? code,
+      count: bucket?.count ?? 0,
+      color: bucket?.color ?? meta?.color ?? null,
+    };
+  });
+
+  const inventoryCodesShown = new Set<string>(SALES_LIST_STATUS_CODES);
+  const extras = [...buckets.entries()]
+    .filter(([code, bucket]) => bucket.count > 0 && !inventoryCodesShown.has(code))
+    .sort(
+      (left, right) =>
+        salesAtrCardRank(left[0]) - salesAtrCardRank(right[0]) ||
+        left[0].localeCompare(right[0]),
+    );
+
+  for (const [code, bucket] of extras) {
+    statuses.push({
+      code,
+      name: bucket.name,
+      count: bucket.count,
+      color: bucket.color,
+    });
+  }
+
+  return statuses;
 }
 
 export const salesKpiService = {
@@ -83,7 +113,7 @@ export const salesKpiService = {
         loadSalesAtrCodesByCode(tenantId),
       ]);
 
-    const statusCountByCode = new Map<string, number>();
+    const resolvedLines: Array<SaleStatusCodeRef | null> = [];
     let totalLines = 0;
     for (const source of sources) {
       const status = resolveListedLineStatus(
@@ -94,32 +124,12 @@ export const salesKpiService = {
       );
       if (query && !matchesSalesListSearch(query, source, status)) continue;
       totalLines += 1;
-      if (!status) continue;
-      const code = canonicalSalesListStatusCode(status.code);
-      statusCountByCode.set(code, (statusCountByCode.get(code) ?? 0) + 1);
-    }
-
-    const statuses: KpiStatusCount[] = SALES_LIST_STATUS_CODES.map((code) => {
-      const meta = inventoryCodes.find(
-        (row) => row.code.toUpperCase() === code,
-      );
-      return {
-        code,
-        name: meta?.name ?? SALE_STATUS_FALLBACK[code] ?? code,
-        count: statusCountByCode.get(code) ?? 0,
-        color: meta?.color ?? null,
-      };
-    });
-
-    for (const code of SALES_RETURN_HISTORY_LIST_CODES) {
-      const count = statusCountByCode.get(code) ?? 0;
-      if (count === 0) continue;
-      statuses.push({ ...returnHistoryCard(code), count });
+      resolvedLines.push(status);
     }
 
     return {
       totalLines,
-      statuses,
+      statuses: assembleSalesKpiStatuses(inventoryCodes, resolvedLines),
     };
   },
 };

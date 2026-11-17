@@ -64,7 +64,7 @@ describe("returnHistoryStatusRef", () => {
   it("opens an old combined status link with no filter", () => {
     expect(parseSalesListStatusFilter("returned_replaced")).toBeUndefined();
     expect(parseSalesListStatusFilter("service_returned_replaced")).toBeUndefined();
-    expect(parseSalesListStatusFilter("returned")).toBe("returned");
-    expect(parseSalesListStatusFilter("replaced")).toBe("replaced");
+    expect(parseSalesListStatusFilter("returned")).toBe("RETURNED");
+    expect(parseSalesListStatusFilter("replaced")).toBe("REPLACED");
   });
 });

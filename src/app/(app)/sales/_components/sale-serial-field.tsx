@@ -5,7 +5,10 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { listSaleableSerialsAction } from "@/features/sales/actions/sales.actions";
+import {
+  listSaleableSerialsAction,
+  type AgingSellableSerial,
+} from "@/features/sales/actions/sales.actions";
 import {
   isToFollowSerial,
   TO_FOLLOW_SERIAL_ID,
@@ -35,8 +38,24 @@ export type SaleSerialChoice = {
 
 type LookupStatus = "idle" | "loading" | "ready" | "error";
 
-function serialLabel(serialNo: string, skuCode: string): string {
-  return skuCode ? `${serialNo} · ${skuCode}` : serialNo;
+function agingDayCount(ageDays: number): string {
+  return ageDays === 1 ? "1 day" : `${ageDays} days`;
+}
+
+/** Serial only, or serial plus its real age when the unit is over 30 days. */
+export function saleSerialOptionLabel(
+  serialNo: string,
+  aged: Pick<AgingSellableSerial, "ageDays"> | null | undefined,
+): string {
+  if (!aged || aged.ageDays <= 30) return serialNo;
+  return `${serialNo} · ${agingDayCount(aged.ageDays)}`;
+}
+
+/** Quiet note under the serial field. Only for a serial already over 30 days. */
+export function agingSerialNote(serial: AgingSellableSerial): string {
+  const days = agingDayCount(serial.ageDays);
+  if (serial.fromDrDate) return `This serial is ${days} from dr date.`;
+  return `This serial is ${days} old. No dr date is recorded.`;
 }
 
 function mergeSerials(current: LoadedSerial[], next: LoadedSerial[]): LoadedSerial[] {
@@ -57,6 +76,7 @@ export function SaleSerialField({
   onChange,
   excludeSerialIds,
   selectedSerial,
+  agedSerials = [],
   disabled = false,
   popoverClassName,
   id,
@@ -68,6 +88,8 @@ export function SaleSerialField({
   excludeSerialIds?: ReadonlySet<string>;
   /** Keeps a choice visible when its page is not loaded. Not a sold-unit listing. */
   selectedSerial?: SaleSerialChoice | null;
+  /** Aged sellable serials for this model. Marks the dropdown and the helper line. */
+  agedSerials?: readonly AgingSellableSerial[];
   disabled?: boolean;
   popoverClassName?: string;
   id?: string;
@@ -202,6 +224,7 @@ export function SaleSerialField({
   const excluded = new Set(excludeSerialIds);
   if (value && !isToFollowSerial(value)) excluded.delete(value);
 
+  const agedById = new Map(agedSerials.map((row) => [row.id, row] as const));
   const available = items.filter((row) => !excluded.has(row.id));
   const pinned =
     selectedSerial &&
@@ -209,6 +232,10 @@ export function SaleSerialField({
     !isToFollowSerial(selectedSerial.id)
       ? selectedSerial
       : null;
+
+  function optionLabel(serial: LoadedSerial): string {
+    return saleSerialOptionLabel(serial.serialNo, agedById.get(serial.id));
+  }
 
   const options = modelId
     ? [
@@ -219,13 +246,13 @@ export function SaleSerialField({
           ? [
               {
                 id: pinned.id,
-                label: serialLabel(pinned.serialNo, pinned.skuCode),
+                label: optionLabel(pinned),
               },
             ]
           : []),
         ...available.map((row) => ({
           id: row.id,
-          label: serialLabel(row.serialNo, row.skuCode),
+          label: optionLabel(row),
         })),
       ]
     : [];
@@ -233,8 +260,11 @@ export function SaleSerialField({
   const selectedOption = isToFollowSerial(value)
     ? { id: TO_FOLLOW_SERIAL_ID, label: TO_FOLLOW_SERIAL_LABEL }
     : pinned
-      ? { id: pinned.id, label: serialLabel(pinned.serialNo, pinned.skuCode) }
+      ? { id: pinned.id, label: optionLabel(pinned) }
       : null;
+
+  const selectedAging =
+    value && !isToFollowSerial(value) ? (agedById.get(value) ?? null) : null;
 
   function handleChange(nextId: string) {
     if (isToFollowSerial(nextId)) {
@@ -287,6 +317,10 @@ export function SaleSerialField({
         disabled={disabled || !modelId}
         popoverClassName={popoverClassName}
       />
+
+      {selectedAging ? (
+        <p className="text-xs text-muted-foreground">{agingSerialNote(selectedAging)}</p>
+      ) : null}
 
       {modelId && status === "loading" ? (
         <p className="text-xs text-muted-foreground" role="status">

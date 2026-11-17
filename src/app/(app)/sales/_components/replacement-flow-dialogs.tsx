@@ -10,6 +10,10 @@ import {
   type ReplacementProofAttachment,
 } from "@/app/(app)/sales/_components/replacement-invoice-header-fields";
 import {
+  agingSerialNote,
+  saleSerialOptionLabel,
+} from "@/app/(app)/sales/_components/sale-serial-field";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -39,6 +43,7 @@ import {
   listReplacementLookupsAction,
   listSaleTypesForSalesAction,
   uploadSaleProofAction,
+  type AgingSellableSerial,
 } from "@/features/sales/actions/sales.actions";
 import { SALE_PROOF_MAX_FILES, saleProofFileName } from "@/features/sales/utils/sale-proof";
 import { earliestSaleTransactionIso } from "@/features/sales/utils/transaction-date";
@@ -123,6 +128,7 @@ export function ReplacementFlowDialogs({
   );
   const [models, setModels] = useState<{ id: string; label: string }[]>([]);
   const [serials, setSerials] = useState<{ id: string; label: string }[]>([]);
+  const [agedSerials, setAgedSerials] = useState<AgingSellableSerial[]>([]);
   const [modelId, setModelId] = useState("");
   const [serialId, setSerialId] = useState("");
   const [header, setHeader] = useState<ReplacementInvoiceHeaderValue>(EMPTY_HEADER);
@@ -143,6 +149,7 @@ export function ReplacementFlowDialogs({
       setModelId("");
       setSerialId("");
       setSerials([]);
+      setAgedSerials([]);
     });
     void (async () => {
       try {
@@ -167,32 +174,47 @@ export function ReplacementFlowDialogs({
         setModelId((current) =>
           current && !nextModels.some((model) => model.id === current) ? "" : current,
         );
-        setPaymentTypes(withCurrentOption(paymentRows, sale.paymentType));
-        setSaleTypes(withCurrentOption(saleTypeRows, sale.saleType));
-        setDeliveryMethods(
-          withCurrentOption(deliveryRows, sale.customerDeliveryMethod),
-        );
-        setHeader({
-          transactionNo: sale.transactionNo,
-          branchSoldName: sale.branch.name || target.branchName,
-          alternateBranchName:
-            sale.stockSourceBranch?.name ?? sale.branch.name ?? target.branchName,
-          transactionDate:
-            sale.transactionDateInput ??
-            (toDateInputValue(sale.transactionDate) ||
-              toDateInputValue(target.transactionDate)),
-          customerName: sale.customerName ?? "",
-          contactNo: sale.contactNo ?? "",
-          infoSlipVsoRrReleased: sale.infoSlipVsoRrReleased ?? "",
-          rrReceiveDeliver: sale.rrReceiveDeliver ?? "",
-          paymentTypeId: sale.paymentTypeId ?? "",
-          saleTypeId: sale.saleTypeId ?? "",
-          customerDeliveryMethodId: sale.customerDeliveryMethodId ?? "",
-          proofs: sale.proofPaths.map((path) => ({
-            path,
-            name: saleProofFileName(path),
-          })),
-        });
+        const branchSoldName = sale.branch.name || target.branchName;
+        const alternateBranchName =
+          sale.stockSourceBranch?.name ?? sale.branch.name ?? target.branchName;
+        if (choice === "new") {
+          setPaymentTypes(paymentRows);
+          setSaleTypes(saleTypeRows);
+          setDeliveryMethods(deliveryRows);
+          setHeader({
+            ...EMPTY_HEADER,
+            branchSoldName,
+            alternateBranchName,
+          });
+          setModelId("");
+          setSerialId("");
+        } else {
+          setPaymentTypes(withCurrentOption(paymentRows, sale.paymentType));
+          setSaleTypes(withCurrentOption(saleTypeRows, sale.saleType));
+          setDeliveryMethods(
+            withCurrentOption(deliveryRows, sale.customerDeliveryMethod),
+          );
+          setHeader({
+            transactionNo: sale.transactionNo,
+            branchSoldName,
+            alternateBranchName,
+            transactionDate:
+              sale.transactionDateInput ??
+              (toDateInputValue(sale.transactionDate) ||
+                toDateInputValue(target.transactionDate)),
+            customerName: sale.customerName ?? "",
+            contactNo: sale.contactNo ?? "",
+            infoSlipVsoRrReleased: sale.infoSlipVsoRrReleased ?? "",
+            rrReceiveDeliver: sale.rrReceiveDeliver ?? "",
+            paymentTypeId: sale.paymentTypeId ?? "",
+            saleTypeId: sale.saleTypeId ?? "",
+            customerDeliveryMethodId: sale.customerDeliveryMethodId ?? "",
+            proofs: sale.proofPaths.map((path) => ({
+              path,
+              name: saleProofFileName(path),
+            })),
+          });
+        }
         setHeaderReady(true);
       } catch {
         if (!cancelled) toast.error("Failed to load the original sale");
@@ -215,10 +237,14 @@ export function ReplacementFlowDialogs({
           modelId,
         );
         if (cancelled) return;
+        const agedById = new Map(
+          lookups.agedSerials.map((row) => [row.id, row] as const),
+        );
+        setAgedSerials(lookups.agedSerials);
         setSerials(
           lookups.serials.map((row) => ({
             id: row.id,
-            label: row.serialNo,
+            label: saleSerialOptionLabel(row.serialNo, agedById.get(row.id)),
           })),
         );
         setSerialId("");
@@ -375,6 +401,9 @@ export function ReplacementFlowDialogs({
     });
   }
 
+  const selectedAging =
+    agedSerials.find((row) => row.id === serialId) ?? null;
+
   const invoiceDialogClassName =
     "z-60 flex max-h-[min(90svh,calc(100svh-2rem))] w-[min(calc(100vw-2rem),42rem)] max-w-2xl flex-col gap-0 overflow-hidden p-4 sm:p-6";
 
@@ -469,17 +498,24 @@ export function ReplacementFlowDialogs({
                     disabled={pending}
                     popoverClassName="z-70"
                   />
-                  <SearchableSelect
-                    label="Serial number *"
-                    options={serials}
-                    value={serialId}
-                    onChange={setSerialId}
-                    placeholder={
-                      modelId ? "Select STK serial…" : "Select a model first…"
-                    }
-                    disabled={pending || !modelId}
-                    popoverClassName="z-70"
-                  />
+                  <div className="space-y-1.5">
+                    <SearchableSelect
+                      label="Serial number *"
+                      options={serials}
+                      value={serialId}
+                      onChange={setSerialId}
+                      placeholder={
+                        modelId ? "Select STK serial…" : "Select a model first…"
+                      }
+                      disabled={pending || !modelId}
+                      popoverClassName="z-70"
+                    />
+                    {selectedAging ? (
+                      <p className="text-xs text-muted-foreground">
+                        {agingSerialNote(selectedAging)}
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
               </>
             ) : (
@@ -519,9 +555,8 @@ export function ReplacementFlowDialogs({
           <DialogHeader className="shrink-0 space-y-1.5 pr-8 pb-4 text-left">
             <DialogTitle>New Invoice</DialogTitle>
             <DialogDescription>
-              The original sale details are filled in. You can change them,
-              except the branches stay with this sale. Then pick the replacement
-              unit.
+              Branches stay with this sale. Enter the new invoice, then pick
+              the replacement unit.
             </DialogDescription>
           </DialogHeader>
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto py-1">
@@ -558,17 +593,24 @@ export function ReplacementFlowDialogs({
                     disabled={pending}
                     popoverClassName="z-70"
                   />
-                  <SearchableSelect
-                    label="Serial number *"
-                    options={serials}
-                    value={serialId}
-                    onChange={setSerialId}
-                    placeholder={
-                      modelId ? "Select STK serial…" : "Select a model first…"
-                    }
-                    disabled={pending || !modelId}
-                    popoverClassName="z-70"
-                  />
+                  <div className="space-y-1.5">
+                    <SearchableSelect
+                      label="Serial number *"
+                      options={serials}
+                      value={serialId}
+                      onChange={setSerialId}
+                      placeholder={
+                        modelId ? "Select STK serial…" : "Select a model first…"
+                      }
+                      disabled={pending || !modelId}
+                      popoverClassName="z-70"
+                    />
+                    {selectedAging ? (
+                      <p className="text-xs text-muted-foreground">
+                        {agingSerialNote(selectedAging)}
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
               </>
             ) : (

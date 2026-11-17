@@ -406,7 +406,7 @@ export async function listSalesAction(input?: {
   limit?: number;
   sort?: string;
   sortDir?: string;
-  /** Card filter. Includes return-history statuses, not only Sold / Official Sold / TO FOLLOW. */
+  /** Card filter. Same resolved status the table and cards show, via `?status=`. */
   status?: string;
   /** Same text as the sales table search box. */
   q?: string;
@@ -990,23 +990,84 @@ export async function listSaleableSerialsAction(
   });
 }
 
-/** Sellable units whose latest DR date is strictly older than this many days. */
+/** Sellable units older than this many whole days count as aged. */
 const MODEL_AGING_DR_DAYS = 30;
 const MODEL_AGING_LOOKUP_CHUNK = 500;
 
+/** One sellable serial that is over the aging threshold. */
+export type AgingSellableSerial = {
+  id: string;
+  ageDays: number;
+  /** True when age is counted from a delivery-receipt date. */
+  fromDrDate: boolean;
+};
+
+function emptyAgingSellableStock(): {
+  count: number;
+  serials: AgingSellableSerial[];
+} {
+  return { count: 0, serials: [] };
+}
+
+/** Sellable rows older than 30 whole days, aged from the delivery receipt or the day added. */
+async function agedSellableSerials(
+  tenantId: string,
+  rows: readonly { serialNumberId: string; createdAt: Date }[],
+): Promise<AgingSellableSerial[]> {
+  const addedAtBySerial = new Map<string, Date>();
+  for (const row of rows) {
+    const current = addedAtBySerial.get(row.serialNumberId);
+    if (!current || row.createdAt.getTime() < current.getTime()) {
+      addedAtBySerial.set(row.serialNumberId, row.createdAt);
+    }
+  }
+
+  const serialNumberIds = [...addedAtBySerial.keys()];
+  if (serialNumberIds.length === 0) return [];
+
+  const serials: AgingSellableSerial[] = [];
+  for (let i = 0; i < serialNumberIds.length; i += MODEL_AGING_LOOKUP_CHUNK) {
+    const chunk = serialNumberIds.slice(i, i + MODEL_AGING_LOOKUP_CHUNK);
+    const deliveries = await inventoryRepository.findLatestDeliveryReceipts(
+      tenantId,
+      chunk,
+    );
+    const deliveryBySerial = new Map(
+      deliveries.map((receipt) => [receipt.serialNumberId, receipt] as const),
+    );
+    for (const serialNumberId of chunk) {
+      const deliveryDate =
+        deliveryBySerial.get(serialNumberId)?.deliveryDate ?? null;
+      const fromDrDate = deliveryDate != null;
+      const agingAnchor = fromDrDate
+        ? deliveryDate
+        : addedAtBySerial.get(serialNumberId);
+      if (!agingAnchor) continue;
+      const ageDays = wholeDaysBetween(agingAnchor);
+      if (ageDays > MODEL_AGING_DR_DAYS) {
+        serials.push({ id: serialNumberId, ageDays, fromDrDate });
+      }
+    }
+  }
+
+  return serials;
+}
+
 /**
- * Count sellable STK serials for one model at the stock source whose latest
- * delivery receipt date is more than 30 days ago. Serials with no DR date
- * are omitted. Uses the same latest-receipt lookup as inventory aging.
+ * Sellable STK serials of one model at the stock source that are over 30 days
+ * old. Age is the delivery-receipt date, or the day the unit was added
+ * (`createdAt`) when that date is blank — the same anchor Branch Inventory
+ * shows. A serial with no DR date still counts once that fallback age is over
+ * 30 days. `serials` lists each aged unit so the line form can mark it.
  */
 export async function countAgingSellableStockAction(input: {
   branchId: string;
   modelId: string;
-}): Promise<{ count: number }> {
+}): Promise<{ count: number; serials: AgingSellableSerial[] }> {
   const session = await requirePermission("sales.create");
   const branchId = input.branchId.trim();
   const modelId = input.modelId.trim();
-  if (!branchId || !modelId) return { count: 0 };
+  if (!branchId || !modelId) return emptyAgingSellableStock();
 
   await assertStockLocationReadable(
     session.user.tenantId,
@@ -1029,30 +1090,11 @@ export async function countAgingSellableStockAction(input: {
       defectReports: sellableStkDefectReportsFilter,
       serialNumber: { modelId },
     },
-    select: { serialNumberId: true },
+    select: { serialNumberId: true, createdAt: true },
   });
 
-  const serialNumberIds = [
-    ...new Set(rows.map((row) => row.serialNumberId)),
-  ];
-  if (serialNumberIds.length === 0) return { count: 0 };
-
-  let count = 0;
-  for (let i = 0; i < serialNumberIds.length; i += MODEL_AGING_LOOKUP_CHUNK) {
-    const chunk = serialNumberIds.slice(i, i + MODEL_AGING_LOOKUP_CHUNK);
-    const deliveries = await inventoryRepository.findLatestDeliveryReceipts(
-      session.user.tenantId,
-      chunk,
-    );
-    for (const receipt of deliveries) {
-      if (!receipt.deliveryDate) continue;
-      if (wholeDaysBetween(receipt.deliveryDate) > MODEL_AGING_DR_DAYS) {
-        count += 1;
-      }
-    }
-  }
-
-  return { count };
+  const serials = await agedSellableSerials(session.user.tenantId, rows);
+  return { count: serials.length, serials };
 }
 
 export async function uploadSaleProofAction(formData: FormData) {
@@ -3040,6 +3082,14 @@ export async function listReplacementLookupsAction(branchId: string, modelId?: s
       : Promise.resolve([]),
   ]);
 
+  const agedSerials = await agedSellableSerials(
+    session.user.tenantId,
+    serialRows.map((row) => ({
+      serialNumberId: row.serialNumber.id,
+      createdAt: row.createdAt,
+    })),
+  );
+
   return {
     models: models.map((m) => ({
       id: m.id,
@@ -3050,6 +3100,7 @@ export async function listReplacementLookupsAction(branchId: string, modelId?: s
       serialNo: r.serialNumber.serialNo,
       modelId: r.serialNumber.modelId,
     })),
+    agedSerials,
   };
 }
 

@@ -188,14 +188,15 @@ export function ProcessReturnDialog({
       return "This request is subject for approval of the service department.";
     }
     if (isDealerInitiatedDocumentTypeName(documentTypeName)) {
-      return "This request waits for the Team Leader.";
+      return "This request waits for the Team Leader Approval.";
     }
-    return "This request is approved when you send it.";
+    return "This request is automatically approved when you send it.";
   }
 
   function confirmSubmit() {
     const actionType = confirmAction;
     if (!actionType) return;
+    const nextStep = approvalNote(selectedDocType?.name);
     setConfirmAction(null);
 
     const payload: ProcessReturnPayload = {
@@ -229,6 +230,7 @@ export function ProcessReturnDialog({
         actionType === "replacement"
           ? "Replacement request submitted"
           : "Return request submitted",
+        { description: nextStep },
       );
       onOpenChange(false);
       onSubmitted();
@@ -483,12 +485,12 @@ export function ProcessReturnDialog({
           if (!next) setConfirmAction(null);
         }}
       >
-        <AlertDialogContent className="z-60" overlayClassName="z-60">
+        <AlertDialogContent className="z-[80]" overlayClassName="z-[80]">
           <AlertDialogHeader>
             <AlertDialogTitle>
               {confirmAction === "replacement"
-                ? "Are you sure you want to request to replace this serial no.?"
-                : "Are you sure you want to request to return this serial no.?"}
+                ? "Are you sure you want to replace this serial no.?"
+                : "Are you sure you want to return this serial no.?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {approvalNote(selectedDocType?.name)}

@@ -1,16 +1,16 @@
 import type { Prisma } from "@prisma/client";
 
 /**
- * Sale line status codes that belong on the Sales list / KPIs.
- * Return workflow (Pending CS/TL, Approved, Rejected, Closed) and RSV live on Returns.
+ * Inventory statuses always shown on the Sales list / KPI cards.
+ * Sales & ATR steps are added only when a row actually resolves to them.
  */
 export const SALES_LIST_STATUS_CODES = ["SLD", "OFS", "FW"] as const;
 
 /**
- * STATUS values the sales table shows for a return that is requested,
- * approved, or finished. These are not inventory reason codes.
- * Older `returned_replaced` and `service_returned_replaced` links are not
- * in this list, so they open the sales list with no status filter.
+ * Older sales-list links. `returned` and `replaced` canonicalize to the
+ * Sales & ATR codes RETURNED and REPLACED. Service labels stay so an old
+ * link still filters. Combined `returned_replaced` links are not in this
+ * list, so they open the sales list with no status filter.
  */
 export const SALES_RETURN_HISTORY_LIST_CODES = [
   "returned",
@@ -19,9 +19,25 @@ export const SALES_RETURN_HISTORY_LIST_CODES = [
   "service_replaced",
 ] as const;
 
+/**
+ * Sales & ATR codes the sales cards can filter with `?status=`.
+ * Returned and Replaced use the settings codes, not the older lowercase links.
+ */
+export const SALES_ATR_LIST_CODES = [
+  "pending_cs",
+  "pending_tl",
+  "approved",
+  "RETURNED",
+  "REPLACED",
+  "closed",
+  "reserve",
+  "open",
+] as const;
+
 export type SalesListStatusFilter =
   | (typeof SALES_LIST_STATUS_CODES)[number]
-  | (typeof SALES_RETURN_HISTORY_LIST_CODES)[number];
+  | (typeof SALES_RETURN_HISTORY_LIST_CODES)[number]
+  | (typeof SALES_ATR_LIST_CODES)[number];
 
 /** Map a stored or query status onto the code the sales cards use. */
 export function canonicalSalesListStatusCode(code: string): string {
@@ -31,10 +47,24 @@ export function canonicalSalesListStatusCode(code: string): string {
     return upper;
   }
   const lower = trimmed.toLowerCase();
+  if (lower === "returned") return "RETURNED";
+  if (lower === "replaced") return "REPLACED";
+  const atrCode = SALES_ATR_LIST_CODES.find(
+    (item) => item.toLowerCase() === lower,
+  );
+  if (atrCode) return atrCode;
   if ((SALES_RETURN_HISTORY_LIST_CODES as readonly string[]).includes(lower)) {
     return lower;
   }
   return trimmed;
+}
+
+function isSalesListStatusFilter(code: string): code is SalesListStatusFilter {
+  return (
+    (SALES_LIST_STATUS_CODES as readonly string[]).includes(code) ||
+    (SALES_RETURN_HISTORY_LIST_CODES as readonly string[]).includes(code) ||
+    (SALES_ATR_LIST_CODES as readonly string[]).includes(code)
+  );
 }
 
 export function parseSalesListStatusFilter(
@@ -42,14 +72,7 @@ export function parseSalesListStatusFilter(
 ): SalesListStatusFilter | undefined {
   if (!value?.trim()) return undefined;
   const canonical = canonicalSalesListStatusCode(value);
-  if ((SALES_LIST_STATUS_CODES as readonly string[]).includes(canonical)) {
-    return canonical as (typeof SALES_LIST_STATUS_CODES)[number];
-  }
-  if (
-    (SALES_RETURN_HISTORY_LIST_CODES as readonly string[]).includes(canonical)
-  ) {
-    return canonical as (typeof SALES_RETURN_HISTORY_LIST_CODES)[number];
-  }
+  if (isSalesListStatusFilter(canonical)) return canonical;
   return undefined;
 }
 
@@ -75,9 +98,9 @@ const RETURN_HISTORY_STATUSES = [
  * Default (KPIs, order analytics): open sales only. Closed ATR headers and
  * in-progress returns stay off those counts.
  *
- * Sales list (`includeReturnHistory`): also keeps returned and replaced sales,
- * including a closed ATR, so their status can stay Returned or Replaced. A rejected
- * return comes back as a normal open sale.
+ * Sales list (`includeReturnHistory`): also keeps open and finished returns,
+ * including a closed ATR, so the line can show its Sales & ATR step or
+ * Returned / Replaced. A rejected return comes back as a normal open sale.
  */
 export function salesListDetailWhere(
   tenantId: string,

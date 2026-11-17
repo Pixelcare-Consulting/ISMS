@@ -205,8 +205,8 @@ const salesDetailStatusSourceSelect = {
 export const salesRepository = {
   /**
    * One list row per transaction detail (serial line), newest sales first by default.
-   * Sold / Official Sold / TO FOLLOW, plus returned and replaced lines so their
-   * status can stay Returned, Replaced, Service Returned, or Service Replaced.
+   * Sold / Official Sold / TO FOLLOW, plus open and finished returns so a line
+   * can show its Sales & ATR step, Returned, or Replaced.
    */
   async listDetailsForTenant(
     tenantId: string,
@@ -233,7 +233,7 @@ export const salesRepository = {
 
   /**
    * Every sales-list line, in list order, with only the fields STATUS needs.
-   * Callers resolve Returned or Replaced before counting or filtering.
+   * Callers resolve the Sales & ATR step, Returned, or Replaced before counting or filtering.
    */
   listDetailStatusSources(
     tenantId: string,

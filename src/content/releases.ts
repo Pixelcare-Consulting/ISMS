@@ -66,6 +66,48 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.95.2",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T16:05:00+08:00",
+    title: "Aging stock, returns, and status names",
+    highlights: [
+      "A new sale warns when stock is over 30 days, and sales status uses the names from Settings.",
+      "Returns and replacements name the next approver, and a branch leader can decide a pending defect from inventory.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "From the unit in Branch Inventory, a branch team leader can approve or reject a defect that is still waiting.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Add Line Items on a new sale shows Model Aging Validation when the chosen model has stock over 30 days. An older serial in the list shows its real age in days, such as the serial and 45 days. The selected serial still shows how old it is under the field.",
+      },
+      {
+        type: "improvement",
+        description:
+          "On Add Line Items, brand, model, and serial stay hidden until you select a package.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Before a return or replacement request is sent, a message asks you to continue and names who approves it next.",
+      },
+      {
+        type: "improvement",
+        description:
+          "On a replacement, New Invoice starts blank so you type a new transaction number and the other details. The branches stay with the sale. Same Invoice is unchanged.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The status shown on a sale follows the Sales & ATR labels in Settings, including Pending TL, Approved, Returned, Replaced, and the header statuses.",
+      },
+    ],
+  },
+  {
     version: "0.95.1",
     date: "2026-11-17",
     releasedAt: "2026-11-17T15:15:00+08:00",
@@ -5184,7 +5226,7 @@ export const RELEASES: ReleaseNote[] = [
     title: "Sales list stays on sold lines",
     highlights: [
       "Sales shows Sold, Official Sold, and TO FOLLOW only",
-      "Pending CS/TL, Approved, Rejected, Closed, and similar return statuses stay under Returns / Replacement",
+      "Pending TL, Approved, Rejected, Closed, and similar return statuses stay under Returns / Replacement",
       "Sales totals match the filtered list",
     ],
     changes: [
@@ -6476,7 +6518,7 @@ export const RELEASES: ReleaseNote[] = [
       "Attach multiple proof files and review them in a preview window",
       "Type the transaction number from your invoice when encoding a sale",
       "Model price fills from the latest price list — and stays at 0 when none exists",
-      "TO FOLLOW saves reliably; returns show Pending CS and ask for a reason",
+      "TO FOLLOW saves reliably; returns show Pending TL and ask for a reason",
       "When you sell from another branch’s stock, the unit moves to the selling branch",
     ],
     changes: [
@@ -6548,7 +6590,7 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "fix",
         description:
-          "After a return is requested, Sales list status shows Pending CS instead of staying on TO FOLLOW",
+          "After a return is requested, Sales list status shows Pending TL instead of staying on TO FOLLOW",
       },
       {
         type: "fix",

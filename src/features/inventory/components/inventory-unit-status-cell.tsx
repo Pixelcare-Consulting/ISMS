@@ -52,6 +52,11 @@ export function InventoryApprovalBranchIdsProvider({
   );
 }
 
+/** Branches this login can approve. `null` is every branch. An empty list cannot approve. */
+export function useInventoryApprovalBranchIds(): string[] | null {
+  return useContext(InventoryApprovalBranchIdsContext);
+}
+
 export interface InventoryStatusUnit {
   id: string;
   branchId: string;
@@ -85,7 +90,7 @@ export function InventoryUnitStatusCell({
 }: InventoryUnitStatusCellProps) {
   const router = useRouter();
   const notifyRows = useNotifyInventoryListRefresh();
-  const approvalBranchIds = useContext(InventoryApprovalBranchIdsContext);
+  const approvalBranchIds = useInventoryApprovalBranchIds();
   const [busy, setBusy] = useState(false);
   const [defectOpen, setDefectOpen] = useState(false);
   const [problem, setProblem] = useState("");
