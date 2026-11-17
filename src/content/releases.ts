@@ -27,6 +27,8 @@
  * - No file names, SQL, FK, schema fields, migration names, reseed steps, or RBAC jargon dumps
  * - Avoid technical jargon (hydration, pool timeout, GROUP BY, slugs, etc.)
  * - Keep highlights short; order changes as feature → improvement → fix
+ * - What's New shows a line once: a highlight already said in changes is hidden,
+ *   and a change already said in a remaining highlight is hidden
  *
  * Audience / What's New visibility:
  * - Omit `audience` (or set `"end_user"`) for notes that appear in the in-app What's New dialog
@@ -65,6 +67,36 @@ export interface ReleaseNote {
 }
 
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "0.95.3",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T16:45:00+08:00",
+    title: "Market Survey reports and cleaner What's New",
+    highlights: [
+      "Market Survey can filter observations and download a report.",
+      "What's New lists each update once.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "On Market Survey, choose the branch when you add or edit an observation. Filter the list by date, tick the rows you need, and download a report. If nothing is ticked, the report uses the From and To dates.",
+      },
+      {
+        type: "improvement",
+        description: "Observations are numbered, and you can step through them page by page.",
+      },
+      {
+        type: "improvement",
+        description: "A new observation is dated today, and that date stays as recorded.",
+      },
+      {
+        type: "fix",
+        description:
+          "What's New lists each update once. A summary line is not repeated again under Feature, Improvement, or Fix.",
+      },
+    ],
+  },
   {
     version: "0.95.2",
     date: "2026-11-17",
@@ -202,7 +234,7 @@ export const RELEASES: ReleaseNote[] = [
     version: "0.94.5",
     date: "2026-11-17",
     releasedAt: "2026-11-17T11:00:00+08:00",
-    title: "SAP integration in plain language",
+    title: "SAP integration Updated",
     highlights: [
       "SAP integration shows what was sent, what is waiting, and what needs another try.",
       "Each row uses the order or document number people already know.",
