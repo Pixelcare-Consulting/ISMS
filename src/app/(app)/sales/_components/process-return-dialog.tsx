@@ -109,7 +109,9 @@ export function ProcessReturnDialog({
   const headerSn = selectedLine?.serialNo ?? TO_FOLLOW_SERIAL_LABEL;
 
   const selectedDocType = documentTypes.find((d) => d.id === documentTypeId);
-  const showServiceExtras = isServiceDocumentTypeName(selectedDocType?.name);
+  // SC sales has no Service Return section: the selling service center finishes the request.
+  const showServiceExtras =
+    isServiceDocumentTypeName(selectedDocType?.name) && !processReturn.sellerFinishes;
   const showReturnAction = isReturnDocumentTypeName(selectedDocType?.name);
   const showReplacementAction = isReplacementDocumentTypeName(
     selectedDocType?.name,
@@ -158,7 +160,7 @@ export function ProcessReturnDialog({
     if (!documentTypeId) return "Document type is required";
     if (!stockStatusCode) return "Stock status is required";
     if (problemIds.length === 0) return "Select at least one problem description";
-    if (showServiceExtras && !processReturn.sellerFinishes && !serviceCenterId) {
+    if (showServiceExtras && !serviceCenterId) {
       return "Service center is required for Service Return";
     }
     return null;
@@ -202,7 +204,7 @@ export function ProcessReturnDialog({
       actionType,
       problemDescriptionIds: problemIds,
       serviceCenterId:
-        showServiceExtras && !processReturn.sellerFinishes ? serviceCenterId || null : null,
+        showServiceExtras ? serviceCenterId || null : null,
       classification: showServiceExtras ? classification || null : null,
       serviceModelId: showServiceExtras ? serviceModelId || null : null,
       customerDealerBranch: showServiceExtras
@@ -315,20 +317,18 @@ export function ProcessReturnDialog({
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Service Return
                   </p>
-                  {processReturn.sellerFinishes ? null : (
-                    <SearchableSelect
-                      label="Service Center *"
-                      options={serviceCenters.map((s) => ({
-                        id: s.id,
-                        label: s.name,
-                      }))}
-                      value={serviceCenterId}
-                      onChange={setServiceCenterId}
-                      placeholder="Select service center…"
-                      disabled={pending}
-                      popoverClassName="z-70"
-                    />
-                  )}
+                  <SearchableSelect
+                    label="Service Center *"
+                    options={serviceCenters.map((s) => ({
+                      id: s.id,
+                      label: s.name,
+                    }))}
+                    value={serviceCenterId}
+                    onChange={setServiceCenterId}
+                    placeholder="Select service center…"
+                    disabled={pending}
+                    popoverClassName="z-70"
+                  />
                   <SearchableSelect
                     label="Classification"
                     options={RETURN_CLASSIFICATION_OPTIONS.map((name) => ({
