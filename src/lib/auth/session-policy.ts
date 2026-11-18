@@ -15,6 +15,21 @@ export const IDLE_SIGNOUT_MESSAGE =
 
 export const LOGIN_ERROR_SIGNED_IN_ELSEWHERE = "signed-in-elsewhere";
 export const LOGIN_ERROR_IDLE = "idle";
+export const LOGIN_ERROR_SESSION_EXPIRED = "session-expired";
+
+const TERMINAL_LOGIN_ERRORS = new Set<string>([
+  LOGIN_ERROR_IDLE,
+  LOGIN_ERROR_SIGNED_IN_ELSEWHERE,
+  LOGIN_ERROR_SESSION_EXPIRED,
+]);
+
+/**
+ * These login URLs are the end of a sign-out. A leftover cookie must not send
+ * the browser back into the app, or the app signs them out and the page reloads forever.
+ */
+export function isTerminalLoginError(code: string | null): boolean {
+  return code !== null && TERMINAL_LOGIN_ERRORS.has(code);
+}
 
 export type SessionStamp = {
   id: string;
@@ -79,7 +94,7 @@ export function loginErrorMessage(code: string | null): string | null {
   if (code === LOGIN_ERROR_SIGNED_IN_ELSEWHERE) {
     return SIGNED_OUT_ELSEWHERE_MESSAGE;
   }
-  if (code === "session-expired") {
+  if (code === LOGIN_ERROR_SESSION_EXPIRED) {
     return "Your session is no longer valid. Sign in again.";
   }
   return null;

@@ -68,6 +68,22 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.95.9",
+    date: "2026-11-18",
+    releasedAt: "2026-11-18T09:45:00+08:00",
+    title: "Sign-in page stays put after you are signed out",
+    highlights: [
+      "After you are signed out for inactivity or because the account signed in somewhere else, the sign-in page stays on screen instead of reloading over and over.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "After you are signed out for inactivity or because the account signed in somewhere else, the sign-in page stays on screen instead of reloading over and over.",
+      },
+    ],
+  },
+  {
     version: "0.95.8",
     date: "2026-11-17",
     releasedAt: "2026-11-17T21:25:00+08:00",

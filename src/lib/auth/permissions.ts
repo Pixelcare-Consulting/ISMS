@@ -8,6 +8,7 @@ import { prisma } from "@/lib/database/client";
 import { readLiveSessionState } from "@/lib/auth/session-liveness";
 import {
   LOGIN_ERROR_IDLE,
+  LOGIN_ERROR_SESSION_EXPIRED,
   LOGIN_ERROR_SIGNED_IN_ELSEWHERE,
 } from "@/lib/auth/session-policy";
 import { toAppSession, type AppSession } from "@/lib/auth/session";
@@ -95,21 +96,23 @@ async function sessionUserExists(session: AppSession): Promise<boolean> {
 const getRequiredSession = cache(async (): Promise<AppSession> => {
   const session = toAppSession(await auth());
   if (!session?.user) {
-    redirect("/login");
+    // Cookie is present enough for the proxy to treat this as signed in, but
+    // the session is gone. Clear it before leaving, or /login is sent back here.
+    await signOutServer({ redirectTo: "/login" });
   }
 
   if (!session.user.id || !session.user.tenantId) {
-    await signOutServer({ redirectTo: "/login?error=session-expired" });
+    await signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_SESSION_EXPIRED}` });
   }
 
   const exists = await sessionUserExists(session);
   if (!exists) {
-    await signOutServer({ redirectTo: "/login?error=session-expired" });
+    await signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_SESSION_EXPIRED}` });
   }
 
   const sessionId = session.sessionId ?? "";
   if (!sessionId) {
-    await signOutServer({ redirectTo: "/login?error=session-expired" });
+    await signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_SESSION_EXPIRED}` });
   }
 
   const live = await readLiveSessionState(sessionId, session.user.id);
@@ -122,7 +125,7 @@ const getRequiredSession = cache(async (): Promise<AppSession> => {
     });
   }
   if (live === "expired") {
-    await signOutServer({ redirectTo: "/login?error=session-expired" });
+    await signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_SESSION_EXPIRED}` });
   }
 
   return session;

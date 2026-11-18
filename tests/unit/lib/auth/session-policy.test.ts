@@ -2,6 +2,7 @@ import {
   SESSION_IDLE_MS,
   decideSessionCreate,
   evaluateLiveSession,
+  isTerminalLoginError,
 } from "@/lib/auth/session-policy";
 
 const now = new Date("2026-11-17T12:00:00.000Z");
@@ -74,5 +75,15 @@ describe("evaluateLiveSession", () => {
 
   it("rejects a missing session row", () => {
     expect(evaluateLiveSession({ row: null, now })).toBe("missing");
+  });
+});
+
+describe("isTerminalLoginError", () => {
+  it("keeps forced sign-out reasons on the login page", () => {
+    expect(isTerminalLoginError("idle")).toBe(true);
+    expect(isTerminalLoginError("signed-in-elsewhere")).toBe(true);
+    expect(isTerminalLoginError("session-expired")).toBe(true);
+    expect(isTerminalLoginError(null)).toBe(false);
+    expect(isTerminalLoginError("forbidden")).toBe(false);
   });
 });
