@@ -3,7 +3,7 @@ import {
   blockedPlacementMessage,
   scDeliveryLocationId,
   scDeliveryNoForDr,
-  scDeliveryStatusAfterAccept,
+  scDeliverySettledStatus,
   scPlacementsToReplace,
   summarizeScOrderSapCheck,
 } from "@/features/service-center-ordering/lib/sc-order-sap-check";
@@ -58,11 +58,15 @@ describe("scDeliveryLocationId", () => {
   });
 });
 
-describe("scDeliveryStatusAfterAccept", () => {
+describe("scDeliverySettledStatus", () => {
   it("is accepted only once every DR serial is", () => {
     const now = new Date();
-    expect(scDeliveryStatusAfterAccept([{ acceptedAt: now }, { acceptedAt: now }])).toBe("accepted");
-    expect(scDeliveryStatusAfterAccept([{ acceptedAt: now }, { acceptedAt: null }])).toBe("partial");
+    expect(scDeliverySettledStatus([{ acceptedAt: now }, { acceptedAt: now }])).toBe("accepted");
+    expect(scDeliverySettledStatus([{ acceptedAt: now }, { acceptedAt: null }])).toBe("partial");
+    // Returned units count as settled: accepted when any reached stock, rejected when all went back.
+    expect(scDeliverySettledStatus([{ acceptedAt: now }, { acceptedAt: null, returnedAt: now }])).toBe("accepted");
+    expect(scDeliverySettledStatus([{ acceptedAt: null, returnedAt: now }])).toBe("rejected");
+    expect(scDeliverySettledStatus([{ acceptedAt: null, returnedAt: now }, { acceptedAt: null }])).toBe("partial");
   });
 });
 
@@ -79,15 +83,16 @@ describe("summarizeScOrderSapCheck", () => {
     expect(summarizeScOrderSapCheck({ ...base, deliveriesCreated: 2, serialCount: 5 })).toEqual({
       tone: "success",
       title: "Added 2 deliveries from SAP (5 units)",
-      description: "See Service center deliveries to accept them.",
+      description: "Open a delivery to receive its units.",
     });
   });
 
   it("never drops a problem", () => {
     const withProblem = { ...base, problems: ["SCO-1: SN1 is at Branch A in ISMS."] };
-    expect(summarizeScOrderSapCheck({ ...withProblem, deliveriesCreated: 1, serialCount: 1 })).toMatchObject({
+    expect(summarizeScOrderSapCheck({ ...withProblem, deliveriesCreated: 1, serialCount: 5 })).toEqual({
       tone: "warning",
-      description: "SCO-1: SN1 is at Branch A in ISMS.",
+      title: "Added 1 delivery from SAP (5 units). 1 SAP delivery not added",
+      description: "Not added: SCO-1: SN1 is at Branch A in ISMS.",
     });
     expect(summarizeScOrderSapCheck(withProblem)).toMatchObject({
       tone: "warning",

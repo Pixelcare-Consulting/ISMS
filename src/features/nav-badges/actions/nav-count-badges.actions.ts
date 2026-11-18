@@ -31,6 +31,8 @@ import {
   resolveReturnsCapabilities,
 } from "@/features/returns/constants/returns-permissions";
 import { returnsKpiService } from "@/features/returns/services/returns-kpi.service";
+import { canProcessScServiceReturns } from "@/features/service-center-ops/constants/sc-permissions";
+import { scServiceReturnsRepository } from "@/features/service-center-ops/repositories/sc-service-returns.repository";
 import { resolveScIdsForUser } from "@/features/service-center-ops/services/sc-scope";
 import { getUserBranchIds } from "@/lib/aor/scope";
 import { hasPermission, requireAuth } from "@/lib/auth/permissions";
@@ -41,6 +43,7 @@ export type WorkflowNavCountBadges = {
   ordersSpecialQueue: number;
   ordersAutoReplenishQueue: number;
   returnsApprovals: number;
+  scServiceReturns: number;
   logisticsDeliveries: number;
   logisticsTransfers: number;
   logisticsPullouts: number;
@@ -52,6 +55,7 @@ const EMPTY_WORKFLOW_BADGES: WorkflowNavCountBadges = {
   ordersSpecialQueue: 0,
   ordersAutoReplenishQueue: 0,
   returnsApprovals: 0,
+  scServiceReturns: 0,
   logisticsDeliveries: 0,
   logisticsTransfers: 0,
   logisticsPullouts: 0,
@@ -108,6 +112,7 @@ export async function getWorkflowNavCountBadgesAction(): Promise<WorkflowNavCoun
       ordersSpecialQueue,
       ordersAutoReplenishQueue,
       returnsApprovals,
+      scServiceReturns,
       logisticsDeliveries,
       logisticsTransfers,
       logisticsPullouts,
@@ -146,6 +151,11 @@ export async function getWorkflowNavCountBadgesAction(): Promise<WorkflowNavCoun
         );
       })(),
       (async () => {
+        if (!canProcessScServiceReturns(permissions)) return 0;
+        const scopedIds = await resolveScIdsForUser(tenantId, userId, permissions);
+        return scServiceReturnsRepository.countPendingSc(tenantId, scopedIds);
+      })(),
+      (async () => {
         if (!canAccessLogistics(permissions)) return 0;
         const caps = resolveLogisticsCapabilities(permissions);
         const codes = getDeliveryActionableStatusCodes(caps);
@@ -180,6 +190,7 @@ export async function getWorkflowNavCountBadgesAction(): Promise<WorkflowNavCoun
       ordersSpecialQueue,
       ordersAutoReplenishQueue,
       returnsApprovals,
+      scServiceReturns,
       logisticsDeliveries,
       logisticsTransfers,
       logisticsPullouts,

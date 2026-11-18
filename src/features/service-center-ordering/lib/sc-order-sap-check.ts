@@ -53,9 +53,16 @@ export function scDeliveryLocationId(
   return centerLocationIds.length === 1 ? (centerLocationIds[0] ?? null) : null;
 }
 
-/** Delivery status after an accept: every DR serial accepted, or only some. */
-export function scDeliveryStatusAfterAccept(lines: readonly { acceptedAt: Date | null }[]): "accepted" | "partial" {
-  return lines.every((line) => line.acceptedAt !== null) ? "accepted" : "partial";
+/**
+ * Delivery status once units leave transit, by accept or by a completed reject. Units still in
+ * transit keep it partial. Otherwise it closes: rejected when every unit went back, accepted
+ * when any reached stock. Mirrors the branch rule (planReturnSettle).
+ */
+export function scDeliverySettledStatus(
+  lines: readonly { acceptedAt: Date | null; returnedAt?: Date | null }[],
+): "accepted" | "partial" | "rejected" {
+  if (lines.some((line) => line.acceptedAt === null && !line.returnedAt)) return "partial";
+  return lines.every((line) => line.returnedAt) ? "rejected" : "accepted";
 }
 
 /** What one Check SAP run did. */
@@ -81,10 +88,15 @@ function plural(count: number, one: string, many = `${one}s`): string {
 export function summarizeScOrderSapCheck(result: ScOrderSapCheckResult): ScOrderSapCheckSummary {
   const problems = result.problems.length > 0 ? result.problems.join(" ") : undefined;
   if (result.deliveriesCreated > 0) {
+    const added = `Added ${plural(result.deliveriesCreated, "delivery", "deliveries")} from SAP (${plural(result.serialCount, "unit")})`;
+    if (!problems) {
+      return { tone: "success", title: added, description: "Open a delivery to receive its units." };
+    }
+    // Part of the run failed: the title says so, not only what went in.
     return {
-      tone: result.problems.length > 0 ? "warning" : "success",
-      title: `Added ${plural(result.deliveriesCreated, "delivery", "deliveries")} from SAP (${plural(result.serialCount, "unit")})`,
-      description: problems ?? "See Service center deliveries to accept them.",
+      tone: "warning",
+      title: `${added}. ${plural(result.problems.length, "SAP delivery", "SAP deliveries")} not added`,
+      description: `Not added: ${problems}`,
     };
   }
   if (result.problems.length > 0) {

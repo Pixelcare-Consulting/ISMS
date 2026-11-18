@@ -71,6 +71,21 @@ describe("SAP document builders", () => {
     });
   });
 
+  it("buildReturnBody for a service center leaves out an unset branch and adds the SO line fields", () => {
+    const body = buildReturnBody({
+      ismsRef: "SCRJ-1",
+      cardCode: "C1",
+      whs: "W",
+      branchCode: null,
+      branchName: "SC ONE",
+      lines: [{ itemCode: "X", serialNos: ["S1"] }],
+      extraLine: { CostingCode5: "SC01", ProjectCode: "P1" },
+    }) as Body;
+    const line = body.DocumentLines[0];
+    expect(line).not.toHaveProperty("CostingCode2");
+    expect(line).toMatchObject({ CostingCode3: "OUTRIGHT", CostingCode5: "SC01", ProjectCode: "P1" });
+  });
+
   it("a delivery return names the original ITR / SO in Comments and keeps the ISMS ref as the key", () => {
     const remarks = deliveryReturnRemarks({ requestNo: "RTN-1", orderDocType: "SO", orderDocNum: 5512, reason: "Defective" });
     expect(remarks).toBe("Return of SO 5512 · ISMS RTN-1 · Defective");

@@ -138,8 +138,9 @@ function NavDestinationLink({
       className={linkClass(variant, active)}
     >
       {active ? <ActiveBar variant={variant} /> : null}
-      <Icon className="mt-0.5 size-4 shrink-0" aria-hidden />
-      <span className="min-w-0 flex-1 text-left leading-snug break-words">
+      <Icon className="size-4 shrink-0" aria-hidden />
+      {/* One line, and the same weight active or not, so a label never reflows when selected. */}
+      <span className="min-w-0 flex-1 truncate text-left leading-snug" title={item.label}>
         {item.label}
       </span>
       {count > 0 ? (
@@ -243,18 +244,18 @@ function linkClass(variant: NavDestinationVariant, active: boolean): string {
   switch (variant) {
     case "contextual":
       return cn(
-        "relative flex min-h-8 items-start gap-2 rounded-md px-3 py-1.5 text-sm",
+        "relative flex min-h-8 items-center gap-2 rounded-md px-3 py-1.5 text-sm",
         "focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none",
         active
-          ? "bg-primary/10 font-medium text-primary"
+          ? "bg-primary/10 text-primary"
           : "text-neutral-800 hover:bg-neutral-100 hover:text-neutral-950",
       );
     case "drawer":
       return cn(
-        "relative flex min-h-8 items-start gap-2 rounded-md px-2 py-1.5 text-sm",
+        "relative flex min-h-8 items-center gap-2 rounded-md px-2 py-1.5 text-sm",
         "focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none",
         active
-          ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+          ? "bg-sidebar-accent text-sidebar-accent-foreground"
           : "text-sidebar-foreground hover:bg-sidebar-accent/70",
       );
     default: {

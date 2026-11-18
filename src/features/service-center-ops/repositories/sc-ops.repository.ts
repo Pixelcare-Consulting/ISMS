@@ -8,6 +8,27 @@ import {
 
 export type ScPulloutListSort = "pulloutNo" | "serviceCenter" | "reason" | "status";
 
+export const SC_DELIVERY_LIST_SORTS = ["deliveryNo", "orderNumber", "serviceCenter", "status"] as const;
+export type ScDeliveryListSort = (typeof SC_DELIVERY_LIST_SORTS)[number];
+
+function scDeliveryOrderBy(
+  field: ScDeliveryListSort | undefined,
+  dir: "asc" | "desc",
+): Prisma.ServiceCenterDeliveryOrderByWithRelationInput {
+  switch (field) {
+    case "deliveryNo":
+      return { deliveryNo: dir };
+    case "orderNumber":
+      return { order: { orderNumber: dir } };
+    case "serviceCenter":
+      return { serviceCenter: { name: dir } };
+    case "status":
+      return { statusCode: { code: dir } };
+    default:
+      return { createdAt: dir };
+  }
+}
+
 function scPulloutWhere(
   tenantId: string,
   serviceCenterIds: string[] | null,
@@ -87,6 +108,7 @@ export const scOpsRepository = {
     tenantId: string,
     serviceCenterIds: string[] | null,
     pagination: PaginationInput,
+    sort?: { field?: ScDeliveryListSort; dir?: "asc" | "desc" },
   ) {
     const { page, limit, skip, take } = resolvePagination(pagination);
     const where = {
@@ -120,21 +142,104 @@ export const scOpsRepository = {
             select: {
               serialNumberId: true,
               acceptedAt: true,
+              returnedAt: true,
               serialNumber: {
                 select: { serialNo: true, model: { select: { skuCode: true } } },
               },
             },
             orderBy: { serialNumber: { serialNo: "asc" } },
           },
+          // Rejected column, newest first.
+          returnRequests: {
+            select: { id: true, requestNo: true, status: true, sapError: true },
+            orderBy: { requestedAt: "desc" },
+          },
           _count: { select: { backloads: true } },
         },
-        orderBy: { createdAt: "desc" },
+        orderBy: scDeliveryOrderBy(sort?.field, sort?.dir ?? "desc"),
         skip,
         take,
       }),
     ]);
 
     return toPaginatedResult(items, total, page, limit);
+  },
+
+  /** SC deliveries in scope per status, for the KPI strip. */
+  countDeliveriesByStatus(tenantId: string, serviceCenterIds: string[] | null) {
+    return prisma.serviceCenterDelivery.groupBy({
+      by: ["statusCodeId"],
+      where: {
+        tenantId,
+        ...(serviceCenterIds ? { serviceCenterId: { in: serviceCenterIds } } : {}),
+      },
+      _count: { id: true },
+    });
+  },
+
+  /** One SC delivery with its DR units, order, and the audit rows its progress reads. */
+  async findDeliveryDetail(tenantId: string, deliveryId: string) {
+    const delivery = await prisma.serviceCenterDelivery.findFirst({
+      where: { id: deliveryId, tenantId },
+      select: {
+        id: true,
+        deliveryNo: true,
+        serviceCenterId: true,
+        sapDocNo: true,
+        sapDocDate: true,
+        createdAt: true,
+        serviceCenter: {
+          select: {
+            name: true,
+            locations: { select: { id: true, code: true, name: true }, orderBy: { code: "asc" } },
+          },
+        },
+        serviceCenterLocation: { select: { id: true, code: true, name: true } },
+        statusCode: { select: { code: true, name: true, color: true } },
+        order: {
+          select: {
+            orderNumber: true,
+            sapDocNum: true,
+            approvalLevels: {
+              where: { approvedAt: { not: null } },
+              select: { approvedAt: true },
+              orderBy: { approvedAt: "desc" },
+              take: 1,
+            },
+          },
+        },
+        lines: {
+          select: {
+            serialNumberId: true,
+            acceptedAt: true,
+            returnedAt: true,
+            serialNumber: {
+              select: { serialNo: true, model: { select: { skuCode: true, name: true } } },
+            },
+          },
+          orderBy: { serialNumber: { serialNo: "asc" } },
+        },
+        returnRequests: {
+          select: {
+            id: true,
+            requestNo: true,
+            status: true,
+            reason: true,
+            sapDocNo: true,
+            sapError: true,
+            lines: { select: { serialNumberId: true } },
+          },
+          orderBy: { requestedAt: "desc" },
+        },
+      },
+    });
+    if (!delivery) return null;
+    const audits = await prisma.auditLog.findMany({
+      where: { tenantId, entityType: "ServiceCenterDelivery", entityId: deliveryId },
+      select: { id: true, action: true, createdAt: true, user: { select: { name: true } } },
+      orderBy: { createdAt: "asc" },
+    });
+    return { delivery, audits };
   },
 
   /** SC pull-outs in scope, shaped like the branch pull-out list rows. */

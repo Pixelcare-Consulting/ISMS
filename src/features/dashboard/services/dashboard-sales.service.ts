@@ -5,6 +5,7 @@ import { getUserBranchIds, branchScopeFilter } from "@/lib/aor/scope";
 import { CACHE_TTL, cacheKey, getOrSet } from "@/lib/cache/redis";
 import type { KpiStatusCount } from "@/lib/kpi-cards";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
+import { OPEN_RETURN_REQUEST_STATUSES } from "@/features/sales/constants/return-history-status";
 import {
   rankTopBranchesByDashboardSaleAmount,
   sumDashboardSaleAmounts,
@@ -24,6 +25,8 @@ const RETURN_PIPELINE_ORDER: ReturnRequestStatus[] = [
   "pending_cs",
   "pending_tl",
   "approved",
+  "pending_sc",
+  "awaiting_stock",
   "rejected",
   "completed",
 ];
@@ -35,15 +38,13 @@ const ATR_RETURN_LABELS: Record<string, string> = {
   pending_cs: "Pending CS",
   pending_tl: "Pending TL",
   approved: "Approved",
+  pending_sc: "Pending SC",
+  awaiting_stock: "Awaiting Stock",
   rejected: "Rejected",
   completed: "Completed",
 };
 
-const RETURNS_IN_PROGRESS: ReturnRequestStatus[] = [
-  "pending_cs",
-  "pending_tl",
-  "approved",
-];
+const RETURNS_IN_PROGRESS: ReturnRequestStatus[] = [...OPEN_RETURN_REQUEST_STATUSES];
 
 export interface DashboardSalesKpis {
   salesThisMonth: number;

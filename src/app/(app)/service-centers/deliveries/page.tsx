@@ -1,10 +1,15 @@
 import { redirect } from "next/navigation";
 
-import { listScDeliveriesAction } from "@/features/service-center-ops/actions/sc-logistics.actions";
+import {
+  getScDeliveryKpisAction,
+  listScDeliveriesAction,
+} from "@/features/service-center-ops/actions/sc-logistics.actions";
 import {
   canAccessScLogistics,
   resolveScLogisticsCapabilities,
 } from "@/features/service-center-ops/constants/sc-permissions";
+import { loadWorkflowCatalog } from "@/features/logistics/constants/workflow-catalog";
+import { DeliveryKpisStrip } from "@/features/logistics/components/delivery-kpis";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { ModuleGuide } from "@/components/module-guide";
 import { SC_OPS_MODULE_GUIDE } from "@/content/module-guides/service-center-ops";
@@ -16,11 +21,11 @@ import { pageMetadata } from "@/lib/shared/seo";
 
 export const metadata = pageMetadata(
   "Service center deliveries",
-  "Accept deliveries into service center inventory.",
+  "Receive SAP deliveries into service center inventory.",
 );
 
 interface PageProps {
-  searchParams: Promise<{ page?: string; limit?: string }>;
+  searchParams: Promise<{ page?: string; limit?: string; sort?: string; dir?: string }>;
 }
 
 export default async function ScDeliveriesPage({ searchParams }: PageProps) {
@@ -30,10 +35,16 @@ export default async function ScDeliveriesPage({ searchParams }: PageProps) {
   }
 
   const params = await searchParams;
-  const result = await listScDeliveriesAction({
-    page: Number(params.page) || 1,
-    limit: parseTablePageSize(params.limit),
-  });
+  const [deliveries, kpis, workflowStatuses] = await Promise.all([
+    listScDeliveriesAction({
+      page: Number(params.page) || 1,
+      limit: parseTablePageSize(params.limit),
+      sort: params.sort,
+      sortDir: params.dir,
+    }),
+    getScDeliveryKpisAction(),
+    loadWorkflowCatalog(session.user.tenantId, "delivery_workflow"),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -41,12 +52,16 @@ export default async function ScDeliveriesPage({ searchParams }: PageProps) {
         title="Service center deliveries"
         sticky={false}
         tutorial={SC_DELIVERIES_PAGE_TUTORIAL}
-        description="Accept serials from approved orders into service center STK stock."
+        description="After Supply Planning approves an SC order, SAP users copy its Sales Order to a DR. Check SAP now brings the DR in, and the service center receives the units into STK."
       />
       <ModuleGuide {...SC_OPS_MODULE_GUIDE} />
+      <DeliveryKpisStrip kpis={kpis} />
       <ScDeliveriesPanel
-        items={result.items}
-        capabilities={resolveScLogisticsCapabilities(session.user.permissions)}
+        deliveries={deliveries}
+        workflowStatuses={workflowStatuses}
+        canCheckSap={resolveScLogisticsCapabilities(session.user.permissions).canCheckSap}
+        initialSort={params.sort ?? ""}
+        initialSortDir={params.dir ?? "desc"}
       />
     </div>
   );

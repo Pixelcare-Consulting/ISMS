@@ -15,6 +15,10 @@ import {
   updateScSaleHeaderAction,
   updateScSaleSerialAction,
 } from "@/features/service-center-ops/actions/sc-sales.actions";
+import {
+  listScProcessReturnLookupsAction,
+  requestScServiceReturnAction,
+} from "@/features/service-center-ops/actions/sc-service-returns.actions";
 
 /** Service center sales: sold at a service center, stock from one of its locations. */
 const SC_SALES_SOURCE: SalesSource = {
@@ -66,6 +70,13 @@ const SC_SALES_SOURCE: SalesSource = {
     listStockSources: (soldId) => listScStockSourcesForSalesAction(soldId),
     listSaleableSerials: ({ stockSourceId, ...rest }) =>
       listScSaleableSerialsAction({ ...rest, serviceCenterLocationId: stockSourceId }),
+  },
+  processReturn: {
+    listLookups: () => listScProcessReturnLookupsAction(),
+    request: (saleId, payload) => requestScServiceReturnAction(saleId, payload),
+    sellerFinishes: true,
+    serviceNextStep:
+      "The service center that sold the unit inspects it and finishes the request in SC Returns and Replacement.",
   },
 };
 
