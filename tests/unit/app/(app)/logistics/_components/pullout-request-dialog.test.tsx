@@ -392,7 +392,7 @@ describe("PulloutRequestDialog branch", () => {
     await pickUnitDetails("BRANCH-A-UNIT");
     expect(screen.queryByText("Destination warehouse")).not.toBeInTheDocument();
 
-    expect(props.onSubmit).not.toHaveBeenCalled();
+    expect(createPullout).not.toHaveBeenCalled();
     await confirmSubmit("Are you sure you want to submit this pull-out?");
 
     expect(createPullout).toHaveBeenCalledTimes(1);

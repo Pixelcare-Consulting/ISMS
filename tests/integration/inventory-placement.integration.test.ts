@@ -183,7 +183,7 @@ describe("inventory placement on Postgres", { concurrency: 1, timeout: 30_000 },
 
     const assign = (serialNumberId: string) =>
       prisma.$transaction(async (tx) => {
-        await claimToFollowSaleLine(tx, {
+        await claimToFollowSaleLine(tx.branchSalesTransactionDetail, {
           detailId: detail.id,
           saleId: sale.id,
           serialNumberId,
