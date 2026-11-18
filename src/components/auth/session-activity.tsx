@@ -7,10 +7,23 @@ import {
   LOGIN_ERROR_IDLE,
   LOGIN_ERROR_SIGNED_IN_ELSEWHERE,
   SESSION_IDLE_MS,
+  shouldRevokeBrowserSession,
 } from "@/lib/auth/session-policy";
 
 const PING_GAP_MS = 60_000;
 const WATCH_MS = 15_000;
+
+async function readBrowserSessionId(): Promise<string | null> {
+  try {
+    const result = await authClient.getSession({
+      query: { disableCookieCache: true },
+    });
+    const id = result.data?.session?.id;
+    return typeof id === "string" && id.length > 0 ? id : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Records clicks, keys, and scrolling, and signs out after 15 idle minutes.
@@ -23,10 +36,41 @@ export function SessionActivity() {
     let lastPing = 0;
     let lastRead = 0;
     let stopped = false;
+    let tabSessionId: string | null = null;
+    let capture: Promise<string | null> | null = null;
+
+    function captureTabSession(): Promise<string | null> {
+      if (tabSessionId) return Promise.resolve(tabSessionId);
+      if (!capture) {
+        capture = readBrowserSessionId().then((id) => {
+          if (id) tabSessionId = id;
+          else capture = null;
+          return tabSessionId;
+        });
+      }
+      return capture;
+    }
+
+    function goToLogin(error: string) {
+      // Full load so the login page does not reuse the signed-in app shell.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- sign-out must not reuse the signed-in app shell
+      window.location.assign(`/login?error=${error}`);
+    }
 
     async function leave(error: string) {
       if (stopped) return;
       stopped = true;
+      const ownedId = await captureTabSession();
+      const currentSessionId = await readBrowserSessionId();
+      if (
+        !shouldRevokeBrowserSession({
+          tabSessionId: ownedId,
+          currentSessionId,
+        })
+      ) {
+        goToLogin(LOGIN_ERROR_SIGNED_IN_ELSEWHERE);
+        return;
+      }
       try {
         await authClient.signOut({
           fetchOptions: { credentials: "include" },
@@ -34,9 +78,7 @@ export function SessionActivity() {
       } catch {
         // The login page still explains the sign-out if the cookie clear fails.
       }
-      // Full load so the cleared session cookie is what the login page receives.
-      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- sign-out must not reuse the signed-in app shell
-      window.location.assign(`/login?error=${error}`);
+      goToLogin(error);
     }
 
     async function readBody(response: Response): Promise<string | null> {
@@ -112,6 +154,7 @@ export function SessionActivity() {
     window.addEventListener("click", onActivity, listen);
     window.addEventListener("keydown", onActivity, listen);
     window.addEventListener("scroll", onActivity, listen);
+    void captureTabSession();
     void readLiveness();
 
     return () => {

@@ -68,14 +68,24 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
-    version: "0.95.9",
+    version: "0.95.10",
     date: "2026-11-18",
-    releasedAt: "2026-11-18T09:45:00+08:00",
-    title: "Sign-in page stays put after you are signed out",
+    releasedAt: "2026-11-18T13:15:00+08:00",
+    title: "Another open window no longer sends you back to the dashboard",
     highlights: [
-      "After you are signed out for inactivity or because the account signed in somewhere else, the sign-in page stays on screen instead of reloading over and over.",
+      "Signing in, or saving a sale, no longer gets kicked back to the dashboard by another open window.",
     ],
     changes: [
+      {
+        type: "improvement",
+        description:
+          "You are still signed out after 15 minutes of inactivity, and the account still signs in on only one device.",
+      },
+      {
+        type: "fix",
+        description:
+          "Signing in, or saving a sale, no longer gets kicked back to the dashboard by another open window.",
+      },
       {
         type: "fix",
         description:

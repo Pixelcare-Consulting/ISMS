@@ -1,11 +1,8 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-
 import { ChevronDown } from "lucide-react";
-
 import { AccessPreviewPanel } from "@/features/roles/components/access-preview-panel";
-
 import {
   categoryOptions,
   combinedPermissionNames,

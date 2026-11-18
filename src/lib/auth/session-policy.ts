@@ -103,3 +103,19 @@ export function loginErrorMessage(code: string | null): string | null {
 export function isAlreadySignedInMessage(message: string | null | undefined): boolean {
   return (message ?? "").includes("already signed in on another device");
 }
+
+/**
+ * Clear the shared browser cookie only when this tab still owns that session.
+ * An empty current id after this tab had one means the row is already gone.
+ * A different current id means someone signed in again in this browser.
+ */
+export function shouldRevokeBrowserSession(input: {
+  tabSessionId: string | null | undefined;
+  currentSessionId: string | null | undefined;
+}): boolean {
+  const tabId = input.tabSessionId?.trim() ?? "";
+  if (tabId.length === 0) return false;
+  const currentId = input.currentSessionId?.trim() ?? "";
+  if (currentId.length === 0) return true;
+  return tabId === currentId;
+}

@@ -3,6 +3,7 @@ import {
   decideSessionCreate,
   evaluateLiveSession,
   isTerminalLoginError,
+  shouldRevokeBrowserSession,
 } from "@/lib/auth/session-policy";
 
 const now = new Date("2026-11-17T12:00:00.000Z");
@@ -75,6 +76,35 @@ describe("evaluateLiveSession", () => {
 
   it("rejects a missing session row", () => {
     expect(evaluateLiveSession({ row: null, now })).toBe("missing");
+  });
+});
+
+describe("shouldRevokeBrowserSession", () => {
+  it("revokes when this tab still owns the current session", () => {
+    expect(
+      shouldRevokeBrowserSession({
+        tabSessionId: "session-a",
+        currentSessionId: "session-a",
+      }),
+    ).toBe(true);
+  });
+
+  it("does not revoke when another sign-in replaced the session", () => {
+    expect(
+      shouldRevokeBrowserSession({
+        tabSessionId: "session-a",
+        currentSessionId: "session-b",
+      }),
+    ).toBe(false);
+  });
+
+  it("revokes when the current session is already gone", () => {
+    expect(
+      shouldRevokeBrowserSession({
+        tabSessionId: "session-a",
+        currentSessionId: "",
+      }),
+    ).toBe(true);
   });
 });
 
