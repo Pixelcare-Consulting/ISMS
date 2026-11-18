@@ -169,7 +169,7 @@ export function ScServiceReturnsPanel({
         enableHiding: false,
         cell: ({ row }) => (
           <Button size="sm" variant="outline" onClick={() => setOpenRequestId(row.original.id)}>
-            {row.original.status === "pending_sc" ? "Inspect" : "View"}
+            {row.original.status === "pending_sc" ? "Process" : "View"}
           </Button>
         ),
       }),

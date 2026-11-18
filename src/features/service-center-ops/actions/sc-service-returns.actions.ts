@@ -33,7 +33,7 @@ import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions"
 
 /**
  * Service center lane of a Service Return / Replacement (Process V-b). The CSR requests it
- * from SC Sales; the selling service center inspects the unit and finishes it here.
+ * from SC Sales; the selling service center finishes it here.
  */
 
 async function requireActor(): Promise<ScServiceReturnActor> {
@@ -219,22 +219,16 @@ export async function getScServiceReturnAction(returnRequestId: string) {
   return { success: true as const, data: toDetailDto(row) };
 }
 
-const stockSchema = z.object({
-  returnRequestId: z.string().min(1),
-  modelId: z.string().min(1).optional().nullable(),
-});
-
-export async function listScServiceReplacementStockAction(input: unknown) {
+export async function previewScServiceReplacementAction(returnRequestId: string) {
   const actor = await requireActor();
-  const parsed = stockSchema.safeParse(input);
-  if (!parsed.success) return { error: "Invalid request" as const };
+  if (!returnRequestId) return { error: "Invalid request" as const };
   try {
     return {
       success: true as const,
-      data: await scServiceReturnService.listReplacementStock(actor, parsed.data),
+      data: await scServiceReturnService.previewReplacement(actor, { returnRequestId }),
     };
   } catch (e) {
-    return { error: errorMessage(e, "Could not load service center stock") };
+    return { error: errorMessage(e, "Could not look up the replacement unit") };
   }
 }
 
@@ -259,8 +253,6 @@ export async function submitScServiceReturnAction(input: unknown) {
 const replacementSchema = z.object({
   returnRequestId: z.string().min(1),
   serviceCenterLocationId: z.string().min(1, "Choose the location that receives the returned unit"),
-  modelId: z.string().min(1, "Choose the replacement model"),
-  replacementSerialNumberId: z.string().min(1, "Choose the replacement serial"),
 });
 
 export async function completeScServiceReplacementAction(input: unknown) {

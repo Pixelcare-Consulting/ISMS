@@ -36,8 +36,8 @@ import { logger } from "@/lib/shared/logger";
  * Process V-b on service center sales. The CSR requests a Service Return / Replacement on an
  * SC sale line in SC Sales; the sold unit becomes Reserve ODRF in SC stock and the request waits
  * at `pending_sc` for the selling service center, which:
- * - Submit Return: puts the unit into SC stock as STK/DEF (the CSR's choice).
- * - Replace from SC stock: same, plus an SC STK unit becomes the sale line's unit (Sold).
+ * - Submit Return (no inspection step): puts the unit into SC stock as STK/DEF (the CSR's choice).
+ * - Replace from SC stock: same, plus an SC STK unit of the same model, picked automatically, becomes the sale line's unit (Sold).
  * - Special Order: no SC unit; a `special` SC order is raised and the request waits at
  *   `awaiting_stock` until that order's delivery is accepted (the unit is then held RSV).
  * - Reject: the unit goes back to the status it had (Sold / Reserved); the sale reopens.
@@ -274,6 +274,50 @@ async function validateRequestInput(tenantId: string, data: ProcessReturnPayload
     problemDescriptionText: ordered.map((problem) => problem.name).join("; "),
     serviceModel,
     warehouseLocation,
+  };
+}
+
+/**
+ * Replacement unit for a Service Replacement: the unit held from a special order, else the first
+ * STK unit by serial of the sold model at the selling service center.
+ */
+async function findReplacementUnit(tenantId: string, request: ScServiceRequest) {
+  const line = targetLine(request);
+  const sold = await prisma.serialNumber.findFirst({
+    where: { id: line.serialNumberId, tenantId },
+    select: { modelId: true, model: { select: { skuCode: true, name: true } } },
+  });
+  if (!sold) return null;
+  const [stkCodeId, rsvCodeId] = await Promise.all([
+    inventoryCodeId(tenantId, "STK"),
+    inventoryCodeId(tenantId, "RSV"),
+  ]);
+  const base = {
+    tenantId,
+    serviceCenterId: request.sale.serviceCenterId,
+    serialNumber: { modelId: sold.modelId },
+    serialNumberId: { not: line.serialNumberId },
+  } satisfies Prisma.ServiceCenterInventoryWhereInput;
+  const select = { serialNumberId: true, serialNumber: { select: { serialNo: true } } } as const;
+
+  const held = request.heldSerialNumberId
+    ? await prisma.serviceCenterInventory.findFirst({
+        where: { ...base, serialNumberId: request.heldSerialNumberId, statusCodeId: rsvCodeId },
+        select,
+      })
+    : null;
+  const row =
+    held ??
+    (await prisma.serviceCenterInventory.findFirst({
+      where: { ...base, statusCodeId: stkCodeId },
+      orderBy: { serialNumber: { serialNo: "asc" } },
+      select,
+    }));
+  if (!row) return null;
+  return {
+    serialNumberId: row.serialNumberId,
+    serialNo: row.serialNumber.serialNo,
+    modelLabel: sold.model.skuCode ? `${sold.model.skuCode} · ${sold.model.name}` : sold.model.name,
   };
 }
 
@@ -534,76 +578,33 @@ export const scServiceReturnService = {
     await afterDecision(actor, request, "COMPLETED");
   },
 
-  /** Replacement candidates: SC STK of a model, plus the unit held from a special order. */
-  async listReplacementStock(actor: ScServiceReturnActor, input: { returnRequestId: string; modelId?: string | null }) {
+  /**
+   * The unit a Service Replacement will use: the unit held from a special order if there is one,
+   * otherwise the first STK unit (by serial) of the sold model at this service center.
+   * Null when the center has none.
+   */
+  async previewReplacement(actor: ScServiceReturnActor, input: { returnRequestId: string }) {
     const request = await loadOpenRequest(actor, input.returnRequestId);
-    const [stkCodeId, rsvCodeId] = await Promise.all([
-      inventoryCodeId(actor.tenantId, "STK"),
-      inventoryCodeId(actor.tenantId, "RSV"),
-    ]);
-    const available: Prisma.ServiceCenterInventoryWhereInput = {
-      tenantId: actor.tenantId,
-      serviceCenterId: request.sale.serviceCenterId,
-      OR: [
-        { statusCodeId: stkCodeId },
-        ...(request.heldSerialNumberId ? [{ statusCodeId: rsvCodeId, serialNumberId: request.heldSerialNumberId }] : []),
-      ],
-    };
-
-    const [modelGroups, serials] = await Promise.all([
-      prisma.serviceCenterInventory.findMany({
-        where: available,
-        select: { serialNumber: { select: { model: { select: { id: true, skuCode: true, name: true } } } } },
-        take: 5000,
-      }),
-      input.modelId
-        ? prisma.serviceCenterInventory.findMany({
-            where: { ...available, serialNumber: { modelId: input.modelId } },
-            select: {
-              serialNumberId: true,
-              serialNumber: { select: { serialNo: true } },
-              serviceCenterLocation: { select: { code: true } },
-            },
-            orderBy: { serialNumber: { serialNo: "asc" } },
-            take: 500,
-          })
-        : Promise.resolve([]),
-    ]);
-
-    const models = new Map<string, { id: string; name: string; count: number }>();
-    for (const row of modelGroups) {
-      const model = row.serialNumber.model;
-      const existing = models.get(model.id);
-      if (existing) existing.count += 1;
-      else models.set(model.id, { id: model.id, name: model.skuCode ? `${model.skuCode} · ${model.name}` : model.name, count: 1 });
-    }
-
-    return {
-      models: [...models.values()].sort((a, b) => a.name.localeCompare(b.name)),
-      serials: serials.map((row) => ({
-        id: row.serialNumberId,
-        serialNo: row.serialNumber.serialNo,
-        locationCode: row.serviceCenterLocation.code,
-        held: row.serialNumberId === request.heldSerialNumberId,
-      })),
-    };
+    if (actionOf(request) !== "replacement") return null;
+    return findReplacementUnit(actor.tenantId, request);
   },
 
   /**
    * 8b. Replacement from SC stock on the same invoice: the returned unit goes into SC stock and
-   * the chosen SC unit becomes the sale line's unit, Sold in place. The sale amount does not change.
+   * the SC unit picked automatically (same model) becomes the sale line's unit, Sold in place. The sale amount does not change.
    */
   async completeReplacement(
     actor: ScServiceReturnActor,
-    input: { returnRequestId: string; serviceCenterLocationId: string; modelId: string; replacementSerialNumberId: string },
+    input: { returnRequestId: string; serviceCenterLocationId: string },
   ) {
     const request = await loadOpenRequest(actor, input.returnRequestId);
     if (actionOf(request) !== "replacement") {
       throw new Error("This request is a Service Return. Submit the return instead.");
     }
     const line = targetLine(request);
-    if (input.replacementSerialNumberId === line.serialNumberId) {
-      throw new Error("Choose a different unit from the returned one");
+    const picked = await findReplacementUnit(actor.tenantId, request);
+    if (!picked) {
+      throw new Error("No unit of the sold model is in stock. Raise a special order instead.");
     }
     const serviceCenterId = request.sale.serviceCenterId;
     const location = await requireLocation(serviceCenterId, input.serviceCenterLocationId);
@@ -616,11 +617,7 @@ export const scServiceReturnService = {
       inventoryCodeId(actor.tenantId, "SLD"),
     ]);
 
-    const replacement = await prisma.serialNumber.findFirst({
-      where: { id: input.replacementSerialNumberId, tenantId: actor.tenantId, modelId: input.modelId },
-      select: { id: true, serialNo: true, model: { select: { id: true, brandId: true } } },
-    });
-    if (!replacement) throw new Error("Replacement unit not found for that model");
+    const replacement = { id: picked.serialNumberId, serialNo: picked.serialNo };
     await assertSerialsNotFrozenInStockCount(actor.tenantId, [replacement.id]);
 
     const now = new Date();

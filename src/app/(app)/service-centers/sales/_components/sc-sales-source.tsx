@@ -76,7 +76,7 @@ const SC_SALES_SOURCE: SalesSource = {
     request: (saleId, payload) => requestScServiceReturnAction(saleId, payload),
     sellerFinishes: true,
     serviceNextStep:
-      "The service center that sold the unit inspects it and finishes the request in SC Returns and Replacement.",
+      "The service center that sold the unit finishes the request in SC Returns and Replacement.",
   },
 };
 
