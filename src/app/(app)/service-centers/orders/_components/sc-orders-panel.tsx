@@ -35,6 +35,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { ScOrderDetailsDialog } from "@/app/(app)/service-centers/orders/_components/sc-order-details-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LoadingModal } from "@/components/ui/loading-modal";
@@ -80,7 +81,9 @@ export function ScOrdersPanel({
     orderId: string;
     action: "approve" | "reject";
   } | null>(null);
+  const [detailsOrderId, setDetailsOrderId] = useState<string | null>(null);
   const scSetup = useScOrderSetup(setupOpen);
+  const detailsOrder = items.find((item) => item.id === detailsOrderId) ?? null;
   const filtered = useMemo(
     () =>
       items.filter((row) =>
@@ -225,6 +228,9 @@ export function ScOrdersPanel({
           const order = row.original;
           return (
             <div className="flex flex-col gap-1">
+              <Button size="sm" variant="outline" onClick={() => setDetailsOrderId(order.id)}>
+                View details
+              </Button>
               {canApprove && isScOrderApprovable(order.status) ? (
                 <>
                   <Button
@@ -343,6 +349,12 @@ export function ScOrdersPanel({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <ScOrderDetailsDialog
+        order={detailsOrder}
+        onOpenChange={(open) => {
+          if (!open) setDetailsOrderId(null);
+        }}
+      />
       <LoadingModal
         open={pending && processingAction !== null}
         title={processingAction === "reject" ? "Rejecting order" : "Processing approval"}
