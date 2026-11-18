@@ -97,8 +97,9 @@ const getRequiredSession = cache(async (): Promise<AppSession> => {
   const session = toAppSession(await auth());
   if (!session?.user) {
     // Cookie is present enough for the proxy to treat this as signed in, but
-    // the session is gone. Clear it before leaving, or /login is sent back here.
-    await signOutServer({ redirectTo: "/login" });
+    // the session is gone. Cookies are read-only during render, so the cookie
+    // may survive; the terminal error keeps the proxy from bouncing /login back.
+    await signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_SESSION_EXPIRED}` });
   }
 
   if (!session.user.id || !session.user.tenantId) {
