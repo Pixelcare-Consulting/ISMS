@@ -11,7 +11,6 @@ interface ReturnsPageTabsProps {
   activeTab: ReturnsPageTab;
   allowedTabs: ReturnsPageTab[];
   branchContent: ReactNode;
-  serviceContent: ReactNode;
   approvalsContent: ReactNode;
 }
 
@@ -23,8 +22,6 @@ function tabLabel(tab: ReturnsPageTab): string {
   switch (tab) {
     case "branch":
       return "Branch Returns";
-    case "service":
-      return "Service Returns";
     case "approvals":
       return "Approvals";
     default: {
@@ -35,14 +32,13 @@ function tabLabel(tab: ReturnsPageTab): string {
 }
 
 /**
- * Branch | Service | Approvals tabs with URL sync.
+ * Branch | Approvals tabs with URL sync.
  * Only permitted tabs are shown; switching resets pagination/sort scope.
  */
 export function ReturnsPageTabs({
   activeTab,
   allowedTabs,
   branchContent,
-  serviceContent,
   approvalsContent,
 }: ReturnsPageTabsProps) {
   const router = useRouter();
@@ -62,14 +58,13 @@ export function ReturnsPageTabs({
   const showSkeleton =
     pending ||
     (displayTab === "branch" && branchContent == null) ||
-    (displayTab === "service" && serviceContent == null) ||
     (displayTab === "approvals" && approvalsContent == null);
 
   if (allowedTabs.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
         You do not have permission to view any Returns tabs. Ask an admin to
-        grant Branch Returns, Service Returns, or Approvals access.
+        grant Branch Returns or Approvals access.
       </p>
     );
   }
@@ -78,12 +73,7 @@ export function ReturnsPageTabs({
     <Tabs
       value={displayTab}
       onValueChange={(value) => {
-        const next: ReturnsPageTab =
-          value === "service"
-            ? "service"
-            : value === "approvals"
-              ? "approvals"
-              : "branch";
+        const next: ReturnsPageTab = value === "approvals" ? "approvals" : "branch";
         if (!allowedTabs.includes(next) || next === displayTab) return;
         setDisplayTab(next);
         startTransition(() => {
@@ -104,15 +94,6 @@ export function ReturnsPageTabs({
             <SalesTabTableSkeleton tab="returns" />
           ) : (
             branchContent
-          )}
-        </TabsContent>
-      ) : null}
-      {allowedTabs.includes("service") ? (
-        <TabsContent value="service">
-          {displayTab === "service" && showSkeleton ? (
-            <SalesTabTableSkeleton tab="returns" />
-          ) : (
-            serviceContent
           )}
         </TabsContent>
       ) : null}

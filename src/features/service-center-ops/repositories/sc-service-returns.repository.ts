@@ -72,6 +72,7 @@ function searchWhere(q: string): Prisma.ServiceCenterReturnRequestWhereInput | n
       { sale: { customerName: contains } },
       { saleDetail: { serialNumber: { serialNo: contains } } },
       { sale: { details: { some: { serialNumber: { serialNo: contains } } } } },
+      { replacementSerialNumber: { serialNo: contains } },
     ],
   };
 }
@@ -86,6 +87,9 @@ const listSelect = {
   inspectedAt: true,
   documentType: { select: { name: true } },
   specialOrder: { select: { orderNumber: true, status: true } },
+  replacementSerialNumber: {
+    select: { serialNo: true, model: { select: { skuCode: true, name: true } } },
+  },
   saleDetail: {
     select: {
       serialNumber: { select: { serialNo: true } },
@@ -119,7 +123,6 @@ const detailSelect = {
   inspectedBy: { select: { name: true, email: true } },
   serviceCenterLocation: { select: { code: true, name: true } },
   heldSerialNumber: { select: { serialNo: true } },
-  replacementSerialNumber: { select: { serialNo: true } },
   specialOrder: {
     select: { id: true, orderNumber: true, status: true, sapDocNum: true, createdAt: true },
   },

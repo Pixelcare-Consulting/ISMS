@@ -68,6 +68,38 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.95.14",
+    date: "2026-11-19",
+    releasedAt: "2026-11-19T11:08:00+08:00",
+    title: "Choose the replacement serial and see both serials",
+    highlights: [
+      "You choose the replacement serial number again on a Service Replacement.",
+      "SC Returns and Replacements shows the returned and the replacement serial number.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "SC Returns and Replacements has a Replacement SN column next to Returned SN, and search finds a request by either serial. A finished replacement's details show both serials.",
+      },
+      {
+        type: "feature",
+        description:
+          "Settings, Users has a Reset session button that signs a user out of every device, so someone who forgot to sign out can sign in again.",
+      },
+      {
+        type: "improvement",
+        description:
+          "On a Service Replacement, choose the model (the sold model is selected first) and the serial number from the service center's STK. You can still raise a special order.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Returns / Replacement no longer has a Service Returns tab. Branch Returns now lists every branch sale return, Service Return and Service Replacement included. Service center Service Returns are finished under Service, SC Returns and Replacement.",
+      },
+    ],
+  },
+  {
     version: "0.95.13",
     date: "2026-11-19",
     releasedAt: "2026-11-19T11:00:00+08:00",

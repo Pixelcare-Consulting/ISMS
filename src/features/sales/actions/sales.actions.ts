@@ -332,8 +332,8 @@ export async function listSalesAction(input?: {
 
 /**
  * Branch returns list: one row per BranchReturnRequest with ATR / return status badges.
- * Branch tab: `returns.branch.view` / umbrella / legacy (non-service Document Types).
- * Service tab: `returns.service.view` / umbrella (Service Return / Replacement Document Types).
+ * Branch tab (`all`): `returns.branch.view` / umbrella / legacy, every Document Type.
+ * `branch` / `service` narrow to non-service or Service Return / Replacement Document Types.
  * Approvals queue (`statusIn`): evaluate / approve / complete (no separate approvals.view).
  */
 export async function listSalesReturnsAction(input?: {
@@ -342,12 +342,12 @@ export async function listSalesReturnsAction(input?: {
   sort?: string;
   sortDir?: string;
   statusIn?: Array<"pending_cs" | "pending_tl" | "approved" | "rejected" | "completed">;
-  documentTypeScope?: "branch" | "service";
+  documentTypeScope?: "branch" | "service" | "all";
 }) {
   const forApprovalsQueue = Boolean(input?.statusIn?.length);
-  const documentTypeScope = forApprovalsQueue
-    ? undefined
-    : (input?.documentTypeScope ?? "branch");
+  const requestedScope = input?.documentTypeScope ?? "branch";
+  const documentTypeScope =
+    forApprovalsQueue || requestedScope === "all" ? undefined : requestedScope;
   const listPermissions = forApprovalsQueue
     ? [...RETURNS_APPROVALS_VIEW_PERMISSIONS]
     : documentTypeScope === "service"

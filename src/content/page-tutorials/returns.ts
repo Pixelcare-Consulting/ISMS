@@ -12,14 +12,13 @@ export const RETURNS_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "What this page is for",
       description:
-        "After someone submits Process Return from a sale’s View details, use this page to approve Dealer Initiated returns, restore stock, or complete a replacement. Other sales returns are already approved. On service center sales, the CSR requests Service Return or Service Replacement from SC Sales → View details; the service center that sold the unit inspects it and finishes the request under Service → SC Returns and Replacement. Branch, Service, and Approvals tabs keep the queues organized.",
+        "After someone submits Process Return from a sale’s View details, use this page to approve Dealer Initiated returns, restore stock, or complete a replacement. Other sales returns are already approved. On service center sales, the CSR requests Service Return or Service Replacement from SC Sales → View details; the service center that sold the unit finishes the request under Service → SC Returns and Replacement. Branch and Approvals tabs keep the queues organized.",
     },
     {
       title: "How to use it",
       bullets: [
         "Open Sales, View details, and choose Request return to open Process Return (document type, STK/DEF, problems, then Return or Replacement).",
         "On Branch Returns, download ATR/ODRF when available, then use Return (restore) or Replacement (Same/New Invoice) when the request is approved.",
-        "On Service Returns, use the action buttons on each row for the same steps on service center sales.",
         "Approvals shows Dealer Initiated sales returns waiting on Team Leader, service center returns waiting on Customer Service, and approved rows ready to restore or replace.",
       ],
     },

@@ -112,4 +112,10 @@ export const userRepository = {
       data: { deletedAt: new Date() },
     });
   },
+
+  /** Removes every login session row so the user is signed out everywhere. */
+  async deleteSessions(userId: string) {
+    const { count } = await prisma.session.deleteMany({ where: { userId } });
+    return count;
+  },
 };

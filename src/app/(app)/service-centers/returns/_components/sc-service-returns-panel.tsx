@@ -31,6 +31,17 @@ const column = createColumnHelper<DataTableFeatures, ScServiceReturnListItem>();
 
 const SEARCH_DEBOUNCE_MS = 350;
 
+/** Serial over its model; a dash when there is no unit. */
+function SerialCell({ serialNo, modelLabel }: { serialNo: string | null; modelLabel: string | null }) {
+  if (!serialNo) return <span className="text-muted-foreground">—</span>;
+  return (
+    <div className="min-w-0">
+      <p className="font-mono">{serialNo}</p>
+      {modelLabel ? <p className="truncate text-xs text-muted-foreground">{modelLabel}</p> : null}
+    </div>
+  );
+}
+
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
   const date = new Date(iso);
@@ -133,13 +144,16 @@ export function ScServiceReturnsPanel({
       column.display({
         id: "serial",
         header: "RETURNED SN",
+        cell: ({ row }) => <SerialCell serialNo={row.original.serialNo} modelLabel={row.original.modelLabel} />,
+      }),
+      column.display({
+        id: "replacementSerial",
+        header: "REPLACEMENT SN",
         cell: ({ row }) => (
-          <div className="min-w-0">
-            <p className="font-mono">{row.original.serialNo ?? "—"}</p>
-            {row.original.modelLabel ? (
-              <p className="truncate text-xs text-muted-foreground">{row.original.modelLabel}</p>
-            ) : null}
-          </div>
+          <SerialCell
+            serialNo={row.original.replacementSerialNo}
+            modelLabel={row.original.replacementModelLabel}
+          />
         ),
       }),
       column.display({
