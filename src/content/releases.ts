@@ -68,6 +68,43 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.95.11",
+    date: "2026-11-19",
+    releasedAt: "2026-11-19T09:00:00+08:00",
+    title: "Simpler service returns and replacements at service centers",
+    highlights: [
+      "Service centers finish a Service Return or Replacement without an inspection step.",
+      "A Service Replacement picks the replacement serial number for you.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Service center orders now have a View details button on each row, showing the lines, quantities, PO, project, SO and DR numbers.",
+      },
+      {
+        type: "improvement",
+        description:
+          "On SC Returns and Replacements, a Service Return is submitted right after you choose the receiving location. The Inspect step is gone.",
+      },
+      {
+        type: "improvement",
+        description:
+          "A Service Replacement picks an available serial number of the same model from the service center's stock and shows it for you to confirm. If none is in stock, you can raise a special order.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Finished service requests in SC Sales now read Service Returned or Service Replaced.",
+      },
+      {
+        type: "fix",
+        description:
+          "The request return form in SC Sales no longer shows the Service Return section for any document type.",
+      },
+    ],
+  },
+  {
     version: "0.95.10",
     date: "2026-11-18",
     releasedAt: "2026-11-18T13:15:00+08:00",
