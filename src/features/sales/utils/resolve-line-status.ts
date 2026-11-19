@@ -1,8 +1,10 @@
+import { isServiceDocumentTypeName } from "@/features/sales/constants/process-return";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import {
   isReturnHistoryStatus,
   isScServiceOpenReturnStatus,
   RESERVE_ODRF_STATUS,
+  returnHistoryStatusRef,
   returnRequestAppliesToLine,
   type ReturnHistoryAction,
 } from "@/features/sales/constants/return-history-status";
@@ -124,7 +126,8 @@ export interface ListedLineStatusSale {
  * List/details STATUS preference (never live inventory):
  * 1) Open return on this line: Pending CS, Pending TL, or Approved from Sales & ATR;
  *    Reserve ODRF while a service center has the unit (Pending SC, Awaiting Stock)
- * 2) Finished return on this line: Returned or Replaced (settings codes RETURNED, REPLACED)
+ * 2) Finished return on this line: Returned or Replaced (settings codes RETURNED, REPLACED);
+ *    Service Returned or Service Replaced for service document types
  * 3) No return and a closed sale: Closed
  * 4) No return, no serial, and a reserve sale: Reserve
  * 5) Otherwise the frozen inventory status (Sold, Official Sold, TO FOLLOW)
@@ -142,7 +145,7 @@ export function resolveLineStatusCode(
   toFollowStatus: SaleStatusCodeRef,
   salesAtrCodes: Map<string, SaleStatusCodeRef>,
   returnStatus?: string | null,
-  _documentTypeName?: string | null,
+  documentTypeName?: string | null,
   /**
    * Another line on this sale has the open or finished return. Keep this line's
    * own Sold / TO FOLLOW status instead of flipping it to Closed.
@@ -158,6 +161,11 @@ export function resolveLineStatusCode(
     return resolveSalesAtrStatusCode(requestStep, salesAtrCodes);
   }
   if (requestStep === "completed") {
+    // Service Return / Replacement (every SC sale) reads "Service Returned" / "Service Replaced".
+    const serviceStatus = isServiceDocumentTypeName(documentTypeName)
+      ? returnHistoryStatusRef("completed", documentTypeName, actionType)
+      : null;
+    if (serviceStatus) return serviceStatus;
     return resolveSalesAtrStatusCode(
       finishedReturnSettingsCode(actionType),
       salesAtrCodes,

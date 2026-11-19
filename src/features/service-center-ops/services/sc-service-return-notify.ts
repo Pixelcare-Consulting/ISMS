@@ -78,7 +78,7 @@ function actionLabel(actionType: "return" | "replacement" | null | undefined): s
   return actionType === "replacement" ? "Service Replacement" : "Service Return";
 }
 
-/** CSR sent a Service Return / Replacement: the service center's processors inspect it. */
+/** CSR sent a Service Return / Replacement: the service center's processors finish it. */
 export async function notifyScServiceReturnRequested(input: {
   tenantId: string;
   actorUserId: string;
@@ -95,7 +95,7 @@ export async function notifyScServiceReturnRequested(input: {
       actorUserId: input.actorUserId,
       userIds,
       title: `${actionLabel(input.actionType)} · ${input.transactionNo}`,
-      body: `Inspect the returned unit${input.serialNo ? ` ${input.serialNo}` : ""} and finish the request.`,
+      body: `Finish the request for the returned unit${input.serialNo ? ` ${input.serialNo}` : ""}.`,
       href: scServiceReturnHref(input.returnRequestId),
       returnRequestId: input.returnRequestId,
     });
