@@ -118,3 +118,24 @@ export async function deleteUserAction(userId: string) {
     };
   }
 }
+
+export async function resetUserSessionAction(userId: string) {
+  const session = await requirePermission("users.manage");
+
+  if (!userId) {
+    return { error: "User is required" };
+  }
+
+  try {
+    const { cleared } = await userService.resetUserSessions({
+      tenantId: session.user.tenantId,
+      actorUserId: session.user.id,
+      userId,
+    });
+    return { success: true, cleared };
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e.message : "Failed to reset session",
+    };
+  }
+}

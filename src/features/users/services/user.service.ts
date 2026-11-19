@@ -236,4 +236,36 @@ export const userService = {
       metadata: { email: user.email },
     });
   },
+  /** Clears stuck sessions (e.g. forgot to sign out) so the user can sign in again. */
+  async resetUserSessions(input: {
+    tenantId: string;
+    actorUserId: string;
+    userId: string;
+  }) {
+    if (input.actorUserId === input.userId) {
+      throw new Error("You cannot reset your own session");
+    }
+
+    const user = await userRepository.findById(input.tenantId, input.userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    if (userHasProviderOnlyRole(user.userRoles)) {
+      throw new Error("This user's session cannot be reset");
+    }
+
+    const cleared = await userRepository.deleteSessions(user.id);
+
+    await auditService.log({
+      tenantId: input.tenantId,
+      userId: input.actorUserId,
+      action: "user.session_reset",
+      entityType: "User",
+      entityId: user.id,
+      metadata: { email: user.email, sessionsCleared: cleared },
+    });
+
+    return { cleared };
+  },
 };
