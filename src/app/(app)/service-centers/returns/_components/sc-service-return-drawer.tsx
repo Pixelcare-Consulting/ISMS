@@ -32,7 +32,7 @@ import { StatusCodeBadge } from "@/features/reason-status/components/status-code
 import {
   completeScServiceReplacementAction,
   getScServiceReturnAction,
-  previewScServiceReplacementAction,
+  listScServiceReplacementStockAction,
   raiseScServiceSpecialOrderAction,
   rejectScServiceReturnAction,
   submitScServiceReturnAction,
@@ -43,9 +43,8 @@ import {
   scServiceActionLabel,
 } from "@/features/service-center-ops/constants/sc-service-returns";
 
-/** The unit picked automatically for a Service Replacement; null when the center has none. */
-type ReplacementUnit = Extract<
-  Awaited<ReturnType<typeof previewScServiceReplacementAction>>,
+type StockData = Extract<
+  Awaited<ReturnType<typeof listScServiceReplacementStockAction>>,
   { success: true }
 >["data"];
 
@@ -61,7 +60,7 @@ const CONFIRM_COPY: Record<PendingConfirm, { title: string; description: string;
   replace: {
     title: "Replace this unit?",
     description:
-      "The returned unit goes into this service center's stock. The replacement unit shown is Sold on the same invoice and the sale is closed.",
+      "The returned unit goes into this service center's stock. The chosen unit is Sold on the same invoice and the sale is closed.",
     label: "Replace Unit",
   },
   special_order: {
@@ -120,8 +119,12 @@ function ScServiceReturnDrawerContent({
   const [pending, startTransition] = useTransition();
 
   const [locationId, setLocationId] = useState("");
-  /** Loaded once for a Service Replacement; `undefined` while loading. */
-  const [replacement, setReplacement] = useState<ReplacementUnit | undefined>(undefined);
+  /** Stock loaded for one model choice; a different choice means it is loading. */
+  const [stockResult, setStockResult] = useState<{ modelId: string; data: StockData | null } | null>(
+    null,
+  );
+  const [modelId, setModelId] = useState("");
+  const [serialId, setSerialId] = useState("");
   const [orderLocationId, setOrderLocationId] = useState("");
   const [poNumber, setPoNumber] = useState("");
   const [rejectReason, setRejectReason] = useState("");
@@ -140,6 +143,7 @@ function ScServiceReturnDrawerContent({
       const onlyLocation = res.data.locations.length === 1 ? res.data.locations[0]!.id : "";
       setLocationId(onlyLocation);
       setOrderLocationId(onlyLocation);
+      setModelId(res.data.modelId ?? "");
     });
     return () => {
       cancelled = true;
@@ -148,25 +152,33 @@ function ScServiceReturnDrawerContent({
 
   const canReplace =
     detail?.status === "pending_sc" && detail.actionType === "replacement";
-  const replacementLoading = canReplace && replacement === undefined;
+  const stock = stockResult?.data ?? null;
+  const stockLoading = canReplace && stockResult?.modelId !== modelId;
 
-  // The replacement is picked on the server: same model, first STK serial at this center.
+  // Replacement candidates for the chosen model at this service center.
   useEffect(() => {
     if (!canReplace || !detail) return;
     let cancelled = false;
-    void previewScServiceReplacementAction(detail.id).then((res) => {
+    void listScServiceReplacementStockAction({
+      returnRequestId: detail.id,
+      modelId: modelId || null,
+    }).then((res) => {
       if (cancelled) return;
       if (!res.success) {
-        toast.error(res.error ?? "Could not look up the replacement unit");
-        setReplacement(null);
+        toast.error(res.error ?? "Could not load service center stock");
+        setStockResult({ modelId, data: null });
         return;
       }
-      setReplacement(res.data);
+      setStockResult({ modelId, data: res.data });
+      const held = res.data.serials.find((serial) => serial.held);
+      setSerialId((current) =>
+        res.data.serials.some((serial) => serial.id === current) ? current : (held?.id ?? ""),
+      );
     });
     return () => {
       cancelled = true;
     };
-  }, [canReplace, detail]);
+  }, [canReplace, detail, modelId]);
 
   function run(
     action: () => Promise<{ error?: string; success?: true; orderNumber?: string }>,
@@ -201,6 +213,8 @@ function ScServiceReturnDrawerContent({
             completeScServiceReplacementAction({
               returnRequestId: id,
               serviceCenterLocationId: locationId,
+              modelId,
+              replacementSerialNumberId: serialId,
             }),
           () => "Replacement done. The new unit is Sold on the same invoice.",
         );
@@ -235,8 +249,8 @@ function ScServiceReturnDrawerContent({
       toast.error("Choose the location that receives the returned unit");
       return;
     }
-    if (next === "replace" && !replacement) {
-      toast.error("No unit of the sold model is in stock");
+    if (next === "replace" && (!modelId || !serialId)) {
+      toast.error("Choose the replacement model and serial");
       return;
     }
     if (next === "special_order" && !detail?.modelId) {
@@ -251,10 +265,22 @@ function ScServiceReturnDrawerContent({
   }
 
   const statusMeta = detail ? SC_SERVICE_RETURN_STATUS_META[detail.status] : null;
+  const modelOptions = (stock?.models ?? []).map((model) => ({
+    id: model.id,
+    label: `${model.name} (${model.count} in stock)`,
+  }));
+  const serialOptions = (stock?.serials ?? []).map((serial) => ({
+    id: serial.id,
+    label: serial.held ? `${serial.serialNo} · held for this request` : serial.serialNo,
+    description: `Location ${serial.locationCode}`,
+  }));
   const locationOptions = (detail?.locations ?? []).map((location) => ({
     id: location.id,
     label: location.name,
   }));
+  const soldModelInStock = Boolean(
+    detail?.modelId && stock?.models.some((model) => model.id === detail.modelId),
+  );
   const copy = confirm ? CONFIRM_COPY[confirm] : null;
 
   return (
@@ -378,7 +404,16 @@ function ScServiceReturnDrawerContent({
                       />
                       {detail.receivedAt ? <Detail label="Received at" value={detail.receivedAt} /> : null}
                       {detail.replacementSerialNo ? (
-                        <Detail label="Replacement serial" value={detail.replacementSerialNo} />
+                        <>
+                          <Detail
+                            label="Returned serial"
+                            value={[detail.serialNo, detail.modelLabel].filter(Boolean).join(" · ")}
+                          />
+                          <Detail
+                            label="Replacement serial"
+                            value={[detail.replacementSerialNo, detail.replacementModelLabel].filter(Boolean).join(" · ")}
+                          />
+                        </>
                       ) : null}
                       {detail.rejectReason ? (
                         <div className="sm:col-span-2">
@@ -396,7 +431,7 @@ function ScServiceReturnDrawerContent({
                   <section className="space-y-4" aria-labelledby="sc-return-finish">
                     <SectionTitle>
                       <span id="sc-return-finish">
-                        {detail.actionType === "replacement" ? "Confirm replacement" : "Submit return"}
+                        {detail.actionType === "replacement" ? "Replace from your stock" : "Submit return"}
                       </span>
                     </SectionTitle>
                     <SearchableSelect
@@ -411,28 +446,39 @@ function ScServiceReturnDrawerContent({
 
                     {detail.actionType === "replacement" ? (
                       <>
-                        <div className="space-y-1 rounded-md border p-3">
-                          <p className="text-xs font-medium text-muted-foreground">
-                            Replacement unit (selected automatically)
+                        <SearchableSelect
+                          id="sc-return-model"
+                          label="Replacement model"
+                          options={modelOptions}
+                          value={modelId}
+                          onChange={(value) => {
+                            setModelId(value);
+                            setSerialId("");
+                          }}
+                          placeholder={stockLoading ? "Loading stock…" : "Choose a model"}
+                          emptyMessage="No STK units at this service center."
+                          disabled={stockLoading && !stock}
+                        />
+                        <SearchableSelect
+                          id="sc-return-serial"
+                          label="Replacement serial (STK)"
+                          options={serialOptions}
+                          value={serialId}
+                          onChange={setSerialId}
+                          placeholder={modelId ? "Choose a serial" : "Choose a model first"}
+                          emptyMessage="No STK units of this model here."
+                          disabled={!modelId || stockLoading}
+                        />
+                        {!stockLoading && stock && !soldModelInStock ? (
+                          <p className="text-sm text-muted-foreground">
+                            The sold model is not in this service center&apos;s stock. Choose another model, or raise a
+                            special order below.
                           </p>
-                          {replacementLoading ? (
-                            <Skeleton className="h-5 w-40" />
-                          ) : replacement ? (
-                            <>
-                              <p className="font-mono text-sm font-medium">{replacement.serialNo}</p>
-                              <p className="text-sm text-muted-foreground">{replacement.modelLabel}</p>
-                            </>
-                          ) : (
-                            <p className="text-sm text-muted-foreground">
-                              No unit of the sold model is in this service center&apos;s stock. Raise a special
-                              order below.
-                            </p>
-                          )}
-                        </div>
+                        ) : null}
                         <Button
                           type="button"
                           className="w-full"
-                          disabled={pending || replacementLoading || !replacement || !locationId}
+                          disabled={pending || stockLoading || !serialId || !locationId}
                           onClick={() => requestConfirm("replace")}
                         >
                           Replace Unit
@@ -450,7 +496,7 @@ function ScServiceReturnDrawerContent({
                     )}
                   </section>
 
-                  {detail.actionType === "replacement" && replacement === null ? (
+                  {detail.actionType === "replacement" ? (
                     <>
                       <Separator />
                       <section className="space-y-4" aria-labelledby="sc-return-special">
@@ -531,14 +577,7 @@ function ScServiceReturnDrawerContent({
           <AlertDialogHeader>
             <AlertDialogTitle>{copy?.title}</AlertDialogTitle>
             <AlertDialogDescription>
-              {copy?.description}
-              {confirm === "replace" && replacement ? (
-                <>
-                  {" "}
-                  Replacement serial: <span className="font-mono font-medium text-foreground">{replacement.serialNo}</span>.
-                </>
-              ) : null}{" "}
-              Sale <span className="font-medium text-foreground">{detail?.transactionNo}</span>.
+              {copy?.description} Sale <span className="font-medium text-foreground">{detail?.transactionNo}</span>.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

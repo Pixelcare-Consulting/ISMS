@@ -123,6 +123,8 @@ function toListDto(row: ScServiceReturnListRow) {
       : row.sale.serviceCenter.name,
     serialNo: unit.serialNo,
     modelLabel: unit.modelLabel,
+    replacementSerialNo: row.replacementSerialNumber?.serialNo ?? null,
+    replacementModelLabel: modelLabel(row.replacementSerialNumber?.model),
     specialOrderNumber: row.specialOrder?.orderNumber ?? null,
     createdAt: row.createdAt.toISOString(),
   };
@@ -149,7 +151,6 @@ function toDetailDto(row: ScServiceReturnDetailRow) {
       ? `${row.serviceCenterLocation.code} · ${row.serviceCenterLocation.name}`
       : null,
     heldSerialNo: row.heldSerialNumber?.serialNo ?? null,
-    replacementSerialNo: row.replacementSerialNumber?.serialNo ?? null,
     specialOrder: row.specialOrder
       ? {
           orderNumber: row.specialOrder.orderNumber,
@@ -219,16 +220,22 @@ export async function getScServiceReturnAction(returnRequestId: string) {
   return { success: true as const, data: toDetailDto(row) };
 }
 
-export async function previewScServiceReplacementAction(returnRequestId: string) {
+const stockSchema = z.object({
+  returnRequestId: z.string().min(1),
+  modelId: z.string().min(1).optional().nullable(),
+});
+
+export async function listScServiceReplacementStockAction(input: unknown) {
   const actor = await requireActor();
-  if (!returnRequestId) return { error: "Invalid request" as const };
+  const parsed = stockSchema.safeParse(input);
+  if (!parsed.success) return { error: "Invalid request" as const };
   try {
     return {
       success: true as const,
-      data: await scServiceReturnService.previewReplacement(actor, { returnRequestId }),
+      data: await scServiceReturnService.listReplacementStock(actor, parsed.data),
     };
   } catch (e) {
-    return { error: errorMessage(e, "Could not look up the replacement unit") };
+    return { error: errorMessage(e, "Could not load service center stock") };
   }
 }
 
@@ -253,6 +260,8 @@ export async function submitScServiceReturnAction(input: unknown) {
 const replacementSchema = z.object({
   returnRequestId: z.string().min(1),
   serviceCenterLocationId: z.string().min(1, "Choose the location that receives the returned unit"),
+  modelId: z.string().min(1, "Choose the replacement model"),
+  replacementSerialNumberId: z.string().min(1, "Choose the replacement serial"),
 });
 
 export async function completeScServiceReplacementAction(input: unknown) {

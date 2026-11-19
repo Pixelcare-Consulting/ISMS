@@ -3,11 +3,11 @@ import type { ModuleGuideContent } from "@/content/module-guides/types";
 export const RETURNS_MODULE_GUIDE: ModuleGuideContent = {
   title: "Returns / Replacement",
   description:
-    "Finish customer returns and replacements after a sale. Start Process Return from Sales details. Dealer Initiated Return / Replacement waits for Team Leader. Other sales returns are approved when requested. On service center sales, the CSR requests Service Return or Service Replacement from SC Sales → View details; the service center that sold the unit inspects it and finishes the request under Service → SC Returns and Replacement.",
+    "Finish customer returns and replacements after a sale. Start Process Return from Sales details. Dealer Initiated Return / Replacement waits for Team Leader. Other sales returns are approved when requested. On service center sales, the CSR requests Service Return or Service Replacement from SC Sales → View details; the service center that sold the unit finishes the request under Service → SC Returns and Replacement.",
   tips: [
     {
       label:
-        "Branch Returns — report columns for status, document type, Return/Replacement, serials, problem, and ATR/ODRF download",
+        "Branch Returns — every branch sale return (Service Return / Replacement included), with report columns for status, document type, Return/Replacement, serials, problem, and ATR/ODRF download",
     },
     {
       label:
@@ -19,15 +19,11 @@ export const RETURNS_MODULE_GUIDE: ModuleGuideContent = {
     },
     {
       label:
-        "Service Returns: evaluate, approve, reject, or restore older service center walk-in returns",
-    },
-    {
-      label:
         "Approvals — Dealer Initiated sales returns waiting on Team Leader, service center returns waiting on Customer Service, and approved rows ready to restore or replace",
     },
     {
       label:
-        "Roles can grant Branch Returns, Service Returns, and Approvals separately — or View all Returns tabs for full access",
+        "Roles can grant Branch Returns and Approvals separately — or View all Returns tabs for full access",
     },
   ],
   storageKey: "module-guide.returns",

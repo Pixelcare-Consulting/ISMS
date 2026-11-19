@@ -1,6 +1,5 @@
 import type { ReturnRequestStatus } from "@prisma/client";
 
-import { branchReturnDocumentTypeScopeWhere } from "@/features/sales/repositories/sales.repository";
 import { prisma } from "@/lib/database/client";
 import type { KpiStatusCount } from "@/lib/kpi-cards";
 
@@ -37,7 +36,6 @@ export interface ReturnsKpis {
 
 export interface ReturnsKpisByTab {
   branch: ReturnsKpis;
-  service: ReturnsKpis;
   approvals: ReturnsKpis;
 }
 
@@ -76,11 +74,9 @@ function mergeStatusGroups(
 }
 
 export const returnsKpiService = {
+  /** Every branch sale return, Service Return / Replacement document types included. */
   async getBranchKpis(tenantId: string): Promise<ReturnsKpis> {
-    const where = {
-      tenantId,
-      ...branchReturnDocumentTypeScopeWhere("branch"),
-    };
+    const where = { tenantId };
 
     const [groups, totalReturns] = await Promise.all([
       prisma.branchReturnRequest.groupBy({
@@ -92,49 +88,6 @@ export const returnsKpiService = {
     ]);
 
     return buildKpisFromGroups(groups, totalReturns, RETURN_STATUS_ORDER);
-  },
-
-  async getServiceKpis(
-    tenantId: string,
-    serviceCenterIds: string[] | null,
-  ): Promise<ReturnsKpis> {
-    const scWhere = {
-      tenantId,
-      sale: {
-        ...(serviceCenterIds ? { serviceCenterId: { in: serviceCenterIds } } : {}),
-      },
-    };
-    const branchServiceWhere = {
-      tenantId,
-      ...branchReturnDocumentTypeScopeWhere("service"),
-    };
-
-    const [scGroups, branchGroups, scTotal, branchTotal] = await Promise.all([
-      prisma.serviceCenterReturnRequest.groupBy({
-        by: ["status"],
-        where: scWhere,
-        _count: { id: true },
-      }),
-      prisma.branchReturnRequest.groupBy({
-        by: ["status"],
-        where: branchServiceWhere,
-        _count: { id: true },
-      }),
-      prisma.serviceCenterReturnRequest.count({ where: scWhere }),
-      prisma.branchReturnRequest.count({ where: branchServiceWhere }),
-    ]);
-
-    const merged = mergeStatusGroups([scGroups, branchGroups]);
-    const totalReturns = scTotal + branchTotal;
-
-    return {
-      totalReturns,
-      statuses: RETURN_STATUS_ORDER.map((status) => ({
-        code: status,
-        name: RETURN_STATUS_LABELS[status],
-        count: merged.get(status) ?? 0,
-      })),
-    };
   },
 
   async getApprovalsKpis(
@@ -187,13 +140,12 @@ export const returnsKpiService = {
     tenantId: string,
     serviceCenterIds: string[] | null,
   ): Promise<ReturnsKpisByTab> {
-    const [branch, service, approvals] = await Promise.all([
+    const [branch, approvals] = await Promise.all([
       this.getBranchKpis(tenantId),
-      this.getServiceKpis(tenantId, serviceCenterIds),
       this.getApprovalsKpis(tenantId, serviceCenterIds),
     ]);
 
-    return { branch, service, approvals };
+    return { branch, approvals };
   },
 
   /**
