@@ -14,7 +14,6 @@ export const createUserSchema = z.object({
     ),
   roleSlugs: z.array(z.string().min(1)).min(1, "At least one role is required"),
   departmentId: z.string().optional(),
-  mustChangePassword: z.boolean().optional(),
 });
 
 export type CreateUserInput = z.infer<typeof createUserSchema>;

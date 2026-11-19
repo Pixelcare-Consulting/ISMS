@@ -44,6 +44,10 @@ import { salesRepository } from "@/features/sales/repositories/sales.repository"
 import { salesKpiService } from "@/features/sales/services/sales-kpi.service";
 import { toSaleDetailsPayload } from "@/features/sales/services/sale-details-payload";
 import {
+  saleLineModelText,
+  serialModelText,
+} from "@/features/sales/utils/replacement-unit-label";
+import {
   listSalesLines,
   type SalesLineReader,
 } from "@/features/sales/services/sales-list.service";
@@ -378,19 +382,34 @@ export async function listSalesReturnsAction(input?: {
         : null;
       const displayDetail = linkedDetail ?? sale.details[0];
       const replacement = sale.replacements[0] ?? null;
-      const origModelLabel = displayDetail?.model
-        ? [displayDetail.model.skuCode, displayDetail.model.name]
-            .filter(Boolean)
-            .join(" · ")
+      const replacementFinished =
+        row.status === "completed" && (row.actionType ?? "return") === "replacement";
+      const finishedOriginal = replacementFinished
+        ? replacement?.originalSerialNumber ?? null
         : null;
-      const origSerialNo = displayDetail?.serialNumber?.serialNo ?? null;
-      const origSerialNos = linkedDetail
-        ? origSerialNo
-          ? [origSerialNo]
-          : []
-        : sale.details
-            .map((d) => d.serialNumber?.serialNo)
-            .filter((v): v is string => Boolean(v));
+      const finishedNew = replacementFinished
+        ? replacement?.replacementSerialNumber ?? null
+        : null;
+      const saleLineSerial = displayDetail?.serialNumber?.serialNo ?? null;
+      const origModelLabel = replacementFinished
+        ? serialModelText(finishedOriginal)
+        : saleLineModelText({
+            brandName: displayDetail?.brand?.name,
+            model: displayDetail?.model,
+          });
+      const origSerialNo = replacementFinished
+        ? finishedOriginal?.serialNo ?? null
+        : saleLineSerial;
+      const newModelLabel = replacementFinished ? serialModelText(finishedNew) : null;
+      const newSerialNo = replacementFinished ? finishedNew?.serialNo ?? null : null;
+      const origSerialNos =
+        replacementFinished || linkedDetail
+          ? origSerialNo
+            ? [origSerialNo]
+            : []
+          : sale.details
+              .map((d) => d.serialNumber?.serialNo)
+              .filter((v): v is string => Boolean(v));
       const origPrice =
         displayDetail?.modelPrice?.toString() ??
         displayDetail?.saleAmount?.toString() ??
@@ -423,11 +442,14 @@ export async function listSalesReturnsAction(input?: {
           : null,
         atrOdrfPdfPath: row.atrOdrfPdfPath,
         hasAtrOdrfPdf: Boolean(row.atrOdrfPdfPath),
+        saleDetailId: row.saleDetailId,
         origModelLabel,
         origSerialNo: origSerialNo ?? origSerialNos[0] ?? null,
         origSerialNos,
         origPrice,
-        replSerialNo: replacement?.replacementSerialNumber?.serialNo ?? null,
+        newModelLabel,
+        newSerialNo,
+        replSerialNo: newSerialNo,
         replBranchName: replacement?.replacementBranch?.name ?? null,
         replAmount: replacement?.replacementAmount?.toString() ?? null,
         replInvoiceNo: replacement?.replacementInvoiceNo ?? null,

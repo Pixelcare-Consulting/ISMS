@@ -83,6 +83,8 @@ interface SaleRow {
   serialNumberId: string | null;
   serialNumber: { id: string; serialNo: string } | null;
   returnRequest: { id: string; status: string } | null;
+  /** Set when this line was replaced on the same invoice. */
+  wasReplacedLine: string | null;
 }
 
 type EditingLine = {
@@ -181,6 +183,10 @@ const stickyCellId =
   "sticky left-0 z-20 w-12 min-w-12 max-w-12 overflow-hidden border-r border-border/60 bg-card";
 const stickyCellTrn =
   "sticky left-12 z-20 min-w-[11rem] max-w-[11rem] overflow-hidden border-r border-border/60 bg-card shadow-[4px_0_8px_-4px_rgba(0,0,0,0.06)]";
+const stickyHeadActions =
+  "sticky right-0 z-40 border-l border-border/60 bg-card shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.08)]";
+const stickyCellActions =
+  "sticky right-0 z-20 border-l border-border/60 bg-card shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.06)]";
 
 export function SalesTable({
   result,
@@ -348,8 +354,17 @@ export function SalesTable({
         id: "model",
         header: "MODEL",
         enableSorting: false,
-        cell: ({ row }) => row.original.modelLabel ?? "—",
-        meta: { className: "font-mono" },
+        cell: ({ row }) => {
+          const wasLine = row.original.wasReplacedLine;
+          return (
+            <div className="min-w-0">
+              <p className="font-mono">{row.original.modelLabel ?? "—"}</p>
+              {wasLine ? (
+                <p className="mt-0.5 text-xs font-sans text-muted-foreground">{wasLine}</p>
+              ) : null}
+            </div>
+          );
+        },
       }),
       saleColumn.display({
         id: "serial",
@@ -395,6 +410,10 @@ export function SalesTable({
         header: "ACTIONS",
         enableSorting: false,
         enableHiding: false,
+        meta: {
+          headClassName: stickyHeadActions,
+          className: stickyCellActions,
+        },
         cell: ({ row }) => (
           <div className="flex flex-wrap items-center gap-1.5">
             <Button

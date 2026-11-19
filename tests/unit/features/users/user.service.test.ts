@@ -65,6 +65,22 @@ describe("userService roles", () => {
     assignRole.mockResolvedValue(undefined);
   });
 
+  it("creates a user who can sign in with the password they were given", async () => {
+    findBySlug.mockResolvedValue({ id: "role-cashier", slug: "cashier" });
+
+    await userService.createUser({
+      tenantId: "tenant-1",
+      email: "ada@example.com",
+      name: "Ada",
+      password: "long-enough-password",
+      roleSlugs: ["cashier"],
+    });
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ mustChangePassword: false }),
+    );
+  });
+
   it("refuses to create a user with no role", async () => {
     await expect(
       userService.createUser({

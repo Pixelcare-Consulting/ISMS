@@ -45,6 +45,11 @@ import {
   uploadSaleProofAction,
   type AgingSellableSerial,
 } from "@/features/sales/actions/sales.actions";
+import { TO_FOLLOW_SERIAL_LABEL } from "@/features/sales/constants/to-follow-serial";
+import {
+  formatSaleLineHint,
+  replacementModelText,
+} from "@/features/sales/utils/replacement-unit-label";
 import { SALE_PROOF_MAX_FILES, saleProofFileName } from "@/features/sales/utils/sale-proof";
 import { earliestSaleTransactionIso } from "@/features/sales/utils/transaction-date";
 
@@ -103,6 +108,89 @@ function withCurrentOption(
   return [current, ...options];
 }
 
+function lineHasSerial(line: {
+  serialNumberId: string | null;
+  serialNo: string;
+}): boolean {
+  return Boolean(line.serialNumberId) && line.serialNo !== TO_FOLLOW_SERIAL_LABEL;
+}
+
+/** Matching sale line for the muted hint. No match hides the hint. */
+function saleLineHintFromDetails(sale: {
+  returnRequest: { saleDetailId: string | null } | null;
+  lines: Array<{
+    detailId: string;
+    brandName: string | null;
+    modelLabel: string | null;
+    serialNumberId: string | null;
+    serialNo: string;
+  }>;
+}): string | null {
+  const detailId = sale.returnRequest?.saleDetailId ?? null;
+  const line = detailId
+    ? (sale.lines.find((row) => row.detailId === detailId) ?? null)
+    : (sale.lines.find((row) => lineHasSerial(row)) ?? null);
+  if (!line) return null;
+  return formatSaleLineHint({
+    model: replacementModelText(line.brandName, line.modelLabel),
+    serial: lineHasSerial(line) ? line.serialNo : null,
+  });
+}
+
+function ReplacementModelSerialFields({
+  models,
+  serials,
+  modelId,
+  serialId,
+  pending,
+  selectedAging,
+  saleLineHint,
+  onModelChange,
+  onSerialChange,
+}: {
+  models: { id: string; label: string }[];
+  serials: { id: string; label: string }[];
+  modelId: string;
+  serialId: string;
+  pending: boolean;
+  selectedAging: AgingSellableSerial | null;
+  saleLineHint: string | null;
+  onModelChange: (value: string) => void;
+  onSerialChange: (value: string) => void;
+}) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <SearchableSelect
+        label="Model *"
+        options={models}
+        value={modelId}
+        onChange={onModelChange}
+        placeholder={models.length === 0 ? "No stock at this branch" : "Select model…"}
+        emptyMessage="No stock at this branch."
+        disabled={pending}
+        popoverClassName="z-70"
+      />
+      <div className="space-y-1.5">
+        <SearchableSelect
+          label="Serial number *"
+          options={serials}
+          value={serialId}
+          onChange={onSerialChange}
+          placeholder={modelId ? "Select STK serial…" : "Select a model first…"}
+          disabled={pending || !modelId}
+          popoverClassName="z-70"
+        />
+        {selectedAging ? (
+          <p className="text-xs text-muted-foreground">{agingSerialNote(selectedAging)}</p>
+        ) : null}
+      </div>
+      {saleLineHint ? (
+        <p className="text-xs text-muted-foreground sm:col-span-2">{saleLineHint}</p>
+      ) : null}
+    </div>
+  );
+}
+
 function ReplacementFormSkeleton() {
   return (
     <div className="grid gap-4 sm:grid-cols-2" aria-busy="true" aria-label="Loading sale">
@@ -138,6 +226,7 @@ export function ReplacementFlowDialogs({
   const [headerLoading, setHeaderLoading] = useState(false);
   const [headerReady, setHeaderReady] = useState(false);
   const [proofUploading, setProofUploading] = useState(false);
+  const [saleLineHint, setSaleLineHint] = useState<string | null>(null);
 
   useEffect(() => {
     if (!target || !choice) return;
@@ -150,6 +239,7 @@ export function ReplacementFlowDialogs({
       setSerialId("");
       setSerials([]);
       setAgedSerials([]);
+      setSaleLineHint(null);
     });
     void (async () => {
       try {
@@ -166,6 +256,7 @@ export function ReplacementFlowDialogs({
           toast.error(sale.error);
           return;
         }
+        setSaleLineHint(saleLineHintFromDetails(sale));
         const nextModels = lookups.models.map((model) => ({
           id: model.id,
           label: model.name,
@@ -483,40 +574,17 @@ export function ReplacementFlowDialogs({
                   proofUploading={false}
                   onProofsSelected={() => undefined}
                 />
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <SearchableSelect
-                    label="Model *"
-                    options={models}
-                    value={modelId}
-                    onChange={setModelId}
-                    placeholder={
-                      models.length === 0
-                        ? "No stock at this branch"
-                        : "Select model…"
-                    }
-                    emptyMessage="No stock at this branch."
-                    disabled={pending}
-                    popoverClassName="z-70"
-                  />
-                  <div className="space-y-1.5">
-                    <SearchableSelect
-                      label="Serial number *"
-                      options={serials}
-                      value={serialId}
-                      onChange={setSerialId}
-                      placeholder={
-                        modelId ? "Select STK serial…" : "Select a model first…"
-                      }
-                      disabled={pending || !modelId}
-                      popoverClassName="z-70"
-                    />
-                    {selectedAging ? (
-                      <p className="text-xs text-muted-foreground">
-                        {agingSerialNote(selectedAging)}
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
+                <ReplacementModelSerialFields
+                  models={models}
+                  serials={serials}
+                  modelId={modelId}
+                  serialId={serialId}
+                  pending={pending}
+                  selectedAging={selectedAging}
+                  saleLineHint={saleLineHint}
+                  onModelChange={setModelId}
+                  onSerialChange={setSerialId}
+                />
               </>
             ) : (
               <p className="text-sm text-muted-foreground">
@@ -578,40 +646,17 @@ export function ReplacementFlowDialogs({
                     void onProofsSelected(files);
                   }}
                 />
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <SearchableSelect
-                    label="Model *"
-                    options={models}
-                    value={modelId}
-                    onChange={setModelId}
-                    placeholder={
-                      models.length === 0
-                        ? "No stock at this branch"
-                        : "Select model…"
-                    }
-                    emptyMessage="No stock at this branch."
-                    disabled={pending}
-                    popoverClassName="z-70"
-                  />
-                  <div className="space-y-1.5">
-                    <SearchableSelect
-                      label="Serial number *"
-                      options={serials}
-                      value={serialId}
-                      onChange={setSerialId}
-                      placeholder={
-                        modelId ? "Select STK serial…" : "Select a model first…"
-                      }
-                      disabled={pending || !modelId}
-                      popoverClassName="z-70"
-                    />
-                    {selectedAging ? (
-                      <p className="text-xs text-muted-foreground">
-                        {agingSerialNote(selectedAging)}
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
+                <ReplacementModelSerialFields
+                  models={models}
+                  serials={serials}
+                  modelId={modelId}
+                  serialId={serialId}
+                  pending={pending}
+                  selectedAging={selectedAging}
+                  saleLineHint={saleLineHint}
+                  onModelChange={setModelId}
+                  onSerialChange={setSerialId}
+                />
               </>
             ) : (
               <p className="text-sm text-muted-foreground">

@@ -2,6 +2,11 @@ import { returnHistoryStatusRef } from "@/features/sales/constants/return-histor
 import { TO_FOLLOW_SERIAL_LABEL } from "@/features/sales/constants/to-follow-serial";
 import { isSaleReserved, toDateInputValue } from "@/features/sales/services/sale-encode";
 import {
+  replacementPairFromSerials,
+  type ReplacementPairLabels,
+  type ReplacementSerialModel,
+} from "@/features/sales/utils/replacement-unit-label";
+import {
   loadSalesAtrCodesByCode,
   resolveListedLineStatus,
   resolveSalesAtrStatusCode,
@@ -55,6 +60,17 @@ export interface SaleDetailsSource {
     atrOdrfPdfPath?: string | null;
     documentType: { name: string } | null;
   } | null;
+  /** Original and new serials stored on SalesReplacement. Absent for service-center sales. */
+  replacements?: Array<{
+    originalSerialNumber: {
+      serialNo: string;
+      model: ReplacementSerialModel | null;
+    } | null;
+    replacementSerialNumber: {
+      serialNo: string;
+      model: ReplacementSerialModel | null;
+    } | null;
+  }>;
   createdBy: { name: string | null; email: string } | null;
   details: Array<{
     id: string;
@@ -124,12 +140,14 @@ export async function toSaleDetailsPayload(tenantId: string, sale: SaleDetailsSo
       ? {
           id: request.id,
           status: request.status,
+          saleDetailId: request.saleDetailId,
           actionType: request.actionType ?? "return",
           stockStatusCode: request.stockStatusCode ?? "STK",
           hasAtrOdrfPdf: Boolean(request.atrOdrfPdfPath),
           documentTypeName: request.documentType?.name ?? null,
         }
       : null,
+    replacements: replacementPairs(sale),
     returnStatusCode,
     createdByName: sale.createdBy?.name ?? sale.createdBy?.email ?? null,
     lines: sale.details.map((detail) => {
@@ -153,6 +171,15 @@ export async function toSaleDetailsPayload(tenantId: string, sale: SaleDetailsSo
       };
     }),
   };
+}
+
+function replacementPairs(sale: SaleDetailsSource): ReplacementPairLabels[] {
+  const pairs: ReplacementPairLabels[] = [];
+  for (const row of sale.replacements ?? []) {
+    const pair = replacementPairFromSerials(row);
+    if (pair) pairs.push(pair);
+  }
+  return pairs;
 }
 
 export type SaleDetailsPayloadData = Awaited<ReturnType<typeof toSaleDetailsPayload>>;

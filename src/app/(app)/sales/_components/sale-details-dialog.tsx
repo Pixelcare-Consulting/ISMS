@@ -26,6 +26,7 @@ import { isDealerInitiatedDocumentTypeName } from "@/features/sales/constants/pr
 import type { SalesActionCapabilities } from "@/features/sales/constants/sales-permissions";
 import { TO_FOLLOW_SERIAL_LABEL } from "@/features/sales/constants/to-follow-serial";
 import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
+import type { ReplacementPairLabels } from "@/features/sales/utils/replacement-unit-label";
 import { canEditSaleHeaderForLines } from "@/features/sales/utils/sale-header-edit";
 import { formatPeso } from "@/utils/format-currency";
 
@@ -77,6 +78,7 @@ export interface SaleDetailsPayload {
   returnRequest: {
     id: string;
     status: string;
+    saleDetailId: string | null;
     actionType: "return" | "replacement";
     stockStatusCode: "STK" | "DEF";
     hasAtrOdrfPdf: boolean;
@@ -84,6 +86,8 @@ export interface SaleDetailsPayload {
   } | null;
   returnStatusCode: SaleStatusCodeRef | null;
   createdByName: string | null;
+  /** Original and new units from the replacement record. The sale line stays the current unit. */
+  replacements: ReplacementPairLabels[];
   lines: SaleDetailsLine[];
 }
 
@@ -430,6 +434,45 @@ export function SaleDetailsDialog({
               {sale.notes?.trim() ? sale.notes : "No notes."}
             </p>
           </div>
+
+          {sale.replacements.length > 0 ? (
+            <div className="shrink-0 space-y-2">
+              <Label>Replacement</Label>
+              <div className="space-y-2">
+                {sale.replacements.map((pair, index) => (
+                  <dl
+                    key={`${pair.originalSerialNo ?? "orig"}-${pair.newSerialNo ?? "new"}-${index}`}
+                    className="grid gap-x-4 gap-y-2 rounded-md border bg-muted/30 px-3 py-2 text-sm sm:grid-cols-2"
+                  >
+                    <div className="min-w-0">
+                      <dt className="text-xs text-muted-foreground">Original model</dt>
+                      <dd className="truncate" title={pair.originalModel ?? undefined}>
+                        {pair.originalModel ?? "—"}
+                      </dd>
+                    </div>
+                    <div className="min-w-0">
+                      <dt className="text-xs text-muted-foreground">Original SN</dt>
+                      <dd className="truncate font-mono text-xs" title={pair.originalSerialNo ?? undefined}>
+                        {pair.originalSerialNo ?? "—"}
+                      </dd>
+                    </div>
+                    <div className="min-w-0">
+                      <dt className="text-xs text-muted-foreground">New model</dt>
+                      <dd className="truncate" title={pair.newModel ?? undefined}>
+                        {pair.newModel ?? "—"}
+                      </dd>
+                    </div>
+                    <div className="min-w-0">
+                      <dt className="text-xs text-muted-foreground">New SN</dt>
+                      <dd className="truncate font-mono text-xs" title={pair.newSerialNo ?? undefined}>
+                        {pair.newSerialNo ?? "—"}
+                      </dd>
+                    </div>
+                  </dl>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
             <div className="flex min-h-0 min-w-0 flex-1 flex-col space-y-2">
               <div className="flex shrink-0 items-center justify-between gap-2">

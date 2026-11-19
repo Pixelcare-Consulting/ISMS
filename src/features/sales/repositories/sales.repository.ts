@@ -133,6 +133,26 @@ const detailStatusCodeSelect = {
   statusCode: { select: { code: true, name: true, color: true } },
 } as const;
 
+/** Serial plus its model, so a replacement can show the original and the new unit. */
+const replacementSerialSelect = {
+  id: true,
+  serialNo: true,
+  model: {
+    select: {
+      skuCode: true,
+      name: true,
+      brand: { select: { name: true } },
+    },
+  },
+} as const;
+
+const saleReplacementPairSelect = {
+  originalInvoiceNo: true,
+  replacementInvoiceNo: true,
+  originalSerialNumber: { select: replacementSerialSelect },
+  replacementSerialNumber: { select: replacementSerialSelect },
+} as const;
+
 const salesDetailListInclude = {
   ...detailStatusCodeSelect,
   serialNumber: {
@@ -163,6 +183,10 @@ const salesDetailListInclude = {
           actionType: true,
           documentType: { select: { name: true } },
         },
+      },
+      replacements: {
+        orderBy: { createdAt: "asc" as const },
+        select: saleReplacementPairSelect,
       },
     },
   },
@@ -318,6 +342,7 @@ export const salesRepository = {
                   id: true,
                   saleAmount: true,
                   modelPrice: true,
+                  brand: { select: { name: true } },
                   model: { select: { skuCode: true, name: true } },
                   serialNumber: { select: { id: true, serialNo: true } },
                 },
@@ -331,9 +356,8 @@ export const salesRepository = {
                   replacementInvoiceNo: true,
                   replacementInvoiceDate: true,
                   replacementBranch: { select: { id: true, name: true } },
-                  replacementSerialNumber: {
-                    select: { id: true, serialNo: true },
-                  },
+                  originalSerialNumber: { select: replacementSerialSelect },
+                  replacementSerialNumber: { select: replacementSerialSelect },
                 },
               },
             },
@@ -390,6 +414,10 @@ export const salesRepository = {
           },
         },
         createdBy: { select: { name: true, email: true } },
+        replacements: {
+          orderBy: { createdAt: "asc" as const },
+          select: saleReplacementPairSelect,
+        },
         details: {
           orderBy: { createdAt: "asc" as const },
           select: {

@@ -53,6 +53,18 @@ const baseCreate = {
 };
 
 describe("tenant create user", () => {
+  it("does not accept a required password change", () => {
+    const input = {
+      ...baseCreate,
+      mustChangePassword: true,
+    };
+    const parsed = createUserSchema.safeParse(input);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data).not.toHaveProperty("mustChangePassword");
+    }
+  });
+
   it("requires at least one role", () => {
     const parsed = createUserSchema.safeParse({ ...baseCreate, roleSlugs: [] });
     expect(parsed.success).toBe(false);

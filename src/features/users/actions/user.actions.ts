@@ -43,7 +43,6 @@ export async function createUserAction(formData: FormData) {
     password: formData.get("password"),
     roleSlugs: readRoleSlugs(formData),
     departmentId: formData.get("departmentId") || undefined,
-    mustChangePassword: formData.get("mustChangePassword") === "true",
   });
 
   if (!parsed.success) {

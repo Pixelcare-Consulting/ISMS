@@ -71,13 +71,6 @@ export default async function AppLayout({
     isPlatformOperator,
   });
 
-  const onProfile =
-    pathname === "/settings/profile" ||
-    pathname.startsWith("/settings/profile/");
-  if (session.user.mustChangePassword && !onProfile) {
-    redirect("/settings/profile");
-  }
-
   if (setupAdmin && !isSetupPathAllowed(pathname)) {
     redirect(SETUP_HOME);
   }

@@ -8,7 +8,6 @@ import { TENANT_CREATE_USER_PASSWORD_MIN } from "@/features/users/schemas/create
 import { createUserAction } from "@/features/users/actions/user.actions";
 import { useSettingsUi } from "@/hooks/use-settings-ui";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -55,7 +54,6 @@ export function CreateUserDialog({
   const [error, setError] = useState<string | null>(null);
   const [selectedSlugs, setSelectedSlugs] = useState<string[]>([]);
   const [departmentId, setDepartmentId] = useState<string>("none");
-  const [requirePasswordChange, setRequirePasswordChange] = useState(true);
   const [pending, startTransition] = useTransition();
 
   const departmentOptions = useMemo(
@@ -77,7 +75,6 @@ export function CreateUserDialog({
     setError(null);
     setDepartmentId("none");
     setSelectedSlugs([]);
-    setRequirePasswordChange(true);
   }
 
   function onOpenChange(open: boolean) {
@@ -106,7 +103,6 @@ export function CreateUserDialog({
     for (const slug of selectedSlugs) {
       formData.append("roleSlugs", slug);
     }
-    formData.set("mustChangePassword", requirePasswordChange ? "true" : "false");
     if (departmentId !== "none") {
       formData.set("departmentId", departmentId);
     }
@@ -193,37 +189,21 @@ export function CreateUserDialog({
             />
 
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
-            <DialogFooter className="gap-3 sm:items-center sm:justify-between">
-              <label
-                htmlFor="require-password-change"
-                className="flex items-center gap-2 text-sm text-foreground"
+            <DialogFooter className="gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={pending}
               >
-                <Checkbox
-                  id="require-password-change"
-                  checked={requirePasswordChange}
-                  disabled={pending}
-                  onCheckedChange={(value) =>
-                    setRequirePasswordChange(value === true)
-                  }
-                />
-                Require password change at first sign-in
-              </label>
-              <div className="flex justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => onOpenChange(false)}
-                  disabled={pending}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={pending || selectedSlugs.length === 0}
-                >
-                  {pending ? "Creating…" : "Create user"}
-                </Button>
-              </div>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={pending || selectedSlugs.length === 0}
+              >
+                {pending ? "Creating…" : "Create user"}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>

@@ -67,7 +67,6 @@ export const userService = {
     password: string;
     roleSlugs: string[];
     departmentId?: string | null;
-    mustChangePassword?: boolean;
     allowProviderOnlyRoles?: boolean;
   }) {
     const existing = await userRepository.findByEmail(
@@ -101,7 +100,7 @@ export const userService = {
       name: input.name,
       passwordHash,
       departmentId: input.departmentId ?? null,
-      mustChangePassword: input.mustChangePassword ?? false,
+      mustChangePassword: false,
     });
     await syncCredentialAccountPassword(user.id, passwordHash);
 

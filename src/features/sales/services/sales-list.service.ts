@@ -2,10 +2,7 @@ import {
   parseSalesListStatusFilter,
   salesListStatusCodesMatch,
 } from "@/features/sales/constants/sales-list-status";
-import {
-  matchesSalesListSearch,
-  type SalesListSearchSource,
-} from "@/features/sales/utils/sales-list-search";
+import { wasLineForSameInvoiceReplacement } from "@/features/sales/utils/replacement-unit-label";
 import {
   loadSalesAtrCodesByCode,
   resolveListedLineStatus,
@@ -14,6 +11,10 @@ import {
   type ListedLineStatusSale,
   type SaleStatusCodeRef,
 } from "@/features/sales/utils/resolve-line-status";
+import {
+  matchesSalesListSearch,
+  type SalesListSearchSource,
+} from "@/features/sales/utils/sales-list-search";
 import {
   resolvePagination,
   toPaginatedResult,
@@ -62,6 +63,20 @@ export interface SalesListLine {
       saleDetailId: string | null;
       documentType: { name: string } | null;
     } | null;
+    /** Present on branch sales. Service-center lines omit it. */
+    replacements?: Array<{
+      originalInvoiceNo: string | null;
+      replacementInvoiceNo: string | null;
+      originalSerialNumber: {
+        serialNo: string;
+        model: {
+          skuCode: string;
+          name: string;
+          brand: { name: string } | null;
+        } | null;
+      } | null;
+      replacementSerialNumber: { id: string; serialNo: string } | null;
+    }>;
   };
 }
 
@@ -122,6 +137,11 @@ export function mapSalesListItem(line: SalesListLine, context: LineStatusContext
     returnRequest: sale.returnRequest
       ? { id: sale.returnRequest.id, status: sale.returnRequest.status }
       : null,
+    wasReplacedLine: wasLineForSameInvoiceReplacement({
+      lineSerialNumberId: line.serialNumberId,
+      transactionNo: sale.transactionNo,
+      replacements: sale.replacements,
+    }),
   };
 }
 

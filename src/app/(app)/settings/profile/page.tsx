@@ -23,7 +23,6 @@ export default async function ProfileSettingsPage() {
           image: user.image,
           department: user.department?.name ?? null,
           roles: user.userRoles.map((userRole) => userRole.role.name),
-          mustChangePassword: user.mustChangePassword,
         }}
       />
     </div>

@@ -68,6 +68,43 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.95.13",
+    date: "2026-11-19",
+    releasedAt: "2026-11-19T11:00:00+08:00",
+    title: "See the original unit when you replace it",
+    highlights: [
+      "When you replace a unit on the same invoice, you can see the original model and serial and the new ones.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "View details, Sales Transactions, and Returns show the unit you replaced and the one that replaced it. The original model and serial stay visible while you pick the replacement, and View details stays on screen as you scroll.",
+      },
+    ],
+  },
+  {
+    version: "0.95.12",
+    date: "2026-11-19",
+    releasedAt: "2026-11-19T10:40:00+08:00",
+    title: "New users can start without changing their password",
+    highlights: [
+      "New users are no longer asked to change their password before they can use the app.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "A new account signs in with the password it was given and opens the usual home screen.",
+      },
+      {
+        type: "fix",
+        description:
+          "Signing in no longer sends a new user to change their password before the rest of the app is available.",
+      },
+    ],
+  },
+  {
     version: "0.95.11",
     date: "2026-11-19",
     releasedAt: "2026-11-19T09:00:00+08:00",
