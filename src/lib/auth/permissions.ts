@@ -99,34 +99,34 @@ const getRequiredSession = cache(async (): Promise<AppSession> => {
     // Cookie is present enough for the proxy to treat this as signed in, but
     // the session is gone. Cookies are read-only during render, so the cookie
     // may survive; the terminal error keeps the proxy from bouncing /login back.
-    await signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_SESSION_EXPIRED}` });
+    return signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_SESSION_EXPIRED}` });
   }
 
   if (!session.user.id || !session.user.tenantId) {
-    await signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_SESSION_EXPIRED}` });
+    return signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_SESSION_EXPIRED}` });
   }
 
   const exists = await sessionUserExists(session);
   if (!exists) {
-    await signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_SESSION_EXPIRED}` });
+    return signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_SESSION_EXPIRED}` });
   }
 
   const sessionId = session.sessionId ?? "";
   if (!sessionId) {
-    await signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_SESSION_EXPIRED}` });
+    return signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_SESSION_EXPIRED}` });
   }
 
   const live = await readLiveSessionState(sessionId, session.user.id);
   if (live === "idle") {
-    await signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_IDLE}` });
+    return signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_IDLE}` });
   }
   if (live === "missing") {
-    await signOutServer({
+    return signOutServer({
       redirectTo: `/login?error=${LOGIN_ERROR_SIGNED_IN_ELSEWHERE}`,
     });
   }
   if (live === "expired") {
-    await signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_SESSION_EXPIRED}` });
+    return signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_SESSION_EXPIRED}` });
   }
 
   return session;

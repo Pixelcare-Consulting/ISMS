@@ -1,31 +1,33 @@
 import {
   appNavigation,
   filterNavByPermissions,
+  flattenNavLinks,
   primaryNavDisplay,
   shouldShowSecondaryNav,
   type NavEntry,
 } from "@/config/app-navigation";
 
-function serviceEntry(permissions: string[]): NavEntry | undefined {
+function visibleGroup(permissions: string[], label: string): NavEntry | undefined {
   return filterNavByPermissions(appNavigation, permissions).find(
-    (entry) => entry.type === "group" && entry.label === "Service",
+    (entry) => entry.type === "group" && entry.label === label,
   );
 }
 
-describe("Service sidebar module", () => {
-  it("stays the Service module with its page list when only SC Orders is visible", () => {
-    const entry = serviceEntry(["service_centers.orders.approve"]);
-
-    expect(entry).toBeDefined();
-    expect(primaryNavDisplay(entry!).label).toBe("Service");
-    expect(shouldShowSecondaryNav(entry!)).toBe(true);
+describe("Service center pages in the main menus", () => {
+  it("has no separate Service menu", () => {
+    expect(visibleGroup(["service_centers.orders.approve"], "Service")).toBeUndefined();
   });
 
-  it("is hidden when no Service page is permitted", () => {
-    expect(serviceEntry(["orders.view"])).toBeUndefined();
+  it("shows Service Center Orders under Orders", () => {
+    const entry = visibleGroup(["service_centers.orders.approve"], "Orders");
+    if (entry?.type !== "group") throw new Error("Orders menu is not visible");
+
+    expect(flattenNavLinks(entry.items).map((link) => link.href)).toEqual([
+      "/service-centers/orders",
+    ]);
   });
 
-  it("leaves other one-page modules collapsed to that page", () => {
+  it("collapses a module with one visible page to that page", () => {
     const entry: NavEntry = {
       type: "group",
       label: "Module",
