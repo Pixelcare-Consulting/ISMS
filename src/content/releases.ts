@@ -27,6 +27,8 @@
  * - No file names, SQL, FK, schema fields, migration names, reseed steps, or RBAC jargon dumps
  * - Avoid technical jargon (hydration, pool timeout, GROUP BY, slugs, etc.)
  * - Keep highlights short; order changes as feature → improvement → fix
+ * - What's New shows a line once: a highlight already said in changes is hidden,
+ *   and a change already said in a remaining highlight is hidden
  *
  * Audience / What's New visibility:
  * - Omit `audience` (or set `"end_user"`) for notes that appear in the in-app What's New dialog
@@ -66,9 +68,610 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
-    version: "0.92.0",
+    version: "0.95.14",
+    date: "2026-11-19",
+    releasedAt: "2026-11-19T11:08:00+08:00",
+    title: "Choose the replacement serial and see both serials",
+    highlights: [
+      "You choose the replacement serial number again on a Service Replacement.",
+      "SC Returns and Replacements shows the returned and the replacement serial number.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "SC Returns and Replacements has a Replacement SN column next to Returned SN, and search finds a request by either serial. A finished replacement's details show both serials.",
+      },
+      {
+        type: "feature",
+        description:
+          "Settings, Users has a Reset session button that signs a user out of every device, so someone who forgot to sign out can sign in again.",
+      },
+      {
+        type: "improvement",
+        description:
+          "On a Service Replacement, choose the model (the sold model is selected first) and the serial number from the service center's STK. You can still raise a special order.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Returns / Replacement no longer has a Service Returns tab. Branch Returns now lists every branch sale return, Service Return and Service Replacement included. Service center Service Returns are finished under Service, SC Returns and Replacement.",
+      },
+    ],
+  },
+  {
+    version: "0.95.13",
+    date: "2026-11-19",
+    releasedAt: "2026-11-19T11:00:00+08:00",
+    title: "See the original unit when you replace it",
+    highlights: [
+      "When you replace a unit on the same invoice, you can see the original model and serial and the new ones.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "View details, Sales Transactions, and Returns show the unit you replaced and the one that replaced it. The original model and serial stay visible while you pick the replacement, and View details stays on screen as you scroll.",
+      },
+    ],
+  },
+  {
+    version: "0.95.12",
+    date: "2026-11-19",
+    releasedAt: "2026-11-19T10:40:00+08:00",
+    title: "New users can start without changing their password",
+    highlights: [
+      "New users are no longer asked to change their password before they can use the app.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "A new account signs in with the password it was given and opens the usual home screen.",
+      },
+      {
+        type: "fix",
+        description:
+          "Signing in no longer sends a new user to change their password before the rest of the app is available.",
+      },
+    ],
+  },
+  {
+    version: "0.95.11",
+    date: "2026-11-19",
+    releasedAt: "2026-11-19T09:00:00+08:00",
+    title: "Simpler service returns and replacements at service centers",
+    highlights: [
+      "Service centers finish a Service Return or Replacement without an inspection step.",
+      "A Service Replacement picks the replacement serial number for you.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Service center orders now have a View details button on each row, showing the lines, quantities, PO, project, SO and DR numbers.",
+      },
+      {
+        type: "improvement",
+        description:
+          "On SC Returns and Replacements, a Service Return is submitted right after you choose the receiving location. The Inspect step is gone.",
+      },
+      {
+        type: "improvement",
+        description:
+          "A Service Replacement picks an available serial number of the same model from the service center's stock and shows it for you to confirm. If none is in stock, you can raise a special order.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Finished service requests in SC Sales now read Service Returned or Service Replaced.",
+      },
+      {
+        type: "fix",
+        description:
+          "The request return form in SC Sales no longer shows the Service Return section for any document type.",
+      },
+    ],
+  },
+  {
+    version: "0.95.10",
+    date: "2026-11-18",
+    releasedAt: "2026-11-18T13:15:00+08:00",
+    title: "Another open window no longer sends you back to the dashboard",
+    highlights: [
+      "Signing in, or saving a sale, no longer gets kicked back to the dashboard by another open window.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "You are still signed out after 15 minutes of inactivity, and the account still signs in on only one device.",
+      },
+      {
+        type: "fix",
+        description:
+          "Signing in, or saving a sale, no longer gets kicked back to the dashboard by another open window.",
+      },
+      {
+        type: "fix",
+        description:
+          "After you are signed out for inactivity or because the account signed in somewhere else, the sign-in page stays on screen instead of reloading over and over.",
+      },
+    ],
+  },
+  {
+    version: "0.95.8",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T21:25:00+08:00",
+    title: "One sign-in at a time and session timeout",
+    highlights: [
+      "An account can only be signed in on one device at a time, No longer supports multiple sign-ins.",
+      "You are signed out after 15 minutes when idle.",
+      "Recent activity on Site Traffic shows a steady time when the page opens.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "If this account is already signed in somewhere else, sign-in stops and explains that. You can sign out the other device and continue here.",
+      },
+      {
+        type: "feature",
+        description:
+          "After 15 minutes with no clicks, keys, or scrolling, you are signed out and asked to sign in again.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Add user and Add role show a check beside each allowed permission, and the access preview keeps selected roles, combined access, and the note in separate places.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The access preview names the module with each permission, so the same action on two modules stays easy to tell apart.",
+      },
+      {
+        type: "improvement",
+        description:
+          "On Roles, Hide when adding a user also hides built-in role cards. Turn the switch off to show them again.",
+      },
+      {
+        type: "fix",
+        description:
+          "After Site Traffic opens, recent activity times keep moving on their own, from a few seconds ago through minutes and hours.",
+      },
+    ],
+  },
+  {
+    version: "0.95.6",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T20:15:00+08:00",
+    title: "Assign more than one role",
+    highlights: [
+      "A new user can have more than one role, and their access is the combination of those roles.",
+      "On Roles, Hide when adding a user keeps built-in roles off the user form until it is turned off.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "When you add or edit a user, you can assign any number of roles. Access is everything those roles allow, listed once.",
+      },
+      {
+        type: "feature",
+        description:
+          "On Roles, Hide when adding a user is on by default. Built-in role cards are hidden while it is on. They stay off Add user and Edit user until you turn the switch off. A built-in role someone already has stays checked so it is not removed by accident.",
+      },
+      {
+        type: "improvement",
+        description:
+          "You can ask a new user to choose their own password the first time they sign in. They go to Profile and can continue after that password is saved.",
+      },
+    ],
+  },
+  {
+    version: "0.95.5",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T19:30:00+08:00",
+    title: "Review permissions on each role",
+    highlights: [
+      "Open Settings → Roles and review the permissions on each role.",
+      "Pull-out and transfer actions sit on their own cards.",
+      "Inventory, orders, sales, and deliveries pages stay the same. This is the permission list on Roles.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Monthly SIR is its own permission, separate from Branch inventory. Turn it on for roles that need Monthly SIR.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Branch and service center permissions are listed separately for inventory, deliveries, pull-outs, orders, and sales.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Older duplicate order and return permissions are hidden. Access already saved on a role still works.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Legacy duplicate Order and Return permissions have been hidden. When editing a role, ensure that the latest permission updates are used.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Branch pull-outs now has Create, Approve, and Manage on the role. Create starts a pull-out, Approve covers approve and reject, and Manage covers the list, Send, and Check SAP. Sending still ends the pull-out.",
+      },
+      {
+        type: "improvement",
+        description:
+          "On Branch transfers, Create, Approve, and Receive control the Transfers page.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Service center pull-outs have their own Approve on the service center deliveries and pull-outs card.",
+      },
+      {
+        type: "improvement",
+        description: "Descriptions on module permissions are clearer.",
+      },
+      {
+        type: "fix",
+        description:
+          "People who could already create, approve, send, or receive keep those buttons.",
+      },
+      {
+        type: "fix",
+        description:
+          "New roles and permissions remain compatible with the existing setup. This ensures that legacy permissions continue to be supported, preventing conflicts.",
+      },
+    ],
+  },
+  {
+    version: "0.95.4",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T17:55:00+08:00",
+    title: "Service center pages in the main menus",
+    highlights: [
+      "Service center inventory, orders, sales, deliveries, and pull-outs now sit with the matching menus.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "The separate Service menu is gone. Service center inventory, deliveries, and pull-outs are under Inventory. Service center orders are under Orders, and service center sales are under Sales & Returns.",
+      },
+      {
+        type: "fix",
+        description:
+          "Service center inventory, deliveries, and pull-outs open their own pages. They no longer repeat the branch lists.",
+      },
+    ],
+  },
+  {
+    version: "0.95.3",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T16:45:00+08:00",
+    title: "Market Survey reports and cleaner What's New",
+    highlights: [
+      "Market Survey can filter observations and download a report.",
+      "What's New lists each update once.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "On Market Survey, choose the branch when you add or edit an observation. Filter the list by date, tick the rows you need, and download a report. If nothing is ticked, the report uses the From and To dates.",
+      },
+      {
+        type: "improvement",
+        description: "Observations are numbered, and you can step through them page by page.",
+      },
+      {
+        type: "improvement",
+        description: "A new observation is dated today, and that date stays as recorded.",
+      },
+      {
+        type: "fix",
+        description:
+          "What's New lists each update once. A summary line is not repeated again under Feature, Improvement, or Fix.",
+      },
+    ],
+  },
+  {
+    version: "0.95.2",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T16:05:00+08:00",
+    title: "Aging stock, returns, and status names",
+    highlights: [
+      "A new sale warns when stock is over 30 days, and sales status uses the names from Settings.",
+      "Returns and replacements name the next approver, and a branch leader can decide a pending defect from inventory.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "From the unit in Branch Inventory, a branch team leader can approve or reject a defect that is still waiting.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Add Line Items on a new sale shows Model Aging Validation when the chosen model has stock over 30 days. An older serial in the list shows its real age in days, such as the serial and 45 days. The selected serial still shows how old it is under the field.",
+      },
+      {
+        type: "improvement",
+        description:
+          "On Add Line Items, brand, model, and serial stay hidden until you select a package.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Before a return or replacement request is sent, a message asks you to continue and names who approves it next.",
+      },
+      {
+        type: "improvement",
+        description:
+          "On a replacement, New Invoice starts blank so you type a new transaction number and the other details. The branches stay with the sale. Same Invoice is unchanged.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The status shown on a sale follows the Sales & ATR labels in Settings, including Pending TL, Approved, Returned, Replaced, and the header statuses.",
+      },
+    ],
+  },
+  {
+    version: "0.95.1",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T15:15:00+08:00",
+    title: "Confirm before you continue",
+    highlights: [
+      "Choosing a model on a new sale warns you when that model still has units older than 30 days from the delivery receipt.",
+      "Sales, returns, transfers, pull-outs, and deliveries ask you to confirm before they continue.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "On a new sale, choosing a model shows Model Aging Validation when that model has stock older than 30 days from the delivery receipt. OK lets you keep encoding.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Saving a sale, a header, or a serial, finishing a replacement, and requesting a return or replacement each ask Yes or No first. No leaves the form open.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Submitting a transfer or pull-out, saving or sending a pull-out, approving or rejecting one, and receiving or rejecting a delivery now ask before they continue. Service center orders, deliveries, pull-outs, and sales, and Official Sales processing, ask the same way.",
+      },
+    ],
+  },
+  {
+    version: "0.95.0",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T14:30:00+08:00",
+    title: "Super Admin oversight",
+    highlights: [
+      "Super Admin can open audit logs, SAP integration, policies, and planning from the setup menu.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Super Admin can open audit logs, SAP integration, policies, and planning from the setup menu.",
+      },
+      {
+        type: "improvement",
+        description:
+          "If you already use Super Admin, sign out and back in once to see the new menus.",
+      },
+    ],
+  },
+  {
+    version: "0.94.7",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T13:15:00+08:00",
+    title: "Return and replacement status",
+    highlights: [
+      "A requested return or replacement holds the unit as Reserved until you finish or reject it.",
+      "Sales show Returned or Replaced, and you finish them with Return Stock or Replace Stock.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Requesting a return or replacement holds that unit as Reserved. If the request is rejected, the unit goes back to the status it had before.",
+      },
+      {
+        type: "improvement",
+        description:
+          "A return shows Returned and a replacement shows Replaced. A service return shows Service Returned, and a service replacement shows Service Replaced. You can filter the sales list by each status.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Finish a return with Return Stock, or a replacement with Replace Stock. A replacement still asks you to choose Same Invoice or New Invoice.",
+      },
+    ],
+  },
+  {
+    version: "0.94.6",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T11:45:00+08:00",
+    title: "Side menu section labels",
+    highlights: [
+      "Side menus now show section labels, the same way Inventory does.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Side menus now show section labels, the same way Inventory does.",
+      },
+    ],
+  },
+  {
+    version: "0.94.5",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T11:00:00+08:00",
+    title: "SAP integration Updated",
+    highlights: [
+      "SAP integration shows what was sent, what is waiting, and what needs another try.",
+      "Each row uses the order or document number people already know.",
+      "The list shows a row number, search, and 10 rows per page. Opening a row explains whether it was sent or what went wrong.",
+      "Opening a SAP row shows who sent it and the document details.",
+      "The extra details on a SAP row include the codes and record ids support uses.",
+      "The practice inventory-sync button is gone.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "SAP integration shows what was sent, what is waiting, and what needs another try. Choose a card to see that group.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Each row uses the order or document number people already know.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The list shows a row number, search, and 10 rows per page. Opening a row explains whether it was sent or what went wrong.",
+      },
+      {
+        type: "improvement",
+        description: "Opening a SAP row shows who sent it and the document details.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The extra details on a SAP row include the codes and record ids support uses.",
+      },
+      {
+        type: "fix",
+        description:
+          "The practice inventory-sync button is gone. Send no longer marks an older practice item as sent with a number that was not really in SAP.",
+      },
+    ],
+  },
+  {
+    version: "0.94.4",
+    date: "2026-11-17",
+    releasedAt: "2026-11-17T09:55:00+08:00",
+    title: "Sales list and new sale page",
+    highlights: [
+      "Sales status cards match the list. Choose a status to see only those lines.",
+      "Search on Sales updates the cards and the list to the lines that match.",
+      "Recording a new sale now opens with the same header and card as Create Order.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "On Sales, the cards count the same lines as the list, including returned and replaced sales. Sold, Official Sold, and TO FOLLOW stay on the cards. Returned/Replaced and Service Returned/Replaced show when you have those sales. Choose a card to see only that status. Total lines brings the full list back, and the sale columns stay on the list.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Searching Sales updates the cards and the list to the matching lines. A status card still narrows that search, and Total lines keeps your search while showing every status again.",
+      },
+      {
+        type: "improvement",
+        description:
+          "When you record a new sale, Back to sales and Save Transaction sit together in the header. The sale details and the line items stay on one card, in the same places as before.",
+      },
+    ],
+  },
+  {
+    version: "0.94.3",
+    date: "2026-11-16",
+    releasedAt: "2026-11-16T09:50:00+08:00",
+    audience: "internal",
+    title: "Assistant button hides when turned off",
+    highlights: [
+      "The teal sparkle button stays out of the way when the assistant is turned off for your company.",
+      "On a branch’s unit list, status cards show the status name, and the red new-count marker sits on the unit total.",
+      "The orders list shows who created an order and when in one column, so the row fits on screen.",
+      "Same Invoice and New Invoice show the original sale details before you issue the replacement unit.",
+      "The replacement model list only shows models that have stock at that branch.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "When you complete a replacement, Same Invoice and New Invoice show the sale details from the original invoice. Same Invoice is locked so you can check them. New Invoice lets you change those details, and the branches stay with the original sale. You still choose the replacement model and serial. The model list only shows models that have stock at that branch.",
+      },
+      {
+        type: "improvement",
+        description:
+          "On the orders list, who created an order and when it was created sit together in one column. You can still sort by when it was created, and View details is easier to reach without scrolling sideways.",
+      },
+      {
+        type: "fix",
+        description:
+          "Turning the assistant off in company or provider settings hides the corner sparkle button and the Help assist box. They come back only after the assistant is turned on again.",
+      },
+      {
+        type: "fix",
+        description:
+          "On a branch’s unit list, each status card shows the status name only. The red marker for units you have not opened yet sits on that status total.",
+      },
+    ],
+  },
+  {
+    version: "0.94.2",
     date: "2026-11-13",
-    releasedAt: "2026-11-13T11:01:00+08:00",
+    releasedAt: "2026-11-13T17:40:00+08:00",
+    title: "Series filter on the open branch",
+    highlights: [
+      "Choose a series after you open a branch. The all-branches list always includes every series.",
+      "Unit details shows the series for that model.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "View unit details shows the series saved on that model. A model with no series shows a dash.",
+      },
+      {
+        type: "fix",
+        description:
+          "The series menu sits on the branch you opened, with status and model. All series is the default. Choosing a series limits the units, models, status cards, and series summary for that branch. Totals on the all-branches list stay complete.",
+      },
+    ],
+  },
+  {
+    version: "0.94.1",
+    date: "2026-11-13",
+    releasedAt: "2026-11-13T16:30:00+08:00",
+    title: "Backdated sales and return status",
+    highlights: [
+      "A sale can be dated up to 30 days in the past, and today or a later date still works.",
+      "A returned or replaced sale keeps Returned/Replaced, and a service return keeps Service Returned/Replaced.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "When you record a sale, the transaction date still starts blank. You can choose today, a future date, or a past date up to 30 days ago. A date older than that is not accepted, unless that sale was already saved with it.",
+      },
+      {
+        type: "fix",
+        description:
+          "After a return or replacement, the sale keeps the status Returned/Replaced. A service return or replacement keeps Service Returned/Replaced. That status stays while the request is reviewed, approved, and finished.",
+      },
+    ],
+  },
+  {
+    version: "0.94.0",
+    date: "2026-11-13",
+    releasedAt: "2026-11-13T12:16:00+08:00",
     title: "Pull-outs: Check SAP and the client slip layout",
     highlights: [
       "Check SAP on a pull-out finds the IT or Return that carries the pull-out number and marks those units Pulled out.",
@@ -105,19 +708,73 @@ export const RELEASES: ReleaseNote[] = [
     ],
   },
   {
-    version: "0.91.0",
+    version: "0.93.0",
     date: "2026-11-13",
-    releasedAt: "2026-11-13T10:16:00+08:00",
-    title: "Orders: attach files when you create an order",
+    releasedAt: "2026-11-13T12:00:00+08:00",
+    title: "Filter branch inventory by series",
     highlights: [
-      "Create Order lets you attach PDF or image files.",
-      "The order page lists the attached files so you can open them.",
+      "Filter the branch inventory list by series, and that series stays selected when you open a branch.",
     ],
     changes: [
       {
         type: "feature",
         description:
-          "Create Order has an Attachments field for up to 5 PDF or image files, 4 MB each. The files are saved with the order when you submit it, and the order page shows them under Attachments. If a file cannot be attached, the order is still submitted and you are told which file failed.",
+          "On Branch Inventory, you can filter the list by series. Opening a branch keeps that series, so the stock you see matches the filter you chose.",
+      },
+    ],
+  },
+  {
+    version: "0.92.0",
+    date: "2026-11-13",
+    releasedAt: "2026-11-13T11:56:00+08:00",
+    title: "Sales returns no longer wait for Customer Service",
+    highlights: [
+      "A return started by a dealer goes to the Team Leader.",
+      "Other sales returns are approved when they are requested.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Sales returns no longer wait for Customer Service. A return started by a dealer goes to the Team Leader. Any other sales return is approved when it is requested.",
+      },
+    ],
+  },
+  {
+    version: "0.91.0",
+    date: "2026-11-13",
+    releasedAt: "2026-11-13T11:52:00+08:00",
+    title: "Attach files to a new order",
+    highlights: [
+      "Add images or PDFs when you create an order, and open them again later on that order.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "When you create an order, you can attach up to 5 images or PDFs, 4 MB each. Those files stay on the order so you can open them later. If a file cannot be attached, the order is still submitted and you are told which file failed.",
+      },
+    ],
+  },
+  {
+    version: "0.90.1",
+    date: "2026-11-13",
+    releasedAt: "2026-11-13T11:48:00+08:00",
+    title: "Create Order columns and sale dates",
+    highlights: [
+      "On Create Order, the CBM heading lines up with the CBM numbers, and the note stays in its own column.",
+      "A new sale starts with a blank transaction date, and only today or a future date can be used.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "On Create Order, the CBM heading lines up with the CBM numbers, and the note stays in its own column.",
+      },
+      {
+        type: "fix",
+        description:
+          "A new sale starts with a blank transaction date. You can choose today or a future date only.",
       },
     ],
   },
@@ -4886,7 +5543,7 @@ export const RELEASES: ReleaseNote[] = [
     title: "Sales list stays on sold lines",
     highlights: [
       "Sales shows Sold, Official Sold, and TO FOLLOW only",
-      "Pending CS/TL, Approved, Rejected, Closed, and similar return statuses stay under Returns / Replacement",
+      "Pending TL, Approved, Rejected, Closed, and similar return statuses stay under Returns / Replacement",
       "Sales totals match the filtered list",
     ],
     changes: [
@@ -6178,7 +6835,7 @@ export const RELEASES: ReleaseNote[] = [
       "Attach multiple proof files and review them in a preview window",
       "Type the transaction number from your invoice when encoding a sale",
       "Model price fills from the latest price list — and stays at 0 when none exists",
-      "TO FOLLOW saves reliably; returns show Pending CS and ask for a reason",
+      "TO FOLLOW saves reliably; returns show Pending TL and ask for a reason",
       "When you sell from another branch’s stock, the unit moves to the selling branch",
     ],
     changes: [
@@ -6250,7 +6907,7 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "fix",
         description:
-          "After a return is requested, Sales list status shows Pending CS instead of staying on TO FOLLOW",
+          "After a return is requested, Sales list status shows Pending TL instead of staying on TO FOLLOW",
       },
       {
         type: "fix",

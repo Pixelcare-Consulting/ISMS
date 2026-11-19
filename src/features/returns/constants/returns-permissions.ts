@@ -11,8 +11,9 @@ import { hasPermission } from "@/lib/auth/permissions";
  * Legacy `sales.return.*` and `service_centers.return.*` remain aliases.
  *
  * Tab visibility:
- * - Branch → `returns.branch.view` (or umbrella `returns.view` / legacy)
- * - Service → `returns.service.view` (or umbrella / SC return aliases)
+ * - Branch → `returns.branch.view` (or umbrella `returns.view` / legacy); lists every
+ *   branch sale return, Service Return / Replacement document types included
+ * - There is no Service tab: SC Service Returns are finished under Service → SC Returns
  * - Approvals → evaluate / approve / complete (no separate approvals.view key)
  */
 
@@ -24,7 +25,7 @@ export const RETURNS_EVALUATE = "returns.evaluate";
 export const RETURNS_APPROVE = "returns.approve";
 export const RETURNS_COMPLETE = "returns.complete";
 
-export type ReturnsPageTab = "branch" | "service" | "approvals";
+export type ReturnsPageTab = "branch" | "approvals";
 
 /** Any of these grants Returns nav + `/returns` page access. */
 export const RETURNS_ACCESS_PERMISSIONS = [
@@ -55,7 +56,7 @@ export const RETURNS_BRANCH_VIEW_PERMISSIONS = [
   "sales.return.request",
 ] as const;
 
-/** Service Returns tab (and SC list server action). */
+/** Legacy SC return list server action (the Service tab was removed). */
 export const RETURNS_SERVICE_VIEW_PERMISSIONS = [
   RETURNS_SERVICE_VIEW,
   RETURNS_VIEW,
@@ -94,7 +95,6 @@ export const RETURNS_ACTION_CAPABILITIES = {
     "service_centers.return.complete",
   ],
   canViewBranchReturns: [...RETURNS_BRANCH_VIEW_PERMISSIONS],
-  canViewServiceReturns: [...RETURNS_SERVICE_VIEW_PERMISSIONS],
   canViewApprovals: [...RETURNS_APPROVALS_VIEW_PERMISSIONS],
   canRequestReturn: [
     RETURNS_REQUEST,
@@ -150,14 +150,6 @@ export function canViewBranchReturnsTab(
   );
 }
 
-export function canViewServiceReturnsTab(
-  permissions: string[] | undefined,
-): boolean {
-  return RETURNS_SERVICE_VIEW_PERMISSIONS.some((slug) =>
-    hasPermission(permissions, slug),
-  );
-}
-
 export function canViewApprovalsTab(
   permissions: string[] | undefined,
 ): boolean {
@@ -172,7 +164,6 @@ export function resolveAllowedReturnsTabs(
 ): ReturnsPageTab[] {
   const tabs: ReturnsPageTab[] = [];
   if (canViewBranchReturnsTab(permissions)) tabs.push("branch");
-  if (canViewServiceReturnsTab(permissions)) tabs.push("service");
   if (canViewApprovalsTab(permissions)) tabs.push("approvals");
   return tabs;
 }

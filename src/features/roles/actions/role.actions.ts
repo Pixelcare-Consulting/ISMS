@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { canManageSystemRoleAccess } from "@/features/roles/constants/role.constants";
 import { roleService } from "@/features/roles/services/role.service";
+import { tenantRepository } from "@/features/tenants/repositories/tenant.repository";
 import {
   requirePermission,
   resolveSessionPlatformOperator,
@@ -154,6 +155,34 @@ export async function deleteRoleAction(roleId: string) {
   } catch (e) {
     return {
       error: e instanceof Error ? e.message : "Failed to delete role",
+    };
+  }
+}
+
+const hideSystemRolesSchema = z.object({
+  hideSystemRolesOnUsers: z.boolean(),
+});
+
+export async function setHideSystemRolesOnUsersAction(
+  hideSystemRolesOnUsers: boolean,
+) {
+  const session = await requirePermission("roles.manage");
+  const parsed = hideSystemRolesSchema.safeParse({ hideSystemRolesOnUsers });
+  if (!parsed.success) {
+    return { error: "Invalid input" };
+  }
+
+  try {
+    await tenantRepository.setHideSystemRolesOnUsers(
+      session.user.tenantId,
+      parsed.data.hideSystemRolesOnUsers,
+    );
+    revalidatePath("/settings/roles");
+    revalidatePath("/settings/users");
+    return { success: true as const };
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e.message : "Failed to update setting",
     };
   }
 }

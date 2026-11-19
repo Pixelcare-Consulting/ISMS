@@ -37,6 +37,7 @@ interface CompetitorFormDialogProps {
   onOpenChange: (open: boolean) => void;
   observation?: CompetitorObservationDto | null;
   competitors: CompetitorFormOption[];
+  branches: CompetitorFormOption[];
   brands: CompetitorFormOption[];
   models: CompetitorModelOption[];
 }
@@ -55,6 +56,7 @@ export function CompetitorFormDialog({
   onOpenChange,
   observation,
   competitors,
+  branches,
   brands,
   models,
 }: CompetitorFormDialogProps) {
@@ -63,6 +65,13 @@ export function CompetitorFormDialog({
   const isEdit = Boolean(observation);
 
   const [competitorId, setCompetitorId] = useState(observation?.competitorId ?? "");
+  const [branchId, setBranchId] = useState(() => {
+    if (observation?.branchId && branches.some((branch) => branch.id === observation.branchId)) {
+      return observation.branchId;
+    }
+    if (!observation && branches.length === 1) return branches[0]?.id ?? "";
+    return "";
+  });
   const [competitorBrandId, setCompetitorBrandId] = useState(
     observation?.competitorBrandId ?? "",
   );
@@ -74,7 +83,7 @@ export function CompetitorFormDialog({
   );
   const [promotion, setPromotion] = useState(observation?.promotion ?? "");
   const [notes, setNotes] = useState(observation?.notes ?? "");
-  const [observedAt, setObservedAt] = useState(
+  const [observedAt] = useState(
     observation
       ? toDateInputValue(observation.observedAt)
       : toDateInputValue(new Date().toISOString()),
@@ -131,6 +140,14 @@ export function CompetitorFormDialog({
       toast.error("Competitor is required");
       return;
     }
+    if (!branchId) {
+      toast.error(
+        branches.length === 0
+          ? "No branch is assigned in your area of responsibility"
+          : "Branch is required",
+      );
+      return;
+    }
     if (!observedAt) {
       toast.error("Observed date is required");
       return;
@@ -138,6 +155,7 @@ export function CompetitorFormDialog({
 
     const payload = {
       competitorId,
+      branchId,
       competitorBrandId: competitorBrandId || null,
       competitorModelId: competitorModelId || null,
       price: price === "" ? null : price,
@@ -180,14 +198,27 @@ export function CompetitorFormDialog({
             disabled={pending}
           />
 
+          <SearchableSelect
+            label="Branch"
+            id="observation-branch"
+            options={branches.map((branch) => ({ id: branch.id, label: branch.label }))}
+            value={branchId}
+            onChange={setBranchId}
+            placeholder={branches.length === 0 ? "No branch assigned" : "Select branch"}
+            searchPlaceholder="Search branches…"
+            emptyMessage="No branch is assigned in your area of responsibility."
+            disabled={pending || branches.length === 0}
+          />
+
           <div className="space-y-2">
             <Label htmlFor="observedAt">Observed date</Label>
             <Input
               id="observedAt"
               type="date"
               value={observedAt}
-              onChange={(e) => setObservedAt(e.target.value)}
-              required
+              readOnly
+              disabled
+              className="bg-muted"
             />
           </div>
 

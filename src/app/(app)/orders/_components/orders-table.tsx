@@ -7,7 +7,7 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { CreateOrderSetupDialog } from "@/app/(app)/orders/_components/create-order-form";
-import { orderSetupHref } from "@/app/(app)/orders/_components/service-center-order-setup";
+import { orderSetupHref } from "@/app/(app)/orders/_components/order-setup";
 import {
   adminBulkCancelOrdersAction,
   approveOrderAction,
@@ -80,6 +80,7 @@ interface OrderRow {
   branchId: string;
   brandId?: string | null;
   notes?: string | null;
+  attachments?: string[];
   spaRemarks?: string | null;
   updatedAt?: string | Date | null;
   createdAt?: string | Date | null;
@@ -148,8 +149,6 @@ interface OrdersTableProps {
   createHref?: string | null;
   /** Create permission per row type. Falls back to `canEdit` when omitted. */
   createByType?: Partial<Record<BranchOrderType, boolean>>;
-  /** The create popup also offers a service-center order. */
-  canCreateServiceCenter?: boolean;
   /** Offers "Check SAP now" for Sales Orders made in SAP. */
   canCheckSap?: boolean;
   /** Suggested orders dialog type. Falls back to `fixedOrderType`. */
@@ -208,14 +207,38 @@ const ORDER_CREATED_TIME = new Intl.DateTimeFormat("en-PH", {
   timeZone: "Asia/Manila",
 });
 
-function OrderCreatedAtCell({ value }: { value: string | Date | null | undefined }) {
-  if (!value) return "—";
+function orderCreatedParts(
+  value: string | Date | null | undefined,
+): { date: string; time: string } | null {
+  if (!value) return null;
   const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
+  if (Number.isNaN(date.getTime())) return null;
+  return {
+    date: ORDER_CREATED_DATE.format(date),
+    time: ORDER_CREATED_TIME.format(date),
+  };
+}
+
+/** Creator and timestamp in one narrow stack. Sorting stays on the timestamp. */
+function OrderCreatedCell({
+  createdBy,
+  value,
+}: {
+  createdBy: OrderRow["createdBy"] | null | undefined;
+  value: string | Date | null | undefined;
+}) {
+  const who = orderCreatorLabel(createdBy);
+  const when = orderCreatedParts(value);
+  const title = when ? `${who}, ${when.date} ${when.time}` : who;
   return (
-    <div className="whitespace-normal leading-tight">
-      <p>{ORDER_CREATED_DATE.format(date)}</p>
-      <p>{ORDER_CREATED_TIME.format(date)}</p>
+    <div className="leading-tight" title={title}>
+      <p className="truncate">{who}</p>
+      {when ? (
+        <>
+          <p className="text-xs tabular-nums text-muted-foreground">{when.date}</p>
+          <p className="text-xs tabular-nums text-muted-foreground">{when.time}</p>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -289,7 +312,6 @@ export function OrdersTable({
   listFilter,
   createHref,
   createByType,
-  canCreateServiceCenter = false,
   suggestionOrderType,
   basePath = "/orders",
   initialSort = "",
@@ -586,18 +608,13 @@ export function OrdersTable({
         ),
       }),
       orderColumn.display({
-        id: "createdBy",
-        header: "Created by",
-        enableSorting: false,
-        cell: ({ row }) => orderCreatorLabel(row.original.createdBy),
-        meta: { className: "max-w-40 truncate" },
-      }),
-      orderColumn.display({
         id: "createdAt",
-        header: "Created at",
+        header: "Created",
         enableSorting: true,
-        cell: ({ row }) => <OrderCreatedAtCell value={row.original.createdAt} />,
-        meta: { className: "tabular-nums" },
+        cell: ({ row }) => (
+          <OrderCreatedCell createdBy={row.original.createdBy} value={row.original.createdAt} />
+        ),
+        meta: { wrap: true, className: "w-36 max-w-36" },
       }),
       orderColumn.display({
         id: "lines",
@@ -609,12 +626,12 @@ export function OrdersTable({
             .join(", ");
           if (!label) return "—";
           return (
-            <span className="block max-w-xs truncate" title={label}>
+            <span className="block max-w-64 truncate" title={label}>
               {label}
             </span>
           );
         },
-        meta: { className: "max-w-xs" },
+        meta: { className: "max-w-64" },
       }),
       orderColumn.display({
         id: "actions",
@@ -838,6 +855,7 @@ export function OrdersTable({
           branchName={detailsOrder.branch.name}
           status={detailsOrder.status as BranchOrderStatus}
           notes={detailsOrder.notes}
+          attachments={detailsOrder.attachments ?? []}
           deliveryDueDate={detailsOrder.deliveryDueDate}
           createdByName={detailsOrder.createdBy.name ?? detailsOrder.createdBy.email}
           reviewSnapshot={detailsOrder.reviewSnapshot}
@@ -1036,7 +1054,6 @@ export function OrdersTable({
         open={createSetupOpen}
         canCreateManual={canCreateManual}
         canCreateSpecial={canCreateSpecial}
-        canCreateServiceCenter={canCreateServiceCenter}
         onOpenChange={setCreateSetupOpen}
         onContinue={(choice) => {
           setCreateSetupOpen(false);

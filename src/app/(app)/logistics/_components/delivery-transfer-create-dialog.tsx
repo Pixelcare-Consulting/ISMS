@@ -11,6 +11,16 @@ import {
 import type { DeliveryReceiptLine } from "@/features/logistics/services/delivery-posting.service";
 import type { TransferPlace } from "@/features/logistics/services/delivery-transfer.planner";
 import type { DeliveryTransferDraft } from "@/features/logistics/services/delivery-transfer.service";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -83,6 +93,7 @@ function CreateBody({ request, onClose }: { request: TransferRequest; onClose: (
   // Units on this draft. Delete drops one before saving; at least one must stay.
   const [units, setUnits] = useState(request.units);
   const [pending, startTransition] = useTransition();
+  const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -155,8 +166,14 @@ function CreateBody({ request, onClose }: { request: TransferRequest; onClose: (
     );
   }
 
+  function requestSubmit() {
+    if (pending || state.kind !== "ready" || !release || !receive || missing) return;
+    setSubmitConfirmOpen(true);
+  }
+
   function submit() {
-    if (!release || !receive || missing) return;
+    if (pending || !release || !receive || missing) return;
+    setSubmitConfirmOpen(false);
     startTransition(async () => {
       const result = await createDeliveryTransferAction({
         deliveryId: request.deliveryId,
@@ -321,11 +338,38 @@ function CreateBody({ request, onClose }: { request: TransferRequest; onClose: (
         <Button
           className="max-sm:h-11"
           disabled={pending || state.kind !== "ready" || missing !== null}
-          onClick={submit}
+          onClick={requestSubmit}
         >
           {pending ? "Saving…" : "Save transfer"}
         </Button>
       </DialogFooter>
+      <AlertDialog
+        open={submitConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open && !pending) setSubmitConfirmOpen(false);
+        }}
+      >
+        <AlertDialogContent className="z-[80]" overlayClassName="z-[70]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure you want to save this delivery transfer?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This transfer is saved and waits for approval.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>No</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={pending}
+              onClick={(event) => {
+                event.preventDefault();
+                submit();
+              }}
+            >
+              Yes
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

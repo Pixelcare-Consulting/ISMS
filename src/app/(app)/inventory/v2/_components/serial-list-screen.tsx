@@ -30,6 +30,7 @@ import {
 import { reportInventoryDefectAction } from "@/features/inventory/actions/defect.actions";
 import {
   updateInventoryStatusAction,
+  type BranchInventorySeriesOption,
   type InventoryGroupBranchItemDto,
   type InventoryListItem,
   type InventoryStatusOption,
@@ -61,6 +62,10 @@ interface SerialListScreenProps {
   q: string;
   statusCodeId?: string;
   sku?: string;
+  /** Active series from Master data. The menu defaults to All series. */
+  seriesOptions: BranchInventorySeriesOption[];
+  /** Selected series id. Omitted means All series. */
+  seriesId?: string;
   initialOffPlanogram?: boolean;
   limit: number;
   approvalBranchIds: string[] | null;
@@ -188,6 +193,8 @@ function SerialListBody({
   q,
   statusCodeId,
   sku,
+  seriesOptions,
+  seriesId,
   initialOffPlanogram = false,
   limit,
   singleBranch = false,
@@ -293,6 +300,8 @@ function SerialListBody({
       page?: number;
       limit?: number;
       offPlanogram?: boolean;
+      /** Null clears the series. Omitted keeps the current series. */
+      series?: string | null;
     }) =>
       branchInventoryV2Href({
         branchId,
@@ -302,8 +311,9 @@ function SerialListBody({
         page: next.page,
         limit: next.limit ?? limit,
         offPlanogram: next.offPlanogram ?? offPlanogramOnly,
+        series: next.series === null ? undefined : (next.series ?? seriesId),
       }),
-    [branchId, limit, offPlanogramOnly],
+    [branchId, limit, offPlanogramOnly, seriesId],
   );
 
   useEffect(() => {
@@ -362,6 +372,20 @@ function SerialListBody({
         sku,
         page: 1,
         offPlanogram: checked,
+      }),
+      { scroll: false },
+    );
+  }
+
+  function selectSeries(value: string) {
+    const nextSeries = value === "all" ? null : value;
+    router.push(
+      hrefFor({
+        q: query.trim(),
+        statusCodeId,
+        sku: nextSeries ? undefined : sku,
+        page: 1,
+        series: nextSeries,
       }),
       { scroll: false },
     );
@@ -735,6 +759,19 @@ function SerialListBody({
         pageSize={{ value: limit, onChange: handlePageSizeChange }}
         toolbarActions={
           <>
+            <Select value={seriesId ?? "all"} onValueChange={selectSeries}>
+              <SelectTrigger aria-label="Filter by series" className="w-[12rem]">
+                <SelectValue placeholder="All series" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All series</SelectItem>
+                {seriesOptions.map((series) => (
+                  <SelectItem key={series.id} value={series.id}>
+                    {series.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Select
               value={statusCodeId ?? "all"}
               onValueChange={(value) => {
@@ -802,7 +839,11 @@ function SerialListBody({
         }
        
         empty={result.items.length === 0}
-        emptyMessage="No units match this branch."
+        emptyMessage={
+          seriesId
+            ? "No units in this series match this branch."
+            : "No units match this branch."
+        }
         pagination={{
           total: result.total,
           page: result.page,

@@ -4,7 +4,7 @@ import {
 } from "@/features/logistics/actions/logistics.actions";
 import {
   PULLOUTS_VIEW,
-  resolveLogisticsCapabilities,
+  resolvePulloutCapabilities,
 } from "@/features/logistics/constants/logistics-permissions";
 import { PulloutKpisStrip } from "@/features/logistics/components/pullout-kpis";
 import { loadWorkflowCatalog } from "@/features/logistics/constants/workflow-catalog";
@@ -19,7 +19,7 @@ interface PickupsPageProps {
 
 export default async function PickupsPage({ searchParams }: PickupsPageProps) {
   const session = await requirePermission(PULLOUTS_VIEW);
-  const capabilities = resolveLogisticsCapabilities(session.user.permissions);
+  const capabilities = resolvePulloutCapabilities(session.user.permissions);
   const params = await searchParams;
   const page = Number(params.page) || 1;
   const limit = parseTablePageSize(params.limit);
@@ -37,7 +37,10 @@ export default async function PickupsPage({ searchParams }: PickupsPageProps) {
       </SectionPageLead>
       <PulloutKpisStrip kpis={kpis} />
       <PulloutsPanel
-        pullouts={pullouts}
+        pullouts={{
+          ...pullouts,
+          items: pullouts.items.map(({ branch, ...row }) => ({ ...row, place: branch })),
+        }}
         capabilities={capabilities}
         workflowStatuses={workflowStatuses}
         currentUserName={currentUserName}

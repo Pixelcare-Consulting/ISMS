@@ -23,11 +23,6 @@ export interface SectionTabGroupDefinition {
   items: SectionTabDefinition[];
 }
 
-/** SAP integration sub-routes (not listed separately in header nav). */
-export const SAP_INTEGRATION_TABS: SectionTabDefinition[] = [
-  { href: "/settings/sap-integration", label: "Integration queue", exact: true },
-];
-
 /** Master data landing route — the card hub linking to every lookup table. */
 export const MASTER_DATA_ROOT = "/settings/master-data";
 
@@ -159,12 +154,12 @@ export const MASTER_DATA_TAB_GROUPS: SectionTabGroupDefinition[] = [
     ],
   },
   {
-    label: "Service",
+    label: "Service returns",
     items: [
       {
         href: "/settings/master-data/problem-descriptions",
         label: "Problem descriptions",
-        description: "Problem description lookup for service requests.",
+        description: "Problem description lookup for the Service Returns tab.",
       },
     ],
   },

@@ -44,6 +44,7 @@ export type NavCountBadgeKey =
   | "ordersSpecialQueue"
   | "ordersAutoReplenishQueue"
   | "returnsApprovals"
+  | "scServiceReturns"
   | "logisticsDeliveries"
   | "logisticsTransfers"
   | "logisticsPullouts";
@@ -63,10 +64,12 @@ export interface NavLinkItem {
   exact?: boolean;
   permission?: string;
   /** Show link when user has any of these permissions */
-  anyPermissions?: string[];
+  anyPermissions?: readonly string[];
   /** Extra path prefixes that keep this item active after a route moves under it. */
   activePathPrefixes?: readonly string[];
   platformOperatorOnly?: boolean;
+  /** Left out of the sidebar while the route stays reachable by URL. */
+  hidden?: boolean;
   /** Compact sidebar badge (e.g. recently added menus) */
   badge?: "new";
   /**
@@ -142,18 +145,31 @@ const MANUAL_ORDER_ACCESS = [
   "orders.manual.view",
   "orders.manual.create",
   "orders.manual.approve",
-  "orders.view",
-  "orders.create",
-  "orders.approve",
 ] as const;
 
 const SPECIAL_ORDER_ACCESS = [
   "orders.special.view",
   "orders.special.create",
   "orders.special.approve",
-  "orders.view",
-  "orders.create",
-  "orders.approve",
+] as const;
+
+/** Kept here so the client sidebar does not import service-center server helpers. */
+const SC_SALES_ACCESS = [
+  "service_centers.sales.view",
+  "service_centers.sales.create",
+  "service_centers.sales.update",
+] as const;
+
+const SC_ORDERS_ACCESS = [
+  "service_centers.orders.view",
+  "service_centers.orders.create",
+  "service_centers.orders.approve",
+] as const;
+
+const SC_LOGISTICS_ACCESS = [
+  "service_centers.logistics.view",
+  "service_centers.logistics.create",
+  "service_centers.logistics.manage",
 ] as const;
 
 export const appNavigation: NavEntry[] = [
@@ -164,51 +180,61 @@ export const appNavigation: NavEntry[] = [
     defaultOpen: true,
     items: [
       {
-        href: "/dashboard",
-        label: "Overview",
+        label: "Dashboard",
         icon: LayoutDashboard,
-        exact: true,
-        permission: getModuleNavPermission("dashboard"),
-        countBadgeKey: "unreadAnnouncements",
-      },
-      {
-        href: "/dashboard/operations",
-        label: "Operations",
-        icon: Activity,
-        anyPermissions: OPERATIONS_DASHBOARD_PERMISSIONS,
-      },
-      {
-        href: "/dashboard/sales",
-        label: "Sales",
-        icon: Store,
-        anyPermissions: SALES_DASHBOARD_PERMISSIONS,
-      },
-      {
-        href: "/dashboard/pcount",
-        label: "P-Count Dashboard",
-        icon: ClipboardList,
-        anyPermissions: ["inventory.view", "reports.view"],
-        badge: "new",
-      },
-      {
-        href: "/dashboard/site-traffic",
-        label: "Site Traffic",
-        icon: Users,
-        anyPermissions: ["users.manage", "audit_logs.view"],
-        badge: "new",
-      },
-      {
-        href: "/competitors",
-        label: "Market Survey",
-        icon: ChartColumn,
-        permission: "competitors.view",
-      },
-      {
-        href: "/dashboard/custom",
-        label: "Custom Dashboards",
-        icon: LayoutTemplate,
-        anyPermissions: CUSTOM_DASHBOARD_ACCESS,
-        badge: "new",
+        items: [
+          {
+            href: "/dashboard",
+            label: "Overview",
+            icon: LayoutDashboard,
+            exact: true,
+            permission: getModuleNavPermission("dashboard"),
+            countBadgeKey: "unreadAnnouncements",
+          },
+          {
+            href: "/dashboard/operations",
+            label: "Operations",
+            icon: Activity,
+            anyPermissions: OPERATIONS_DASHBOARD_PERMISSIONS,
+            // Client doesn't use it yet (2026-11-16).
+            hidden: true,
+          },
+          {
+            href: "/dashboard/sales",
+            label: "Sales",
+            icon: Store,
+            anyPermissions: SALES_DASHBOARD_PERMISSIONS,
+            // Client doesn't use it yet (2026-11-16).
+            hidden: true,
+          },
+          {
+            href: "/dashboard/pcount",
+            label: "P-Count Dashboard",
+            icon: ClipboardList,
+            anyPermissions: ["inventory.view", "reports.view"],
+            badge: "new",
+          },
+          {
+            href: "/dashboard/site-traffic",
+            label: "Site Traffic",
+            icon: Users,
+            anyPermissions: ["users.manage", "audit_logs.view"],
+            badge: "new",
+          },
+          {
+            href: "/competitors",
+            label: "Market Survey",
+            icon: ChartColumn,
+            permission: "competitors.view",
+          },
+          {
+            href: "/dashboard/custom",
+            label: "Custom Dashboards",
+            icon: LayoutTemplate,
+            anyPermissions: CUSTOM_DASHBOARD_ACCESS,
+            badge: "new",
+          },
+        ],
       },
     ],
   },
@@ -225,29 +251,38 @@ export const appNavigation: NavEntry[] = [
     icon: ShoppingCart,
     items: [
       {
-        href: "/orders/manual",
-        label: "Manual Order",
+        label: "Orders",
         icon: ShoppingCart,
-        anyPermissions: [...MANUAL_ORDER_ACCESS, ...SPECIAL_ORDER_ACCESS],
-        activePathPrefixes: ["/orders/special"],
-        countBadgeParts: [
-          { key: "ordersManualQueue", anyPermissions: MANUAL_ORDER_ACCESS },
-          { key: "ordersSpecialQueue", anyPermissions: SPECIAL_ORDER_ACCESS },
+        items: [
+          {
+            href: "/orders/manual",
+            label: "Manual Order",
+            icon: ShoppingCart,
+            anyPermissions: [...MANUAL_ORDER_ACCESS, ...SPECIAL_ORDER_ACCESS],
+            activePathPrefixes: ["/orders/special"],
+            countBadgeParts: [
+              { key: "ordersManualQueue", anyPermissions: MANUAL_ORDER_ACCESS },
+              { key: "ordersSpecialQueue", anyPermissions: SPECIAL_ORDER_ACCESS },
+            ],
+          },
+          {
+            href: "/orders/auto-replenish",
+            label: "Auto replenish",
+            icon: Package,
+            anyPermissions: [
+              "orders.auto_replenish.view",
+              "orders.auto_replenish.create",
+              "orders.auto_replenish.approve",
+            ],
+            countBadgeKey: "ordersAutoReplenishQueue",
+          },
+          {
+            href: "/service-centers/orders",
+            label: "Service Center Orders",
+            icon: ShoppingCart,
+            anyPermissions: SC_ORDERS_ACCESS,
+          },
         ],
-      },
-      {
-        href: "/orders/auto-replenish",
-        label: "Auto replenish",
-        icon: Package,
-        anyPermissions: [
-          "orders.auto_replenish.view",
-          "orders.auto_replenish.create",
-          "orders.auto_replenish.approve",
-          "orders.view",
-          "orders.create",
-          "orders.approve",
-        ],
-        countBadgeKey: "ordersAutoReplenishQueue",
       },
     ],
   },
@@ -257,25 +292,50 @@ export const appNavigation: NavEntry[] = [
     icon: History,
     items: [
       {
-        href: "/sales",
-        label: "Sales Transactions",
+        label: "Sales",
         icon: Store,
-        anyPermissions: ["sales.view", "sales.create", "sales.update"],
+        items: [
+          {
+            href: "/sales",
+            label: "Sales Transactions",
+            icon: Store,
+            anyPermissions: ["sales.view", "sales.create", "sales.update"],
+          },
+          {
+            href: "/service-centers/sales",
+            label: "Service Center Sales",
+            icon: Store,
+            anyPermissions: SC_SALES_ACCESS,
+          },
+        ],
       },
       {
-        href: "/returns",
-        label: "Returns / Replacement",
+        label: "Returns",
         icon: ArrowLeftRight,
-        anyPermissions: [
-          "returns.view",
-          "returns.branch.view",
-          "returns.service.view",
-          "returns.request",
-          "returns.evaluate",
-          "returns.approve",
-          "returns.complete",
+        items: [
+          {
+            href: "/returns",
+            label: "Returns / Replacement",
+            icon: ArrowLeftRight,
+            anyPermissions: [
+              "returns.view",
+              "returns.branch.view",
+              "returns.service.view",
+              "returns.request",
+              "returns.evaluate",
+              "returns.approve",
+              "returns.complete",
+            ],
+            countBadgeKey: "returnsApprovals",
+          },
+          {
+            href: "/service-centers/returns",
+            label: "Service Center Returns / Replacement",
+            icon: ArrowLeftRight,
+            permission: "service_centers.returns.process",
+            countBadgeKey: "scServiceReturns",
+          },
         ],
-        countBadgeKey: "returnsApprovals",
       },
     ],
   },
@@ -306,7 +366,35 @@ export const appNavigation: NavEntry[] = [
     icon: Package,
     items: [
       {
-        label: "Movement",
+        label: "Branch Inventory",
+        icon: Package,
+        items: [
+          {
+            href: "/inventory/v2",
+            label: "Inventory",
+            icon: ClipboardCheck,
+            permission: "inventory.view",
+            countBadgeKey: "branchInventoryV2Updates",
+          },
+          {
+            href: "/inventory/monthly-sir",
+            label: "Monthly SIR",
+            icon: ClipboardList,
+            permission: "inventory.monthly_sir.view",
+            countBadgeKey: "monthlySirPending",
+          },
+          // { DO NOT UNCOMMENT THIS, NO NEED TO SHOW IN THE NAVIGATION
+          //   href: "/inventory/stock-count",
+          //   label: "P-Count",
+          //   icon: ClipboardList,
+          //   permission: "inventory.view",
+          //   badge: "new",
+          // },
+        ],
+      },
+      
+      {
+        label: "Branch Movement",
         icon: Truck,
         items: [
           {
@@ -337,30 +425,33 @@ export const appNavigation: NavEntry[] = [
         ],
       },
       {
-        label: "Inventory",
+        label: "Service Center Inventory",
         icon: Package,
         items: [
           {
-            href: "/inventory/v2",
-            label: "Branch Inventory",
+            href: "/service-centers/inventory",
+            label: "Inventory (Service Center)",
             icon: ClipboardCheck,
-            permission: "inventory.view",
-            countBadgeKey: "branchInventoryV2Updates",
+            permission: "service_centers.inventory.view",
+          },
+        ],
+      },
+      {
+        label: "Service Center Movement",
+        icon: Truck,
+        items: [
+          {
+            href: "/service-centers/deliveries",
+            label: "Deliveries (Service Center)",
+            icon: Truck,
+            anyPermissions: SC_LOGISTICS_ACCESS,
           },
           {
-            href: "/inventory/monthly-sir",
-            label: "Monthly SIR",
-            icon: ClipboardList,
-            permission: "inventory.view",
-            countBadgeKey: "monthlySirPending",
+            href: "/service-centers/pullouts",
+            label: "Pull-outs (Service Center)",
+            icon: ArrowUpToLine,
+            anyPermissions: SC_LOGISTICS_ACCESS,
           },
-          // { DO NOT UNCOMMENT THIS, NO NEED TO SHOW IN THE NAVIGATION
-          //   href: "/inventory/stock-count",
-          //   label: "P-Count",
-          //   icon: ClipboardList,
-          //   permission: "inventory.view",
-          //   badge: "new",
-          // },
         ],
       },
     ],
@@ -371,109 +462,109 @@ export const appNavigation: NavEntry[] = [
     icon: ClipboardList,
     items: [
       {
-        href: "/reports/order-summary",
-        label: "Order summary",
+        label: "Orders",
         icon: ClipboardList,
-        anyPermissions: [
-          "reports.view",
-          "orders.view",
-          "orders.manual.view",
-          "orders.special.view",
-          "orders.auto_replenish.view",
+        items: [
+          {
+            href: "/reports/order-summary",
+            label: "Order summary",
+            icon: ClipboardList,
+            anyPermissions: [
+              "reports.view",
+              "orders.view",
+              "orders.manual.view",
+              "orders.special.view",
+              "orders.auto_replenish.view",
+            ],
+          },
+          {
+            href: "/reports/processed-orders",
+            label: "Processed orders",
+            icon: ClipboardList,
+            anyPermissions: [
+              "reports.view",
+              "orders.view",
+              "orders.manual.view",
+              "orders.special.view",
+              "orders.auto_replenish.view",
+            ],
+          },
+          {
+            href: "/reports/daily-stock",
+            label: "Daily stock",
+            icon: Package,
+            anyPermissions: [
+              "reports.view",
+              "orders.view",
+              "orders.manual.view",
+              "orders.special.view",
+              "orders.auto_replenish.view",
+            ],
+          },
         ],
       },
       {
-        href: "/reports/processed-orders",
-        label: "Processed orders",
-        icon: ClipboardList,
-        anyPermissions: [
-          "reports.view",
-          "orders.view",
-          "orders.manual.view",
-          "orders.special.view",
-          "orders.auto_replenish.view",
+        label: "Movement",
+        icon: Truck,
+        items: [
+          {
+            href: "/reports/transfers",
+            label: "Transfers",
+            icon: ArrowLeftRight,
+            anyPermissions: [
+              "reports.view",
+              "logistics.view",
+              "logistics.create",
+              "logistics.manage",
+            ],
+          },
+          {
+            href: "/reports/pull-outs",
+            label: "Pull-outs",
+            icon: ArrowUpToLine,
+            anyPermissions: [
+              "reports.view",
+              "logistics.view",
+              "logistics.create",
+              "logistics.manage",
+            ],
+          },
         ],
       },
       {
-        href: "/reports/daily-stock",
-        label: "Daily stock",
-        icon: Package,
-        anyPermissions: [
-          "reports.view",
-          "orders.view",
-          "orders.manual.view",
-          "orders.special.view",
-          "orders.auto_replenish.view",
-        ],
-      },
-      {
-        href: "/reports/transfers",
-        label: "Transfers",
-        icon: ArrowLeftRight,
-        anyPermissions: [
-          "reports.view",
-          "logistics.view",
-          "logistics.create",
-          "logistics.manage",
-        ],
-      },
-      {
-        href: "/reports/sales",
-        label: "Sales & Returns",
+        label: "Sales",
         icon: Store,
-        anyPermissions: ["reports.view", "sales.create"],
-      },
-      {
-        href: "/reports/official-sales",
-        label: "Official Sales",
-        icon: ScrollText,
-        anyPermissions: ["official_sales.view", "official_sales.manage"],
-      },
-      {
-        href: "/reports/pcount",
-        label: "P-Count",
-        icon: ClipboardList,
-        anyPermissions: ["reports.view", "inventory.view"],
-       
-      },
-      {
-        href: "/reports/branch-returns",
-        label: "Branch returns",
-        icon: ArrowLeftRight,
-        anyPermissions: ["reports.view", "sales.create"],
-      
-      },
-      {
-        href: "/reports/pull-outs",
-        label: "Pull-outs",
-        icon: ArrowUpToLine,
-        anyPermissions: [
-          "reports.view",
-          "logistics.view",
-          "logistics.create",
-          "logistics.manage",
+        items: [
+          {
+            href: "/reports/sales",
+            label: "Sales & Returns",
+            icon: Store,
+            anyPermissions: ["reports.view", "sales.create"],
+          },
+          {
+            href: "/reports/official-sales",
+            label: "Official Sales",
+            icon: ScrollText,
+            anyPermissions: ["official_sales.view", "official_sales.manage"],
+          },
+          {
+            href: "/reports/branch-returns",
+            label: "Branch returns",
+            icon: ArrowLeftRight,
+            anyPermissions: ["reports.view", "sales.create"],
+          },
+          {
+            href: "/reports/service-returns",
+            label: "Service returns",
+            icon: ScrollText,
+            anyPermissions: ["reports.view", "sales.create"],
+          },
         ],
-     
-      },
-      {
-        href: "/reports/variance-discrepancy",
-        label: "Variance & discrepancy",
-        icon: ChartColumn,
-        anyPermissions: ["reports.view", "inventory.view"],
-      
-      },
-      {
-        href: "/reports/service-returns",
-        label: "Service returns",
-        icon: ScrollText,
-        anyPermissions: ["reports.view", "sales.create"],
-      
       },
       {
         label: "Inventory",
         icon: Package,
         items: [
-        
           // {
           //   href: "/inventory/serial-numbers",
           //   label: "SAP Serial No.",
@@ -490,36 +581,58 @@ export const appNavigation: NavEntry[] = [
         ],
       },
       {
-        href: "/reports/dii",
-        label: "DII",
-        icon: CalendarDays,
-        anyPermissions: ["reports.view", "inventory.view"],
+        label: "Stock",
+        icon: ClipboardList,
+        items: [
+          {
+            href: "/reports/pcount",
+            label: "P-Count",
+            icon: ClipboardList,
+            anyPermissions: ["reports.view", "inventory.view"],
+          },
+          {
+            href: "/reports/variance-discrepancy",
+            label: "Variance & discrepancy",
+            icon: ChartColumn,
+            anyPermissions: ["reports.view", "inventory.view"],
+          },
+          {
+            href: "/reports/dii",
+            label: "DII",
+            icon: CalendarDays,
+            anyPermissions: ["reports.view", "inventory.view"],
+          },
+          {
+            href: "/reports/inventory",
+            label: "Inventory report",
+            icon: Package,
+            anyPermissions: ["reports.view", "inventory.view"],
+          },
+          {
+            href: "/reports/aging",
+            label: "Aging",
+            icon: Clock,
+            anyPermissions: ["reports.view", "inventory.view"],
+          },
+          {
+            href: "/reports/consolidated-discrepancy",
+            label: "Consolidated discrepancy",
+            icon: LayoutGrid,
+            anyPermissions: ["reports.view", "inventory.view"],
+          },
+        ],
       },
       {
-        href: "/reports/demand-planning",
-        label: "Supply Planning",
+        label: "Planning",
         icon: ChartColumn,
-        anyPermissions: ["forecast.view", "forecast.manage"],
-      },
-      {
-        href: "/reports/inventory",
-        label: "Inventory report",
-        icon: Package,
-        anyPermissions: ["reports.view", "inventory.view"],
-      },
-      {
-        href: "/reports/aging",
-        label: "Aging",
-        icon: Clock,
-        anyPermissions: ["reports.view", "inventory.view"],
-     
-      },
-      {
-        href: "/reports/consolidated-discrepancy",
-        label: "Consolidated discrepancy",
-        icon: LayoutGrid,
-        anyPermissions: ["reports.view", "inventory.view"],
-        
+        items: [
+          {
+            href: "/reports/demand-planning",
+            label: "Supply Planning",
+            icon: ChartColumn,
+            anyPermissions: ["forecast.view", "forecast.manage"],
+          },
+        ],
       },
     ],
   },
@@ -529,22 +642,28 @@ export const appNavigation: NavEntry[] = [
     icon: History,
     items: [
       {
-        href: "/audit-logs/system",
-        label: "System logs",
-        icon: ClipboardList,
-        permission: "audit_logs.view",
-      },
-      {
-        href: "/audit-logs/serial-numbers",
-        label: "Serial number logs",
-        icon: Barcode,
-        permission: "serial_logs.view",
-      },
-      {
-        href: "/audit-logs/inventory-approvals",
-        label: "Inventory approvals",
-        icon: ClipboardCheck,
-        permission: "inventory_approvals.view",
+        label: "Logs",
+        icon: History,
+        items: [
+          {
+            href: "/audit-logs/system",
+            label: "System logs",
+            icon: ClipboardList,
+            permission: "audit_logs.view",
+          },
+          {
+            href: "/audit-logs/serial-numbers",
+            label: "Serial number logs",
+            icon: Barcode,
+            permission: "serial_logs.view",
+          },
+          {
+            href: "/audit-logs/inventory-approvals",
+            label: "Inventory approvals",
+            icon: ClipboardCheck,
+            permission: "inventory_approvals.view",
+          },
+        ],
       },
     ],
   },
@@ -554,58 +673,6 @@ export const appNavigation: NavEntry[] = [
     label: "Policies",
     icon: ScrollText,
     anyPermissions: ["policies.view", "policies.create", "policies.approve"],
-  },
-  {
-    type: "group",
-    label: "Service",
-    icon: Building2,
-    items: [
-      {
-        href: "/service-centers/inventory",
-        label: "SC Inventory",
-        icon: Package,
-        permission: "service_centers.inventory.view",
-      },
-      {
-        href: "/service-centers/sales",
-        label: "SC Sales",
-        icon: Store,
-        anyPermissions: [
-          "service_centers.sales.view",
-          "service_centers.sales.create",
-        ],
-      },
-      {
-        href: "/service-centers/orders",
-        label: "SC Orders",
-        icon: ShoppingCart,
-        anyPermissions: [
-          "service_centers.orders.view",
-          "service_centers.orders.create",
-          "service_centers.orders.approve",
-        ],
-      },
-      {
-        href: "/service-centers/deliveries",
-        label: "SC Deliveries",
-        icon: Truck,
-        anyPermissions: [
-          "service_centers.logistics.view",
-          "service_centers.logistics.create",
-          "service_centers.logistics.manage",
-        ],
-      },
-      {
-        href: "/service-centers/pullouts",
-        label: "SC Pull-outs",
-        icon: ArrowUpToLine,
-        anyPermissions: [ 
-          "service_centers.logistics.view",
-          "service_centers.logistics.create",
-          "service_centers.logistics.manage",
-        ],
-      },
-    ],
   },
   {
     type: "group",
@@ -755,10 +822,16 @@ export const appNavigation: NavEntry[] = [
         ],
       },
       {
-        href: "/settings/master-data",
         label: "Master data",
         icon: Tags,
-        permission: "master_data.manage",
+        items: [
+          {
+            href: "/settings/master-data",
+            label: "Master data",
+            icon: Tags,
+            permission: "master_data.manage",
+          },
+        ],
       },
     ],
   },
@@ -783,6 +856,7 @@ export function filterNavByPermissions(
     .map((entry) => {
       switch (entry.type) {
         case "link": {
+          if (entry.hidden) return null;
           if (entry.platformOperatorOnly && !isPlatformOperator) {
             return null;
           }
@@ -793,6 +867,7 @@ export function filterNavByPermissions(
         }
         case "group": {
           const isVisible = (item: NavLinkItem) => {
+            if (item.hidden) return false;
             if (item.platformOperatorOnly && !isPlatformOperator) {
               return false;
             }
@@ -840,6 +915,38 @@ export function isNavItemActive(
   }
   if (exact) return pathname === href;
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/**
+ * Length of the href or prefix that makes this item active, 0 when inactive.
+ * Lets a list highlight only its most specific match.
+ */
+function navItemMatchLength(pathname: string, item: NavLinkItem): number {
+  let best = 0;
+  for (const prefix of item.activePathPrefixes ?? []) {
+    if (pathname === prefix || pathname.startsWith(`${prefix}/`)) {
+      best = Math.max(best, prefix.length);
+    }
+  }
+  if (isNavItemActive(pathname, item.href, item.exact)) {
+    best = Math.max(best, item.href.length);
+  }
+  return best;
+}
+
+/**
+ * Hrefs to highlight in one destination list: only the most specific match,
+ * so "/dashboard/custom" stays inactive while "/dashboard/custom/abc" is open.
+ */
+export function resolveActiveNavHrefs(
+  pathname: string,
+  items: readonly NavGroupChild[],
+): Set<string> {
+  const links = flattenNavLinks(items);
+  const lengths = links.map((item) => navItemMatchLength(pathname, item));
+  const best = Math.max(0, ...lengths);
+  if (best === 0) return new Set();
+  return new Set(links.filter((_, i) => lengths[i] === best).map((item) => item.href));
 }
 
 export function isNavGroupActive(

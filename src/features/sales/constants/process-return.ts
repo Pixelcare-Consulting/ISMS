@@ -1,12 +1,13 @@
-/** Document Type names that route to Service Returns + unlock Process Return service extras. */
+/**
+ * Document Type name prefixes that route to Service Returns + unlock Process Return service extras.
+ * Prefix match so "Service Return w/ Problem Description" counts too.
+ */
 export const SERVICE_DOCUMENT_TYPE_NAMES = [
   "service return",
-  "service returns",
   "service replacement",
-  "service replacements",
 ] as const;
 
-/** Document Type names that require Team Leader approve after CS evaluate. */
+/** Document Type names that wait for Team Leader approval. */
 export const DEALER_INITIATED_DOCUMENT_TYPE_NAMES = [
   "dealer initiated return",
   "dealer initiated returns",
@@ -19,12 +20,12 @@ export function isServiceDocumentTypeName(
   name: string | null | undefined,
 ): boolean {
   const normalized = name?.trim().toLowerCase() ?? "";
-  return (SERVICE_DOCUMENT_TYPE_NAMES as readonly string[]).includes(
-    normalized,
+  return SERVICE_DOCUMENT_TYPE_NAMES.some((prefix) =>
+    normalized.startsWith(prefix),
   );
 }
 
-/** Dealer Initiated Return / Replacement — CS evaluate goes to pending_tl. */
+/** Dealer Initiated Return / Replacement — the request opens at pending_tl. */
 export function isDealerInitiatedDocumentTypeName(
   name: string | null | undefined,
 ): boolean {

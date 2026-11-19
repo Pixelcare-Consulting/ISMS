@@ -6,8 +6,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { PulloutRequestDialog } from "@/app/(app)/logistics/_components/pullout-request-dialog";
-import { createPulloutAction } from "@/features/logistics/actions/logistics.actions";
-import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
+import { usePulloutSource } from "@/app/(app)/logistics/_components/pullout-source";
+import type { PulloutActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import {
   parseTablePageSize,
@@ -21,10 +21,7 @@ import {
   type DataTableFeatures,
 } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
-import {
-  buildLogisticsPageHref,
-  LOGISTICS_PICKUPS_PATH,
-} from "@/app/(app)/logistics/_components/logistics-paths";
+import { buildLogisticsPageHref } from "@/app/(app)/logistics/_components/logistics-paths";
 import { CompactProgressRail } from "@/app/(app)/logistics/_components/compact-progress-rail";
 import { buildPulloutTracker } from "@/app/(app)/logistics/_components/pullout-tracker";
 import type { WorkflowStatusOption } from "@/features/logistics/constants/workflow-codes";
@@ -49,17 +46,20 @@ interface PaginatedList<T> {
   totalPages: number;
 }
 
-interface PulloutRow {
+export interface PulloutListRow {
   id: string;
   pulloutNo: string;
   statusCode: StatusCodeRef;
   reasonStatusCode: StatusCodeRef | null;
-  branch: { name: string };
+  /** The branch, or the service center on an SC pull-out. */
+  place: { name: string };
 }
+
+type PulloutRow = PulloutListRow;
 
 interface PulloutsPanelProps {
   pullouts: PaginatedList<PulloutRow>;
-  capabilities: LogisticsActionCapabilities;
+  capabilities: PulloutActionCapabilities;
   workflowStatuses: readonly WorkflowStatusOption[];
   currentUserName?: string;
   initialSort?: string;
@@ -68,7 +68,6 @@ interface PulloutsPanelProps {
 
 const pulloutColumn = createColumnHelper<DataTableFeatures, PulloutRow>();
 
-type PulloutSortField = "pulloutNo" | "branch" | "reason" | "status";
 type PulloutSortDir = "asc" | "desc";
 
 export function PulloutsPanel({
@@ -81,6 +80,7 @@ export function PulloutsPanel({
 }: PulloutsPanelProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { listHref, detailHref, copy } = usePulloutSource();
   const [progressView] = useLogisticsListProgressView();
   const [query, setQuery] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
@@ -92,13 +92,13 @@ export function PulloutsPanel({
 
   function handlePageSizeChange(limit: TablePageSize) {
     router.push(
-      buildLogisticsPageHref(LOGISTICS_PICKUPS_PATH, 1, limit, sort, sort ? sortDir : undefined),
+      buildLogisticsPageHref(listHref, 1, limit, sort, sort ? sortDir : undefined),
     );
   }
 
-  function toggleSort(field: PulloutSortField) {
+  function toggleSort(field: string) {
     const next = nextTableSort(field, sort, sortDir);
-    router.push(buildLogisticsPageHref(LOGISTICS_PICKUPS_PATH, 1, pageSize, next.sort, next.dir));
+    router.push(buildLogisticsPageHref(listHref, 1, pageSize, next.sort, next.dir));
   }
 
   const filtered = useMemo(
@@ -106,7 +106,7 @@ export function PulloutsPanel({
       pullouts.items.filter((p) =>
         matchesTableSearch(query, [
           p.pulloutNo,
-          p.branch.name,
+          p.place.name,
           p.reasonStatusCode?.name,
           p.reasonStatusCode?.code,
           p.statusCode.name,
@@ -120,7 +120,7 @@ export function PulloutsPanel({
     () =>
       uniqueSearchSuggestions(
         pullouts.items.map((p) => p.pulloutNo),
-        pullouts.items.map((p) => p.branch.name),
+        pullouts.items.map((p) => p.place.name),
         pullouts.items.map((p) => p.reasonStatusCode?.name),
         pullouts.items.map((p) => p.reasonStatusCode?.code),
         pullouts.items.map((p) => p.statusCode.name),
@@ -146,7 +146,7 @@ export function PulloutsPanel({
         enableSorting: true,
         cell: ({ row }) => (
           <Link
-            href={`/logistics/pickups/${row.original.id}`}
+            href={detailHref(row.original.id)}
             className="font-medium hover:underline"
           >
             {row.original.pulloutNo}
@@ -174,9 +174,9 @@ export function PulloutsPanel({
         ),
         meta: { className: "w-52 min-w-52" },
       }),
-      pulloutColumn.accessor((row) => row.branch.name, {
-        id: "branch",
-        header: "Branch",
+      pulloutColumn.accessor((row) => row.place.name, {
+        id: copy.placeSortKey,
+        header: copy.placeColumn,
         enableSorting: true,
       }),
       pulloutColumn.display({
@@ -213,7 +213,7 @@ export function PulloutsPanel({
         cell: ({ row }) => (
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" asChild>
-              <Link href={`/logistics/pickups/${row.original.id}`}>Open</Link>
+              <Link href={detailHref(row.original.id)}>Open</Link>
             </Button>
           </div>
         ),
@@ -223,13 +223,13 @@ export function PulloutsPanel({
     const progressIds = new Set([
       "pulloutNo",
       "progress",
-      "branch",
+      copy.placeSortKey,
       "reason",
       "status",
       "actions",
     ]);
     return cols.filter((column) => column.id != null && progressIds.has(column.id));
-  }, [indexOffset, progressView, workflowStatuses]);
+  }, [copy, detailHref, indexOffset, progressView, workflowStatuses]);
 
   return (
     <>
@@ -243,7 +243,7 @@ export function PulloutsPanel({
       sorting={{
         sortKey: sort,
         sortDir,
-        onSort: (columnId) => toggleSort(columnId as PulloutSortField),
+        onSort: (columnId) => toggleSort(columnId),
       }}
       stickyHeader
       search={{ value: query, onChange: setQuery, placeholder: "Search pull-outs…", suggestions }}
@@ -268,7 +268,7 @@ export function PulloutsPanel({
         itemLabel: "pull-out",
         buildHref: (page) =>
           buildLogisticsPageHref(
-            LOGISTICS_PICKUPS_PATH,
+            listHref,
             page,
             pageSize,
             sort,
@@ -282,7 +282,6 @@ export function PulloutsPanel({
     <PulloutRequestDialog
       open={createOpen}
       onOpenChange={setCreateOpen}
-      onSubmit={createPulloutAction}
       onCreated={() => router.refresh()}
       currentUserName={currentUserName}
     />

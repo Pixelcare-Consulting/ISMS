@@ -10,7 +10,6 @@ import {
   type ReceiveTarget,
 } from "@/app/(app)/logistics/_components/delivery-receive-dialog";
 import { PulloutRequestDialog } from "@/app/(app)/logistics/_components/pullout-request-dialog";
-import type { PulloutCreateInput } from "@/features/logistics/services/pullout-posting.service";
 import type { TransferCreateInput } from "@/app/(app)/logistics/_components/transfer-form";
 import { TransferRequestDialog } from "@/app/(app)/logistics/_components/transfer-request-dialog";
 import {
@@ -23,7 +22,6 @@ import {
 import { pendingReturnOf, sapRetryReturnOf } from "@/features/logistics/constants/delivery-workflow-labels";
 import {
   acceptDeliveryAction,
-  createPulloutAction,
   createTransferAction,
   cancelDeliveryReturnAction,
   decideDeliveryReturnAction,
@@ -133,10 +131,6 @@ export function OpsPanel({
 
   function submitTransfer(input: TransferCreateInput) {
     return createTransferAction(input);
-  }
-
-  function submitPullout(input: PulloutCreateInput) {
-    return createPulloutAction(input);
   }
 
   const deliveryColumns = useMemo(() => {
@@ -394,7 +388,6 @@ export function OpsPanel({
       <PulloutRequestDialog
         open={pulloutOpen}
         onOpenChange={setPulloutOpen}
-        onSubmit={submitPullout}
         onCreated={() => router.refresh()}
         currentUserName={currentUserName}
       />

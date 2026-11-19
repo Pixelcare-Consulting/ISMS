@@ -12,6 +12,9 @@ const line = (overrides: Partial<PulloutDetail["lines"][number]> = {}) =>
     priorCode: "STK",
     reasonName: "Overstock",
     problemDescriptionNames: [],
+    classificationNames: [],
+    unitPackingConditionNames: [],
+    accessoryCompletenessNames: [],
     remarks: "Box dented",
     rejectedAt: null,
     ...overrides,
@@ -25,22 +28,32 @@ const detail = (overrides: Partial<PulloutDetail> = {}) =>
     scheduledAt: "2026-11-05T02:00:00.000Z",
     scheduledByName: "Logistics",
     status: { code: "pending_logistics", name: "Pending logistics", color: null },
-    branch: { id: "b1", name: "Branch A" },
+    place: { id: "b1", name: "Branch A" },
     warehouse: { id: "w1", name: "Main", code: "W1" },
     reason: null,
     lines: [line()],
     ...overrides,
   }) as PulloutDetail;
 
+const branchSlip = (pullout: PulloutDetail) => pulloutPrintDocument(pullout, "BRANCH");
+
 describe("pulloutPrintDocument", () => {
+  it("names the first page after the place the units leave", () => {
+    expect(pulloutPrintDocument(detail(), "SERVICE CENTER")?.copyLegend).toEqual([
+      "PAGE 1: SERVICE CENTER COPY",
+      "PAGE 2: ACCOUNTING COPY",
+    ]);
+  });
+
   it("builds the Pull-out slip once the waybill, courier and schedule are saved", () => {
-    expect(pulloutPrintDocument(detail())).toEqual({
+    expect(branchSlip(detail())).toEqual({
       title: "PULL-OUT SLIP",
       number: "PLT-1",
       customer: "Branch A",
       date: "Nov 5, 2026",
       address: "",
-      items: [{ modelCode: "SKU1", serialNo: "SN1", note: "OVERSTOCK / Remarks: Box dented" }],
+      detailColumns: ["Reason", "Remarks"],
+      items: [{ modelCode: "SKU1", serialNo: "SN1", notes: [], details: ["Overstock", "Box dented"] }],
       copyLegend: ["PAGE 1: BRANCH COPY", "PAGE 2: ACCOUNTING COPY"],
       copiesPerPage: 2,
     });
@@ -51,54 +64,85 @@ describe("pulloutPrintDocument", () => {
     ["courier", { courierName: " " }],
     ["schedule", { scheduledAt: null }],
   ])("is not ready without the %s", (_field, missing) => {
-    expect(pulloutPrintDocument(detail(missing))).toBeNull();
+    expect(branchSlip(detail(missing))).toBeNull();
   });
 
   it("prints the Manila date for an early morning schedule", () => {
     // 1 AM on Nov 6 in Manila is still Nov 5 in UTC.
-    expect(pulloutPrintDocument(detail({ scheduledAt: "2026-11-05T17:00:00.000Z" }))?.date).toBe("Nov 6, 2026");
+    expect(branchSlip(detail({ scheduledAt: "2026-11-05T17:00:00.000Z" }))?.date).toBe("Nov 6, 2026");
   });
 
   it("leaves rejected units off the slip", () => {
-    const document = pulloutPrintDocument(
+    const document = branchSlip(
       detail({ lines: [line(), line({ serialNo: "SN2", rejectedAt: "2026-11-05T02:00:00.000Z" })] }),
     );
     expect(document?.items).toHaveLength(1);
   });
 
-  it("prints a defective unit's reason and problems like the client's slip", () => {
-    const document = pulloutPrintDocument(
+  it("prints every checklist field recorded on the unit, one column each", () => {
+    const document = branchSlip(
       detail({
         lines: [
           line({
             priorCode: "DEF",
             reasonName: "Defective unit",
-            problemDescriptionNames: ["With line on screen"],
+            problemDescriptionNames: ["With line on screen", "No power"],
+            classificationNames: ["Class A"],
+            unitPackingConditionNames: ["Sealed box"],
+            accessoryCompletenessNames: ["Complete", " "],
             remarks: "Horizontal Bars on Screen",
           }),
         ],
       }),
     );
-    expect(document?.items[0]?.note).toBe(
-      "DEFECTIVE UNIT / WITH LINE ON SCREEN / Remarks: Horizontal Bars on Screen",
-    );
+    expect(document?.detailColumns).toEqual([
+      "Reason",
+      "Problem",
+      "Classification",
+      "Unit packing",
+      "Acc completeness",
+      "Remarks",
+    ]);
+    expect(document?.items[0]?.details).toEqual([
+      "Defective unit",
+      "With line on screen, No power",
+      "Class A",
+      "Sealed box",
+      "Complete",
+      "Horizontal Bars on Screen",
+    ]);
   });
 
-  it("falls back to an older pull-out's header reason, and prints no note when nothing was recorded", () => {
-    const older = pulloutPrintDocument(
+  it("keeps a column when any unit filled it in, blank for the units that did not", () => {
+    const document = branchSlip(
+      detail({
+        lines: [line({ remarks: null }), line({ serialNo: "SN2", classificationNames: ["Class B"] })],
+      }),
+    );
+    expect(document?.detailColumns).toEqual(["Reason", "Classification", "Remarks"]);
+    expect(document?.items.map((item) => item.details)).toEqual([
+      ["Overstock", "", ""],
+      ["Overstock", "Class B", "Box dented"],
+    ]);
+  });
+
+  it("falls back to an older pull-out's header reason, and prints no columns when nothing was recorded", () => {
+    const older = branchSlip(
       detail({
         reason: { id: "r1", code: "OVR", name: "Overstock", color: null },
         lines: [line({ reasonName: null, remarks: null })],
       }),
     );
-    const blank = pulloutPrintDocument(detail({ lines: [line({ reasonName: null, remarks: "  " })] }));
-    expect(older?.items[0]?.note).toBe("OVERSTOCK");
-    expect(blank?.items[0]?.note).toBe("");
+    const blank = branchSlip(detail({ lines: [line({ reasonName: null, remarks: "  " })] }));
+    expect(older?.detailColumns).toEqual(["Reason"]);
+    expect(older?.items[0]?.details).toEqual(["Overstock"]);
+    expect(blank?.detailColumns).toEqual([]);
+    expect(blank?.items[0]?.details).toEqual([]);
   });
 
   it("has no slip for a cancelled pull-out", () => {
     const status = { code: "cancelled", name: "Cancelled", color: null };
-    expect(pulloutPrintDocument(detail({ status }))).toBeNull();
+    expect(branchSlip(detail({ status }))).toBeNull();
   });
 });
 
@@ -106,7 +150,7 @@ describe("slipsHtml", () => {
   const letterhead = { logo: null, companyName: "Acme", lines: ["Pasig City"] };
 
   it("stacks two Pull-out slip copies, each with the header, split by a cut line", () => {
-    const slip = pulloutPrintDocument(detail({ lines: [line({ remarks: "<b>Dented</b>" })] }));
+    const slip = branchSlip(detail({ lines: [line({ remarks: "<b>Dented</b>" })] }));
     if (!slip) throw new Error("No slip");
 
     const html = slipsHtml([slip], letterhead);
@@ -116,8 +160,9 @@ describe("slipsHtml", () => {
     expect(html.match(/class="cut-line"/g)).toHaveLength(2);
     expect(html).toContain("No. <strong>PLT-1</strong>");
     expect(html).toContain("DESCRIPTION OF ITEM");
+    expect(html).toContain("<tr><th>Item</th><th>Reason</th><th>Remarks</th></tr>");
     expect(html).toContain("Serial No.: SN1");
-    expect(html).toContain("Remarks: &lt;b&gt;Dented&lt;/b&gt;");
+    expect(html).toContain("<td>&lt;b&gt;Dented&lt;/b&gt;</td>");
     expect(html.match(/Signature Over Printed Name/g)).toHaveLength(4);
     expect(html).toContain("<span>PAGE 1: BRANCH COPY</span><span>PAGE 2: ACCOUNTING COPY</span>");
   });

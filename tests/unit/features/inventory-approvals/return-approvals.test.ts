@@ -40,6 +40,20 @@ describe("return approvals", () => {
     });
   });
 
+  it("opens Team Leader approval when a sales return skips Customer Service", async () => {
+    await recordReturnRequested(
+      db,
+      ref,
+      { requestedById: "u1", problemDescription: "No power" },
+      "TL_APPROVAL",
+    );
+
+    expect(ledger.recordRequested).toHaveBeenCalledWith(db, document("TL_APPROVAL"), {
+      requestedById: "u1",
+      units: [{ serialNumberId: "s1", remarks: undefined, problemDescription: "No power" }],
+    });
+  });
+
   it("records nothing for a sale line that has no serial yet", async () => {
     const toFollow = { ...ref, serialNumberId: null };
 

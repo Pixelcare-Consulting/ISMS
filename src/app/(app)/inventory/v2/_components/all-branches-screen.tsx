@@ -59,6 +59,11 @@ function countForStatus(
   return (row.counts.statuses ?? []).find((item) => item.code === code)?.count ?? 0;
 }
 
+function branchListEmptyMessage(offPlanogramOnly: boolean): string {
+  if (offPlanogramOnly) return "No branches with off-planogram units match your search.";
+  return "No branches match your search.";
+}
+
 export function BranchInventoryAllBranchesScreen({
   branches,
   offPlanogramBranches,
@@ -219,7 +224,11 @@ export function BranchInventoryAllBranchesScreen({
         header: () => <span className="sr-only">Open</span>,
         enableSorting: false,
         cell: ({ row }) => (
-          <V2TealLink href={branchInventoryV2Href({ branchId: row.original.branch.id })}>
+          <V2TealLink
+            href={branchInventoryV2Href({
+              branchId: row.original.branch.id,
+            })}
+          >
             Open branch →
           </V2TealLink>
         ),
@@ -232,7 +241,11 @@ export function BranchInventoryAllBranchesScreen({
 
   function toggleOffPlanogram(checked: boolean) {
     setOffPlanogramOnly(checked);
-    router.push(branchInventoryV2Href({ offPlanogram: checked || undefined }));
+    router.push(
+      branchInventoryV2Href({
+        offPlanogram: checked || undefined,
+      }),
+    );
   }
 
   return (
@@ -320,11 +333,7 @@ export function BranchInventoryAllBranchesScreen({
           </div>
         }
         empty={filtered.length === 0}
-        emptyMessage={
-          offPlanogramOnly
-            ? "No branches with off-planogram units match your search."
-            : "No branches match your search."
-        }
+        emptyMessage={branchListEmptyMessage(offPlanogramOnly)}
         footer={
           filtered.length > 0 ? (
             <footer className="space-y-2 border-t px-4 py-3 text-xs text-muted-foreground">

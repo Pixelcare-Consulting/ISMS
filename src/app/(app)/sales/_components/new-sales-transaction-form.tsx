@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { ChevronLeft, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
@@ -26,14 +26,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import {
-  createSaleAction,
-  listStockSourceBranchesForSalesAction,
-  uploadSaleProofAction,
-} from "@/features/sales/actions/sales.actions";
+import { useSalesSource } from "@/app/(app)/sales/_components/sales-source";
+import { uploadSaleProofAction } from "@/features/sales/actions/sales.actions";
 import { isToFollowSerial } from "@/features/sales/constants/to-follow-serial";
 import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
 import { SALE_PROOF_MAX_FILES } from "@/features/sales/utils/sale-proof";
+import { earliestSaleTransactionIso } from "@/features/sales/utils/transaction-date";
 import { formatPeso } from "@/utils/format-currency";
 
 interface SalesBranchOption {
@@ -51,6 +49,51 @@ type ProofAttachment = {
   name: string;
 };
 
+function SalesEncodeBanner({
+  pending,
+  saveDisabled,
+  onSave,
+}: {
+  pending: boolean;
+  saveDisabled: boolean;
+  onSave: () => void;
+}) {
+  const source = useSalesSource();
+  return (
+    <header className="flex flex-col gap-4 rounded-xl bg-sidebar px-5 py-5 text-sidebar-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6">
+      <div className="min-w-0">
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
+          {source.copy.encodeTitle}
+        </h1>
+        <p className="mt-1 text-sm text-sidebar-muted">
+          {source.copy.encodeDescription}
+        </p>
+      </div>
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
+        <Link
+          href={source.listHref}
+          aria-disabled={pending || undefined}
+          tabIndex={pending ? -1 : undefined}
+          onClick={(event) => {
+            if (pending) event.preventDefault();
+          }}
+          className={
+            pending
+              ? "pointer-events-none inline-flex h-9 items-center gap-1 rounded-full bg-sidebar-accent px-3.5 text-sm font-medium text-sidebar-foreground opacity-50"
+              : "inline-flex h-9 items-center gap-1 rounded-full bg-sidebar-accent px-3.5 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-white/10"
+          }
+        >
+          <ChevronLeft className="size-4" aria-hidden />
+          {source.copy.backToList}
+        </Link>
+        <Button type="button" disabled={saveDisabled} onClick={onSave}>
+          Save Transaction
+        </Button>
+      </div>
+    </header>
+  );
+}
+
 interface NewSalesTransactionFormProps {
   branches: SalesBranchOption[];
   autoResolveBranch: boolean;
@@ -59,14 +102,6 @@ interface NewSalesTransactionFormProps {
   deliveryMethods: LookupOption[];
   promoTypes: LookupOption[];
   brands: LookupOption[];
-}
-
-function todayInputValue(): string {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
 }
 
 export function NewSalesTransactionForm({
@@ -79,6 +114,8 @@ export function NewSalesTransactionForm({
   brands,
 }: NewSalesTransactionFormProps) {
   const router = useRouter();
+  const source = useSalesSource();
+  const { createSale, listStockSources } = source.actions;
   const [pending, startTransition] = useTransition();
   const resolvedBranchId = autoResolveBranch ? (branches[0]?.id ?? "") : "";
   const [branchId, setBranchId] = useState(resolvedBranchId);
@@ -98,13 +135,14 @@ export function NewSalesTransactionForm({
   const [customerDeliveryMethodId, setCustomerDeliveryMethodId] = useState("");
   const [proofs, setProofs] = useState<ProofAttachment[]>([]);
   const [proofUploading, setProofUploading] = useState(false);
-  const [transactionDate, setTransactionDate] = useState(todayInputValue);
+  const [transactionDate, setTransactionDate] = useState("");
   const [reserved, setReserved] = useState(false);
   const [details, setDetails] = useState<DraftSaleDetail[]>([]);
   const [detailOpen, setDetailOpen] = useState(false);
   const [editingGroupKey, setEditingGroupKey] = useState<string | null>(null);
   const [deleteGroupKey, setDeleteGroupKey] = useState<string | null>(null);
   const [deleteSelectedOpen, setDeleteSelectedOpen] = useState(false);
+  const [saveConfirmOpen, setSaveConfirmOpen] = useState(false);
   const detailKeys = useMemo(() => details.map((d) => d.key), [details]);
   const selection = useTableSelection(detailKeys);
 
@@ -119,7 +157,7 @@ export function NewSalesTransactionForm({
     let cancelled = false;
     void (async () => {
       try {
-        const rows = await listStockSourceBranchesForSalesAction(branchId);
+        const rows = await listStockSources(branchId);
         if (cancelled) return;
         setStockSources(rows);
         setAlternateBranchId((prev) =>
@@ -127,14 +165,14 @@ export function NewSalesTransactionForm({
         );
       } catch {
         if (cancelled) return;
-        toast.error("Failed to load stock source branches");
+        toast.error(source.copy.stockSourceLoadError);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [branchId]);
+  }, [branchId, listStockSources, source.copy.stockSourceLoadError]);
 
   const totalSaleAmount = useMemo(
     () => details.reduce((sum, d) => sum + d.saleAmount, 0),
@@ -286,17 +324,17 @@ export function NewSalesTransactionForm({
     setProofs((prev) => prev.filter((p) => p.path !== path));
   }
 
-  function submit() {
+  function requestSave() {
     if (!transactionNo.trim()) {
       toast.error("Transaction number is required");
       return;
     }
     if (!branchId) {
-      toast.error("Select a branch");
+      toast.error(source.copy.selectSoldError);
       return;
     }
     if (!alternateBranchId) {
-      toast.error("Select a stock source branch");
+      toast.error(source.copy.selectStockSourceError);
       return;
     }
     if (!customerName.trim()) {
@@ -319,12 +357,16 @@ export function NewSalesTransactionForm({
       toast.error("Add at least one transaction detail");
       return;
     }
+    setSaveConfirmOpen(true);
+  }
 
+  function submit() {
+    setSaveConfirmOpen(false);
     startTransition(async () => {
-      const result = await createSaleAction({
+      const result = await createSale({
         transactionNo: transactionNo.trim(),
-        branchId,
-        alternateBranchId,
+        soldId: branchId,
+        stockSourceId: alternateBranchId,
         customerName: customerName.trim(),
         contactNo: contactNo.trim() || undefined,
         // SI/Trans mirrors transaction number — field removed from the form as redundant.
@@ -354,15 +396,18 @@ export function NewSalesTransactionForm({
         return;
       }
       toast.success(reserved ? "Reserved sale recorded" : "Sale transaction saved");
-      router.push("/sales");
+      router.push(source.listHref);
       router.refresh();
     });
   }
 
   if (branches.length === 0) {
     return (
-      <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground shadow-sm">
-        No branch in your area of responsibility. Assign an AOR before recording sales.
+      <div className="space-y-6">
+        <SalesEncodeBanner pending={false} saveDisabled onSave={() => undefined} />
+        <div className="rounded-xl border border-border/70 bg-card p-5 text-sm text-muted-foreground shadow-sm sm:p-6">
+          {source.copy.noSoldPlaces}
+        </div>
       </div>
     );
   }
@@ -372,12 +417,24 @@ export function NewSalesTransactionForm({
   const deletePackageName = deleteGroupRows[0]?.packageTypeName ?? "this package";
 
   return (
-    <div className="space-y-4">
-      <div className="space-y-4 rounded-xl border bg-card p-4 shadow-sm sm:p-6">
-        <h2 className="text-lg font-semibold">Transaction header</h2>
-        <div className="grid gap-4 sm:grid-cols-2">
+    <div className="space-y-6">
+      <SalesEncodeBanner
+        pending={pending}
+        saveDisabled={pending || !branchId || !alternateBranchId}
+        onSave={requestSave}
+      />
+      <div className="rounded-xl border border-border/70 bg-card shadow-sm">
+        <div className="space-y-8 p-5 sm:p-6">
+          <section className="space-y-5">
+            <div>
+              <h2 className="text-base font-semibold text-foreground">Transaction</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {source.copy.sectionDescription}
+              </p>
+            </div>
+            <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="sale-txn-no">Transaction number *</Label>
+            <Label className="font-normal text-muted-foreground" htmlFor="sale-txn-no">Transaction number *</Label>
             <Input
               id="sale-txn-no"
               value={transactionNo}
@@ -389,22 +446,31 @@ export function NewSalesTransactionForm({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sale-branch">Branch sold *</Label>
             {resolvedBranch ? (
-              <Input id="sale-branch" value={resolvedBranch.name} readOnly disabled className="bg-muted" />
+              <>
+                <p className="text-sm text-muted-foreground">{source.copy.soldLabel} *</p>
+                <p className="mt-1.5 min-h-10 break-words rounded-lg bg-muted/70 px-3 py-2.5 text-sm font-medium leading-5 text-foreground">
+                  {resolvedBranch.name}
+                </p>
+              </>
             ) : showBranchPicker ? (
+              <>
+                <Label className="font-normal text-muted-foreground" htmlFor="sale-branch">
+                  {source.copy.soldLabel} *
+                </Label>
               <SearchableSelect
                 id="sale-branch"
                 options={branches.map((b) => ({ id: b.id, label: b.name }))}
                 value={branchId}
                 onChange={onBranchChange}
-                placeholder="Select branch…"
-                searchPlaceholder="Search branches…"
+                placeholder={source.copy.soldPlaceholder}
+                searchPlaceholder={source.copy.soldSearchPlaceholder}
               />
+              </>
             ) : null}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sale-stock-source">Branch or alternate branch *</Label>
+            <Label className="font-normal text-muted-foreground" htmlFor="sale-stock-source">{source.copy.stockSourceLabel} *</Label>
             <SearchableSelect
               id="sale-stock-source"
               options={stockSources.map((b) => ({ id: b.id, label: b.name }))}
@@ -413,23 +479,28 @@ export function NewSalesTransactionForm({
                 setAlternateBranchId(id);
                 setDetails([]);
               }}
-              placeholder={branchId ? "Select branch with stock…" : "Select branch sold first…"}
-              searchPlaceholder="Search branches with stock…"
-              emptyMessage="No sellable stock in your area."
+              placeholder={
+                branchId
+                  ? source.copy.stockSourcePlaceholder
+                  : source.copy.stockSourceNeedsSold
+              }
+              searchPlaceholder={source.copy.stockSourceSearchPlaceholder}
+              emptyMessage={source.copy.stockSourceEmpty}
               disabled={!branchId || stockSources.length === 0}
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sale-date">Transaction date</Label>
+            <Label className="font-normal text-muted-foreground" htmlFor="sale-date">Transaction date</Label>
             <Input
               id="sale-date"
               type="date"
+              min={earliestSaleTransactionIso()}
               value={transactionDate}
               onChange={(e) => setTransactionDate(e.target.value)}
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sale-customer">Customer name *</Label>
+            <Label className="font-normal text-muted-foreground" htmlFor="sale-customer">Customer name *</Label>
             <Input
               id="sale-customer"
               value={customerName}
@@ -438,7 +509,7 @@ export function NewSalesTransactionForm({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sale-contact">Contact no.</Label>
+            <Label className="font-normal text-muted-foreground" htmlFor="sale-contact">Contact no.</Label>
             <Input
               id="sale-contact"
               type="tel"
@@ -449,7 +520,7 @@ export function NewSalesTransactionForm({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sale-info-slip">Info slip / VSO / RR released</Label>
+            <Label className="font-normal text-muted-foreground" htmlFor="sale-info-slip">Info slip / VSO / RR released</Label>
             <Input
               id="sale-info-slip"
               value={infoSlipVsoRrReleased}
@@ -458,7 +529,7 @@ export function NewSalesTransactionForm({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sale-rr-receive">RR receive / deliver</Label>
+            <Label className="font-normal text-muted-foreground" htmlFor="sale-rr-receive">RR receive / deliver</Label>
             <Input
               id="sale-rr-receive"
               value={rrReceiveDeliver}
@@ -467,7 +538,7 @@ export function NewSalesTransactionForm({
             />
           </div>
           <div className="space-y-2">
-            <Label>Payment type *</Label>
+            <Label className="font-normal text-muted-foreground">Payment type *</Label>
             <SearchableSelect
               options={paymentTypes.map((p) => ({ id: p.id, label: p.name }))}
               value={paymentTypeId}
@@ -478,7 +549,7 @@ export function NewSalesTransactionForm({
             />
           </div>
           <div className="space-y-2">
-            <Label>Sale type *</Label>
+            <Label className="font-normal text-muted-foreground">Sale type *</Label>
             <SearchableSelect
               options={saleTypes.map((p) => ({ id: p.id, label: p.name }))}
               value={saleTypeId}
@@ -489,7 +560,7 @@ export function NewSalesTransactionForm({
             />
           </div>
           <div className="space-y-2">
-            <Label>Customer delivery method *</Label>
+            <Label className="font-normal text-muted-foreground">Customer delivery method *</Label>
             <SearchableSelect
               options={deliveryMethods.map((p) => ({ id: p.id, label: p.name }))}
               value={customerDeliveryMethodId}
@@ -500,7 +571,7 @@ export function NewSalesTransactionForm({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sale-proof">Proof</Label>
+            <Label className="font-normal text-muted-foreground" htmlFor="sale-proof">Proof</Label>
             <Input
               id="sale-proof"
               type="file"
@@ -544,20 +615,27 @@ export function NewSalesTransactionForm({
           </div>
         </div>
 
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={reserved}
-            onChange={(e) => setReserved(e.target.checked)}
-          />
-          Reserved (RSV)
-        </label>
-      </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={reserved}
+                onChange={(e) => setReserved(e.target.checked)}
+              />
+              Reserved (RSV)
+            </label>
+          </section>
 
-      <div className="space-y-3 rounded-xl border bg-card p-4 shadow-sm sm:p-6">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold">Transaction details</h2>
-          <div className="flex flex-wrap items-center gap-2">
+          <section className="space-y-4 border-t border-border/70 pt-8">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="text-base font-semibold text-foreground">Transaction details</h2>
+                {details.length === 0 ? (
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    No details yet. Click Add Detail to add line items.
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
             {selection.selectedCount > 0 ? (
               <Button
                 type="button"
@@ -581,11 +659,7 @@ export function NewSalesTransactionForm({
           </div>
         </div>
 
-        {details.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No details yet. Click Add Detail to add line items.
-          </p>
-        ) : (
+            {details.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full min-w-200 text-sm">
               <thead>
@@ -688,20 +762,13 @@ export function NewSalesTransactionForm({
               </tbody>
             </table>
           </div>
-        )}
+            ) : null}
 
-        <div className="flex justify-end border-t pt-3 text-sm font-medium font-mono tabular-nums">
-          Total sale amount: {formatPeso(totalSaleAmount)}
+            <div className="flex justify-end border-t pt-3 text-sm font-medium font-mono tabular-nums">
+              Total sale amount: {formatPeso(totalSaleAmount)}
+            </div>
+          </section>
         </div>
-      </div>
-
-      <div className="flex flex-wrap justify-end gap-2">
-        <Button asChild variant="outline" disabled={pending}>
-          <Link href="/sales">Back</Link>
-        </Button>
-        <Button disabled={pending || !branchId || !alternateBranchId} onClick={submit}>
-          Save Transaction
-        </Button>
       </div>
 
       {detailOpen && branchId && alternateBranchId ? (
@@ -749,6 +816,26 @@ export function NewSalesTransactionForm({
             >
               Yes, delete
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={saveConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open) setSaveConfirmOpen(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Save this record?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to save this record?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No</AlertDialogCancel>
+            <AlertDialogAction onClick={submit}>Yes</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

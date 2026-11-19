@@ -41,15 +41,22 @@ yarn-error.log*
 # vercel
 .vercel
 
-# scripts
-/scripts
+# scripts — ignore the folder, but keep the listed files so they can ship
 /scripts/*
 !/scripts/check-migrations.mjs
 !/scripts/generate-modules-workflow-excel.mjs
+!/scripts/grant-monthly-sir-view.ts
+!/scripts/monthly-sir-grant.ts
+!/scripts/grant-pullout-actions.ts
+!/scripts/pullout-actions-grant.ts
 .scripts/
 .scripts/*
 !/scripts/check-migrations.mjs
 !/scripts/generate-modules-workflow-excel.mjs
+!/scripts/grant-monthly-sir-view.ts
+!/scripts/monthly-sir-grant.ts
+!/scripts/grant-pullout-actions.ts
+!/scripts/pullout-actions-grant.ts
 
 # typescript
 *.tsbuildinfo
@@ -111,6 +118,7 @@ public/BRS Planogram & Forecast.xlsx
 /playwright-report
 /test-results
 /blob-report
+
 
 # pnpm is the package manager; keep npm from recreating a stale lockfile
 package-lock.json

@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { type ReleaseChangeType, type ReleaseNote } from "@/content/releases";
+import { visibleReleaseCopy } from "@/lib/shared/release-note-display";
 import {
   formatReleaseTimestamp,
   formatVersionLabel,
@@ -35,6 +36,10 @@ export function ReleaseNoteCard({ release, isLatest = false }: ReleaseNoteCardPr
     release.releasedAt,
   );
   const dateTimeValue = release.releasedAt ?? release.date;
+  const { highlights, changes } = visibleReleaseCopy(
+    release.highlights,
+    release.changes,
+  );
 
   return (
     <article className="space-y-4">
@@ -59,15 +64,17 @@ export function ReleaseNoteCard({ release, isLatest = false }: ReleaseNoteCardPr
         </p>
       </header>
 
-      <ul className="list-disc space-y-2 pl-5 text-sm text-muted-foreground">
-        {release.highlights.map((highlight) => (
-          <li key={highlight}>{highlight}</li>
-        ))}
-      </ul>
+      {highlights.length > 0 ? (
+        <ul className="list-disc space-y-2 pl-5 text-sm text-muted-foreground">
+          {highlights.map((highlight) => (
+            <li key={highlight}>{highlight}</li>
+          ))}
+        </ul>
+      ) : null}
 
-      {release.changes?.length ? (
+      {changes.length > 0 ? (
         <ul className="space-y-2">
-          {release.changes.map((change) => (
+          {changes.map((change) => (
             <li
               key={`${release.version}-${change.description}`}
               className="flex items-start gap-2 text-sm"

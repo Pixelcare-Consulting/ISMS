@@ -15,8 +15,14 @@ import {
   LOGISTICS_DELIVERY_TRANSFER_RECEIVE,
   LOGISTICS_MANAGE,
   LOGISTICS_PAGE_PERMISSIONS,
+  PULLOUT_APPROVE_PERMISSIONS,
+  PULLOUT_CREATE_PERMISSIONS,
+  PULLOUT_MANAGE_PERMISSIONS,
   PULLOUTS_VIEW,
   SAP_CHECK_PERMISSIONS,
+  TRANSFER_PAGE_APPROVE_PERMISSIONS,
+  TRANSFER_PAGE_CREATE_PERMISSIONS,
+  TRANSFER_PAGE_RECEIVE_PERMISSIONS,
 } from "@/features/logistics/constants/logistics-permissions";
 import { logisticsRepository } from "@/features/logistics/repositories/logistics.repository";
 import { deliveryPostingService } from "@/features/logistics/services/delivery-posting.service";
@@ -34,7 +40,11 @@ import {
   deliveryTransferService,
   type DeliveryTransferDraft,
 } from "@/features/logistics/services/delivery-transfer.service";
-import { PULLOUT_DEFECTIVE_REASON_CODE } from "@/features/logistics/services/pullout-posting.planner";
+import {
+  EMPTY_PULLOUT_CHECKLIST_OPTIONS,
+  loadPulloutChecklistOptions,
+  type PulloutChecklistOptions,
+} from "@/features/logistics/services/pullout-checklist-options";
 import { pulloutPostingService } from "@/features/logistics/services/pullout-posting.service";
 import { checkPulloutInSap } from "@/features/logistics/services/pullout-sap-check.service";
 import { transferPostingService } from "@/features/logistics/services/transfer-posting.service";
@@ -58,8 +68,9 @@ import {
 } from "@/features/logistics/lib/transfer-visibility";
 import { parseManilaDateTime, parseScheduleDate } from "@/features/logistics/lib/shipment";
 import {
+  optionalFormDate,
   PULLOUT_CREATE_INPUT_ERROR,
-  pulloutLineSchema,
+  pulloutListSchema,
   pulloutSchema,
 } from "@/features/logistics/schemas/pullout.schema";
 import { transferLineRemarksSchema } from "@/features/logistics/lib/transfer-line-remarks";
@@ -80,11 +91,12 @@ const DELIVERY_RECEIVE_PERMISSIONS = [
   LOGISTICS_DELIVERY_RECEIVE,
 ] as const;
 
-const LOGISTICS_WRITE_ALIASES = [
-  LOGISTICS_CREATE,
-  LOGISTICS_MANAGE,
-  "orders.create",
-] as const;
+/** Pull-out create, including the older delivery and order aliases. */
+const PULLOUT_CREATE_GATES = PULLOUT_CREATE_PERMISSIONS;
+/** List edit, Send, and Check SAP. Does not include transfer or delivery Manage by itself. */
+const PULLOUT_MANAGE_GATES = PULLOUT_MANAGE_PERMISSIONS;
+/** Reads the create and edit forms both need (serials, branches). */
+const PULLOUT_FORM_GATES = [...PULLOUT_CREATE_GATES, ...PULLOUT_MANAGE_GATES] as const;
 
 const DELIVERY_SORT_FIELDS = new Set<DeliveryListSort>([
   "deliveryNo",
@@ -141,15 +153,6 @@ const transferSchema = z.object({
     .max(64)
     .optional()
     .transform((value) => value || undefined),
-});
-const pulloutListSchema = z.object({
-  waybillNo: z.string().optional(),
-  courierName: z.string().trim().max(120).optional(),
-  scheduledAt: z.string().optional(),
-  actualPulloutDate: z.string().optional(),
-  notes: z.string().optional(),
-  serialNumberIds: z.array(z.string().min(1)).min(1),
-  addedLines: z.array(pulloutLineSchema).optional(),
 });
 const serialIdsSchema = z.object({
   serialNumberIds: z.array(z.string().min(1)).min(1),
@@ -444,8 +447,10 @@ export async function listTransfersAction(input?: {
   );
 }
 
-const TL_PERMISSIONS = ["orders.approve", LOGISTICS_MANAGE] as const;
-const RECEIVE_SERIAL_PERMISSIONS = [...LOGISTICS_WRITE_ALIASES, ...TL_PERMISSIONS] as const;
+const TRANSFER_RECEIVE_GATES = [
+  ...TRANSFER_PAGE_RECEIVE_PERMISSIONS,
+  ...TRANSFER_PAGE_APPROVE_PERMISSIONS,
+] as const;
 
 function revalidateTransfer(id: string) {
   revalidateLogisticsPaths();
@@ -472,7 +477,7 @@ export async function getTransferDetailAction(id: string) {
 }
 
 export async function listTransferModelsAction(branchId: string) {
-  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
+  const session = await requireAnyPermission([...TRANSFER_PAGE_CREATE_PERMISSIONS]);
   try {
     const models = await transferPostingService.listModels(postingActor(session), branchId);
     return { success: true as const, models };
@@ -482,7 +487,7 @@ export async function listTransferModelsAction(branchId: string) {
 }
 
 export async function listTransferSerialsAction(branchId: string, modelId: string) {
-  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
+  const session = await requireAnyPermission([...TRANSFER_PAGE_CREATE_PERMISSIONS]);
   try {
     const serials = await transferPostingService.listSerials(postingActor(session), branchId, modelId);
     return { success: true as const, serials };
@@ -492,7 +497,7 @@ export async function listTransferSerialsAction(branchId: string, modelId: strin
 }
 
 export async function createTransferAction(input: unknown) {
-  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
+  const session = await requireAnyPermission([...TRANSFER_PAGE_CREATE_PERMISSIONS]);
   const parsed = transferSchema.safeParse(input);
   if (!parsed.success) return { error: "Choose branches, a model, and the serials to transfer" };
   try {
@@ -505,7 +510,7 @@ export async function createTransferAction(input: unknown) {
 }
 
 export async function approveTransferAction(id: string) {
-  const session = await requireAnyPermission([...TL_PERMISSIONS]);
+  const session = await requireAnyPermission([...TRANSFER_PAGE_APPROVE_PERMISSIONS]);
   try {
     const result = await transferPostingService.approve(postingActor(session), id);
     revalidateTransfer(id);
@@ -521,7 +526,7 @@ export async function approveTransferAction(id: string) {
 }
 
 export async function rejectTransferAction(id: string) {
-  const session = await requireAnyPermission([...TL_PERMISSIONS]);
+  const session = await requireAnyPermission([...TRANSFER_PAGE_APPROVE_PERMISSIONS]);
   try {
     await transferPostingService.reject(postingActor(session), id);
     revalidateTransfer(id);
@@ -543,7 +548,7 @@ export async function executeTransferAction(id: string) {
 }
 
 export async function receiveTransferAction(id: string, input: unknown) {
-  const session = await requireAnyPermission([...RECEIVE_SERIAL_PERMISSIONS]);
+  const session = await requireAnyPermission([...TRANSFER_RECEIVE_GATES]);
   const parsed = serialIdsSchema.safeParse(input);
   if (!parsed.success) return { error: "Select the serials that arrived" };
   try {
@@ -565,7 +570,7 @@ const rejectSerialSchema = z.object({
 });
 
 export async function rejectTransferSerialAction(id: string, input: unknown) {
-  const session = await requireAnyPermission([...RECEIVE_SERIAL_PERMISSIONS]);
+  const session = await requireAnyPermission([...TRANSFER_RECEIVE_GATES]);
   const parsed = rejectSerialSchema.safeParse(input);
   if (!parsed.success) return { error: "Say why this serial was rejected" };
   try {
@@ -610,7 +615,7 @@ export async function getPulloutDetailAction(id: string) {
 }
 
 export async function listPulloutSerialsAction(branchId: string) {
-  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
+  const session = await requireAnyPermission([...PULLOUT_FORM_GATES]);
   try {
     const serials = await pulloutPostingService.listSerials(postingActor(session), branchId);
     return { success: true as const, serials };
@@ -619,56 +624,25 @@ export async function listPulloutSerialsAction(branchId: string) {
   }
 }
 
-export interface PulloutChecklistOptions {
-  classifications: { id: string; name: string }[];
-  unitPackingConditions: { id: string; name: string }[];
-  accessoryCompleteness: { id: string; name: string }[];
-  /** Reasons a stock unit can pick. Defective units are always the DEF reason. */
-  reasons: { id: string; name: string }[];
-  problemDescriptions: { id: string; name: string }[];
-}
-
-const EMPTY_CHECKLIST_OPTIONS: PulloutChecklistOptions = {
-  reasons: [],
-  problemDescriptions: [],
-  classifications: [],
-  unitPackingConditions: [],
-  accessoryCompleteness: [],
-};
+export type { PulloutChecklistOptions };
 
 /** Active pull-out checklist names for people who can create a pull-out. */
 export async function listPulloutChecklistOptionsAction(): Promise<
   PulloutChecklistOptions & { error?: string }
 > {
-  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
-  const where = { tenantId: session.user.tenantId, recordStatus: "active" as const };
-  const orderBy = { name: "asc" as const };
-  const select = { id: true, name: true };
+  const session = await requireAnyPermission([...PULLOUT_CREATE_GATES]);
   try {
-    const [classifications, unitPackingConditions, accessoryCompleteness, problemDescriptions, reasons] =
-      await Promise.all([
-        prisma.pulloutClassification.findMany({ where, orderBy, select }),
-        prisma.unitPackingCondition.findMany({ where, orderBy, select }),
-        prisma.accessoryCompleteness.findMany({ where, orderBy, select }),
-        prisma.problemDescription.findMany({ where, orderBy, select }),
-        prisma.reasonStatusCode.findMany({
-          where: {
-            ...where,
-            code: { not: PULLOUT_DEFECTIVE_REASON_CODE },
-            reasonStatus: { category: "pullout_reason" },
-          },
-          orderBy: { sortOrder: "asc" },
-          select,
-        }),
-      ]);
-    return { classifications, unitPackingConditions, accessoryCompleteness, problemDescriptions, reasons };
+    return await loadPulloutChecklistOptions(session.user.tenantId);
   } catch (error) {
-    return { ...EMPTY_CHECKLIST_OPTIONS, ...actionError(error, "Failed to load pull-out checklist options") };
+    return {
+      ...EMPTY_PULLOUT_CHECKLIST_OPTIONS,
+      ...actionError(error, "Failed to load pull-out checklist options"),
+    };
   }
 }
 
 export async function createPulloutAction(input: unknown) {
-  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
+  const session = await requireAnyPermission([...PULLOUT_CREATE_GATES]);
   const parsed = pulloutSchema.safeParse(input);
   if (!parsed.success) return { error: PULLOUT_CREATE_INPUT_ERROR };
   try {
@@ -681,7 +655,7 @@ export async function createPulloutAction(input: unknown) {
 }
 
 export async function uploadPulloutAttachmentAction(formData: FormData) {
-  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
+  const session = await requireAnyPermission([...PULLOUT_CREATE_GATES]);
   const pulloutId = formData.get("pulloutId");
   const file = formData.get("file");
   if (typeof pulloutId !== "string" || !pulloutId) return { error: "Missing pull-out reference" };
@@ -696,7 +670,7 @@ export async function uploadPulloutAttachmentAction(formData: FormData) {
 }
 
 export async function approvePulloutLineAction(id: string, serialNumberId: string) {
-  const session = await requireAnyPermission([...TL_PERMISSIONS]);
+  const session = await requireAnyPermission([...PULLOUT_APPROVE_PERMISSIONS]);
   try {
     await pulloutPostingService.approveLine(postingActor(session), id, serialNumberId);
     revalidatePullout(id);
@@ -707,7 +681,7 @@ export async function approvePulloutLineAction(id: string, serialNumberId: strin
 }
 
 export async function deletePulloutLineAction(id: string, serialNumberId: string) {
-  const session = await requireAnyPermission([...TL_PERMISSIONS]);
+  const session = await requireAnyPermission([...PULLOUT_APPROVE_PERMISSIONS]);
   try {
     await pulloutPostingService.deleteLine(postingActor(session), id, serialNumberId);
     revalidatePullout(id);
@@ -718,7 +692,7 @@ export async function deletePulloutLineAction(id: string, serialNumberId: string
 }
 
 export async function approvePulloutTlAction(id: string) {
-  const session = await requireAnyPermission([...TL_PERMISSIONS]);
+  const session = await requireAnyPermission([...PULLOUT_APPROVE_PERMISSIONS]);
   try {
     await pulloutPostingService.approve(postingActor(session), id);
     revalidatePullout(id);
@@ -729,7 +703,7 @@ export async function approvePulloutTlAction(id: string) {
 }
 
 export async function rejectPulloutAction(id: string) {
-  const session = await requireAnyPermission([...TL_PERMISSIONS]);
+  const session = await requireAnyPermission([...PULLOUT_APPROVE_PERMISSIONS]);
   try {
     await pulloutPostingService.reject(postingActor(session), id);
     revalidatePullout(id);
@@ -740,7 +714,7 @@ export async function rejectPulloutAction(id: string) {
 }
 
 export async function schedulePulloutAction(id: string) {
-  const session = await requirePermission(LOGISTICS_MANAGE);
+  const session = await requireAnyPermission([...PULLOUT_MANAGE_GATES]);
   try {
     await pulloutPostingService.updateList(postingActor(session), { pulloutId: id });
     revalidatePullout(id);
@@ -750,22 +724,12 @@ export async function schedulePulloutAction(id: string) {
   }
 }
 
-/** Not sent: leave as is. Blank: clear it. */
-function optionalDate(
-  value: string | undefined,
-  parse: (raw: string) => Date | null,
-): Date | null | undefined | "invalid" {
-  if (value === undefined) return undefined;
-  if (!value.trim()) return null;
-  return parse(value) ?? "invalid";
-}
-
 export async function updatePulloutListAction(id: string, input: unknown) {
-  const session = await requirePermission(LOGISTICS_MANAGE);
+  const session = await requireAnyPermission([...PULLOUT_MANAGE_GATES]);
   const parsed = pulloutListSchema.safeParse(input);
   if (!parsed.success) return { error: "Choose the serials on this list" };
-  const scheduledAt = optionalDate(parsed.data.scheduledAt, parseManilaDateTime);
-  const actualScheduledDate = optionalDate(parsed.data.actualPulloutDate, parseScheduleDate);
+  const scheduledAt = optionalFormDate(parsed.data.scheduledAt, parseManilaDateTime);
+  const actualScheduledDate = optionalFormDate(parsed.data.actualPulloutDate, parseScheduleDate);
   if (scheduledAt === "invalid" || actualScheduledDate === "invalid") {
     return { error: "Enter a valid schedule and actual pull-out date" };
   }
@@ -788,7 +752,7 @@ export async function updatePulloutListAction(id: string, input: unknown) {
 }
 
 export async function releasePulloutAction(id: string) {
-  const session = await requirePermission(LOGISTICS_MANAGE);
+  const session = await requireAnyPermission([...PULLOUT_MANAGE_GATES]);
   try {
     await pulloutPostingService.finalize(postingActor(session), id);
     revalidatePullout(id);
@@ -803,7 +767,7 @@ export async function releasePulloutAction(id: string) {
  * links the units and marks them Pulled out, then follows any DR that redelivered them.
  */
 export async function checkPulloutSapAction(id: string) {
-  const session = await requirePermission(LOGISTICS_MANAGE);
+  const session = await requireAnyPermission([...PULLOUT_MANAGE_GATES]);
   if (!id) return { error: "Choose a pull-out" };
   try {
     const result = await checkPulloutInSap(postingActor(session), id);
@@ -817,7 +781,10 @@ export async function checkPulloutSapAction(id: string) {
 
 /** Branches for the create forms: only the person's area-of-responsibility branches, all when they have none. */
 export async function listBranchesForLogisticsAction() {
-  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
+  const session = await requireAnyPermission([
+    ...TRANSFER_PAGE_CREATE_PERMISSIONS,
+    ...PULLOUT_FORM_GATES,
+  ]);
   const scope = await resolveCreateBranchScope(session.user.tenantId, session.user.id);
   return prisma.branch.findMany({
     where: {
@@ -831,7 +798,10 @@ export async function listBranchesForLogisticsAction() {
 }
 
 export async function listWarehousesForLogisticsAction() {
-  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
+  const session = await requireAnyPermission([
+    ...TRANSFER_PAGE_CREATE_PERMISSIONS,
+    ...PULLOUT_FORM_GATES,
+  ]);
   return prisma.warehouse.findMany({
     where: { tenantId: session.user.tenantId, deletedAt: null },
     orderBy: { name: "asc" },
@@ -840,7 +810,7 @@ export async function listWarehousesForLogisticsAction() {
 }
 
 export async function listPulloutReasonCodesAction() {
-  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
+  const session = await requireAnyPermission([...PULLOUT_FORM_GATES]);
   return reasonStatusService.listActiveCodes(session.user.tenantId, "pullout_reason");
 }
 

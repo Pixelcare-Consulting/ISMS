@@ -19,6 +19,8 @@ import {
   sellableStkDefectReportsFilter,
 } from "@/features/inventory/services/inventory-sellable-guards";
 import { statusUpdatedStamp } from "@/features/inventory/lib/status-updated-stamp";
+import { inventoryRepository } from "@/features/inventory/repositories/inventory.repository";
+import { wholeDaysBetween } from "@/features/inventory/utils/sku-series";
 import {
   markSerialSoldFromStockSource,
   restoreSerialToStockSource,
@@ -32,7 +34,6 @@ import {
   assertSaleSerialLinkRecord,
   claimToFollowSaleLine,
 } from "@/features/sales/services/sale-serial-link";
-import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import {
   querySaleableSerials,
@@ -41,6 +42,15 @@ import {
 } from "@/features/sales/lib/saleable-serial-query";
 import { salesRepository } from "@/features/sales/repositories/sales.repository";
 import { salesKpiService } from "@/features/sales/services/sales-kpi.service";
+import { toSaleDetailsPayload } from "@/features/sales/services/sale-details-payload";
+import {
+  saleLineModelText,
+  serialModelText,
+} from "@/features/sales/utils/replacement-unit-label";
+import {
+  listSalesLines,
+  type SalesLineReader,
+} from "@/features/sales/services/sales-list.service";
 import type {
   SalesListSort,
   SalesListSortDir,
@@ -55,12 +65,55 @@ import {
   isDealerInitiatedDocumentTypeName,
   isServiceDocumentTypeName,
 } from "@/features/sales/constants/process-return";
+import {
+  returnHistoryStatusLabel,
+  returnHistoryStatusRef,
+} from "@/features/sales/constants/return-history-status";
+import {
+  loadSalesAtrCodesByCode,
+  resolveSalesAtrStatusCode,
+} from "@/features/sales/utils/resolve-line-status";
 import { generateAndStoreAtrOdrfPdf } from "@/features/sales/services/atr-odrf-pdf";
+import {
+  loadProcessReturnLookups,
+  processReturnPayloadSchema,
+  type ProcessReturnLookups,
+  type ProcessReturnPayload,
+} from "@/features/sales/services/process-return-input";
+import { nextReplacementNo } from "@/features/sales/services/replacement-no";
+import {
+  holdCodeId,
+  loadReturnReserveCodeIds,
+  markSoldSerialReserved,
+  restoreSerialAfterReturnReject,
+  returnRequestHistoryDetails,
+} from "@/features/sales/services/return-unit-hold";
+import {
+  assertSaleHeaderLookups,
+  assertSaleLookups,
+  DUPLICATE_SALE_SERIAL_ERROR,
+  hasDuplicateSaleSerials,
+  isSaleReserved,
+  priceSaleDetails,
+  realSaleSerialIds,
+  resolveLineDeliveryEdit,
+  resolveReservedToggle,
+  resolveSaleEncodeStatusCodes,
+  saleDetailRowData,
+  saleDetailSchema,
+  saleHeaderCreateData,
+  saleHeaderFieldsSchema,
+  saleHeaderUpdateData,
+  toDateInputValue,
+  updateSaleSerialSchema,
+} from "@/features/sales/services/sale-encode";
 import {
   SALES_ACCESS_PERMISSIONS,
   SALES_CREATE,
   SALES_LIST_PERMISSIONS,
   SALES_LOOKUP_PERMISSIONS,
+  SALE_ENCODE_PERMISSIONS,
+  SALE_MASTER_LOOKUP_PERMISSIONS,
   SALES_RETURN_APPROVE,
   SALES_RETURN_COMPLETE,
   SALES_RETURN_EVALUATE,
@@ -81,12 +134,13 @@ import {
 import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
 import { saleHasOfficialSoldLine } from "@/features/sales/utils/sale-header-edit";
 import { isSaleTransactionNo } from "@/features/sales/utils/sale-transaction-no";
+import { resolveSaleTransactionDate } from "@/features/sales/utils/transaction-date";
 import {
   resolveModelPriceForSales,
   type ResolvedModelPrice,
 } from "@/features/sales/services/model-price";
 import {
-  parseSaleProofPaths,
+  SALE_PROOF_MAX_FILES,
   serializeSaleProofPaths,
 } from "@/features/sales/utils/sale-proof";
 import { hasPermission, requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
@@ -103,222 +157,22 @@ export type {
   ResolvedModelPriceSource,
 } from "@/features/sales/services/model-price";
 
-export type SaleStatusCodeRef = {
-  code: string;
-  name: string;
-  color: string | null;
-};
+export type { SaleStatusCodeRef } from "@/features/sales/utils/resolve-line-status";
 
-const TO_FOLLOW_STATUS_FALLBACK: SaleStatusCodeRef = {
-  code: "FW",
-  name: "TO FOLLOW",
-  color: "orange",
-};
-
-/** Tiny fallbacks when sales_atr Settings codes are missing (unseeded tenant). */
-const SALES_ATR_STATUS_FALLBACK: Record<string, SaleStatusCodeRef> = {
-  pending_cs: { code: "pending_cs", name: "Pending CS", color: "amber" },
-  pending_tl: { code: "pending_tl", name: "Pending TL", color: "amber" },
-  approved: { code: "approved", name: "Approved", color: "emerald" },
-  rejected: { code: "rejected", name: "Rejected", color: "rose" },
-  completed: { code: "completed", name: "Completed", color: "emerald" },
-  open: { code: "open", name: "Open", color: "sky" },
-  reserve: { code: "reserve", name: "Reserve", color: "amber" },
-  closed: { code: "closed", name: "Closed", color: "slate" },
-};
-
-async function resolveToFollowStatusCode(
-  tenantId: string,
-): Promise<SaleStatusCodeRef> {
-  const fw = await reasonStatusRepository.findCodeId(
-    tenantId,
-    "inventory_system",
-    "FW",
-  );
-  if (!fw) return TO_FOLLOW_STATUS_FALLBACK;
-  return { code: fw.code, name: fw.name, color: fw.color };
-}
-
-async function loadSalesAtrCodesByCode(
-  tenantId: string,
-): Promise<Map<string, SaleStatusCodeRef>> {
-  const codes = await reasonStatusRepository.listActiveCodesByCategory(
-    tenantId,
-    "sales_atr",
-    
-  );
-  return new Map(
-    codes.map((row) => [
-      row.code,
-      { code: row.code, name: row.name, color: row.color },
-    ]),
-  );
-}
-
-function resolveSalesAtrStatusCode(
-  code: string,
-  codesByCode: Map<string, SaleStatusCodeRef>,
-): SaleStatusCodeRef {
-  return (
-    codesByCode.get(code) ??
-    SALES_ATR_STATUS_FALLBACK[code] ?? {
-      code,
-      name: code.replaceAll("_", " "),
-      color: "amber",
-    }
-  );
-}
-
-/**
- * List/details STATUS preference (never live inventory):
- * 1) Active ATR return workflow (pending CS/TL/approved/rejected) — details / returns only
- * 2) Closed ATR header
- * 3) Frozen detail.statusCode (FW / SLD / RSV / OFS)
- * 4) Legacy derive from serial + atrStatus
- *
- * Sales list passes returnStatus=null and filters to SLD/OFS/FW so return badges
- * never appear there (see salesListDetailWhere).
- */
-function resolveLineStatusCode(
-  detail: {
-    serialNumberId: string | null;
-    statusCode?: { code: string; name: string; color: string | null } | null;
-  },
-  atrStatus: string,
-  toFollowStatus: SaleStatusCodeRef,
-  salesAtrCodes: Map<string, SaleStatusCodeRef>,
-  returnStatus?: string | null,
-): SaleStatusCodeRef | null {
-  if (returnStatus && returnStatus !== "completed") {
-    return resolveSalesAtrStatusCode(returnStatus, salesAtrCodes);
-  }
-
-  if (atrStatus === "closed") {
-    return resolveSalesAtrStatusCode("closed", salesAtrCodes);
-  }
-
-  if (detail.statusCode) {
-    return {
-      code: detail.statusCode.code,
-      name: detail.statusCode.name,
-      color: detail.statusCode.color,
-    };
-  }
-
-  if (!detail.serialNumberId) {
-    if (atrStatus === "reserve") {
-      return resolveSalesAtrStatusCode("reserve", salesAtrCodes);
-    }
-    return toFollowStatus;
-  }
-  return resolveSalesAtrStatusCode(atrStatus, salesAtrCodes);
-}
-
-const DATE_INPUT_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-
-/**
- * `<input type="date">` value → UTC-midnight Date. Anchoring to UTC keeps the
- * stored day identical to the day the user picked, whatever the server zone is.
- */
-function parseDateInputValue(value: string): Date | null {
-  if (!DATE_INPUT_PATTERN.test(value)) return null;
-  const ms = Date.parse(`${value}T00:00:00.000Z`);
-  return Number.isNaN(ms) ? null : new Date(ms);
-}
-
-/** Inverse of parseDateInputValue, for pre-filling a date input. */
-function toDateInputValue(value: Date | null | undefined): string | null {
-  return value ? value.toISOString().slice(0, 10) : null;
-}
-
-const deliveryNoSchema = z.string().trim().max(100);
-
-/** Blank clears the date; anything else must be a real calendar day. */
-const deliveryDateSchema = z
-  .string()
-  .trim()
-  .refine(
-    (value) => value === "" || parseDateInputValue(value) !== null,
-    "Invalid delivery date",
-  )
-  .transform((value) => (value === "" ? null : parseDateInputValue(value)));
-
-const saleDetailSchema = z.object({
-  packageTypeId: z.string().min(1),
-  brandId: z.string().min(1),
-  promoTypeId: z.string().optional(),
-  modelId: z.string().min(1),
-  // Accept either a real serial id or the TO-FOLLOW placeholder from the UI.
-  serialNumberId: z.string().min(1),
-  // 0 is allowed for free items; negatives are not.
-  saleAmount: z.coerce.number().nonnegative(),
-  modelPrice: z.coerce.number().nonnegative().optional(),
-  deliveryNo: deliveryNoSchema.optional(),
-  deliveryDate: deliveryDateSchema.optional(),
-});
-
-/**
- * Per-line Edit. Delivery fields are omit-to-keep / blank-to-clear, so they
- * land as `undefined` (Prisma skips the column) or `null` (Prisma clears it).
- */
-const updateSaleSerialSchema = z.object({
-  saleId: z.string().min(1),
-  /** When set, only this detail line is updated. */
-  detailId: z.string().min(1).optional(),
-  /** Real serial id, or TO-FOLLOW to clear the linked unit. */
-  serialNumberId: z.string().min(1),
-  deliveryNo: deliveryNoSchema.transform((value) => value || null).optional(),
-  deliveryDate: deliveryDateSchema.optional(),
+/** Branch stock source: the sold branch, or an alternate branch saved on it. */
+const branchStockSourceSchema = z.object({
+  branchId: z.string().min(1),
+  alternateBranchId: z.string().min(1),
 });
 
 /** Header-only edit (Accounting). Does not create/remove sale lines. */
-const updateSaleHeaderSchema = z.object({
+const updateSaleHeaderSchema = saleHeaderFieldsSchema.extend({
+  ...branchStockSourceSchema.shape,
   saleId: z.string().min(1),
-  transactionNo: z
-    .string()
-    .trim()
-    .min(1)
-    .refine(isSaleTransactionNo, "Invalid transaction number"),
-  branchId: z.string().min(1),
-  alternateBranchId: z.string().min(1),
-  customerName: z.string().trim().min(1),
-  contactNo: z.string().trim().max(50).optional(),
-  siTrans: z.string().trim().optional(),
-  paymentTypeId: z.string().min(1),
-  saleTypeId: z.string().min(1),
-  customerDeliveryMethodId: z.string().min(1),
-  infoSlipVsoRrReleased: z.string().trim().optional(),
-  rrReceiveDeliver: z.string().trim().optional(),
-  proof: z
-    .union([z.string().trim().min(1), z.array(z.string().trim().min(1))])
-    .optional(),
-  transactionDate: z.string().optional(),
-  reserved: z.boolean().optional(),
 });
 
-const saleSchema = z.object({
-  transactionNo: z
-    .string()
-    .trim()
-    .min(1)
-    .refine(isSaleTransactionNo, "Invalid transaction number"),
-  branchId: z.string().min(1),
-  alternateBranchId: z.string().min(1),
-  customerName: z.string().trim().min(1),
-  contactNo: z.string().trim().max(50).optional(),
-  /** Optional — defaults to transactionNo when omitted (same value; UI no longer collects it). */
-  siTrans: z.string().trim().optional(),
-  paymentTypeId: z.string().min(1),
-  saleTypeId: z.string().min(1),
-  customerDeliveryMethodId: z.string().min(1),
-  infoSlipVsoRrReleased: z.string().trim().optional(),
-  rrReceiveDeliver: z.string().trim().optional(),
-  // One path, or several (stored as Postgres text[] / Prisma String[]).
-  proof: z
-    .union([z.string().trim().min(1), z.array(z.string().trim().min(1))])
-    .optional(),
-  transactionDate: z.string().optional(),
-  reserved: z.boolean().optional(),
+const saleSchema = saleHeaderFieldsSchema.extend({
+  ...branchStockSourceSchema.shape,
   details: z.array(saleDetailSchema).min(1),
 });
 
@@ -436,9 +290,19 @@ function parseSalesSortDir(value?: string): SalesListSortDir | undefined {
   return undefined;
 }
 
-export async function getSalesKpisAction() {
+export async function getSalesKpisAction(q?: string) {
   const session = await requireAnyPermission([...SALES_LIST_PERMISSIONS]);
-  return salesKpiService.getKpis(session.user.tenantId);
+  return salesKpiService.getKpis(session.user.tenantId, q);
+}
+
+/** Branch sale lines for the shared sales list. */
+function branchSalesLineReader(tenantId: string): SalesLineReader<SalesListSort> {
+  return {
+    listLines: (pagination, sort) =>
+      salesRepository.listDetailsForTenant(tenantId, pagination, sort),
+    listStatusSources: (sort) => salesRepository.listDetailStatusSources(tenantId, sort),
+    listLinesByIds: (ids) => salesRepository.listDetailsByIds(tenantId, ids),
+  };
 }
 
 export async function listSalesAction(input?: {
@@ -446,73 +310,30 @@ export async function listSalesAction(input?: {
   limit?: number;
   sort?: string;
   sortDir?: string;
+  /** Card filter. Same resolved status the table and cards show, via `?status=`. */
+  status?: string;
+  /** Same text as the sales table search box. */
+  q?: string;
 }) {
   const session = await requireAnyPermission([...SALES_LIST_PERMISSIONS]);
-  const [result, toFollowStatus, salesAtrCodes] = await Promise.all([
-    salesRepository.listDetailsForTenant(
-      session.user.tenantId,
-      {
-        page: input?.page,
-        limit: parseTablePageSize(input?.limit),
-      },
-      { field: parseSalesSort(input?.sort), dir: parseSalesSortDir(input?.sortDir) },
-    ),
-    resolveToFollowStatusCode(session.user.tenantId),
-    loadSalesAtrCodesByCode(session.user.tenantId),
-  ]);
-
-  return {
-    ...result,
-    items: result.items.map((detail) => {
-      const sale = detail.sale;
-      const lineAmount = detail.saleAmount ?? detail.amount;
-      const modelPrice = detail.modelPrice;
-      return {
-        // Row identity is the detail line (one serial / TO-FOLLOW per row).
-        id: detail.id,
-        detailId: detail.id,
-        saleId: sale.id,
-        transactionNo: sale.transactionNo,
-        transactionDate: sale.transactionDate
-          ? sale.transactionDate.toISOString()
-          : null,
-        customerName: sale.customerName,
-        packageName: detail.packageType?.name ?? null,
-        brandName: detail.brand?.name ?? null,
-        modelLabel: detail.model
-          ? detail.model.skuCode || detail.model.name
-          : null,
-        saleAmount: (lineAmount ?? 0).toString(),
-        modelPrice: modelPrice != null ? modelPrice.toString() : null,
-        atrStatus: sale.atrStatus,
-        // Stock source drives edit-serial inventory picks; fall back to sold branch.
-        branchId: sale.alternateBranchId ?? sale.branchId,
-        branch: sale.branch,
-        alternateBranch: sale.stockSourceBranch ?? sale.branch,
-        serialNumberId: detail.serialNumberId,
-        serialNumber: detail.serialNumber
-          ? { id: detail.serialNumber.id, serialNo: detail.serialNumber.serialNo }
-          : null,
-        // Sales list never overlays return workflow badges (those live on Returns).
-        statusCode: resolveLineStatusCode(
-          detail,
-          sale.atrStatus,
-          toFollowStatus,
-          salesAtrCodes,
-          null,
-        ),
-        returnRequest: sale.returnRequest
-          ? { id: sale.returnRequest.id, status: sale.returnRequest.status }
-          : null,
-      };
-    }),
-  };
+  const tenantId = session.user.tenantId;
+  return listSalesLines(branchSalesLineReader(tenantId), {
+    tenantId,
+    page: input?.page,
+    limit: parseTablePageSize(input?.limit),
+    sort: {
+      field: parseSalesSort(input?.sort),
+      dir: parseSalesSortDir(input?.sortDir),
+    },
+    status: input?.status,
+    q: input?.q,
+  });
 }
 
 /**
  * Branch returns list: one row per BranchReturnRequest with ATR / return status badges.
- * Branch tab: `returns.branch.view` / umbrella / legacy (non-service Document Types).
- * Service tab: `returns.service.view` / umbrella (Service Return / Replacement Document Types).
+ * Branch tab (`all`): `returns.branch.view` / umbrella / legacy, every Document Type.
+ * `branch` / `service` narrow to non-service or Service Return / Replacement Document Types.
  * Approvals queue (`statusIn`): evaluate / approve / complete (no separate approvals.view).
  */
 export async function listSalesReturnsAction(input?: {
@@ -521,12 +342,12 @@ export async function listSalesReturnsAction(input?: {
   sort?: string;
   sortDir?: string;
   statusIn?: Array<"pending_cs" | "pending_tl" | "approved" | "rejected" | "completed">;
-  documentTypeScope?: "branch" | "service";
+  documentTypeScope?: "branch" | "service" | "all";
 }) {
   const forApprovalsQueue = Boolean(input?.statusIn?.length);
-  const documentTypeScope = forApprovalsQueue
-    ? undefined
-    : (input?.documentTypeScope ?? "branch");
+  const requestedScope = input?.documentTypeScope ?? "branch";
+  const documentTypeScope =
+    forApprovalsQueue || requestedScope === "all" ? undefined : requestedScope;
   const listPermissions = forApprovalsQueue
     ? [...RETURNS_APPROVALS_VIEW_PERMISSIONS]
     : documentTypeScope === "service"
@@ -561,19 +382,34 @@ export async function listSalesReturnsAction(input?: {
         : null;
       const displayDetail = linkedDetail ?? sale.details[0];
       const replacement = sale.replacements[0] ?? null;
-      const origModelLabel = displayDetail?.model
-        ? [displayDetail.model.skuCode, displayDetail.model.name]
-            .filter(Boolean)
-            .join(" · ")
+      const replacementFinished =
+        row.status === "completed" && (row.actionType ?? "return") === "replacement";
+      const finishedOriginal = replacementFinished
+        ? replacement?.originalSerialNumber ?? null
         : null;
-      const origSerialNo = displayDetail?.serialNumber?.serialNo ?? null;
-      const origSerialNos = linkedDetail
-        ? origSerialNo
-          ? [origSerialNo]
-          : []
-        : sale.details
-            .map((d) => d.serialNumber?.serialNo)
-            .filter((v): v is string => Boolean(v));
+      const finishedNew = replacementFinished
+        ? replacement?.replacementSerialNumber ?? null
+        : null;
+      const saleLineSerial = displayDetail?.serialNumber?.serialNo ?? null;
+      const origModelLabel = replacementFinished
+        ? serialModelText(finishedOriginal)
+        : saleLineModelText({
+            brandName: displayDetail?.brand?.name,
+            model: displayDetail?.model,
+          });
+      const origSerialNo = replacementFinished
+        ? finishedOriginal?.serialNo ?? null
+        : saleLineSerial;
+      const newModelLabel = replacementFinished ? serialModelText(finishedNew) : null;
+      const newSerialNo = replacementFinished ? finishedNew?.serialNo ?? null : null;
+      const origSerialNos =
+        replacementFinished || linkedDetail
+          ? origSerialNo
+            ? [origSerialNo]
+            : []
+          : sale.details
+              .map((d) => d.serialNumber?.serialNo)
+              .filter((v): v is string => Boolean(v));
       const origPrice =
         displayDetail?.modelPrice?.toString() ??
         displayDetail?.saleAmount?.toString() ??
@@ -592,7 +428,9 @@ export async function listSalesReturnsAction(input?: {
         atrStatus: sale.atrStatus,
         atrStatusCode: resolveSalesAtrStatusCode(sale.atrStatus, salesAtrCodes),
         returnStatus: row.status,
-        returnStatusCode: resolveSalesAtrStatusCode(row.status, salesAtrCodes),
+        returnStatusCode:
+          returnHistoryStatusRef(row.status, row.documentType?.name, row.actionType) ??
+          resolveSalesAtrStatusCode(row.status, salesAtrCodes),
         actionType: row.actionType ?? "return",
         stockStatusCode: row.stockStatusCode ?? "STK",
         documentTypeName: row.documentType?.name ?? null,
@@ -604,11 +442,14 @@ export async function listSalesReturnsAction(input?: {
           : null,
         atrOdrfPdfPath: row.atrOdrfPdfPath,
         hasAtrOdrfPdf: Boolean(row.atrOdrfPdfPath),
+        saleDetailId: row.saleDetailId,
         origModelLabel,
         origSerialNo: origSerialNo ?? origSerialNos[0] ?? null,
         origSerialNos,
         origPrice,
-        replSerialNo: replacement?.replacementSerialNumber?.serialNo ?? null,
+        newModelLabel,
+        newSerialNo,
+        replSerialNo: newSerialNo,
         replBranchName: replacement?.replacementBranch?.name ?? null,
         replAmount: replacement?.replacementAmount?.toString() ?? null,
         replInvoiceNo: replacement?.replacementInvoiceNo ?? null,
@@ -619,107 +460,31 @@ export async function listSalesReturnsAction(input?: {
   };
 }
 
-export async function getSaleDetailsAction(saleId: string) {
-  const session = await requireAnyPermission([...SALES_ACCESS_PERMISSIONS]);
-  const [sale, toFollowStatus, salesAtrCodes] = await Promise.all([
-    salesRepository.findSaleDetailsForTenant(session.user.tenantId, saleId),
-    resolveToFollowStatusCode(session.user.tenantId),
-    loadSalesAtrCodesByCode(session.user.tenantId),
-  ]);
+/** Who may finish an approved replacement (Same Invoice or New Invoice). */
+const REPLACEMENT_COMPLETE_PERMISSIONS = [
+  RETURNS_COMPLETE,
+  SALES_RETURN_COMPLETE,
+  "logistics.manage",
+  SALES_CREATE,
+] as const;
 
+export async function getSaleDetailsAction(saleId: string) {
+  const session = await requireAnyPermission([
+    ...SALES_ACCESS_PERMISSIONS,
+    ...REPLACEMENT_COMPLETE_PERMISSIONS,
+  ]);
+  const sale = await salesRepository.findSaleDetailsForTenant(
+    session.user.tenantId,
+    saleId,
+  );
   if (!sale) {
     return { error: "Sale not found" as const };
   }
-
-  const proofPaths = parseSaleProofPaths(sale.proof);
-  const atrStatusCode = resolveSalesAtrStatusCode(sale.atrStatus, salesAtrCodes);
-  const returnStatusCode = sale.returnRequest
-    ? resolveSalesAtrStatusCode(sale.returnRequest.status, salesAtrCodes)
-    : null;
-
-  const realSerialDetails = sale.details.filter((d) => d.serialNumberId);
-  const reserved =
-    realSerialDetails.length > 0 &&
-    realSerialDetails.every((d) => d.statusCode?.code === "RSV");
-
-  return {
-    id: sale.id,
-    transactionNo: sale.transactionNo,
-    transactionDate: sale.transactionDate
-      ? sale.transactionDate.toISOString()
-      : null,
-    /** YYYY-MM-DD for header edit date input. */
-    transactionDateInput: toDateInputValue(sale.transactionDate),
-    customerName: sale.customerName,
-    contactNo: sale.contactNo,
-    siTrans: sale.siTrans,
-    infoSlipVsoRrReleased: sale.infoSlipVsoRrReleased,
-    rrReceiveDeliver: sale.rrReceiveDeliver,
-    atrStatus: sale.atrStatus,
-    atrStatusCode,
-    notes: sale.notes,
-    proofPaths,
-    proofCount: proofPaths.length,
-    amount: sale.amount.toString(),
-    reserved,
-    /** Stock-source branch used when editing serials (matches list row branchId). */
-    stockBranchId: sale.stockSourceBranch?.id ?? sale.branch.id,
-    branchId: sale.branchId,
-    alternateBranchId: sale.alternateBranchId ?? sale.branchId,
-    paymentTypeId: sale.paymentTypeId,
-    saleTypeId: sale.saleTypeId,
-    customerDeliveryMethodId: sale.customerDeliveryMethodId,
-    branch: sale.branch,
-    stockSourceBranch: sale.stockSourceBranch,
-    paymentType: sale.paymentType,
-    saleType: sale.saleType,
-    customerDeliveryMethod: sale.customerDeliveryMethod,
-    returnRequest: sale.returnRequest
-      ? {
-          id: sale.returnRequest.id,
-          status: sale.returnRequest.status,
-          actionType: sale.returnRequest.actionType ?? "return",
-          stockStatusCode: sale.returnRequest.stockStatusCode ?? "STK",
-          hasAtrOdrfPdf: Boolean(sale.returnRequest.atrOdrfPdfPath),
-          documentTypeName: sale.returnRequest.documentType?.name ?? null,
-        }
-      : null,
-    returnStatusCode,
-    createdByName: sale.createdBy?.name ?? sale.createdBy?.email ?? null,
-    lines: sale.details.map((detail) => {
-      const lineAmount = detail.saleAmount ?? detail.amount;
-      return {
-        detailId: detail.id,
-        packageName: detail.packageType?.name ?? null,
-        brandName: detail.brand?.name ?? null,
-        modelId: detail.modelId ?? detail.model?.id ?? null,
-        modelLabel: detail.model
-          ? detail.model.skuCode?.trim() ||
-            detail.model.name?.trim() ||
-            null
-          : null,
-        serialNumberId: detail.serialNumberId,
-        serialNo: detail.serialNumber?.serialNo ?? TO_FOLLOW_SERIAL_LABEL,
-        saleAmount: (lineAmount ?? 0).toString(),
-        modelPrice:
-          detail.modelPrice != null ? detail.modelPrice.toString() : null,
-        deliveryNo: detail.deliveryNo,
-        // YYYY-MM-DD so <input type="date"> round-trips without timezone drift.
-        deliveryDate: toDateInputValue(detail.deliveryDate),
-        statusCode: resolveLineStatusCode(
-          detail,
-          sale.atrStatus,
-          toFollowStatus,
-          salesAtrCodes,
-          sale.returnRequest?.status,
-        ),
-      };
-    }),
-  };
+  return toSaleDetailsPayload(session.user.tenantId, sale);
 }
 
 export async function listPackageTypesForSalesAction() {
-  const session = await requireAnyPermission([...SALES_LOOKUP_PERMISSIONS]);
+  const session = await requireAnyPermission([...SALE_MASTER_LOOKUP_PERMISSIONS]);
   const rows = await prisma.packageType.findMany({
     where: { tenantId: session.user.tenantId, recordStatus: "active" },
     select: { id: true, name: true, quantity: true },
@@ -729,7 +494,10 @@ export async function listPackageTypesForSalesAction() {
 }
 
 export async function listPaymentTypesForSalesAction() {
-  const session = await requireAnyPermission([...SALES_LOOKUP_PERMISSIONS]);
+  const session = await requireAnyPermission([
+    ...SALE_MASTER_LOOKUP_PERMISSIONS,
+    ...REPLACEMENT_COMPLETE_PERMISSIONS,
+  ]);
   return prisma.paymentType.findMany({
     where: { tenantId: session.user.tenantId, recordStatus: "active" },
     select: { id: true, name: true },
@@ -738,7 +506,10 @@ export async function listPaymentTypesForSalesAction() {
 }
 
 export async function listSaleTypesForSalesAction() {
-  const session = await requireAnyPermission([...SALES_LOOKUP_PERMISSIONS]);
+  const session = await requireAnyPermission([
+    ...SALE_MASTER_LOOKUP_PERMISSIONS,
+    ...REPLACEMENT_COMPLETE_PERMISSIONS,
+  ]);
   return prisma.saleType.findMany({
     where: { tenantId: session.user.tenantId, recordStatus: "active" },
     select: { id: true, name: true },
@@ -747,7 +518,10 @@ export async function listSaleTypesForSalesAction() {
 }
 
 export async function listCustomerDeliveryMethodsForSalesAction() {
-  const session = await requireAnyPermission([...SALES_LOOKUP_PERMISSIONS]);
+  const session = await requireAnyPermission([
+    ...SALE_MASTER_LOOKUP_PERMISSIONS,
+    ...REPLACEMENT_COMPLETE_PERMISSIONS,
+  ]);
   return prisma.customerDeliveryMethod.findMany({
     where: { tenantId: session.user.tenantId, recordStatus: "active" },
     select: { id: true, name: true },
@@ -756,7 +530,7 @@ export async function listCustomerDeliveryMethodsForSalesAction() {
 }
 
 export async function listPromoTypesForSalesAction() {
-  const session = await requireAnyPermission([...SALES_LOOKUP_PERMISSIONS]);
+  const session = await requireAnyPermission([...SALE_MASTER_LOOKUP_PERMISSIONS]);
   return prisma.promoType.findMany({
     where: { tenantId: session.user.tenantId, recordStatus: "active" },
     select: { id: true, name: true },
@@ -765,7 +539,7 @@ export async function listPromoTypesForSalesAction() {
 }
 
 export async function listBrandsForSalesAction() {
-  const session = await requireAnyPermission([...SALES_LOOKUP_PERMISSIONS]);
+  const session = await requireAnyPermission([...SALE_MASTER_LOOKUP_PERMISSIONS]);
   return prisma.brand.findMany({
     where: { tenantId: session.user.tenantId },
     select: { id: true, name: true },
@@ -878,7 +652,7 @@ export async function listStockSourceBranchesForSalesAction(branchId: string) {
 }
 
 export async function listModelsForSalesAction(brandId?: string) {
-  const session = await requireAnyPermission([...SALES_LOOKUP_PERMISSIONS]);
+  const session = await requireAnyPermission([...SALE_MASTER_LOOKUP_PERMISSIONS]);
   const rows = await prisma.productModel.findMany({
     where: {
       tenantId: session.user.tenantId,
@@ -907,7 +681,7 @@ export async function resolveModelPriceForSalesAction(input: {
   /** YYYY-MM-DD (or ISO); price list window uses this calendar day. */
   transactionDate?: string;
 }): Promise<ResolvedModelPrice | null> {
-  const session = await requirePermission("sales.create");
+  const session = await requireAnyPermission([...SALE_ENCODE_PERMISSIONS]);
   const asOf = input.transactionDate
     ? new Date(input.transactionDate)
     : new Date();
@@ -964,8 +738,118 @@ export async function listSaleableSerialsAction(
   });
 }
 
+/** Sellable units older than this many whole days count as aged. */
+const MODEL_AGING_DR_DAYS = 30;
+const MODEL_AGING_LOOKUP_CHUNK = 500;
+
+/** One sellable serial that is over the aging threshold. */
+export type AgingSellableSerial = {
+  id: string;
+  ageDays: number;
+  /** True when age is counted from a delivery-receipt date. */
+  fromDrDate: boolean;
+};
+
+function emptyAgingSellableStock(): {
+  count: number;
+  serials: AgingSellableSerial[];
+} {
+  return { count: 0, serials: [] };
+}
+
+/** Sellable rows older than 30 whole days, aged from the delivery receipt or the day added. */
+async function agedSellableSerials(
+  tenantId: string,
+  rows: readonly { serialNumberId: string; createdAt: Date }[],
+): Promise<AgingSellableSerial[]> {
+  const addedAtBySerial = new Map<string, Date>();
+  for (const row of rows) {
+    const current = addedAtBySerial.get(row.serialNumberId);
+    if (!current || row.createdAt.getTime() < current.getTime()) {
+      addedAtBySerial.set(row.serialNumberId, row.createdAt);
+    }
+  }
+
+  const serialNumberIds = [...addedAtBySerial.keys()];
+  if (serialNumberIds.length === 0) return [];
+
+  const serials: AgingSellableSerial[] = [];
+  for (let i = 0; i < serialNumberIds.length; i += MODEL_AGING_LOOKUP_CHUNK) {
+    const chunk = serialNumberIds.slice(i, i + MODEL_AGING_LOOKUP_CHUNK);
+    const deliveries = await inventoryRepository.findLatestDeliveryReceipts(
+      tenantId,
+      chunk,
+    );
+    const deliveryBySerial = new Map(
+      deliveries.map((receipt) => [receipt.serialNumberId, receipt] as const),
+    );
+    for (const serialNumberId of chunk) {
+      const deliveryDate =
+        deliveryBySerial.get(serialNumberId)?.deliveryDate ?? null;
+      const fromDrDate = deliveryDate != null;
+      const agingAnchor = fromDrDate
+        ? deliveryDate
+        : addedAtBySerial.get(serialNumberId);
+      if (!agingAnchor) continue;
+      const ageDays = wholeDaysBetween(agingAnchor);
+      if (ageDays > MODEL_AGING_DR_DAYS) {
+        serials.push({ id: serialNumberId, ageDays, fromDrDate });
+      }
+    }
+  }
+
+  return serials;
+}
+
+/**
+ * Sellable STK serials of one model at the stock source that are over 30 days
+ * old. Age is the delivery-receipt date, or the day the unit was added
+ * (`createdAt`) when that date is blank — the same anchor Branch Inventory
+ * shows. A serial with no DR date still counts once that fallback age is over
+ * 30 days. `serials` lists each aged unit so the line form can mark it.
+ */
+export async function countAgingSellableStockAction(input: {
+  branchId: string;
+  modelId: string;
+}): Promise<{ count: number; serials: AgingSellableSerial[] }> {
+  const session = await requirePermission("sales.create");
+  const branchId = input.branchId.trim();
+  const modelId = input.modelId.trim();
+  if (!branchId || !modelId) return emptyAgingSellableStock();
+
+  await assertStockLocationReadable(
+    session.user.tenantId,
+    session.user.id,
+    branchId,
+    session.user.permissions,
+  );
+
+  const stkCodeId = await reasonStatusService.requireCodeId(
+    session.user.tenantId,
+    "inventory_system",
+    "STK",
+  );
+
+  const rows = await prisma.branchInventory.findMany({
+    where: {
+      tenantId: session.user.tenantId,
+      branchId,
+      statusCodeId: stkCodeId,
+      defectReports: sellableStkDefectReportsFilter,
+      serialNumber: { modelId },
+    },
+    select: { serialNumberId: true, createdAt: true },
+  });
+
+  const serials = await agedSellableSerials(session.user.tenantId, rows);
+  return { count: serials.length, serials };
+}
+
 export async function uploadSaleProofAction(formData: FormData) {
-  const session = await requireAnyPermission([...SALES_LOOKUP_PERMISSIONS]);
+  const session = await requireAnyPermission([
+    ...SALE_MASTER_LOOKUP_PERMISSIONS,
+    ...REPLACEMENT_COMPLETE_PERMISSIONS,
+  ]);
   try {
     const files = formData
       .getAll("proof")
@@ -1005,16 +889,17 @@ export async function createSaleAction(input: unknown) {
   const session = await requirePermission("sales.create");
   const parsed = saleSchema.safeParse(input);
   if (!parsed.success) return { error: "Invalid sale" };
+  const tenantId = session.user.tenantId;
 
   try {
     await assertBranchInAor(
-      session.user.tenantId,
+      tenantId,
       session.user.id,
       parsed.data.branchId,
       session.user.permissions,
     );
     await assertValidStockSource(
-      session.user.tenantId,
+      tenantId,
       parsed.data.branchId,
       parsed.data.alternateBranchId,
     );
@@ -1022,41 +907,20 @@ export async function createSaleAction(input: unknown) {
     return { error: e instanceof Error ? e.message : "Access denied" };
   }
 
-  let transactionDate: Date | null = null;
-  if (parsed.data.transactionDate) {
-    const d = new Date(parsed.data.transactionDate);
-    if (Number.isNaN(d.getTime())) {
-      return { error: "Invalid transaction date" };
-    }
-    transactionDate = d;
-  }
+  const resolvedDate = resolveSaleTransactionDate(parsed.data.transactionDate);
+  if ("error" in resolvedDate) return { error: resolvedDate.error };
+  const transactionDate = resolvedDate.date;
 
-  // Re-resolve model prices from master lists so clients cannot override.
-  const details = await Promise.all(
-    parsed.data.details.map(async (detail) => {
-      const resolved = await resolveModelPriceForSales(
-        session.user.tenantId,
-        detail.modelId,
-        detail.packageTypeId,
-        transactionDate ?? undefined,
-      );
-      return {
-        ...detail,
-        modelPrice: resolved?.amount ?? 0,
-      };
-    }),
-  );
+  const details = await priceSaleDetails(tenantId, parsed.data.details, transactionDate);
   // TO-FOLLOW is not a stock unit — only real ids must be unique in one sale.
-  const realSerialIds = details
-    .map((d) => d.serialNumberId)
-    .filter((id) => !isToFollowSerial(id));
-  if (new Set(realSerialIds).size !== realSerialIds.length) {
-    return { error: "Duplicate serials in the same transaction are not allowed" };
+  const realSerialIds = realSaleSerialIds(details);
+  if (hasDuplicateSaleSerials(realSerialIds)) {
+    return { error: DUPLICATE_SALE_SERIAL_ERROR };
   }
 
   const taken = await prisma.branchSalesTransaction.findFirst({
     where: {
-      tenantId: session.user.tenantId,
+      tenantId,
       branchId: parsed.data.branchId,
       transactionNo: parsed.data.transactionNo,
     },
@@ -1069,41 +933,20 @@ export async function createSaleAction(input: unknown) {
     };
   }
 
-  const transactionNo = parsed.data.transactionNo;
-  const amount = details.reduce((sum, d) => sum + d.saleAmount, 0);
-  const modelPriceRollup = details.find((d) => d.modelPrice != null)?.modelPrice;
   const stockBranchId = parsed.data.alternateBranchId;
-
-  // Skip inventory status lookups when every line is TO-FOLLOW (no inventory move).
-  const hasRealSerials = realSerialIds.length > 0;
   const hasToFollow = details.some((d) => isToFollowSerial(d.serialNumberId));
-  const stkCodeId = hasRealSerials
-    ? await reasonStatusService.requireCodeId(
-        session.user.tenantId,
-        "inventory_system",
-        "STK",
-      )
-    : null;
-  const targetStatusCodeId = hasRealSerials
-    ? await reasonStatusService.requireCodeId(
-        session.user.tenantId,
-        "inventory_system",
-        parsed.data.reserved ? "RSV" : "SLD",
-      )
-    : null;
-  const fwCodeRow = hasToFollow
-    ? await reasonStatusRepository.findCodeId(
-        session.user.tenantId,
-        "inventory_system",
-        "FW",
-      )
-    : null;
-  const fwCodeId = fwCodeRow?.id ?? null;
+  // Skip inventory status lookups when every line is TO-FOLLOW (no inventory move).
+  const { stkCodeId, targetStatusCodeId, fwCodeId } =
+    await resolveSaleEncodeStatusCodes(tenantId, {
+      hasRealSerials: realSerialIds.length > 0,
+      hasToFollow,
+      reserved: Boolean(parsed.data.reserved),
+    });
 
-  if (hasRealSerials && stkCodeId) {
+  if (stkCodeId) {
     try {
       await assertSerialsSellableForSale(
-        session.user.tenantId,
+        tenantId,
         details
           .filter((detail) => !isToFollowSerial(detail.serialNumberId))
           .map((detail) => ({
@@ -1123,73 +966,12 @@ export async function createSaleAction(input: unknown) {
   let row;
   try {
     row = await prisma.$transaction(async (tx) => {
-      const packageIds = [...new Set(details.map((d) => d.packageTypeId))];
-      const brandIds = [...new Set(details.map((d) => d.brandId))];
-      const promoIds = [
-        ...new Set(
-          details
-            .map((d) => d.promoTypeId)
-            .filter((id): id is string => Boolean(id)),
-        ),
-      ];
-
-      const [pkgs, brands, promos, payment, saleType, delivery] = await Promise.all([
-        tx.packageType.findMany({
-          where: {
-            id: { in: packageIds },
-            tenantId: session.user.tenantId,
-            recordStatus: "active",
-          },
-          select: { id: true },
-        }),
-        tx.brand.findMany({
-          where: { id: { in: brandIds }, tenantId: session.user.tenantId },
-          select: { id: true },
-        }),
-        promoIds.length
-          ? tx.promoType.findMany({
-              where: {
-                id: { in: promoIds },
-                tenantId: session.user.tenantId,
-                recordStatus: "active",
-              },
-              select: { id: true },
-            })
-          : Promise.resolve([]),
-        tx.paymentType.findFirst({
-          where: {
-            id: parsed.data.paymentTypeId,
-            tenantId: session.user.tenantId,
-            recordStatus: "active",
-          },
-          select: { id: true },
-        }),
-        tx.saleType.findFirst({
-          where: {
-            id: parsed.data.saleTypeId,
-            tenantId: session.user.tenantId,
-            recordStatus: "active",
-          },
-          select: { id: true },
-        }),
-        tx.customerDeliveryMethod.findFirst({
-          where: {
-            id: parsed.data.customerDeliveryMethodId,
-            tenantId: session.user.tenantId,
-            recordStatus: "active",
-          },
-          select: { id: true, name: true },
-        }),
-      ]);
-
-      if (pkgs.length !== packageIds.length) throw new Error("Package type not found");
-      if (brands.length !== brandIds.length) throw new Error("Brand not found");
-      if (promoIds.length && promos.length !== promoIds.length) {
-        throw new Error("Promo type not found");
-      }
-      if (!payment) throw new Error("Payment type not found");
-      if (!saleType) throw new Error("Sale type not found");
-      if (!delivery) throw new Error("Customer delivery method not found");
+      const { deliveryMethodName } = await assertSaleLookups(
+        tx,
+        tenantId,
+        parsed.data,
+        details,
+      );
 
       const realDetails = details.filter((detail) => !isToFollowSerial(detail.serialNumberId));
       if (realDetails.length > 0) {
@@ -1199,7 +981,7 @@ export async function createSaleAction(input: unknown) {
         );
         for (const detail of realDetails) {
           await assertSaleSerialLinkRecord(tx, {
-            tenantId: session.user.tenantId,
+            tenantId,
             saleBranchId: parsed.data.branchId,
             stockBranchId,
             detailModelId: detail.modelId,
@@ -1211,96 +993,62 @@ export async function createSaleAction(input: unknown) {
 
       // Pickup sales never produce a delivery receipt — drop anything the
       // client sent rather than trusting the form to have hidden the fields.
-      const keepsDeliveryReceipt = capturesDeliveryReceipt(delivery.name);
+      const keepsDeliveryReceipt = capturesDeliveryReceipt(deliveryMethodName);
 
       const created = await tx.branchSalesTransaction.create({
         data: {
-          tenantId: session.user.tenantId,
+          tenantId,
           branchId: parsed.data.branchId,
           alternateBranchId: stockBranchId,
-          paymentTypeId: parsed.data.paymentTypeId,
-          saleTypeId: parsed.data.saleTypeId,
-          customerDeliveryMethodId: parsed.data.customerDeliveryMethodId,
-          transactionNo,
-          transactionDate,
-          customerName: parsed.data.customerName,
-          contactNo: parsed.data.contactNo || null,
-          siTrans: parsed.data.siTrans || transactionNo,
-          infoSlipVsoRrReleased: parsed.data.infoSlipVsoRrReleased || null,
-          rrReceiveDeliver: parsed.data.rrReceiveDeliver || null,
-          proof: parsed.data.proof
-            ? serializeSaleProofPaths(
-                Array.isArray(parsed.data.proof)
-                  ? parsed.data.proof
-                  : [parsed.data.proof],
-              )
-            : [],
-          amount,
-          modelPrice: modelPriceRollup ?? null,
-          atrStatus: "open",
-          createdById: session.user.id,
+          ...saleHeaderCreateData(parsed.data, {
+            transactionDate,
+            details,
+            createdById: session.user.id,
+          }),
         },
       });
 
       for (const detail of details) {
-        const toFollow = isToFollowSerial(detail.serialNumberId);
-
-        if (!toFollow) {
-          // Real serial: STK at stock source → SLD/RSV at sold branch (relocate if alternate).
-          if (!stkCodeId || !targetStatusCodeId) {
-            throw new Error("Inventory status codes are not configured");
-          }
-          const serialNumberId = detail.serialNumberId;
-          await markSerialSoldFromStockSource(tx, {
-            tenantId: session.user.tenantId,
-            serialNumberId,
-            stockBranchId,
-            soldBranchId: parsed.data.branchId,
-            stkCodeId,
-            targetStatusCodeId,
-            updatedById: session.user.id,
-            expectedModelId: detail.modelId,
-          });
-
-          await tx.branchSalesTransactionDetail.create({
-            data: {
-              salesId: created.id,
-              packageTypeId: detail.packageTypeId,
-              brandId: detail.brandId,
-              promoTypeId: detail.promoTypeId ?? null,
-              modelId: detail.modelId,
-              serialNumberId,
-              statusCodeId: targetStatusCodeId,
-              saleAmount: detail.saleAmount,
-              modelPrice: detail.modelPrice ?? null,
-              amount: detail.saleAmount,
-              deliveryNo: keepsDeliveryReceipt ? detail.deliveryNo || null : null,
-              deliveryDate: keepsDeliveryReceipt
-                ? (detail.deliveryDate ?? null)
-                : null,
-            },
-          });
-        } else {
+        if (isToFollowSerial(detail.serialNumberId)) {
           // TO-FOLLOW: keep the sale line, leave serial null, do not touch inventory.
           await tx.branchSalesTransactionDetail.create({
             data: {
               salesId: created.id,
-              packageTypeId: detail.packageTypeId,
-              brandId: detail.brandId,
-              promoTypeId: detail.promoTypeId ?? null,
-              modelId: detail.modelId,
-              serialNumberId: null,
-              statusCodeId: fwCodeId,
-              saleAmount: detail.saleAmount,
-              modelPrice: detail.modelPrice ?? null,
-              amount: detail.saleAmount,
-              deliveryNo: keepsDeliveryReceipt ? detail.deliveryNo || null : null,
-              deliveryDate: keepsDeliveryReceipt
-                ? (detail.deliveryDate ?? null)
-                : null,
+              ...saleDetailRowData(detail, {
+                serialNumberId: null,
+                statusCodeId: fwCodeId,
+                keepsDeliveryReceipt,
+              }),
             },
           });
+          continue;
         }
+
+        // Real serial: STK at stock source → SLD/RSV at sold branch (relocate if alternate).
+        if (!stkCodeId || !targetStatusCodeId) {
+          throw new Error("Inventory status codes are not configured");
+        }
+        await markSerialSoldFromStockSource(tx, {
+          tenantId,
+          serialNumberId: detail.serialNumberId,
+          stockBranchId,
+          soldBranchId: parsed.data.branchId,
+          stkCodeId,
+          targetStatusCodeId,
+          updatedById: session.user.id,
+          expectedModelId: detail.modelId,
+        });
+
+        await tx.branchSalesTransactionDetail.create({
+          data: {
+            salesId: created.id,
+            ...saleDetailRowData(detail, {
+              serialNumberId: detail.serialNumberId,
+              statusCodeId: targetStatusCodeId,
+              keepsDeliveryReceipt,
+            }),
+          },
+        });
       }
 
       return created;
@@ -1310,7 +1058,7 @@ export async function createSaleAction(input: unknown) {
   }
 
   await auditService.log({
-    tenantId: session.user.tenantId,
+    tenantId,
     userId: session.user.id,
     action: parsed.data.reserved ? "sale.reserved" : "sale.created",
     entityType: "BranchSalesTransaction",
@@ -1331,91 +1079,16 @@ export async function createSaleAction(input: unknown) {
   return { success: true as const };
 }
 
-export async function listProcessReturnLookupsAction() {
+export async function listProcessReturnLookupsAction(): Promise<ProcessReturnLookups> {
   const session = await requireAnyPermission([
     RETURNS_REQUEST,
     SALES_RETURN_REQUEST,
     SALES_CREATE,
   ]);
-  const tenantId = session.user.tenantId;
-
-  const [documentTypes, problemDescriptions, serviceCenters, models, warehouseLocations] =
-    await Promise.all([
-      prisma.documentType.findMany({
-        where: { tenantId, recordStatus: "active" },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
-      }),
-      prisma.problemDescription.findMany({
-        where: { tenantId, recordStatus: "active" },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
-      }),
-      prisma.serviceCenter.findMany({
-        where: { tenantId, deletedAt: null, status: "active" },
-        select: { id: true, name: true, sapCode: true },
-        orderBy: { name: "asc" },
-      }),
-      prisma.productModel.findMany({
-        where: { tenantId, status: "active" },
-        select: { id: true, skuCode: true, name: true },
-        orderBy: { skuCode: "asc" },
-        take: 1000,
-      }),
-      prisma.warehouseLocation.findMany({
-        where: {
-          warehouse: { tenantId },
-        },
-        select: {
-          id: true,
-          code: true,
-          name: true,
-          warehouse: { select: { name: true, code: true } },
-        },
-        orderBy: [{ warehouse: { name: "asc" } }, { name: "asc" }],
-        take: 1000,
-      }),
-    ]);
-
-  return {
-    documentTypes,
-    problemDescriptions,
-    serviceCenters: serviceCenters.map((sc) => ({
-      id: sc.id,
-      name: sc.sapCode ? `${sc.sapCode} · ${sc.name}` : sc.name,
-    })),
-    models: models.map((m) => ({
-      id: m.id,
-      name: m.skuCode ? `${m.skuCode} · ${m.name}` : m.name,
-    })),
-    warehouseLocations: warehouseLocations.map((loc) => ({
-      id: loc.id,
-      name: [
-        loc.warehouse.code || loc.warehouse.name,
-        loc.code || loc.name,
-      ]
-        .filter(Boolean)
-        .join(" · "),
-    })),
-  };
+  return loadProcessReturnLookups(session.user.tenantId);
 }
 
-const processReturnPayloadSchema = z.object({
-  saleDetailId: z.string().min(1),
-  documentTypeId: z.string().min(1),
-  stockStatusCode: z.enum(["STK", "DEF"]),
-  actionType: z.enum(["return", "replacement"]),
-  problemDescriptionIds: z.array(z.string().min(1)).min(1),
-  serviceCenterId: z.string().optional().nullable(),
-  classification: z.string().trim().optional().nullable(),
-  serviceModelId: z.string().optional().nullable(),
-  customerDealerBranch: z.string().trim().optional().nullable(),
-  natureOfTransaction: z.string().trim().optional().nullable(),
-  refContactPo: z.string().trim().optional().nullable(),
-  warehouseLocationId: z.string().optional().nullable(),
-});
-
-export type ProcessReturnPayload = z.infer<typeof processReturnPayloadSchema>;
+export type { ProcessReturnPayload };
 
 export async function requestReturnAction(
   saleId: string,
@@ -1519,6 +1192,7 @@ export async function requestReturnAction(
     where: { id: saleId, tenantId: session.user.tenantId },
     select: {
       id: true,
+      branchId: true,
       transactionNo: true,
       transactionDate: true,
       customerName: true,
@@ -1551,6 +1225,16 @@ export async function requestReturnAction(
   }
 
   const summaryNote = `[${data.actionType === "replacement" ? "Replacement" : "Return"} requested] ${documentType.name} · ${data.stockStatusCode} · ${problemDescriptionText}`;
+  const needsTeamLeader = isDealerInitiatedDocumentTypeName(documentType.name);
+  const requestedAt = new Date();
+  const reserveCodes = targetDetail.serialNumberId
+    ? await loadReturnReserveCodeIds(session.user.tenantId)
+    : null;
+  if (targetDetail.serialNumberId && (!reserveCodes || !holdCodeId("RSV", reserveCodes))) {
+    return {
+      error: "Sold, Official Sold, and Reserved are not ready for this return" as const,
+    };
+  }
 
   const created = await prisma.$transaction(async (tx) => {
     const returnRequest = await tx.branchReturnRequest.create({
@@ -1559,6 +1243,13 @@ export async function requestReturnAction(
         saleId,
         saleDetailId: targetDetail.id,
         requestedById: session.user.id,
+        ...(needsTeamLeader
+          ? { status: "pending_tl" as const }
+          : {
+              status: "approved" as const,
+              approvedById: session.user.id,
+              approvedAt: requestedAt,
+            }),
         actionType: data.actionType,
         stockStatusCode: data.stockStatusCode,
         documentTypeId: documentType.id,
@@ -1591,17 +1282,47 @@ export async function requestReturnAction(
         notes: [sale.notes, summaryNote].filter(Boolean).join("\n"),
       },
     });
-    await recordReturnRequested(
-      tx,
-      {
+    if (needsTeamLeader) {
+      await recordReturnRequested(
+        tx,
+        {
+          tenantId: session.user.tenantId,
+          sourceType: "SALES_RETURN",
+          sourceId: returnRequest.id,
+          sourceNo: sale.transactionNo,
+          serialNumberId: targetDetail.serialNumberId,
+        },
+        { requestedById: session.user.id, problemDescription: problemDescriptionText },
+        "TL_APPROVAL",
+      );
+    }
+
+    if (targetDetail.serialNumberId && reserveCodes) {
+      const priorStatus = await markSoldSerialReserved(tx, {
         tenantId: session.user.tenantId,
-        sourceType: "SALES_RETURN",
-        sourceId: returnRequest.id,
-        sourceNo: sale.transactionNo,
+        userId: session.user.id,
+        soldBranchId: sale.branchId,
         serialNumberId: targetDetail.serialNumberId,
-      },
-      { requestedById: session.user.id, problemDescription: problemDescriptionText },
-    );
+        codes: reserveCodes,
+        holdCode: "RSV",
+      });
+      const actionLabel = data.actionType === "replacement" ? "Replacement" : "Return";
+      await tx.serialNumberHistory.create({
+        data: {
+          tenantId: session.user.tenantId,
+          serialNumberId: targetDetail.serialNumberId,
+          txnType: data.actionType === "replacement" ? "replacement" : "return",
+          details: returnRequestHistoryDetails(
+            actionLabel,
+            sale.transactionNo,
+            returnRequest.id,
+            priorStatus,
+          ),
+          status: returnHistoryStatusLabel(serviceReturn, data.actionType),
+          createdById: session.user.id,
+        },
+      });
+    }
 
     return returnRequest;
   });
@@ -1706,6 +1427,7 @@ export async function requestReturnAction(
     metadata: {
       transactionNo: sale.transactionNo,
       atrStatus: "reserve",
+      status: needsTeamLeader ? "pending_tl" : "approved",
       actionType: data.actionType,
       stockStatusCode: data.stockStatusCode,
       documentTypeId: documentType.id,
@@ -1717,6 +1439,7 @@ export async function requestReturnAction(
 
   revalidatePath("/sales");
   revalidatePath("/returns");
+  revalidatePath("/inventory");
   return { success: true as const, returnRequestId: created.id };
 }
 
@@ -1747,6 +1470,8 @@ async function restoreOriginalSerialsAtBranchSold(
     soldStatusCodeIds: string[];
     historyTxnType: "return" | "replacement";
     historyDetails: string;
+    /** Sale status label (Returned, Replaced, or the service label). Not the stock code. */
+    historyStatus: string;
   },
 ): Promise<number> {
   const now = new Date();
@@ -1811,7 +1536,7 @@ async function restoreOriginalSerialsAtBranchSold(
       serialNumberId,
       txnType: input.historyTxnType,
       details: input.historyDetails,
-      status: input.restoreStatusCode,
+      status: input.historyStatus,
       createdById: input.userId,
       createdAt: now,
     });
@@ -1838,6 +1563,7 @@ async function restoreReturnInventory(input: {
   };
   /** When set, restore only this sale line's serial (legacy null → first serial). */
   saleDetailId?: string | null;
+  historyStatus: string;
 }) {
   const statusCode = input.stockStatusCode === "DEF" ? "DEF" : "STK";
   const statusCodeId = await reasonStatusService.requireCodeId(
@@ -1894,6 +1620,7 @@ async function restoreReturnInventory(input: {
       soldStatusCodeIds: [sldCodeId, rsvCodeId, ofsCodeId],
       historyTxnType: "return",
       historyDetails: `Return ${input.sale.transactionNo} → ${statusCode} at branch sold (request ${input.returnRequestId})`,
+      historyStatus: input.historyStatus,
     });
     await tx.branchReturnRequest.update({
       where: { id: input.returnRequestId },
@@ -2065,6 +1792,7 @@ export async function rejectReturnAction(returnRequestId: string, notes?: string
   }
 
   const approval = await salesReturnApproval(session.user.tenantId, row);
+  const reserveCodes = await loadReturnReserveCodeIds(session.user.tenantId);
   await prisma.$transaction(async (tx) => {
     await tx.branchReturnRequest.update({
       where: { id: returnRequestId },
@@ -2074,6 +1802,16 @@ export async function rejectReturnAction(returnRequestId: string, notes?: string
       where: { id: row.saleId },
       data: { atrStatus: "open" },
     });
+    if (reserveCodes) {
+      await restoreSerialAfterReturnReject(tx, {
+        tenantId: session.user.tenantId,
+        userId: session.user.id,
+        soldBranchId: row.sale.branchId,
+        returnRequestId,
+        codes: reserveCodes,
+        holdCode: "RSV",
+      });
+    }
     await recordReturnRejected(tx, approval, {
       fromStatus: row.status,
       decidedById: session.user.id,
@@ -2091,6 +1829,7 @@ export async function rejectReturnAction(returnRequestId: string, notes?: string
 
   revalidatePath("/sales");
   revalidatePath("/returns");
+  revalidatePath("/inventory");
   return { success: true as const };
 }
 
@@ -2109,6 +1848,7 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
       actionType: true,
       stockStatusCode: true,
       saleDetailId: true,
+      documentType: { select: { name: true } },
       sale: {
         select: {
           id: true,
@@ -2141,6 +1881,10 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
     stockStatusCode,
     sale: row.sale,
     saleDetailId: row.saleDetailId,
+    historyStatus: returnHistoryStatusLabel(
+      isServiceDocumentTypeName(row.documentType?.name),
+      row.actionType,
+    ),
   });
   if ("error" in restored) return restored;
 
@@ -2163,14 +1907,6 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
   return { success: true as const };
 }
 
-async function nextReplacementNo(
-  tenantId: string,
-  tx: Pick<typeof prisma, "salesReplacement">,
-): Promise<string> {
-  const count = await tx.salesReplacement.count({ where: { tenantId } });
-  return `REPL-${String(count + 1).padStart(6, "0")}`;
-}
-
 const replacementSameInvoiceSchema = z.object({
   returnRequestId: z.string().min(1),
   modelId: z.string().min(1),
@@ -2179,11 +1915,34 @@ const replacementSameInvoiceSchema = z.object({
 
 const replacementNewInvoiceSchema = z.object({
   returnRequestId: z.string().min(1),
-  transactionNo: z.string().trim().min(1),
-  transactionDate: z.string().min(1),
+  transactionNo: z
+    .string()
+    .trim()
+    .min(1)
+    .refine(isSaleTransactionNo, "Invalid transaction number"),
+  transactionDate: z.string().trim().optional(),
   modelId: z.string().min(1),
   replacementSerialNumberId: z.string().min(1),
+  customerName: z.string().trim().min(1),
+  contactNo: z.string().trim().max(50).optional(),
+  paymentTypeId: z.string().min(1),
+  saleTypeId: z.string().min(1),
+  customerDeliveryMethodId: z.string().min(1),
+  infoSlipVsoRrReleased: z.string().trim().optional(),
+  rrReceiveDeliver: z.string().trim().optional(),
+  proof: z.array(z.string().trim().min(1)).max(SALE_PROOF_MAX_FILES).optional(),
 });
+
+type ReplacementNewInvoiceHeader = {
+  customerName: string;
+  contactNo: string | null;
+  paymentTypeId: string;
+  saleTypeId: string;
+  customerDeliveryMethodId: string;
+  infoSlipVsoRrReleased: string | null;
+  rrReceiveDeliver: string | null;
+  proof: string[];
+};
 
 async function completeReplacementCore(input: {
   session: {
@@ -2195,6 +1954,8 @@ async function completeReplacementCore(input: {
   invoiceNo: string | null;
   invoiceDate: Date | null;
   mode: "same_invoice" | "new_invoice";
+  /** Edited header for New Invoice. Ignored for Same Invoice. */
+  newInvoiceHeader?: ReplacementNewInvoiceHeader;
 }) {
   const tenantId = input.session.user.tenantId;
   const userId = input.session.user.id;
@@ -2210,6 +1971,7 @@ async function completeReplacementCore(input: {
       actionType: true,
       stockStatusCode: true,
       saleDetailId: true,
+      documentType: { select: { name: true } },
       sale: {
         select: {
           id: true,
@@ -2255,7 +2017,7 @@ async function completeReplacementCore(input: {
   }
   if ((row.actionType ?? "return") !== "replacement") {
     return {
-      error: "This request is a Return — use Restore stock instead" as const,
+      error: "This request is a Return — use Return Stock instead" as const,
     };
   }
 
@@ -2376,10 +2138,15 @@ async function completeReplacementCore(input: {
   );
   const replacementModelPrice = resolvedPrice?.amount ?? originalPrice;
 
+  let validatedNewHeader: ReplacementNewInvoiceHeader | null = null;
   if (input.mode === "new_invoice") {
     const newTrnNo = input.invoiceNo?.trim();
-    if (!newTrnNo || !input.invoiceDate) {
-      return { error: "New invoice requires transaction number and date" as const };
+    const header = input.newInvoiceHeader;
+    if (!newTrnNo || !header?.customerName.trim()) {
+      return { error: "New invoice requires a transaction number and customer name" as const };
+    }
+    if (!header.paymentTypeId || !header.saleTypeId || !header.customerDeliveryMethodId) {
+      return { error: "New invoice requires payment type, sale type, and delivery method" as const };
     }
     const taken = await prisma.branchSalesTransaction.findFirst({
       where: {
@@ -2395,6 +2162,33 @@ async function completeReplacementCore(input: {
           "Transaction number already used on this branch. Enter a different number." as const,
       };
     }
+    const [payment, saleType, delivery] = await Promise.all([
+      prisma.paymentType.findFirst({
+        where: { id: header.paymentTypeId, tenantId },
+        select: { id: true },
+      }),
+      prisma.saleType.findFirst({
+        where: { id: header.saleTypeId, tenantId },
+        select: { id: true },
+      }),
+      prisma.customerDeliveryMethod.findFirst({
+        where: { id: header.customerDeliveryMethodId, tenantId },
+        select: { id: true },
+      }),
+    ]);
+    if (!payment) return { error: "Payment type not found" as const };
+    if (!saleType) return { error: "Sale type not found" as const };
+    if (!delivery) return { error: "Customer delivery method not found" as const };
+    validatedNewHeader = {
+      customerName: header.customerName.trim(),
+      contactNo: header.contactNo?.trim() || null,
+      paymentTypeId: header.paymentTypeId,
+      saleTypeId: header.saleTypeId,
+      customerDeliveryMethodId: header.customerDeliveryMethodId,
+      infoSlipVsoRrReleased: header.infoSlipVsoRrReleased?.trim() || null,
+      rrReceiveDeliver: header.rrReceiveDeliver?.trim() || null,
+      proof: serializeSaleProofPaths(header.proof),
+    };
   }
 
   let newSaleId: string | null = null;
@@ -2427,6 +2221,10 @@ async function completeReplacementCore(input: {
         soldStatusCodeIds: [sldCodeId, rsvCodeId, ofsCodeId],
         historyTxnType: "replacement",
         historyDetails: `Replacement ${row.sale.transactionNo} → ${stockStatusCode} at branch sold (request ${input.returnRequestId})`,
+        historyStatus: returnHistoryStatusLabel(
+          isServiceDocumentTypeName(row.documentType?.name),
+          row.actionType,
+        ),
       });
 
       const replacementInvoiceNo =
@@ -2435,7 +2233,7 @@ async function completeReplacementCore(input: {
           : row.sale.transactionNo;
       const replacementInvoiceDate =
         input.mode === "new_invoice"
-          ? (input.invoiceDate ?? new Date())
+          ? input.invoiceDate
           : (row.sale.transactionDate ?? new Date());
 
       if (input.mode === "same_invoice") {
@@ -2473,23 +2271,27 @@ async function completeReplacementCore(input: {
           },
         });
       } else {
-        // New Invoice: create a fresh sale copying header context.
+        if (!validatedNewHeader) {
+          throw new Error("New invoice header is required");
+        }
+        const header = validatedNewHeader;
+        // Branches stay on the original sale. Stock is still STK at branch sold.
         const created = await tx.branchSalesTransaction.create({
           data: {
             tenantId,
             branchId: soldBranchId,
             alternateBranchId: stockBranchId,
-            paymentTypeId: row.sale.paymentTypeId,
-            saleTypeId: row.sale.saleTypeId,
-            customerDeliveryMethodId: row.sale.customerDeliveryMethodId,
+            paymentTypeId: header.paymentTypeId,
+            saleTypeId: header.saleTypeId,
+            customerDeliveryMethodId: header.customerDeliveryMethodId,
             transactionNo: replacementInvoiceNo,
             transactionDate: replacementInvoiceDate,
-            customerName: row.sale.customerName,
-            contactNo: row.sale.contactNo,
+            customerName: header.customerName,
+            contactNo: header.contactNo,
             siTrans: replacementInvoiceNo,
-            infoSlipVsoRrReleased: row.sale.infoSlipVsoRrReleased,
-            rrReceiveDeliver: row.sale.rrReceiveDeliver,
-            proof: row.sale.proof ?? [],
+            infoSlipVsoRrReleased: header.infoSlipVsoRrReleased,
+            rrReceiveDeliver: header.rrReceiveDeliver,
+            proof: header.proof,
             amount: replacementModelPrice,
             modelPrice: replacementModelPrice,
             atrStatus: "open",
@@ -2606,12 +2408,7 @@ async function completeReplacementCore(input: {
 }
 
 export async function listReplacementLookupsAction(branchId: string, modelId?: string) {
-  const session = await requireAnyPermission([
-    RETURNS_COMPLETE,
-    SALES_RETURN_COMPLETE,
-    "logistics.manage",
-    SALES_CREATE,
-  ]);
+  const session = await requireAnyPermission([...REPLACEMENT_COMPLETE_PERMISSIONS]);
 
   const stkCodeId = await reasonStatusService.requireCodeId(
     session.user.tenantId,
@@ -2621,7 +2418,21 @@ export async function listReplacementLookupsAction(branchId: string, modelId?: s
 
   const [models, serialRows] = await Promise.all([
     prisma.productModel.findMany({
-      where: { tenantId: session.user.tenantId, status: "active" },
+      where: {
+        tenantId: session.user.tenantId,
+        status: "active",
+        serialNumbers: {
+          some: {
+            branchInventories: {
+              some: {
+                tenantId: session.user.tenantId,
+                branchId,
+                statusCodeId: stkCodeId,
+              },
+            },
+          },
+        },
+      },
       select: { id: true, skuCode: true, name: true },
       orderBy: { skuCode: "asc" },
       take: 1000,
@@ -2649,6 +2460,14 @@ export async function listReplacementLookupsAction(branchId: string, modelId?: s
       : Promise.resolve([]),
   ]);
 
+  const agedSerials = await agedSellableSerials(
+    session.user.tenantId,
+    serialRows.map((row) => ({
+      serialNumberId: row.serialNumber.id,
+      createdAt: row.createdAt,
+    })),
+  );
+
   return {
     models: models.map((m) => ({
       id: m.id,
@@ -2659,16 +2478,12 @@ export async function listReplacementLookupsAction(branchId: string, modelId?: s
       serialNo: r.serialNumber.serialNo,
       modelId: r.serialNumber.modelId,
     })),
+    agedSerials,
   };
 }
 
 export async function completeReplacementSameInvoiceAction(input: unknown) {
-  const session = await requireAnyPermission([
-    RETURNS_COMPLETE,
-    SALES_RETURN_COMPLETE,
-    "logistics.manage",
-    SALES_CREATE,
-  ]);
+  const session = await requireAnyPermission([...REPLACEMENT_COMPLETE_PERMISSIONS]);
   const parsed = replacementSameInvoiceSchema.safeParse(input);
   if (!parsed.success) return { error: "Invalid same-invoice replacement" as const };
 
@@ -2684,18 +2499,16 @@ export async function completeReplacementSameInvoiceAction(input: unknown) {
 }
 
 export async function completeReplacementNewInvoiceAction(input: unknown) {
-  const session = await requireAnyPermission([
-    RETURNS_COMPLETE,
-    SALES_RETURN_COMPLETE,
-    "logistics.manage",
-    SALES_CREATE,
-  ]);
+  const session = await requireAnyPermission([...REPLACEMENT_COMPLETE_PERMISSIONS]);
   const parsed = replacementNewInvoiceSchema.safeParse(input);
   if (!parsed.success) return { error: "Invalid new-invoice replacement" as const };
 
-  const invoiceDate = new Date(parsed.data.transactionDate);
-  if (Number.isNaN(invoiceDate.getTime())) {
-    return { error: "Invalid transaction date" as const };
+  const trimmedDate = parsed.data.transactionDate?.trim() ?? "";
+  let invoiceDate: Date | null = null;
+  if (trimmedDate) {
+    const resolvedDate = resolveSaleTransactionDate(trimmedDate);
+    if ("error" in resolvedDate) return { error: resolvedDate.error };
+    invoiceDate = resolvedDate.date;
   }
 
   return completeReplacementCore({
@@ -2706,6 +2519,16 @@ export async function completeReplacementNewInvoiceAction(input: unknown) {
     invoiceNo: parsed.data.transactionNo.trim(),
     invoiceDate,
     mode: "new_invoice",
+    newInvoiceHeader: {
+      customerName: parsed.data.customerName,
+      contactNo: parsed.data.contactNo?.trim() || null,
+      paymentTypeId: parsed.data.paymentTypeId,
+      saleTypeId: parsed.data.saleTypeId,
+      customerDeliveryMethodId: parsed.data.customerDeliveryMethodId,
+      infoSlipVsoRrReleased: parsed.data.infoSlipVsoRrReleased?.trim() || null,
+      rrReceiveDeliver: parsed.data.rrReceiveDeliver?.trim() || null,
+      proof: parsed.data.proof ?? [],
+    },
   });
 }
 
@@ -2727,6 +2550,7 @@ export async function updateSaleHeaderAction(input: unknown) {
       branchId: true,
       alternateBranchId: true,
       transactionNo: true,
+      transactionDate: true,
       details: {
         select: {
           id: true,
@@ -2772,14 +2596,12 @@ export async function updateSaleHeaderAction(input: unknown) {
     };
   }
 
-  let transactionDate: Date | null = null;
-  if (data.transactionDate) {
-    const d = new Date(data.transactionDate);
-    if (Number.isNaN(d.getTime())) {
-      return { error: "Invalid transaction date" as const };
-    }
-    transactionDate = d;
-  }
+  const resolvedDate = resolveSaleTransactionDate(
+    data.transactionDate,
+    toDateInputValue(sale.transactionDate),
+  );
+  if ("error" in resolvedDate) return { error: resolvedDate.error };
+  const transactionDate = resolvedDate.date;
 
   if (data.transactionNo !== sale.transactionNo) {
     const taken = await prisma.branchSalesTransaction.findFirst({
@@ -2799,52 +2621,15 @@ export async function updateSaleHeaderAction(input: unknown) {
     }
   }
 
-  const [payment, saleType, delivery] = await Promise.all([
-    prisma.paymentType.findFirst({
-      where: {
-        id: data.paymentTypeId,
-        tenantId: session.user.tenantId,
-        recordStatus: "active",
-      },
-      select: { id: true },
-    }),
-    prisma.saleType.findFirst({
-      where: {
-        id: data.saleTypeId,
-        tenantId: session.user.tenantId,
-        recordStatus: "active",
-      },
-      select: { id: true },
-    }),
-    prisma.customerDeliveryMethod.findFirst({
-      where: {
-        id: data.customerDeliveryMethodId,
-        tenantId: session.user.tenantId,
-        recordStatus: "active",
-      },
-      select: { id: true },
-    }),
-  ]);
-  if (!payment) return { error: "Payment type not found" as const };
-  if (!saleType) return { error: "Sale type not found" as const };
-  if (!delivery) return { error: "Customer delivery method not found" as const };
+  try {
+    await assertSaleHeaderLookups(prisma, session.user.tenantId, data);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Invalid sale header" };
+  }
 
-  const proofPaths =
-    data.proof === undefined
-      ? undefined
-      : serializeSaleProofPaths(
-          Array.isArray(data.proof) ? data.proof : [data.proof],
-        );
-
-  const realSerialDetails = sale.details.filter((d) => d.serialNumberId);
-  const currentlyReserved =
-    realSerialDetails.length > 0 &&
-    realSerialDetails.every((d) => d.statusCode?.code === "RSV");
+  const currentlyReserved = isSaleReserved(sale.details);
   const nextReserved = data.reserved;
-  const reservedChanging =
-    typeof nextReserved === "boolean" &&
-    nextReserved !== currentlyReserved &&
-    realSerialDetails.length > 0;
+  const reservedToggle = resolveReservedToggle(sale.details, nextReserved);
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -2853,49 +2638,33 @@ export async function updateSaleHeaderAction(input: unknown) {
         data: {
           branchId: data.branchId,
           alternateBranchId: data.alternateBranchId,
-          paymentTypeId: data.paymentTypeId,
-          saleTypeId: data.saleTypeId,
-          customerDeliveryMethodId: data.customerDeliveryMethodId,
-          transactionNo: data.transactionNo,
-          transactionDate,
-          customerName: data.customerName,
-          contactNo: data.contactNo?.trim() || null,
-          siTrans: data.siTrans?.trim() || data.transactionNo,
-          infoSlipVsoRrReleased: data.infoSlipVsoRrReleased?.trim() || null,
-          rrReceiveDeliver: data.rrReceiveDeliver?.trim() || null,
-          ...(proofPaths !== undefined ? { proof: proofPaths } : {}),
+          ...saleHeaderUpdateData(data, transactionDate),
         },
       });
 
-      if (reservedChanging && typeof nextReserved === "boolean") {
-        const sldCodeId = await reasonStatusService.requireCodeId(
-          session.user.tenantId,
-          "inventory_system",
-          "SLD",
-        );
-        const rsvCodeId = await reasonStatusService.requireCodeId(
-          session.user.tenantId,
-          "inventory_system",
-          "RSV",
-        );
-        const fromCodeId = nextReserved ? sldCodeId : rsvCodeId;
-        const toCodeId = nextReserved ? rsvCodeId : sldCodeId;
-        const eligible = realSerialDetails.filter(
-          (d) =>
-            d.statusCode?.code === (nextReserved ? "SLD" : "RSV") ||
-            d.statusCode?.id === fromCodeId,
-        );
+      if (reservedToggle) {
+        const [fromCodeId, toCodeId] = await Promise.all([
+          reasonStatusService.requireCodeId(
+            session.user.tenantId,
+            "inventory_system",
+            reservedToggle.fromCode,
+          ),
+          reasonStatusService.requireCodeId(
+            session.user.tenantId,
+            "inventory_system",
+            reservedToggle.toCode,
+          ),
+        ]);
 
-        for (const detail of eligible) {
-          if (!detail.serialNumberId) continue;
+        for (const line of reservedToggle.lines) {
           await tx.branchSalesTransactionDetail.update({
-            where: { id: detail.id },
+            where: { id: line.id },
             data: { statusCodeId: toCodeId },
           });
           await tx.branchInventory.updateMany({
             where: {
               tenantId: session.user.tenantId,
-              serialNumberId: detail.serialNumberId,
+              serialNumberId: line.serialNumberId,
               statusCodeId: fromCodeId,
             },
             data: {
@@ -2999,23 +2768,13 @@ export async function updateSaleSerialAction(input: unknown) {
     };
   }
 
-  // A pickup sale has no delivery receipt, so ignore whatever was submitted.
-  const keepsDeliveryReceipt = capturesDeliveryReceipt(
-    sale.customerDeliveryMethod?.name,
-  );
-  const deliveryNo = keepsDeliveryReceipt ? parsed.data.deliveryNo : undefined;
-  const deliveryDate = keepsDeliveryReceipt
-    ? parsed.data.deliveryDate
-    : undefined;
-
+  const { deliveryNo, deliveryDate, changed: deliveryChanged } =
+    resolveLineDeliveryEdit({
+      deliveryMethodName: sale.customerDeliveryMethod?.name,
+      submitted: parsed.data,
+      current: targetDetail,
+    });
   const oldSerialId = targetDetail.serialNumberId;
-  // Only treat delivery as edited when a supplied value differs from what is
-  // stored — the edit dialog always sends both fields, changed or not.
-  const deliveryChanged =
-    (deliveryNo !== undefined && deliveryNo !== targetDetail.deliveryNo) ||
-    (deliveryDate !== undefined &&
-      toDateInputValue(deliveryDate) !==
-        toDateInputValue(targetDetail.deliveryDate));
 
   // Serial unchanged: skip the inventory dance, but still persist a DR edit.
   if (oldSerialId === nextSerialId) {
@@ -3115,7 +2874,7 @@ export async function updateSaleSerialAction(input: unknown) {
         throw new Error("Choose a serial for this to-follow line.");
       }
 
-      await claimToFollowSaleLine(tx, {
+      await claimToFollowSaleLine(tx.branchSalesTransactionDetail, {
         detailId: targetDetail.id,
         saleId: sale.id,
         serialNumberId: nextSerialId,

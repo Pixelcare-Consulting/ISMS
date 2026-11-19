@@ -5,8 +5,9 @@ export const SETUP_HOME = "/setup";
 
 /**
  * Permissions a customer-tenant Super Admin may hold.
- * Orders, logistics, inventory, sales, returns, reports, live dashboards,
- * forecast, and SAP jobs stay with the teams that run them.
+ * Orders, logistics, inventory, sales, returns, reports, and live dashboards
+ * stay with the teams that run them.
+ * Oversight covers audit logs, policies, SAP integration, and planning.
  * Custom dashboard setup is included. Site traffic reuses users.manage.
  */
 export const SETUP_PERMISSION_SLUGS = [
@@ -32,12 +33,21 @@ export const SETUP_PERMISSION_SLUGS = [
   "master_data.manage",
   "dashboard.custom.view",
   "dashboard.custom.manage",
+  "audit_logs.view",
+  "serial_logs.view",
+  "inventory_approvals.view",
+  "policies.view",
+  "policies.create",
+  "policies.approve",
+  "sap.manage",
+  "forecast.manage",
 ] as const;
 
 /**
  * App paths a tenant setup admin may open.
- * Each entry allows that path and its descendants.
- * Live dashboard boards, planning runs, and the SAP job list are omitted.
+ * Each entry allows that path and its descendants, including policy documents
+ * and planning runs.
+ * Live dashboard boards and day-to-day operations stay omitted.
  */
 const SETUP_ALLOWED_PATH_PREFIXES = [
   SETUP_HOME,
@@ -59,7 +69,13 @@ const SETUP_ALLOWED_PATH_PREFIXES = [
   "/settings/branch-quotas",
   "/settings/ordering",
   "/settings/planogram",
+  "/settings/planning",
   "/settings/master-data",
+  "/settings/sap-integration",
+  "/audit-logs/system",
+  "/audit-logs/serial-numbers",
+  "/audit-logs/inventory-approvals",
+  "/policies",
 ] as const;
 
 export function isTenantSetupAdmin({

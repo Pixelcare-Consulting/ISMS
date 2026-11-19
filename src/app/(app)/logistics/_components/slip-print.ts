@@ -11,8 +11,10 @@ export interface SlipItem {
   /** Model code, printed letter-spaced the way the client's forms show it. */
   modelCode: string;
   serialNo: string;
-  /** Small line under the serial: condition, problems, remarks. Empty prints nothing. */
-  note: string;
+  /** Small lines under the serial, one per entry. Empty prints nothing. Unused in table layout. */
+  notes: readonly string[];
+  /** One cell per `SlipDocument.detailColumns` entry, in the same order. */
+  details?: readonly string[];
 }
 
 export interface SlipDocument {
@@ -25,6 +27,11 @@ export interface SlipDocument {
   /** Extra header row such as "Ref RTV#". */
   reference?: { label: string; value: string };
   items: SlipItem[];
+  /**
+   * Headers for per-unit detail columns. When set, units print as table rows with these
+   * columns beside the model and serial, instead of the two-column list.
+   */
+  detailColumns?: readonly string[];
   /** One entry per carbon copy, e.g. "PAGE 1: BRANCH COPY". */
   copyLegend: readonly string[];
   /** Two copies share one page, split by a cut line. */
@@ -36,12 +43,33 @@ function field(label: string, value: string, className = ""): string {
 }
 
 function itemHtml(item: SlipItem): string {
-  const note = item.note ? `<div class="item-note">${escapeHtml(item.note)}</div>` : "";
+  const note = item.notes.map((entry) => `<div class="item-note">${escapeHtml(entry)}</div>`).join("");
   return `<li class="item">
         <div class="item-model">${escapeHtml(item.modelCode)}</div>
         <div>Serial No.: ${escapeHtml(item.serialNo)}</div>
         ${note}
       </li>`;
+}
+
+function itemCellHtml(item: SlipItem): string {
+  return `<div class="item-model">${escapeHtml(item.modelCode)}</div><div>Serial No.: ${escapeHtml(item.serialNo)}</div>`;
+}
+
+function itemsTableHtml(items: readonly SlipItem[], columns: readonly string[]): string {
+  const head = ["Item", ...columns].map((label) => `<th>${escapeHtml(label)}</th>`).join("");
+  const rows = items
+    .map((item) => {
+      const cells = columns.map((_, index) => `<td>${escapeHtml(item.details?.[index] ?? "")}</td>`).join("");
+      return `<tr><td class="item-cell">${itemCellHtml(item)}</td>${cells}</tr>`;
+    })
+    .join("");
+  return `<table class="items-table"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function itemsHtml(slip: SlipDocument): string {
+  if (slip.items.length === 0) return `<p class="items-empty">No units on this slip.</p>`;
+  if (slip.detailColumns?.length) return itemsTableHtml(slip.items, slip.detailColumns);
+  return `<ol class="items">${slip.items.map(itemHtml).join("")}</ol>`;
 }
 
 function signatureHtml(label: string): string {
@@ -53,10 +81,7 @@ function signatureHtml(label: string): string {
 }
 
 function copyHtml(slip: SlipDocument, letterhead: PrintLetterhead | null): string {
-  const items =
-    slip.items.length > 0
-      ? `<ol class="items">${slip.items.map(itemHtml).join("")}</ol>`
-      : `<p class="items-empty">No units on this slip.</p>`;
+  const items = itemsHtml(slip);
   const reference = slip.reference ? field(slip.reference.label, slip.reference.value) : "";
   return `<section class="copy">
     ${letterheadHtml(letterhead)}
@@ -105,6 +130,11 @@ const SLIP_STYLES = `
     .item { break-inside: avoid; page-break-inside: avoid; margin-bottom: 8px; }
     .item-model { font-family: "Courier New", Courier, monospace; font-weight: 700; letter-spacing: 0.2em; }
     .item-note { font-size: 11px; }
+    .items-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .items-table th, .items-table td { border-bottom: 1px solid #999; padding: 4px 6px; text-align: left; vertical-align: top; }
+    .items-table th { font-weight: 700; border-bottom-color: #111; }
+    .items-table tr { break-inside: avoid; page-break-inside: avoid; }
+    .items-table .item-cell { font-size: 12px; white-space: nowrap; }
     .items-empty { margin: 0; padding: 8px 12px; }
     .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
     .sign-row { display: flex; align-items: flex-end; gap: 8px; margin-top: 16px; }

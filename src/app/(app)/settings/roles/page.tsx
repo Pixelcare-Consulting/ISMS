@@ -1,6 +1,7 @@
 import { getRolesPermissionsMatrixAction } from "@/features/roles/actions/role.actions";
 import { RolesSimpleView } from "@/features/roles/components/roles-simple-view";
 import { canManageSystemRoleAccess } from "@/features/roles/constants/role.constants";
+import { tenantRepository } from "@/features/tenants/repositories/tenant.repository";
 import { ModuleGuide } from "@/components/module-guide";
 import {
   requirePermission,
@@ -12,9 +13,10 @@ import { PageHeader } from "@/app/(app)/_components/page-header";
 
 export default async function SettingsRolesPage() {
   const session = await requirePermission("roles.manage");
-  const [matrix, isPlatformOperator] = await Promise.all([
+  const [matrix, isPlatformOperator, hideSystemRolesOnUsers] = await Promise.all([
     getRolesPermissionsMatrixAction(),
     resolveSessionPlatformOperator(session.user),
+    tenantRepository.getHideSystemRolesOnUsers(session.user.tenantId),
   ]);
   const canManageSystemRoles = canManageSystemRoleAccess(
     session.user.roleSlugs,
@@ -37,6 +39,7 @@ export default async function SettingsRolesPage() {
         matrix={matrix}
         isPlatformOperator={isPlatformOperator}
         canManageSystemRoleAccess={canManageSystemRoles}
+        hideSystemRolesOnUsers={hideSystemRolesOnUsers}
       />
     </div>
   );

@@ -10,10 +10,10 @@ import {
 } from "@/features/service-center-ordering/services/sc-order-worksheet";
 import { isSapProject } from "@/features/service-center-ordering/services/sc-ordering-sap";
 import { scOrderingSettingsService } from "@/features/service-center-ordering/services/sc-ordering-settings.service";
+import { SC_ORDER_APPROVABLE_STATUSES } from "@/features/service-center-ordering/constants";
 import { prisma } from "@/lib/database/client";
 
-/** Statuses an order can be approved from. Approval is a single step today. */
-const APPROVABLE: BranchOrderStatus[] = ["pending_tl", "pending_sp"];
+const APPROVABLE: BranchOrderStatus[] = [...SC_ORDER_APPROVABLE_STATUSES];
 
 /** One line per model, quantities summed, so a repeated model can't dodge the stock check. */
 function mergeLines(lines: { modelId: string; quantity: number }[]) {
@@ -35,6 +35,8 @@ export interface CreateScOrderInput {
   projectCode?: string | null;
   notes?: string | null;
   lines: { modelId: string; quantity: number }[];
+  /** `special` for a unit ordered for one customer (a Service Replacement). Default `manual`. */
+  orderType?: "manual" | "special";
 }
 
 export const scOrderService = {
@@ -76,8 +78,8 @@ export const scOrderService = {
         tenantId,
         serviceCenterId: input.serviceCenterId,
         serviceCenterLocationId: input.serviceCenterLocationId ?? null,
-        orderType: "manual",
-        status: "pending_tl",
+        orderType: input.orderType ?? "manual",
+        status: "pending_sp",
         orderNumber,
         notes: input.notes?.trim() || null,
         poNumber: input.poNumber?.trim() || null,
@@ -91,7 +93,7 @@ export const scOrderService = {
             approvedQty: line.quantity,
           })),
         },
-        approvalLevels: { create: [{ level: 1, roleSlug: "tl" }] },
+        approvalLevels: { create: [{ level: 1, roleSlug: "sp" }] },
       },
       select: { id: true, orderNumber: true },
     });
@@ -102,7 +104,12 @@ export const scOrderService = {
       action: "sc_order.created",
       entityType: "ServiceCenterOrder",
       entityId: order.id,
-      metadata: { orderNumber, cardCode: snapshot.sapCardCode, poNumber: input.poNumber ?? null },
+      metadata: {
+        orderNumber,
+        orderType: input.orderType ?? "manual",
+        cardCode: snapshot.sapCardCode,
+        poNumber: input.poNumber ?? null,
+      },
     });
     return order;
   },

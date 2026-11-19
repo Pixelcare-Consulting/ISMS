@@ -7,7 +7,10 @@ import { useMemo, useState, useTransition } from "react";
 import { Grid3x3 } from "lucide-react";
 import { toast } from "sonner";
 
-import { deleteRoleAction } from "@/features/roles/actions/role.actions";
+import {
+  deleteRoleAction,
+  setHideSystemRolesOnUsersAction,
+} from "@/features/roles/actions/role.actions";
 import { CreateRoleWizard } from "@/features/roles/components/create-role-wizard";
 import { EditRoleDialog } from "@/features/roles/components/edit-role-dialog";
 import { RoleCard } from "@/features/roles/components/role-card";
@@ -15,6 +18,7 @@ import { RolePermissionsDrawer } from "@/features/roles/components/role-permissi
 import {
   filterTenantVisibleRoles,
   isProviderOnlyRole,
+  withoutBuiltInRoles,
 } from "@/features/roles/constants/role.constants";
 import {
   countAssignedInGroups,
@@ -27,6 +31,8 @@ import type {
 import { DeleteConfirmDialog } from "@/components/data-table/delete-confirm-dialog";
 import { TableSearchToolbar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { buttonVariants } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { matchesTableSearch } from "@/utils/match-table-search";
 import { cn } from "@/utils/cn";
 
@@ -36,12 +42,15 @@ interface RolesSimpleViewProps {
   isPlatformOperator?: boolean;
   /** Super Admin or platform operator — may view & grant on system roles. */
   canManageSystemRoleAccess?: boolean;
+  /** On hides built-in roles in Add user and Edit user. Default on. */
+  hideSystemRolesOnUsers?: boolean;
 }
 
 export function RolesSimpleView({
   matrix,
   isPlatformOperator = false,
   canManageSystemRoleAccess = false,
+  hideSystemRolesOnUsers = true,
 }: RolesSimpleViewProps) {
   const router = useRouter();
   const roles = filterTenantVisibleRoles(matrix.roles);
@@ -55,41 +64,95 @@ export function RolesSimpleView({
     null,
   );
   const [deletePending, startDeleteTransition] = useTransition();
+  const [hidePending, startHideTransition] = useTransition();
+  const [hideSystemRoles, setHideSystemRoles] = useState(hideSystemRolesOnUsers);
+  const [seededHide, setSeededHide] = useState(hideSystemRolesOnUsers);
+  if (seededHide !== hideSystemRolesOnUsers) {
+    setSeededHide(hideSystemRolesOnUsers);
+    setHideSystemRoles(hideSystemRolesOnUsers);
+  }
+
+  function onHideSystemRolesChange(checked: boolean) {
+    const previous = hideSystemRoles;
+    setHideSystemRoles(checked);
+    startHideTransition(async () => {
+      const result = await setHideSystemRolesOnUsersAction(checked);
+      if (result.error) {
+        setHideSystemRoles(previous);
+        toast.error("Could not update setting", { description: result.error });
+      }
+    });
+  }
+
+  function hideWhenAddingUserSwitch() {
+    return (
+      <div className="flex shrink-0 items-center gap-2">
+        <Label
+          htmlFor="hide-system-roles-on-users"
+          className="text-xs font-normal text-muted-foreground"
+        >
+          Hide when adding a user
+        </Label>
+        <Switch
+          id="hide-system-roles-on-users"
+          checked={hideSystemRoles}
+          onCheckedChange={(value) => onHideSystemRolesChange(value === true)}
+          disabled={hidePending}
+          aria-label="Hide when adding a user"
+        />
+      </div>
+    );
+  }
 
   const groups = useMemo(
     () => groupPermissionsByModule(permissions),
     [permissions],
   );
 
-  const filteredRoles = useMemo(
-    () =>
-      roles.filter((role) =>
-        matchesTableSearch(query, [role.name, role.slug, role.description]),
-      ),
-    [query, roles],
+  const systemRolesAll = useMemo(
+    () => roles.filter((role) => role.isSystem),
+    [roles],
+  );
+  const customRolesAll = useMemo(
+    () => roles.filter((role) => !role.isSystem),
+    [roles],
+  );
+  const searchableRoles = useMemo(
+    () => withoutBuiltInRoles(roles, hideSystemRoles),
+    [hideSystemRoles, roles],
   );
 
-  const systemRoles = useMemo(
-    () => filteredRoles.filter((role) => role.isSystem),
-    [filteredRoles],
+  const visibleSystemRoles = useMemo(() => {
+    if (hideSystemRoles) return [];
+    return systemRolesAll.filter((role) =>
+      matchesTableSearch(query, [role.name, role.slug, role.description]),
+    );
+  }, [hideSystemRoles, query, systemRolesAll]);
+  const visibleCustomRoles = useMemo(
+    () =>
+      customRolesAll.filter((role) =>
+        matchesTableSearch(query, [role.name, role.slug, role.description]),
+      ),
+    [customRolesAll, query],
   );
-  const customRoles = useMemo(
-    () => filteredRoles.filter((role) => !role.isSystem),
-    [filteredRoles],
+  const filteredRoles = useMemo(
+    () => [...visibleSystemRoles, ...visibleCustomRoles],
+    [visibleCustomRoles, visibleSystemRoles],
   );
   const showSections =
     canManageSystemRoleAccess &&
-    systemRoles.length > 0 &&
-    customRoles.length > 0;
+    visibleSystemRoles.length > 0 &&
+    visibleCustomRoles.length > 0;
+  const hideBuiltInCards = hideSystemRoles && systemRolesAll.length > 0;
 
   const suggestions = useMemo(
     () =>
       uniqueSearchSuggestions(
-        roles.map((role) => role.name),
-        roles.map((role) => role.slug),
-        roles.map((role) => role.description),
+        searchableRoles.map((role) => role.name),
+        searchableRoles.map((role) => role.slug),
+        searchableRoles.map((role) => role.description),
       ),
-    [roles],
+    [searchableRoles],
   );
 
   const activeRole =
@@ -177,30 +240,74 @@ export function RolesSimpleView({
         </TableSearchToolbar>
 
         {roles.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border/80 px-6 py-14 text-center">
-            <p className="text-sm text-muted-foreground">
-              {canManageSystemRoleAccess
-                ? "No roles configured yet."
-                : "No custom roles yet. Use Add role to create one, or assign built-in roles from Settings → Users."}
-            </p>
+          <div className="space-y-4">
+            <div className="flex justify-end">{hideWhenAddingUserSwitch()}</div>
+            <div className="rounded-xl border border-dashed border-border/80 px-6 py-14 text-center">
+              <p className="text-sm text-muted-foreground">
+                {canManageSystemRoleAccess
+                  ? "No roles configured yet."
+                  : "No custom roles yet. Use Add role to create one, or assign built-in roles from Settings → Users."}
+              </p>
+            </div>
+          </div>
+        ) : hideBuiltInCards ? (
+          <div className="space-y-8">
+            <section className="space-y-3">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-medium text-foreground">
+                    System roles
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Built-in roles are hidden. Turn this off to show them.
+                  </p>
+                </div>
+                {hideWhenAddingUserSwitch()}
+              </div>
+            </section>
+            {customRolesAll.length > 0 ? (
+              <section className="space-y-3">
+                <div>
+                  <h3 className="text-sm font-medium text-foreground">
+                    Custom roles
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Roles you create for this organization.
+                  </p>
+                </div>
+                {visibleCustomRoles.length > 0 ? (
+                  renderRoleGrid(visibleCustomRoles)
+                ) : (
+                  <div className="rounded-xl border border-border/60 px-6 py-12 text-center text-sm text-muted-foreground">
+                    No roles match your search.
+                  </div>
+                )}
+              </section>
+            ) : null}
           </div>
         ) : filteredRoles.length === 0 ? (
-          <div className="rounded-xl border border-border/60 px-6 py-12 text-center text-sm text-muted-foreground">
-            No roles match your search.
+          <div className="space-y-4">
+            <div className="flex justify-end">{hideWhenAddingUserSwitch()}</div>
+            <div className="rounded-xl border border-border/60 px-6 py-12 text-center text-sm text-muted-foreground">
+              No roles match your search.
+            </div>
           </div>
         ) : showSections ? (
           <div className="space-y-8">
             <section className="space-y-3">
-              <div>
-                <h3 className="text-sm font-medium text-foreground">
-                  System roles
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  Built-in roles. You can adjust access; renaming and deleting
-                  stay locked.
-                </p>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-medium text-foreground">
+                    System roles
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Built-in roles. You can adjust access; renaming and deleting
+                    stay locked.
+                  </p>
+                </div>
+                {hideWhenAddingUserSwitch()}
               </div>
-              {renderRoleGrid(systemRoles)}
+              {renderRoleGrid(visibleSystemRoles)}
             </section>
             <section className="space-y-3">
               <div>
@@ -211,11 +318,14 @@ export function RolesSimpleView({
                   Roles you create for this organization.
                 </p>
               </div>
-              {renderRoleGrid(customRoles)}
+              {renderRoleGrid(visibleCustomRoles)}
             </section>
           </div>
         ) : (
-          renderRoleGrid(filteredRoles)
+          <div className="space-y-4">
+            <div className="flex justify-end">{hideWhenAddingUserSwitch()}</div>
+            {renderRoleGrid(filteredRoles)}
+          </div>
         )}
       </div>
 

@@ -20,6 +20,9 @@ interface DeleteConfirmDialogProps {
   pending?: boolean;
   /** Confirm button label when not pending. Defaults to "Delete". */
   confirmLabel?: string;
+  /** Confirm button label while pending. Defaults to "Deleting…". */
+  pendingLabel?: string;
+  confirmVariant?: "destructive" | "default";
   onConfirm: () => void;
 }
 
@@ -30,6 +33,8 @@ export function DeleteConfirmDialog({
   description,
   pending = false,
   confirmLabel = "Delete",
+  pendingLabel = "Deleting…",
+  confirmVariant = "destructive",
   onConfirm,
 }: DeleteConfirmDialogProps) {
   return (
@@ -50,14 +55,14 @@ export function DeleteConfirmDialog({
           </Button>
           <Button
             type="button"
-            variant="destructive"
+            variant={confirmVariant}
             onClick={onConfirm}
             disabled={pending}
           >
             {pending ? (
               <>
                 <Loader2 className="size-4 animate-spin" />
-                Deleting…
+                {pendingLabel}
               </>
             ) : (
               confirmLabel

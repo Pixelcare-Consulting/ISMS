@@ -1,18 +1,25 @@
 import {
+  Barcode,
   Building2,
   CalendarClock,
   ChartColumn,
+  ClipboardCheck,
+  ClipboardList,
   Clock,
+  History,
   KeyRound,
   LayoutDashboard,
   LayoutGrid,
   LayoutTemplate,
   MapPin,
   Network,
+  Plug,
+  ScrollText,
   Settings,
   Shield,
   Store,
   Tags,
+  Truck,
   Users,
 } from "lucide-react";
 
@@ -46,16 +53,22 @@ export const setupNavigation: NavEntry[] = [
     defaultOpen: true,
     items: [
       {
-        href: "/dashboard/site-traffic",
-        label: "Site Traffic",
-        icon: Users,
-        anyPermissions: ["users.manage", "audit_logs.view"],
-      },
-      {
-        href: "/dashboard/custom",
-        label: "Custom Dashboards",
-        icon: LayoutTemplate,
-        anyPermissions: CUSTOM_DASHBOARD_ACCESS,
+        label: "Dashboard",
+        icon: LayoutDashboard,
+        items: [
+          {
+            href: "/dashboard/site-traffic",
+            label: "Site Traffic",
+            icon: Users,
+            anyPermissions: ["users.manage", "audit_logs.view"],
+          },
+          {
+            href: "/dashboard/custom",
+            label: "Custom Dashboards",
+            icon: LayoutTemplate,
+            anyPermissions: CUSTOM_DASHBOARD_ACCESS,
+          },
+        ],
       },
     ],
   },
@@ -66,22 +79,28 @@ export const setupNavigation: NavEntry[] = [
     defaultOpen: true,
     items: [
       {
-        href: "/settings/company",
-        label: "Company",
+        label: "Organization",
         icon: Building2,
-        permission: "company.view",
-      },
-      {
-        href: "/settings/departments",
-        label: "Departments",
-        icon: Network,
-        permission: "departments.manage",
-      },
-      {
-        href: "/settings/status",
-        label: "Status",
-        icon: Clock,
-        permission: "status_settings.manage",
+        items: [
+          {
+            href: "/settings/company",
+            label: "Company",
+            icon: Building2,
+            permission: "company.view",
+          },
+          {
+            href: "/settings/departments",
+            label: "Departments",
+            icon: Network,
+            permission: "departments.manage",
+          },
+          {
+            href: "/settings/status",
+            label: "Status",
+            icon: Clock,
+            permission: "status_settings.manage",
+          },
+        ],
       },
     ],
   },
@@ -92,22 +111,28 @@ export const setupNavigation: NavEntry[] = [
     defaultOpen: true,
     items: [
       {
-        href: "/settings/users",
-        label: "Users",
+        label: "People",
         icon: Users,
-        permission: "users.manage",
-      },
-      {
-        href: "/settings/roles",
-        label: "Roles",
-        icon: Shield,
-        permission: "roles.manage",
-      },
-      {
-        href: "/settings/permissions",
-        label: "Permissions",
-        icon: KeyRound,
-        permission: "roles.manage",
+        items: [
+          {
+            href: "/settings/users",
+            label: "Users",
+            icon: Users,
+            permission: "users.manage",
+          },
+          {
+            href: "/settings/roles",
+            label: "Roles",
+            icon: Shield,
+            permission: "roles.manage",
+          },
+          {
+            href: "/settings/permissions",
+            label: "Permissions",
+            icon: KeyRound,
+            permission: "roles.manage",
+          },
+        ],
       },
     ],
   },
@@ -118,34 +143,40 @@ export const setupNavigation: NavEntry[] = [
     defaultOpen: true,
     items: [
       {
-        href: "/settings/aors",
-        label: "AORs",
-        icon: Network,
-        anyPermissions: ["aors.view", "aors.manage"],
-      },
-      {
-        href: "/settings/branches",
-        label: "Branches",
+        label: "Places",
         icon: MapPin,
-        permission: "branches.manage",
-      },
-      {
-        href: "/settings/warehouses",
-        label: "Warehouses",
-        icon: Building2,
-        permission: "warehouses.manage",
-      },
-      {
-        href: "/settings/service-centers",
-        label: "Service centers",
-        icon: Building2,
-        permission: "service_centers.manage",
-      },
-      {
-        href: "/settings/dealers",
-        label: "Dealers",
-        icon: Store,
-        permission: "dealers.manage",
+        items: [
+          {
+            href: "/settings/aors",
+            label: "AORs",
+            icon: Network,
+            anyPermissions: ["aors.view", "aors.manage"],
+          },
+          {
+            href: "/settings/branches",
+            label: "Branches",
+            icon: MapPin,
+            permission: "branches.manage",
+          },
+          {
+            href: "/settings/warehouses",
+            label: "Warehouses",
+            icon: Building2,
+            permission: "warehouses.manage",
+          },
+          {
+            href: "/settings/service-centers",
+            label: "Service centers",
+            icon: Building2,
+            permission: "service_centers.manage",
+          },
+          {
+            href: "/settings/dealers",
+            label: "Dealers",
+            icon: Store,
+            permission: "dealers.manage",
+          },
+        ],
       },
     ],
   },
@@ -170,22 +201,94 @@ export const setupNavigation: NavEntry[] = [
     defaultOpen: true,
     items: [
       {
-        href: "/settings/branch-quotas",
-        label: "Branch quotas",
-        icon: ChartColumn,
-        anyPermissions: BRANCH_QUOTA_ACCESS,
-      },
-      {
-        href: "/settings/ordering",
-        label: "Ordering policy",
+        label: "Rules",
         icon: CalendarClock,
-        anyPermissions: ["ordering_settings.view", "ordering_settings.manage"],
+        items: [
+          {
+            href: "/settings/branch-quotas",
+            label: "Branch quotas",
+            icon: ChartColumn,
+            anyPermissions: BRANCH_QUOTA_ACCESS,
+          },
+          {
+            href: "/settings/planning",
+            label: "Planning & Forecast",
+            icon: LayoutGrid,
+            anyPermissions: ["forecast.manage", "planogram.manage"],
+            exact: true,
+          },
+          {
+            href: "/settings/ordering",
+            label: "Ordering policy",
+            icon: CalendarClock,
+            anyPermissions: ["ordering_settings.view", "ordering_settings.manage"],
+          },
+          {
+            href: "/settings/planogram",
+            label: "Planogram",
+            icon: LayoutGrid,
+            anyPermissions: ["planogram.view", "planogram.manage"],
+          },
+        ],
       },
+    ],
+  },
+  {
+    type: "group",
+    label: "Audit Logs",
+    icon: History,
+    defaultOpen: true,
+    items: [
       {
-        href: "/settings/planogram",
-        label: "Planogram",
-        icon: LayoutGrid,
-        anyPermissions: ["planogram.view", "planogram.manage"],
+        label: "Logs",
+        icon: History,
+        items: [
+          {
+            href: "/audit-logs/system",
+            label: "System logs",
+            icon: ClipboardList,
+            permission: "audit_logs.view",
+          },
+          {
+            href: "/audit-logs/serial-numbers",
+            label: "Serial number logs",
+            icon: Barcode,
+            permission: "serial_logs.view",
+          },
+          {
+            href: "/audit-logs/inventory-approvals",
+            label: "Inventory approvals",
+            icon: ClipboardCheck,
+            permission: "inventory_approvals.view",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    type: "link",
+    href: "/policies",
+    label: "Policies",
+    icon: ScrollText,
+    anyPermissions: ["policies.view", "policies.create", "policies.approve"],
+  },
+  {
+    type: "group",
+    label: "Integrations",
+    icon: Plug,
+    defaultOpen: true,
+    items: [
+      {
+        label: "Integrations",
+        icon: Plug,
+        items: [
+          {
+            href: "/settings/sap-integration",
+            label: "SAP integration",
+            icon: Truck,
+            permission: "sap.manage",
+          },
+        ],
       },
     ],
   },

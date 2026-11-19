@@ -5,8 +5,13 @@ import { useMemo, useState, useTransition } from "react";
 import { createColumnHelper } from "@tanstack/react-table";
 import { Search } from "lucide-react";
 import { toast } from "sonner";
-
-import { appModules, parsePermissionSlug } from "@/config/app-modules";
+import {
+  appModules,
+  parsePermissionSlug,
+  permissionActionLabel,
+  roleSectionKey,
+  roleSectionModule,
+} from "@/config/app-modules";
 import {
   getPermissionActionLabel,
   matrixActionColumns,
@@ -15,6 +20,7 @@ import { toggleRolePermissionAction } from "@/features/roles/actions/role.action
 import {
   filterTenantVisibleRoles,
   isProviderOnlyRole,
+  withoutBuiltInRoles,
 } from "@/features/roles/constants/role.constants";
 import { PermissionChangeDialog } from "@/features/roles/components/permission-change-dialog";
 import {
@@ -46,6 +52,8 @@ interface RoleModuleActionMatrixProps {
   matrix: RolesPermissionsMatrix;
   /** Super Admin or platform operator — may toggle grants on system roles. */
   canManageSystemRoleAccess?: boolean;
+  /** On hides built-in roles, same switch as the Roles page. */
+  hideSystemRoles?: boolean;
 }
 
 interface ModuleActionCell {
@@ -57,8 +65,11 @@ const moduleColumn = createColumnHelper<DataTableFeatures, ModuleMatrixRow>();
 interface ModuleMatrixRow {
   moduleId: string;
   moduleName: string;
+  area?: string;
   description?: string;
   cells: Record<string, ModuleActionCell>;
+  /** Actions that are not a shared matrix column, kept on this module. */
+  extras: PermissionRow[];
 }
 
 type BulkPending = {
@@ -92,64 +103,82 @@ function buildModuleRows(
   }
 
   const actionColumns = matrixActionColumns(presentActions);
-  const rows: ModuleMatrixRow[] = [];
   const knownSlugs = new Set<string>();
+  const rowsByKey = new Map<string, ModuleMatrixRow>();
 
-  for (const appModule of appModules) {
+  function ensureRow(module: (typeof appModules)[number]): ModuleMatrixRow {
+    const key = roleSectionKey(module);
+    const existing = rowsByKey.get(key);
+    if (existing) return existing;
+    const meta = roleSectionModule(module);
     const cells: Record<string, ModuleActionCell> = {};
-    let hasAnyCatalogSlug = false;
-
     for (const column of actionColumns) {
-      const allowlisted = appModule.actions.some((a) => a.value === column.value);
-      if (!allowlisted) {
-        cells[column.value] = { permission: null };
-        continue;
-      }
-      const slug = `${appModule.slugPrefix}.${column.value}`;
-      const permission = bySlug.get(slug) ?? null;
-      if (permission) {
-        hasAnyCatalogSlug = true;
-        knownSlugs.add(permission.slug);
-      }
-      cells[column.value] = { permission };
+      cells[column.value] = { permission: null };
     }
-
-    if (!hasAnyCatalogSlug) {
-      continue;
-    }
-
-    rows.push({
-      moduleId: appModule.id,
-      moduleName: appModule.name,
-      description: appModule.description,
+    const row: ModuleMatrixRow = {
+      moduleId: key,
+      moduleName: meta.name,
+      area: meta.area,
+      description: meta.description,
       cells,
-    });
+      extras: [],
+    };
+    rowsByKey.set(key, row);
+    return row;
   }
 
-  const orphans = permissions.filter((p) => !knownSlugs.has(p.slug));
+  for (const appModule of appModules) {
+    if (appModule.hidden || roleSectionModule(appModule).hidden) continue;
+    const row = ensureRow(appModule);
+    for (const column of actionColumns) {
+      const allowlisted = appModule.actions.some((action) => action.value === column.value);
+      if (!allowlisted) continue;
+      const slug = `${appModule.slugPrefix}.${column.value}`;
+      const permission = bySlug.get(slug) ?? null;
+      if (!permission) continue;
+      knownSlugs.add(permission.slug);
+      row.cells[column.value] = { permission };
+    }
+  }
+
+  for (const permission of permissions) {
+    if (knownSlugs.has(permission.slug)) continue;
+    const { module } = parsePermissionSlug(permission.slug);
+    if (!module) continue;
+    if (module.hidden || roleSectionModule(module).hidden) {
+      knownSlugs.add(permission.slug);
+      continue;
+    }
+    ensureRow(module).extras.push(permission);
+    knownSlugs.add(permission.slug);
+  }
+
+  const rows: ModuleMatrixRow[] = [];
+  const seen = new Set<string>();
+  for (const appModule of appModules) {
+    if (appModule.hidden) continue;
+    const key = roleSectionKey(appModule);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const row = rowsByKey.get(key);
+    if (!row) continue;
+    const hasCell = Object.values(row.cells).some((cell) => cell.permission);
+    if (!hasCell && row.extras.length === 0) continue;
+    rows.push(row);
+  }
+
+  const orphans = permissions.filter((permission) => !knownSlugs.has(permission.slug));
   if (orphans.length > 0) {
     const cells: Record<string, ModuleActionCell> = {};
     for (const column of actionColumns) {
       cells[column.value] = { permission: null };
     }
-    const fallbackKey = actionColumns[0]?.value;
-    if (fallbackKey) {
-      for (const orphan of orphans) {
-        const { action } = parsePermissionSlug(orphan.slug);
-        const key =
-          action && Object.prototype.hasOwnProperty.call(cells, action)
-            ? action
-            : fallbackKey;
-        if (!cells[key]?.permission) {
-          cells[key] = { permission: orphan };
-        }
-      }
-    }
     rows.push({
       moduleId: "other",
       moduleName: "Other",
-      description: "Permissions not linked to a registered module",
+      description: "Permissions with no matching page",
       cells,
+      extras: orphans,
     });
   }
 
@@ -169,6 +198,10 @@ function moduleAssignedCount(
       assignedCount += 1;
     }
   }
+  for (const extra of row.extras) {
+    total += 1;
+    if (assigned.has(extra.slug)) assignedCount += 1;
+  }
   return { assigned: assignedCount, total };
 }
 
@@ -179,6 +212,7 @@ function catalogPermissionsInRow(row: ModuleMatrixRow): PermissionRow[] {
       items.push(cell.permission);
     }
   }
+  items.push(...row.extras);
   return items;
 }
 
@@ -226,9 +260,17 @@ function ModuleBulkActions({
 export function RoleModuleActionMatrix({
   matrix,
   canManageSystemRoleAccess = false,
+  hideSystemRoles = false,
 }: RoleModuleActionMatrixProps) {
   const router = useRouter();
-  const roles = filterTenantVisibleRoles(matrix.roles);
+  const roles = useMemo(
+    () =>
+      withoutBuiltInRoles(
+        filterTenantVisibleRoles(matrix.roles),
+        hideSystemRoles,
+      ),
+    [hideSystemRoles, matrix.roles],
+  );
   const { permissions } = matrix;
   const [selectedRoleId, setSelectedRoleId] = useState(roles[0]?.id ?? "");
   const [moduleQuery, setModuleQuery] = useState("");
@@ -244,7 +286,7 @@ export function RoleModuleActionMatrix({
     const trimmed = moduleQuery.trim();
     if (!trimmed) return rows;
     return rows.filter((row) => {
-      if (matchesTableSearch(trimmed, [row.moduleName, row.description])) {
+      if (matchesTableSearch(trimmed, [row.area, row.moduleName, row.description])) {
         return true;
       }
       return catalogPermissionsInRow(row).some((permission) =>
@@ -350,6 +392,11 @@ export function RoleModuleActionMatrix({
           const counts = moduleAssignedCount(row.original, assigned);
           return (
             <div>
+              {row.original.area ? (
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {row.original.area}
+                </p>
+              ) : null}
               <p className="font-medium">{row.original.moduleName}</p>
               {row.original.description ? (
                 <p className="mt-0.5 text-xs text-muted-foreground">{row.original.description}</p>
@@ -357,6 +404,38 @@ export function RoleModuleActionMatrix({
               <p className="mt-0.5 text-[11px] tabular-nums text-muted-foreground">
                 {counts.assigned} of {counts.total}
               </p>
+              {row.original.extras.length > 0 && selectedRole ? (
+                <ul className="mt-2 space-y-1.5">
+                  {row.original.extras.map((permission) => {
+                    const { module, action } = parsePermissionSlug(permission.slug);
+                    const label =
+                      module && action
+                        ? permissionActionLabel(module, action)
+                        : permission.name;
+                    return (
+                      <li key={permission.id} className="flex items-start gap-2">
+                        <PermissionToggle
+                          roleId={selectedRole.id}
+                          roleName={selectedRole.name}
+                          permissionSlug={permission.slug}
+                          permissionName={`${label} — ${row.original.moduleName}`}
+                          checked={assigned.has(permission.slug)}
+                          disabled={isProtected}
+                          pending={busy}
+                          className="mt-0.5"
+                          onToggleRequest={openChangeDialog}
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-xs">{label}</span>
+                          <span className="block truncate font-mono text-[10px] text-muted-foreground">
+                            {permission.slug}
+                          </span>
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : null}
             </div>
           );
         },
@@ -385,10 +464,7 @@ export function RoleModuleActionMatrix({
                   roleId={selectedRole.id}
                   roleName={selectedRole.name}
                   permissionSlug={permission.slug}
-                  permissionName={
-                    permission.name ||
-                    `${getPermissionActionLabel(column.value)} ${row.original.moduleName}`
-                  }
+                  permissionName={`${getPermissionActionLabel(column.value)} — ${row.original.moduleName}`}
                   checked={assigned.has(permission.slug)}
                   disabled={isProtected}
                   pending={busy}
@@ -441,9 +517,11 @@ export function RoleModuleActionMatrix({
     return (
       <DataTableShell>
         <p className="py-12 text-center text-muted-foreground">
-          {canManageSystemRoleAccess
-            ? "No roles configured yet."
-            : "No custom roles yet. Use Add role on the simple view, or assign built-in roles from Settings → Users."}
+          {hideSystemRoles
+            ? "Built-in roles are hidden. Turn this off to show them."
+            : canManageSystemRoleAccess
+              ? "No roles configured yet."
+              : "No custom roles yet. Use Add role on the simple view, or assign built-in roles from Settings → Users."}
         </p>
       </DataTableShell>
     );
@@ -527,6 +605,11 @@ export function RoleModuleActionMatrix({
                   >
                     <div className="flex flex-wrap items-start justify-between gap-2 border-b border-border/60 px-3 py-2.5">
                       <div className="min-w-0">
+                        {row.area ? (
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            {row.area}
+                          </p>
+                        ) : null}
                         <h3 className="text-sm font-medium">{row.moduleName}</h3>
                         {row.description ? (
                           <p className="text-xs text-muted-foreground">
@@ -544,7 +627,7 @@ export function RoleModuleActionMatrix({
                         onClear={() => handleModuleSelectAll(row, false)}
                       />
                     </div>
-                    {actionable.length === 0 ? (
+                    {actionable.length === 0 && row.extras.length === 0 ? (
                       <p className="px-3 py-3 text-xs text-muted-foreground">
                         No catalog permissions for this module yet.
                       </p>
@@ -559,10 +642,7 @@ export function RoleModuleActionMatrix({
                               roleId={selectedRole.id}
                               roleName={selectedRole.name}
                               permissionSlug={permission.slug}
-                              permissionName={
-                                permission.name ||
-                                `${getPermissionActionLabel(column.value)} ${row.moduleName}`
-                              }
+                              permissionName={`${getPermissionActionLabel(column.value)} — ${row.moduleName}`}
                               checked={assigned.has(permission.slug)}
                               disabled={isProtected}
                               pending={busy}
@@ -582,6 +662,40 @@ export function RoleModuleActionMatrix({
                             </div>
                           </li>
                         ))}
+                        {row.extras.map((permission) => {
+                          const parsed = parsePermissionSlug(permission.slug);
+                          const label =
+                            parsed.module && parsed.action
+                              ? permissionActionLabel(parsed.module, parsed.action)
+                              : permission.name;
+                          return (
+                            <li
+                              key={permission.id}
+                              className="flex items-start gap-3 px-3 py-2.5"
+                            >
+                              <PermissionToggle
+                                roleId={selectedRole.id}
+                                roleName={selectedRole.name}
+                                permissionSlug={permission.slug}
+                                permissionName={`${label} — ${row.moduleName}`}
+                                checked={assigned.has(permission.slug)}
+                                disabled={isProtected}
+                                pending={busy}
+                                className="mt-0.5"
+                                onToggleRequest={openChangeDialog}
+                              />
+                              <div className="min-w-0">
+                                <p className="text-sm leading-snug">{label}</p>
+                                <p
+                                  className="truncate text-[11px] text-muted-foreground"
+                                  title={permission.slug}
+                                >
+                                  {permission.slug}
+                                </p>
+                              </div>
+                            </li>
+                          );
+                        })}
                       </ul>
                     )}
                   </section>

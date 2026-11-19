@@ -3,23 +3,25 @@ import type { PageTutorialContent } from "@/components/page-tutorial/types";
 export const SC_INVENTORY_PAGE_TUTORIAL: PageTutorialContent = {
   id: "service-centers-inventory",
   triggerLabel: "Open service inventory tutorial",
-  dialogTitle: "Service center inventory — quick guide",
+  dialogTitle: "Service center inventory: quick guide",
   dialogDescription:
-    "View serialized stock at your assigned service centers and stock in units for UAT.",
+    "See serialized stock at the service centers you cover, laid out like Branch Inventory. This page is view only.",
   helpHref: "/help",
   helpLinkLabel: "Full Help & Support portal",
   sections: [
     {
       title: "What this page is for",
       description:
-        "Service center inventory is a separate stock ledger from branch inventory. Units show as STK when available to sell or pull out.",
+        "Service center stock is kept apart from branch stock. The cards show total, in stock (STK), defective and in transit (DIT) units with their peso value at the price list, else SRP. Sold units are not shown.",
     },
     {
       title: "How to use it",
       bullets: [
-        "Filter by status to focus on available (STK) or sold units.",
-        "Use Manual stock-in when a serial already exists and you need to place it at a service center location.",
-        "Your list is limited to service centers in your area of responsibility.",
+        "Pick a series to narrow the cards, the series panel and the service center list.",
+        "Open a service center to see its status totals and every unit. Filter by status, model or location, or search a serial.",
+        "Open a unit to see its location, DR number, DR date and aging (days since the DR date).",
+        "Statuses cannot be changed here. Units arrive as DIT through Check SAP on Deliveries, become STK when accepted under Deliveries, and leave through sales and pull-outs.",
+        "You only see service centers in your area of responsibility.",
       ],
     },
   ],
@@ -30,21 +32,23 @@ export const SC_SALES_PAGE_TUTORIAL: PageTutorialContent = {
   triggerLabel: "Open service sales tutorial",
   dialogTitle: "Service center sales — quick guide",
   dialogDescription:
-    "Encode sales from service center stock. Request a return here; finish under Returns / Replacement.",
+    "Encode sales the same way as branch Sales Transactions, with units sold from service center stock.",
   helpHref: "/help",
   helpLinkLabel: "Full Help & Support portal",
   sections: [
     {
       title: "What this page is for",
       description:
-        "Record a sale from STK stock at a service center location. Start a return from this list; evaluate, approve, and restore under Returns / Replacement → Service (or Approvals).",
+        "Record sales made at a service center. Each sale picks the service center sold and the location whose STK units it sells. These sales stay out of branch sales reports and KPIs.",
     },
     {
       title: "How to use it",
       bullets: [
-        "New sale picks a center, location, and available serial.",
-        "Request return with a reason when the sale is still open.",
-        "Open Returns / Replacement to finish evaluate → approve → restore to STK.",
+        "New transaction: pick the service center and location, fill the header, then add package line sets.",
+        "Use TO-FOLLOW when the serial is not known yet, then set the real serial later from View details.",
+        "Mark a sale Reserved to hold its units as RSV; clearing Reserved sells them (SLD).",
+        "Edit header from the list to correct customer, payment, or proof details.",
+        "Customer brings a unit back: View details → Request Return, choose Service Return or Service Replacement. The unit becomes Reserve ODRF and the service center finishes the request under Service → SC Returns and Replacement.",
       ],
     },
   ],
@@ -61,12 +65,17 @@ export const SC_ORDERS_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "What this page is for",
       description:
-        "Request stock for a service center. After approval, create a delivery and accept serials into inventory.",
+        "Request stock for a service center. Supply Planning approves the order, which posts a SAP Sales Order. When a SAP user copies it to a DR, Check SAP now under Deliveries brings that DR in as a delivery to accept.",
     },
     {
       title: "Creating and approving",
       description:
-        "New order opens the Create Order page set to Service center: pick the center and SAP customer, then enter quantities against what SAP has available in the ordering warehouse (Settings → Ordering policy), plus an optional PO number and SAP project. Approving posts a SAP Sales Order with the defaults from Settings → Ordering policy; if SAP refuses it, the order stays pending with SAP's reason.",
+        "New order asks for the center and SAP customer, then opens the service center Create Order page: enter quantities against what SAP has available in the ordering warehouse (Settings → Ordering policy), plus an optional PO number and SAP project. The order goes to Pending SP. Supply Planning approves or rejects it; approving posts a SAP Sales Order with the defaults from Settings → Ordering policy, and if SAP refuses it, the order stays pending with SAP's reason.",
+    },
+    {
+      title: "Deliveries from SAP",
+      description:
+        "In SAP, copy the Sales Order to a Delivery (Copy To). Then select Check SAP now under Deliveries: each new DR becomes a delivery there, and its serials show as DIT at the order's location. The DR no. column here shows what has come in; \"Waiting for SAP\" means no DR yet.",
     },
   ],
 };
@@ -76,14 +85,14 @@ export const SC_DELIVERIES_PAGE_TUTORIAL: PageTutorialContent = {
   triggerLabel: "Open service deliveries tutorial",
   dialogTitle: "Service center deliveries — quick guide",
   dialogDescription:
-    "Create deliveries from approved orders and accept serials into service center stock.",
+    "Accept the units SAP delivered into service center stock.",
   helpHref: "/help",
   helpLinkLabel: "Full Help & Support portal",
   sections: [
     {
       title: "What this page is for",
       description:
-        "Accepting a delivery records serials as backload lines and places them as STK at the service center location.",
+        "Select Check SAP now to bring in the DRs SAP users copied from approved SC orders' Sales Orders; each one becomes a delivery here with its serials DIT. Open a delivery to see its progress, units and history, then select Receive: the units you tick become STK at the service center location, and the delivery stays partly received until every unit is in. To send units back, tick them and select Reject, with optional remarks and DEF per unit: confirming posts a SAP Return for the order's customer right away and the units go back to the order's SAP warehouse. A failed SAP post shows under Rejected units, where you can retry it or cancel the reject. If the order named no location and the center has several, choose the receiving location on the delivery first.",
     },
   ],
 };
@@ -91,16 +100,59 @@ export const SC_DELIVERIES_PAGE_TUTORIAL: PageTutorialContent = {
 export const SC_PULLOUTS_PAGE_TUTORIAL: PageTutorialContent = {
   id: "service-centers-pullouts",
   triggerLabel: "Open service pull-outs tutorial",
-  dialogTitle: "Service center pull-outs — quick guide",
+  dialogTitle: "Service center pull-outs: quick guide",
   dialogDescription:
-    "Reserve, approve, and complete pull-outs against service center inventory.",
+    "Take units out of a service center through Team Lead approval and Logistics.",
   helpHref: "/help",
   helpLinkLabel: "Full Help & Support portal",
   sections: [
     {
       title: "What this page is for",
       description:
-        "Pull-outs remove units from the service center ledger when completed. There is no warehouse destination on this flow.",
+        "Pull-outs take units out of a service center. Flow: service center requests → TL approves → Logistics saves the list → Logistics sends it. After Send, Check SAP marks the units Pulled out once SAP shows them on an IT or Return.",
+    },
+    {
+      title: "How to use it",
+      bullets: [
+        "Choose Stock (STK) or Defective (DEF), then add the units and their details.",
+        "Team Lead approves or deletes each unit, or approves them all.",
+        "After approval, Logistics enters the waybill and schedule and saves the list.",
+        "Send puts every unit in transit (DIT). Sent units no longer count in Service Center Inventory.",
+        "In SAP, put the pull-out no. in the \"Pull Out Number Generated in ISMS\" row field of the IT or Return, then select Check SAP on the pull-out: the units it lists become Pulled out (PO).",
+        "A DR copied from that Return back to the service center becomes a delivery under Deliveries the next time you select Check SAP; accept it there.",
+      ],
+    },
+    {
+      title: "Tip",
+      description:
+        "Keep reason/status codes current under Settings so pull-out forms stay consistent.",
+    },
+  ],
+};
+
+export const SC_RETURNS_PAGE_TUTORIAL: PageTutorialContent = {
+  id: "service-centers-returns",
+  triggerLabel: "Open service returns tutorial",
+  dialogTitle: "Service center returns: quick guide",
+  dialogDescription:
+    "Finish the Service Returns and Service Replacements a CSR requested on your service center's sales.",
+  helpHref: "/help",
+  helpLinkLabel: "Full Help & Support portal",
+  sections: [
+    {
+      title: "What this page is for",
+      description:
+        "A CSR requests a Service Return or Service Replacement on one of your service center's sales (SC Sales → View details → Request Return). The unit becomes Reserve ODRF in your stock and the request waits here as Pending SC. You get a notification for each new request.",
+    },
+    {
+      title: "How to use it",
+      bullets: [
+        "Inspect the returned unit, then open the request from the notification or search by SI, serial or customer.",
+        "Service Return: choose the location that receives the unit and Submit Return. The unit goes into your stock as the STK or DEF the CSR chose.",
+        "Service Replacement, unit in stock: pick the model and serial from your STK and Replace Unit. The returned unit goes into your stock and the new unit is Sold on the same invoice.",
+        "Service Replacement, no unit in stock: Raise Special Order. It follows the service center order flow (approval, SAP, delivery). The request shows Awaiting Stock until you accept that delivery; the unit is then held for it and the request is back to Pending SC.",
+        "Reject with a reason when the unit does not qualify. It gets back the status it had before the request and the CSR is notified.",
+      ],
     },
   ],
 };

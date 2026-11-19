@@ -45,7 +45,7 @@ const detail = {
   scheduledByName: null,
   actualScheduledDate: null,
   status: { code: "for_pullout", name: "For pull-out", color: null },
-  branch: { id: "b1", name: "Branch A" },
+  place: { id: "b1", name: "Branch A" },
   warehouse: { id: "w1", name: "Main", code: "W1" },
   warehouseLocation: null,
   receiveLocations: [],
@@ -107,7 +107,7 @@ async function openAddSerials() {
     <PulloutDetailView
       detail={detail}
       capabilities={capabilities}
-      branchScope={null}
+      placeScope={null}
       workflowStatuses={[]}
     />,
   );
@@ -176,8 +176,13 @@ describe("Add serials on the Logistics step", () => {
     });
 
     expect(saveButton()).toBeEnabled();
+    fireEvent.click(saveButton());
+    expect(saveList).not.toHaveBeenCalled();
+    expect(
+      await screen.findByRole("heading", { name: "Are you sure you want to save this list?" }),
+    ).toBeInTheDocument();
     await act(async () => {
-      fireEvent.click(saveButton());
+      fireEvent.click(screen.getByRole("button", { name: "Yes" }));
     });
 
     expect(saveList).toHaveBeenCalledWith(

@@ -4,7 +4,6 @@ import { useMemo, useState, useTransition } from "react";
 
 import { toast } from "sonner";
 
-import { filterTenantVisibleRoles } from "@/features/roles/constants/role.constants";
 import { updateUserAction } from "@/features/users/actions/user.actions";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,11 +18,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-
-interface RoleOption {
-  slug: string;
-  name: string;
-}
+import {
+  UserRolePicker,
+  type UserRoleOption,
+} from "@/app/(app)/settings/users/_components/user-role-picker";
 
 interface DepartmentOption {
   id: string;
@@ -40,8 +38,9 @@ interface EditUserDialogProps {
     userRoles: { role: { slug: string } }[];
     department: { id: string } | null;
   } | null;
-  roles: RoleOption[];
+  roles: UserRoleOption[];
   departments: DepartmentOption[];
+  hideSystemRoles: boolean;
   onUpdated?: (user: {
     id: string;
     name: string | null;
@@ -58,24 +57,21 @@ export function EditUserDialog({
   user,
   roles,
   departments,
+  hideSystemRoles,
   onUpdated,
 }: EditUserDialogProps) {
   const [error, setError] = useState<string | null>(null);
-  const [roleSlug, setRoleSlug] = useState(
-    user?.userRoles[0]?.role.slug ?? roles[0]?.slug ?? "",
+  const [selectedSlugs, setSelectedSlugs] = useState<string[]>(
+    user?.userRoles.map((userRole) => userRole.role.slug) ?? [],
   );
   const [departmentId, setDepartmentId] = useState(
     user?.department?.id ?? "none",
   );
   const [pending, startTransition] = useTransition();
 
-  const roleOptions = useMemo(
-    () =>
-      filterTenantVisibleRoles(roles).map((role) => ({
-        id: role.slug,
-        label: role.name,
-      })),
-    [roles],
+  const assignedSlugs = useMemo(
+    () => user?.userRoles.map((userRole) => userRole.role.slug) ?? [],
+    [user],
   );
 
   const departmentOptions = useMemo(
@@ -100,7 +96,7 @@ export function EditUserDialog({
   if (editing !== seededFor) {
     setSeededFor(editing);
     if (editing && user) {
-      setRoleSlug(user.userRoles[0]?.role.slug ?? roles[0]?.slug ?? "");
+      setSelectedSlugs(user.userRoles.map((userRole) => userRole.role.slug));
       setDepartmentId(user.department?.id ?? "none");
       setError(null);
     }
@@ -113,9 +109,16 @@ export function EditUserDialog({
     }
 
     setError(null);
+    if (selectedSlugs.length === 0) {
+      setError("At least one role is required");
+      return;
+    }
+
     const formData = new FormData(event.currentTarget);
     formData.set("userId", user.id);
-    formData.set("roleSlug", roleSlug);
+    for (const slug of selectedSlugs) {
+      formData.append("roleSlugs", slug);
+    }
     formData.set("departmentId", departmentId === "none" ? "" : departmentId);
 
     startTransition(async () => {
@@ -136,7 +139,7 @@ export function EditUserDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-[1050px]">
         <DialogHeader>
           <DialogTitle>Edit user</DialogTitle>
           <DialogDescription>
@@ -144,44 +147,37 @@ export function EditUserDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="edit-user-name">Name</Label>
-            <Input
-              id="edit-user-name"
-              name="name"
-              defaultValue={user?.name ?? ""}
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-user-email">Email</Label>
-            <Input
-              id="edit-user-email"
-              value={user?.email ?? ""}
-              disabled
-              readOnly
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-user-password">New password</Label>
-            <PasswordInput
-              id="edit-user-password"
-              name="password"
-              minLength={8}
-              placeholder="Leave blank to keep current password"
-            />
-          </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <SearchableSelect
-              label="Role"
-              id="edit-user-role"
-              options={roleOptions}
-              value={roleSlug}
-              onChange={setRoleSlug}
-              placeholder="Select role"
-              searchPlaceholder="Search roles…"
-              disabled={pending}
-            />
+            <div className="space-y-2">
+              <Label htmlFor="edit-user-name">Name</Label>
+              <Input
+                id="edit-user-name"
+                name="name"
+                defaultValue={user?.name ?? ""}
+                required
+                disabled={pending}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-user-email">Email</Label>
+              <Input
+                id="edit-user-email"
+                value={user?.email ?? ""}
+                disabled
+                readOnly
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-user-password">New password</Label>
+              <PasswordInput
+                id="edit-user-password"
+                name="password"
+                minLength={8}
+                disabled={pending}
+                placeholder="Leave blank to keep current password"
+                autoComplete="new-password"
+              />
+            </div>
             <SearchableSelect
               label="Department"
               id="edit-user-department"
@@ -193,16 +189,31 @@ export function EditUserDialog({
               disabled={pending}
             />
           </div>
+
+          <UserRolePicker
+            roles={roles}
+            selectedSlugs={selectedSlugs}
+            onSelectedSlugsChange={setSelectedSlugs}
+            hideSystemRoles={hideSystemRoles}
+            assignedSlugs={assignedSlugs}
+            disabled={pending}
+            idPrefix="edit-user"
+          />
+
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter>
             <Button
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
+              disabled={pending}
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={pending || !roleSlug}>
+            <Button
+              type="submit"
+              disabled={pending || selectedSlugs.length === 0}
+            >
               {pending ? "Saving…" : "Save changes"}
             </Button>
           </DialogFooter>

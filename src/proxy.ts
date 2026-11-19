@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionCookie } from "better-auth/cookies";
 
 import { MAINTENANCE_MODE, MAINTENANCE_PATH } from "@/config/maintenance";
+import { isTerminalLoginError } from "@/lib/auth/session-policy";
 
 // Deny-by-default: every route requires auth except those listed here, so new
 // app sections are protected automatically.
@@ -52,7 +53,12 @@ export default function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (isLoggedIn && (pathname === "/login" || pathname === "/register")) {
+  // A sign-out URL must render even when the session cookie is still in the
+  // browser. Sending it to the app makes requireAuth sign out again and the
+  // browser reloads the same login URL.
+  const stayOnLogin =
+    pathname === "/login" && isTerminalLoginError(request.nextUrl.searchParams.get("error"));
+  if (isLoggedIn && (pathname === "/login" || pathname === "/register") && !stayOnLogin) {
     return NextResponse.redirect(new URL("/dashboard", request.nextUrl.origin));
   }
 

@@ -14,6 +14,21 @@ export interface AppModule {
   description?: string;
   /** Permission slug that gates sidebar access to this module */
   navPermission?: string;
+  /**
+   * Sidebar menu this module belongs to in the role editor.
+   * Day-to-day pages use Inventory, Orders, or Sales & Returns.
+   */
+  area?: string;
+  /**
+   * Role-editor section. Modules that share a key are one group.
+   * Use this when several slug prefixes are one sidebar item.
+   */
+  groupId?: string;
+  /**
+   * Kept for existing grants, but not shown in the role editor or permission picker.
+   * The current page is gated by a newer permission.
+   */
+  hidden?: boolean;
   /** Allowlisted vocabulary actions for this module */
   actions: PermissionActionOption[];
 }
@@ -157,51 +172,9 @@ export const appModules: AppModule[] = [
     route: "/settings/service-centers",
     slugPrefix: "service_centers",
     navPermission: "service_centers.manage",
-    description: "Service center master data and ATR return steps",
-    actions: permissionActions(
-      "view",
-      "manage",
-      "return.request",
-      "return.evaluate",
-      "return.approve",
-      "return.complete",
-    ),
-  },
-  {
-    id: "service_centers_inventory",
-    name: "Service Center Inventory",
-    route: "/service-centers/inventory",
-    slugPrefix: "service_centers.inventory",
-    navPermission: "service_centers.inventory.view",
-    description: "Serialized stock at service center locations",
-    actions: permissionActions("view"),
-  },
-  {
-    id: "service_centers_sales",
-    name: "Service Center Sales",
-    route: "/service-centers/sales",
-    slugPrefix: "service_centers.sales",
-    navPermission: "service_centers.sales.view",
-    description: "Service center sales encode",
-    actions: permissionActions("view", "create"),
-  },
-  {
-    id: "service_centers_orders",
-    name: "Service Center Orders",
-    route: "/service-centers/orders",
-    slugPrefix: "service_centers.orders",
-    navPermission: "service_centers.orders.view",
-    description: "Service center manual orders",
-    actions: permissionActions("view", "create", "approve"),
-  },
-  {
-    id: "service_centers_logistics",
-    name: "Service Center Logistics",
-    route: "/service-centers/deliveries",
-    slugPrefix: "service_centers.logistics",
-    navPermission: "service_centers.logistics.view",
-    description: "Service center deliveries and pull-outs",
-    actions: permissionActions("view", "create", "manage"),
+    area: "Settings",
+    description: "Settings. Service center locations.",
+    actions: permissionActions("view", "manage"),
   },
   {
     id: "warehouses",
@@ -236,7 +209,7 @@ export const appModules: AppModule[] = [
     route: "/settings/status",
     slugPrefix: "status_settings",
     navPermission: "status_settings.manage",
-    description: "Reason/Status codes for inventory, logistics, and pull-outs",
+    description: "Reason and status codes",
     actions: permissionActions("view", "manage"),
   },
   {
@@ -259,83 +232,213 @@ export const appModules: AppModule[] = [
   },
   {
     id: "inventory",
-    name: "Inventory",
+    name: "Branch inventory",
     route: "/inventory",
     slugPrefix: "inventory",
     navPermission: "inventory.view",
-    description: "Serialized branch and warehouse inventory (AOR-scoped)",
+    area: "Inventory",
+    description: "Opens branch Inventory.",
     actions: permissionActions("view", "manage"),
   },
   {
+    id: "inventory_monthly_sir",
+    name: "Monthly SIR",
+    route: "/inventory/monthly-sir",
+    slugPrefix: "inventory.monthly_sir",
+    navPermission: "inventory.monthly_sir.view",
+    area: "Inventory",
+    description: "Opens Monthly SIR in Inventory.",
+    actions: permissionActions("view"),
+  },
+  {
+    id: "logistics",
+    name: "Branch deliveries",
+    route: "/logistics/deliveries",
+    slugPrefix: "logistics",
+    navPermission: "logistics.view",
+    area: "Inventory",
+    description: "Opens Deliveries in Inventory. View, Create, and Manage also open Transfers.",
+    actions: permissionActions("view", "create", "manage"),
+  },
+  {
+    id: "logistics_delivery",
+    name: "Branch deliveries",
+    route: "/logistics/deliveries",
+    slugPrefix: "logistics.delivery",
+    groupId: "logistics",
+    area: "Inventory",
+    description: "Opens Deliveries in Inventory. View, Create, and Manage also open Transfers.",
+    actions: [
+      { value: "dispatch", label: "Dispatch" },
+      { value: "receive", label: "Receive" },
+    ],
+  },
+  {
+    id: "logistics_delivery_return",
+    name: "Branch deliveries",
+    route: "/logistics/deliveries",
+    slugPrefix: "logistics.delivery_return",
+    groupId: "logistics",
+    area: "Inventory",
+    description: "Opens Deliveries in Inventory. View, Create, and Manage also open Transfers.",
+    actions: [
+      { value: "request", label: "Request return" },
+      { value: "approve", label: "Approve return" },
+    ],
+  },
+  {
+    id: "logistics_delivery_transfer",
+    name: "Branch transfers",
+    route: "/logistics/transfers",
+    slugPrefix: "logistics.delivery_transfer",
+    area: "Inventory",
+    description:
+      "Opens Transfers in Inventory. Create, Approve, and Receive control this page and also cover units not accepted on a delivery. Opening Transfers uses Branch deliveries View, Create, or Manage.",
+    actions: [
+      { value: "create", label: "Create" },
+      { value: "approve", label: "Approve" },
+      { value: "receive", label: "Receive" },
+    ],
+  },
+  {
+    id: "pullouts",
+    name: "Branch pull-outs",
+    route: "/logistics/pickups",
+    slugPrefix: "pullouts",
+    navPermission: "pullouts.view",
+    area: "Inventory",
+    description:
+      "Opens Pull-outs in Inventory. Create, Approve, and Manage cover new pull-outs, approval, and sending.",
+    actions: permissionActions("view", "create", "approve", "manage"),
+  },
+  {
+    id: "service_centers_inventory",
+    name: "Service center inventory",
+    route: "/service-centers/inventory",
+    slugPrefix: "service_centers.inventory",
+    navPermission: "service_centers.inventory.view",
+    area: "Inventory",
+    description: "Opens service center Inventory.",
+    actions: permissionActions("view"),
+  },
+  {
+    id: "service_centers_logistics",
+    name: "Service center deliveries and pull-outs",
+    route: "/service-centers/deliveries",
+    slugPrefix: "service_centers.logistics",
+    navPermission: "service_centers.logistics.view",
+    area: "Inventory",
+    description:
+      "Opens service center Deliveries and Pull-outs. Approve covers pull-out approve and reject. View, Create, and Manage cover both pages.",
+    actions: permissionActions("view", "create", "manage", "approve"),
+  },
+  {
+    id: "orders",
+    name: "Branch orders",
+    route: "/orders",
+    slugPrefix: "orders",
+    area: "Orders",
+    hidden: true,
+    description: "Legacy branch order access. Manual, special, and auto replenish use their own permissions.",
+    actions: permissionActions("view", "create", "approve"),
+  },
+  {
     id: "orders_manual",
-    name: "Manual Order",
+    name: "Branch manual orders",
     route: "/orders/manual",
     slugPrefix: "orders.manual",
     navPermission: "orders.manual.view",
-    description: "Manual branch orders (planogram SKUs)",
+    area: "Orders",
+    description: "Opens Manual Order.",
     actions: permissionActions("view", "create", "approve"),
   },
   {
     id: "orders_special",
-    name: "Special Order",
+    name: "Branch special orders",
     route: "/orders/special",
     slugPrefix: "orders.special",
     navPermission: "orders.special.view",
-    description: "Special branch orders (off-planogram allowed)",
+    area: "Orders",
+    description: "Opens the special-order lines on Manual Order.",
     actions: permissionActions("view", "create", "approve"),
   },
   {
     id: "orders_auto_replenish",
-    name: "Auto replenish",
+    name: "Branch auto replenish",
     route: "/orders/auto-replenish",
     slugPrefix: "orders.auto_replenish",
     navPermission: "orders.auto_replenish.view",
-    description: "Auto-replenish branch orders",
+    area: "Orders",
+    description: "Opens Auto replenish.",
     actions: permissionActions("view", "create", "approve"),
   },
   {
-    id: "logistics",
-    name: "Logistics",
-    route: "/logistics",
-    slugPrefix: "logistics",
-    navPermission: "logistics.view",
-    description: "Delivery, transfer, and pull-out",
-    actions: permissionActions("view", "create", "manage"),
-  },
-  {
-    id: "pullouts",
-    name: "Pull-outs",
-    route: "/logistics/pickups",
-    slugPrefix: "pullouts",
-    navPermission: "pullouts.view",
-    description: "Open the Pull-outs module. Creating, approving and receiving use Logistics and Orders permissions.",
-    actions: permissionActions("view"),
+    id: "service_centers_orders",
+    name: "Service center orders",
+    route: "/service-centers/orders",
+    slugPrefix: "service_centers.orders",
+    navPermission: "service_centers.orders.view",
+    area: "Orders",
+    description: "Opens Service Center Orders.",
+    actions: permissionActions("view", "create", "approve"),
   },
   {
     id: "sales",
-    name: "Sales",
+    name: "Branch sales",
     route: "/sales",
     slugPrefix: "sales",
     navPermission: "sales.view",
-    description: "Branch sales encode and transaction list",
+    area: "Sales & Returns",
+    description: "Opens Sales Transactions.",
     actions: permissionActions("view", "create", "update"),
   },
   {
+    id: "sales_return",
+    name: "Branch returns",
+    route: "/returns",
+    slugPrefix: "sales.return",
+    area: "Sales & Returns",
+    hidden: true,
+    description: "Legacy branch return access. Returns uses the Returns permissions.",
+    actions: permissionActions("view", "request", "evaluate", "approve", "complete"),
+  },
+  {
+    id: "service_centers_sales",
+    name: "Service center sales",
+    route: "/service-centers/sales",
+    slugPrefix: "service_centers.sales",
+    navPermission: "service_centers.sales.view",
+    area: "Sales & Returns",
+    description: "Opens Service Center Sales.",
+    actions: permissionActions("view", "create", "update"),
+  },
+  {
+    id: "service_centers_return",
+    name: "Service center returns",
+    route: "/returns",
+    slugPrefix: "service_centers.return",
+    area: "Sales & Returns",
+    hidden: true,
+    description: "Legacy service center return access. Returns uses the Returns permissions.",
+    actions: permissionActions("request", "evaluate", "approve", "complete"),
+  },
+  {
     id: "returns",
-    name: "Returns / Replacement",
+    name: "Returns",
     route: "/returns",
     slugPrefix: "returns",
     navPermission: "returns.view",
-    description: "Branch and service-center return processing",
-    actions: permissionActions(
-      "view",
-      "branch.view",
-      "service.view",
-      "request",
-      "evaluate",
-      "approve",
-      "complete",
-    ),
+    area: "Sales & Returns",
+    description: "Opens Returns for branch and service center.",
+    actions: [
+      { value: "view", label: "View both tabs" },
+      { value: "branch.view", label: "Branch tab" },
+      { value: "service.view", label: "Service center tab" },
+      { value: "request", label: "Request" },
+      { value: "evaluate", label: "Evaluate" },
+      { value: "approve", label: "Approve" },
+      { value: "complete", label: "Complete" },
+    ],
   },
   {
     id: "official_sales",
@@ -385,6 +488,11 @@ export const appModules: AppModule[] = [
   },
 ];
 
+/** Modules an admin can assign. Hidden modules stay in the catalog for existing grants. */
+export function visibleAppModules(): AppModule[] {
+  return appModules.filter((module) => !module.hidden);
+}
+
 export function getAppModuleById(id: string): AppModule | undefined {
   return appModules.find((module) => module.id === id);
 }
@@ -430,12 +538,28 @@ export function getModuleNavPermission(moduleId: string): string | undefined {
   return getAppModuleById(moduleId)?.navPermission;
 }
 
-export function formatPermissionName(appModule: AppModule, action: string): string {
-  const actionLabel =
-    appModule.actions.find((item) => item.value === action)?.label ??
-    getPermissionActionLabel(action);
+/** Role-editor section. Shared by slug prefixes that are one sidebar item. */
+export function roleSectionKey(module: AppModule): string {
+  return module.groupId ?? module.id;
+}
 
-  return `${actionLabel} ${appModule.name}`;
+/** Module whose name and description label the role-editor section. */
+export function roleSectionModule(module: AppModule): AppModule {
+  const key = roleSectionKey(module);
+  return appModules.find((item) => roleSectionKey(item) === key) ?? module;
+}
+
+/** Short action name shown on a role. The section title already says where it applies. */
+export function permissionActionLabel(appModule: AppModule, action: string): string {
+  return (
+    appModule.actions.find((item) => item.value === action)?.label ??
+    getPermissionActionLabel(action)
+  );
+}
+
+export function formatPermissionName(appModule: AppModule, action: string): string {
+  const section = roleSectionModule(appModule);
+  return `${permissionActionLabel(appModule, action)} — ${section.name}`;
 }
 
 export function isValidModuleAction(moduleId: string, action: string): boolean {

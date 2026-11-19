@@ -256,7 +256,7 @@ export const providerService = {
       email: input.email,
       name: input.name,
       password: input.password,
-      roleSlug: input.roleSlug,
+      roleSlugs: [input.roleSlug],
       departmentId: input.departmentId ?? null,
       allowProviderOnlyRoles: true,
     });
@@ -277,7 +277,7 @@ export const providerService = {
       actorUserId,
       userId: input.userId,
       name: input.name,
-      roleSlug: input.roleSlug,
+      roleSlugs: [input.roleSlug],
       departmentId: input.departmentId ?? null,
       password: input.password,
       allowProviderOnlyRoles: true,

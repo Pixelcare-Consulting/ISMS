@@ -2,7 +2,7 @@
 
 import { createColumnHelper } from "@tanstack/react-table";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { EditSaleHeaderDialog } from "@/app/(app)/sales/_components/edit-sale-header-dialog";
@@ -22,11 +22,11 @@ import {
   SALE_RETURN_CONFIRM_COPY,
   type SaleReturnPendingConfirm,
 } from "@/app/(app)/sales/_components/sale-return-confirm";
+import { useSalesSource } from "@/app/(app)/sales/_components/sales-source";
 import {
   approveReturnAction,
   completeReturnRestoreAction,
   evaluateReturnAction,
-  getSaleDetailsAction,
   rejectReturnAction,
   type SaleStatusCodeRef,
 } from "@/features/sales/actions/sales.actions";
@@ -36,10 +36,10 @@ import {
   canEditSaleHeaderForLines,
   isOfficialSoldStatusCode,
 } from "@/features/sales/utils/sale-header-edit";
+import { buildSalesPageHref } from "@/features/sales/utils/sales-page-href";
 import type { SalesActionCapabilities } from "@/features/sales/constants/sales-permissions";
 import { uniqueSearchSuggestions } from "@/components/data-table";
 import {
-  DEFAULT_TABLE_PAGE_SIZE,
   parseTablePageSize,
   type TablePageSize,
 } from "@/components/data-table/table-page-size";
@@ -54,12 +54,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { usePersistedBoolean } from "@/hooks/use-persisted-boolean";
 import { DataTable, nextTableSort, type DataTableColumn, type DataTableFeatures } from "@/lib/data-table";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { cn } from "@/utils/cn";
 import { formatPeso } from "@/utils/format-currency";
-import { matchesTableSearch } from "@/utils/match-table-search";
 
 const saleColumn = createColumnHelper<DataTableFeatures, SaleRow>();
 
@@ -85,6 +83,8 @@ interface SaleRow {
   serialNumberId: string | null;
   serialNumber: { id: string; serialNo: string } | null;
   returnRequest: { id: string; status: string } | null;
+  /** Set when this line was replaced on the same invoice. */
+  wasReplacedLine: string | null;
 }
 
 type EditingLine = {
@@ -121,7 +121,11 @@ interface SalesTableProps {
   capabilities: SalesActionCapabilities;
   initialSort?: string;
   initialSortDir?: string;
+  /** Committed `?q=` value. The box stays local until the address updates. */
+  searchQuery?: string;
 }
+
+const SEARCH_DEBOUNCE_MS = 300;
 
 function saleTransactionLabel(sale: SaleRow): string {
   return sale.transactionNo || sale.saleId.slice(-8);
@@ -132,43 +136,20 @@ function saleSerialLabel(sale: SaleRow): string {
   return sale.serialNumber?.serialNo ?? TO_FOLLOW_SERIAL_LABEL;
 }
 
-function joinDetailParts(parts: Array<string | null | undefined>): string {
-  return parts
-    .map((p) => p?.trim())
-    .filter((p): p is string => Boolean(p))
-    .join(" · ");
-}
-
-/** TRN NO. cell — bold primary + muted secondary metadata (Official Sales Serial pattern). */
 function TrnDetailCell({
   row,
-  showAllColumns,
   className,
 }: {
   row: SaleRow;
-  showAllColumns: boolean;
   className?: string;
 }) {
   const primary = saleTransactionLabel(row);
-  const condensed = joinDetailParts([
-    row.branch.name,
-    row.brandName,
-    row.modelLabel,
-  ]);
 
   return (
     <div className={cn("min-w-0", className)}>
       <div className="truncate font-mono text-sm font-semibold" title={primary}>
         {primary}
       </div>
-      {!showAllColumns && condensed ? (
-        <p
-          className="mt-0.5 max-w-40 truncate text-xs text-muted-foreground sm:max-w-56"
-          title={condensed}
-        >
-          {condensed}
-        </p>
-      ) : null}
     </div>
   );
 }
@@ -178,21 +159,6 @@ function formatSaleDate(iso: string | null): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
   return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
-}
-
-function buildSalesHref(
-  page: number,
-  limit: number,
-  sort?: string,
-  sortDir?: string,
-): string {
-  const params = new URLSearchParams();
-  if (page > 1) params.set("page", String(page));
-  if (limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(limit));
-  if (sort) params.set("sort", sort);
-  if (sort && sortDir) params.set("dir", sortDir);
-  const query = params.toString();
-  return query ? `/sales?${query}` : "/sales";
 }
 
 /** Shared numeric ID per sale on this page (sibling serial lines reuse the same ID). */
@@ -217,19 +183,25 @@ const stickyCellId =
   "sticky left-0 z-20 w-12 min-w-12 max-w-12 overflow-hidden border-r border-border/60 bg-card";
 const stickyCellTrn =
   "sticky left-12 z-20 min-w-[11rem] max-w-[11rem] overflow-hidden border-r border-border/60 bg-card shadow-[4px_0_8px_-4px_rgba(0,0,0,0.06)]";
+const stickyHeadActions =
+  "sticky right-0 z-40 border-l border-border/60 bg-card shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.08)]";
+const stickyCellActions =
+  "sticky right-0 z-20 border-l border-border/60 bg-card shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.06)]";
 
 export function SalesTable({
   result,
   capabilities,
   initialSort = "",
   initialSortDir = "desc",
+  searchQuery = "",
 }: SalesTableProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [query, setQuery] = useState("");
-  const [showAllColumns, setShowAllColumns] = usePersistedBoolean(
-    "isms.sales.showAllColumns",
-  );
+  const source = useSalesSource();
+  const { getSaleDetails } = source.actions;
+  const committedQuery = searchQuery.trim();
+  const [query, setQuery] = useState(committedQuery);
+  const urlQueryRef = useRef(committedQuery);
   const [pending, startTransition] = useTransition();
   const [editingLine, setEditingLine] = useState<EditingLine | null>(null);
   const [detailsSaleId, setDetailsSaleId] = useState<string | null>(null);
@@ -249,38 +221,61 @@ export function SalesTable({
   const sortDir = (
     (searchParams.get("dir") ?? initialSortDir) === "asc" ? "asc" : "desc"
   ) as SalesSortDir;
+  const status = searchParams.get("status")?.trim() || undefined;
+
+  useEffect(() => {
+    const previous = urlQueryRef.current;
+    urlQueryRef.current = committedQuery;
+    setQuery((value) =>
+      value.trim() === previous.trim() ? committedQuery : value,
+    );
+  }, [committedQuery]);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      const next = query.trim();
+      if (next === committedQuery) return;
+      router.push(
+        buildSalesPageHref({
+          basePath: source.listHref,
+          page: 1,
+          limit: pageSize,
+          sort: sort || undefined,
+          sortDir: sort ? sortDir : undefined,
+          status,
+          q: next || undefined,
+        }),
+        { scroll: false },
+      );
+    }, SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(handle);
+  }, [committedQuery, pageSize, query, router, sort, sortDir, status, source.listHref]);
+
+  function salesHref(
+    page: number,
+    limit: number,
+    nextSort?: string,
+    nextSortDir?: string,
+  ) {
+    return buildSalesPageHref({
+      basePath: source.listHref,
+      page,
+      limit,
+      sort: nextSort,
+      sortDir: nextSort && nextSortDir ? nextSortDir : undefined,
+      status,
+      q: committedQuery || undefined,
+    });
+  }
 
   function handlePageSizeChange(limit: TablePageSize) {
-    router.push(buildSalesHref(1, limit, sort, sort ? sortDir : undefined));
+    router.push(salesHref(1, limit, sort, sort ? sortDir : undefined));
   }
 
   function toggleSort(field: SalesSortField) {
     const next = nextTableSort(field, sort, sortDir);
-    router.push(buildSalesHref(1, pageSize, next.sort, next.dir));
+    router.push(salesHref(1, pageSize, next.sort, next.dir));
   }
-  const filtered = useMemo(
-    () =>
-      result.items.filter((sale) =>
-        matchesTableSearch(query, [
-          sale.saleId,
-          sale.transactionNo,
-          sale.customerName,
-          sale.packageName,
-          sale.brandName,
-          sale.modelLabel,
-          sale.branch.name,
-          sale.alternateBranch.name,
-          sale.saleAmount,
-          sale.modelPrice,
-          saleSerialLabel(sale),
-          sale.statusCode?.name,
-          sale.statusCode?.code,
-          sale.atrStatus,
-          sale.returnRequest?.status,
-        ]),
-      ),
-    [query, result.items],
-  );
   const suggestions = useMemo(
     () =>
       uniqueSearchSuggestions(
@@ -295,7 +290,7 @@ export function SalesTable({
       ),
     [result.items],
   );
-  const saleIdMap = useMemo(() => buildSaleIdMap(filtered), [filtered]);
+  const saleIdMap = useMemo(() => buildSaleIdMap(result.items), [result.items]);
 
   const columns = useMemo(() => {
     const cols: DataTableColumn<SaleRow>[] = [
@@ -314,9 +309,7 @@ export function SalesTable({
         id: "transactionNo",
         header: "TRN NO.",
         enableSorting: true,
-        cell: ({ row }) => (
-          <TrnDetailCell row={row.original} showAllColumns={showAllColumns} />
-        ),
+        cell: ({ row }) => <TrnDetailCell row={row.original} />,
         meta: {
           headClassName: stickyHeadTrn,
           className: stickyCellTrn,
@@ -331,12 +324,12 @@ export function SalesTable({
       }),
       saleColumn.accessor((row) => row.branch.name, {
         id: "branch",
-        header: "BRANCH",
+        header: source.copy.soldColumn,
         enableSorting: true,
       }),
       saleColumn.accessor((row) => row.alternateBranch.name, {
         id: "alternateBranch",
-        header: "ALTERNATE BRANCH",
+        header: source.copy.stockSourceColumn,
         enableSorting: false,
       }),
       saleColumn.display({
@@ -345,33 +338,34 @@ export function SalesTable({
         enableSorting: true,
         cell: ({ row }) => row.original.customerName?.trim() || "—",
       }),
-    ];
-
-    if (showAllColumns) {
-      cols.push(
-        saleColumn.display({
-          id: "package",
-          header: "PACKAGE",
-          enableSorting: false,
-          cell: ({ row }) => row.original.packageName ?? "—",
-        }),
-        saleColumn.display({
-          id: "brand",
-          header: "BRAND",
-          enableSorting: false,
-          cell: ({ row }) => row.original.brandName ?? "—",
-        }),
-        saleColumn.display({
-          id: "model",
-          header: "MODEL",
-          enableSorting: false,
-          cell: ({ row }) => row.original.modelLabel ?? "—",
-          meta: { className: "font-mono" },
-        }),
-      );
-    }
-
-    cols.push(
+      saleColumn.display({
+        id: "package",
+        header: "PACKAGE",
+        enableSorting: false,
+        cell: ({ row }) => row.original.packageName ?? "—",
+      }),
+      saleColumn.display({
+        id: "brand",
+        header: "BRAND",
+        enableSorting: false,
+        cell: ({ row }) => row.original.brandName ?? "—",
+      }),
+      saleColumn.display({
+        id: "model",
+        header: "MODEL",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const wasLine = row.original.wasReplacedLine;
+          return (
+            <div className="min-w-0">
+              <p className="font-mono">{row.original.modelLabel ?? "—"}</p>
+              {wasLine ? (
+                <p className="mt-0.5 text-xs font-sans text-muted-foreground">{wasLine}</p>
+              ) : null}
+            </div>
+          );
+        },
+      }),
       saleColumn.display({
         id: "serial",
         header: "SN",
@@ -386,24 +380,16 @@ export function SalesTable({
         cell: ({ row }) => formatPeso(Number(row.original.saleAmount)),
         meta: { align: "end", className: "font-mono" },
       }),
-    );
-
-    if (showAllColumns) {
-      cols.push(
-        saleColumn.display({
-          id: "modelPrice",
-          header: "MODEL PRICE",
-          enableSorting: false,
-          cell: ({ row }) =>
-            row.original.modelPrice != null
-              ? formatPeso(Number(row.original.modelPrice))
-              : "—",
-          meta: { align: "end", className: "font-mono" },
-        }),
-      );
-    }
-
-    cols.push(
+      saleColumn.display({
+        id: "modelPrice",
+        header: "MODEL PRICE",
+        enableSorting: false,
+        cell: ({ row }) =>
+          row.original.modelPrice != null
+            ? formatPeso(Number(row.original.modelPrice))
+            : "—",
+        meta: { align: "end", className: "font-mono" },
+      }),
       saleColumn.display({
         id: "status",
         header: "STATUS",
@@ -424,6 +410,10 @@ export function SalesTable({
         header: "ACTIONS",
         enableSorting: false,
         enableHiding: false,
+        meta: {
+          headClassName: stickyHeadActions,
+          className: stickyCellActions,
+        },
         cell: ({ row }) => (
           <div className="flex flex-wrap items-center gap-1.5">
             <Button
@@ -449,14 +439,20 @@ export function SalesTable({
           </div>
         ),
       }),
-    );
+    ];
 
     return cols;
-  }, [capabilities.canUpdateSaleHeader, pending, saleIdMap, showAllColumns]);
+  }, [
+    capabilities.canUpdateSaleHeader,
+    pending,
+    saleIdMap,
+    source.copy.soldColumn,
+    source.copy.stockSourceColumn,
+  ]);
 
   function refreshSaleDetails(saleId: string) {
     startTransition(async () => {
-      const res = await getSaleDetailsAction(saleId);
+      const res = await getSaleDetails(saleId);
       if ("error" in res) {
         toast.error(res.error);
         setDetailsSaleId(null);
@@ -497,7 +493,7 @@ export function SalesTable({
 
   function openHeaderEdit(saleId: string) {
     startTransition(async () => {
-      const res = await getSaleDetailsAction(saleId);
+      const res = await getSaleDetails(saleId);
       if ("error" in res) {
         toast.error(res.error);
         return;
@@ -589,7 +585,7 @@ export function SalesTable({
       setPendingConfirm(null);
       router.refresh();
       if (detailsSaleId) {
-        const refreshed = await getSaleDetailsAction(detailsSaleId);
+        const refreshed = await getSaleDetails(detailsSaleId);
         if ("error" in refreshed) {
           setDetailsSaleId(null);
           setSaleDetails(null);
@@ -607,7 +603,7 @@ export function SalesTable({
   return (
     <div className="space-y-4">
       <DataTable
-        data={filtered}
+        data={result.items}
         columns={columns}
         getRowId={(row) => row.id}
         manualSorting
@@ -625,28 +621,16 @@ export function SalesTable({
           placeholder: "Search sales…",
           suggestions,
         }}
-        toolbarActions={
-          result.items.length > 0 ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => setShowAllColumns((v) => !v)}
-            >
-              {showAllColumns ? "Fewer columns" : "Show all columns"}
-            </Button>
-          ) : null
-        }
         pagination={{
           total: result.total,
           page: result.page,
           totalPages: result.totalPages,
           itemLabel: "sale line",
           buildHref: (page) =>
-            buildSalesHref(page, pageSize, sort, sort ? sortDir : undefined),
+            salesHref(page, pageSize, sort, sort ? sortDir : undefined),
         }}
         pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
-        empty={filtered.length === 0}
+        empty={result.items.length === 0}
         emptyMessage="No results match your search."
       />
 

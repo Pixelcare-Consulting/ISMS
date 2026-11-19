@@ -55,8 +55,20 @@ export const inventoryStatusSeenRepository = {
     userId: string;
     branchIds: string[];
     seenThroughAt: Date;
+    /** When set, only units whose model is in this series. */
+    seriesId?: string;
   }): Promise<UnreadStatusCount[]> {
     if (input.branchIds.length === 0) return [];
+    const seriesId = input.seriesId?.trim();
+    const seriesJoin = seriesId
+      ? Prisma.sql`
+          INNER JOIN serial_numbers sn ON sn.id = bi.serial_number_id
+          INNER JOIN product_models pm ON pm.id = sn.model_id
+        `
+      : Prisma.empty;
+    const seriesWhere = seriesId
+      ? Prisma.sql`AND pm.series_id = ${seriesId}`
+      : Prisma.empty;
     const rows = await prisma.$queryRaw<UnreadStatusCount[]>`
       SELECT bi.branch_id AS "branchId",
              bi.status_code_id AS "statusCodeId",
@@ -64,6 +76,7 @@ export const inventoryStatusSeenRepository = {
              COUNT(*)::int AS count
       FROM branch_inventories bi
       INNER JOIN reason_status_codes c ON c.id = bi.status_code_id
+      ${seriesJoin}
       LEFT JOIN branch_inventory_reads r
         ON r.branch_inventory_id = bi.id
        AND r.user_id = ${input.userId}
@@ -71,6 +84,7 @@ export const inventoryStatusSeenRepository = {
         AND bi.branch_id IN (${Prisma.join(input.branchIds)})
         AND bi.status_updated_at IS NOT NULL
         AND bi.status_updated_at > COALESCE(r.read_at, ${input.seenThroughAt})
+        ${seriesWhere}
       GROUP BY bi.branch_id, bi.status_code_id, c.code
     `;
     return rows;

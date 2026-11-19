@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import {
+  canApproveScOrders,
+  SC_ORDER_APPROVER_ONLY,
   SC_ORDERS_APPROVE,
   SC_ORDERS_CREATE,
   SC_ORDERS_VIEW,
@@ -13,10 +15,13 @@ import {
   SAP_CODE_MAX,
   SC_ORDER_PO_NUMBER_MAX,
   SC_ORDERING_NOT_SET_UP,
+  isScOrderApprovable,
 } from "@/features/service-center-ordering/constants";
 import { loadScOrderWorksheet } from "@/features/service-center-ordering/services/sc-order-worksheet";
 import { scOrderingSettingsService } from "@/features/service-center-ordering/services/sc-ordering-settings.service";
 import { scOrderService } from "@/features/service-center-ordering/services/sc-order.service";
+import { releaseReturnFromRejectedOrder } from "@/features/service-center-ops/services/sc-service-return.service";
+import { notifyScSpecialOrderOutcome } from "@/features/service-center-ops/services/sc-service-return-notify";
 import {
   assertScInScope,
   resolveScIdsForUser,
@@ -91,12 +96,15 @@ export async function createScOrderAction(input: unknown) {
 
 export async function approveScOrderAction(orderId: string) {
   const session = await requirePermission(SC_ORDERS_APPROVE);
+  if (!canApproveScOrders(session.user.permissions, session.user.roleSlugs)) {
+    return { error: SC_ORDER_APPROVER_ONLY };
+  }
   const order = await prisma.serviceCenterOrder.findFirst({
     where: { id: orderId, tenantId: session.user.tenantId },
     select: { id: true, orderNumber: true, status: true, serviceCenterId: true },
   });
   if (!order) return { error: "Order not found" as const };
-  if (order.status !== "pending_tl" && order.status !== "pending_sp") {
+  if (!isScOrderApprovable(order.status)) {
     return { error: "Order is not pending approval" as const };
   }
 
@@ -123,28 +131,46 @@ export async function approveScOrderAction(orderId: string) {
 
 export async function rejectScOrderAction(orderId: string, comment?: string) {
   const session = await requirePermission(SC_ORDERS_APPROVE);
+  if (!canApproveScOrders(session.user.permissions, session.user.roleSlugs)) {
+    return { error: SC_ORDER_APPROVER_ONLY };
+  }
   const order = await prisma.serviceCenterOrder.findFirst({
     where: { id: orderId, tenantId: session.user.tenantId },
   });
   if (!order) return { error: "Order not found" as const };
-  if (!["pending_tl", "pending_sp"].includes(order.status)) {
+  if (!isScOrderApprovable(order.status)) {
     return { error: "Order cannot be rejected" as const };
   }
 
-  await prisma.$transaction([
-    prisma.serviceCenterOrder.update({
+  const released = await prisma.$transaction(async (tx) => {
+    await tx.serviceCenterOrder.update({
       where: { id: orderId },
       data: { status: "rejected" },
-    }),
-    prisma.serviceCenterOrderApprovalLevel.updateMany({
+    });
+    await tx.serviceCenterOrderApprovalLevel.updateMany({
       where: { orderId, approvedAt: null, rejectedAt: null },
       data: {
         rejectedAt: new Date(),
         approvedById: session.user.id,
         comment: comment?.trim() || null,
       },
-    }),
-  ]);
+    });
+    // A special order for a Service Replacement: the request goes back to the service center.
+    return releaseReturnFromRejectedOrder(tx, { tenantId: session.user.tenantId, orderId });
+  });
+
+  if (released) {
+    await notifyScSpecialOrderOutcome({
+      tenantId: session.user.tenantId,
+      actorUserId: session.user.id,
+      returnRequestId: released.returnRequestId,
+      serviceCenterId: released.serviceCenterId,
+      transactionNo: released.transactionNo,
+      orderNumber: order.orderNumber,
+      outcome: "REJECTED",
+    });
+    revalidatePath("/service-centers/returns");
+  }
 
   revalidateScOrders();
   return { success: true as const };

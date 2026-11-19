@@ -57,11 +57,19 @@ async function loadAttachments(
     ...new Set(rows.filter((row) => row.sourceType === sourceType).map((row) => row.sourceId)),
   ];
   const pulloutIds = idsOf("PULLOUT");
+  const scPulloutIds = idsOf("SC_PULLOUT");
   const reportIds = idsOf("DEFECT_REPORT");
-  const [pulloutFiles, defectPhotos] = await Promise.all([
+  const [pulloutFiles, scPulloutFiles, defectPhotos] = await Promise.all([
     pulloutIds.length > 0
       ? prisma.branchPulloutAttachment.findMany({
           where: { pulloutId: { in: pulloutIds }, pullout: { tenantId } },
+          select: { id: true, pulloutId: true, fileName: true },
+          orderBy: { createdAt: "asc" },
+        })
+      : [],
+    scPulloutIds.length > 0
+      ? prisma.serviceCenterPulloutAttachment.findMany({
+          where: { pulloutId: { in: scPulloutIds }, pullout: { tenantId } },
           select: { id: true, pulloutId: true, fileName: true },
           orderBy: { createdAt: "asc" },
         })
@@ -84,6 +92,13 @@ async function loadAttachments(
       id: file.id,
       name: file.fileName,
       href: `/api/logistics/pullout-attachments/${file.id}`,
+    });
+  }
+  for (const file of scPulloutFiles) {
+    add(file.pulloutId, {
+      id: file.id,
+      name: file.fileName,
+      href: `/api/service-centers/pullout-attachments/${file.id}`,
     });
   }
   for (const photo of defectPhotos) {

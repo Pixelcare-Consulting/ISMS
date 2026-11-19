@@ -138,6 +138,7 @@ export function ProfileSettingsForm({ initialValues }: ProfileSettingsFormProps)
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
+      router.refresh();
       toast.success("Password updated", {
         description: "Use your new password next time you sign in.",
       });

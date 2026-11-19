@@ -143,4 +143,33 @@ describe("inventoryGroupRepository.listGroupSerials", () => {
       }),
     );
   });
+
+  it("limits serial rows to the selected series", async () => {
+    queryRaw.mockResolvedValueOnce([]);
+    findMany.mockResolvedValue([]);
+    count.mockResolvedValue(0);
+
+    await inventoryGroupRepository.listGroupSerials(
+      "t1",
+      ["b1"],
+      { page: 1, limit: 25 },
+      { branchId: "b1", modelId: "m1", seriesId: "series-1" },
+      [{ id: "stk", code: "STK" }],
+    );
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            expect.objectContaining({
+              serialNumber: {
+                modelId: "m1",
+                model: { seriesId: "series-1" },
+              },
+            }),
+          ]),
+        }),
+      }),
+    );
+  });
 });

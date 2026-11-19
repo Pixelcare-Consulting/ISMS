@@ -1,10 +1,14 @@
 import { hasPermission } from "@/lib/auth/permissions";
-import { resolveLogisticsCapabilities } from "@/features/logistics/constants/logistics-permissions";
+import {
+  resolveLogisticsCapabilities,
+  resolvePulloutCapabilities,
+} from "@/features/logistics/constants/logistics-permissions";
 
 /**
  * Server-side gates for transfer and pull-out posting.
- * Capability slugs stay the logistics map. Branch scope matches orders:
- * branches.manage or no area-of-responsibility rows means unrestricted.
+ * Transfers and pull-outs keep separate checks so a pull-out checkbox does not
+ * post a transfer. Branch scope matches orders: branches.manage or no
+ * area-of-responsibility rows means unrestricted.
  */
 
 export type LogisticsPostingAction =
@@ -27,26 +31,30 @@ export function postingPermissionError(
   permissions: string[] | undefined,
   action: LogisticsPostingAction,
 ): string | null {
-  const caps = resolveLogisticsCapabilities(permissions);
+  const transfers = resolveLogisticsCapabilities(permissions);
+  const pullouts = resolvePulloutCapabilities(permissions);
   switch (action) {
     case "transfer.create":
+      return transfers.canCreate ? null : DENIED;
     case "pullout.create":
-      return caps.canCreate ? null : DENIED;
+      return pullouts.canCreate ? null : DENIED;
     case "transfer.approve":
+      return transfers.canApproveTl ? null : DENIED;
     case "pullout.approve":
-      return caps.canApproveTl ? null : DENIED;
+      return pullouts.canApproveTl ? null : DENIED;
     case "transfer.reject":
+      return transfers.canRejectTransfer ? null : DENIED;
     case "pullout.reject":
-      return caps.canRejectTransfer ? null : DENIED;
+      return pullouts.canRejectTransfer ? null : DENIED;
     case "transfer.release":
+      return transfers.canManage ? null : DENIED;
     case "pullout.updateList":
     case "pullout.finalize":
     case "pullout.checkSap":
-      return caps.canManage ? null : DENIED;
-    case "transfer.receive":
-      return caps.canReceiveTransfer ? null : DENIED;
     case "pullout.complete":
-      return caps.canCompletePullout ? null : DENIED;
+      return pullouts.canManage ? null : DENIED;
+    case "transfer.receive":
+      return transfers.canReceiveTransfer ? null : DENIED;
     default: {
       const unreachable: never = action;
       return unreachable;

@@ -50,8 +50,8 @@ describe("transferPrintDocument", () => {
   it("marks each unit as a stock transfer, with its request remark", () => {
     const lines = [line(), line({ serialNumberId: "s2", serialNo: "SN2", requestRemarks: " " })];
     expect(transferPrintDocument(detail({ lines }))?.[1]?.items).toEqual([
-      { modelCode: "SKU1", serialNo: "SN1", note: "Remarks: Stock transfer / For the mall display" },
-      { modelCode: "SKU1", serialNo: "SN2", note: "Remarks: Stock transfer" },
+      { modelCode: "SKU1", serialNo: "SN1", notes: ["Remarks: Stock transfer / For the mall display"] },
+      { modelCode: "SKU1", serialNo: "SN2", notes: ["Remarks: Stock transfer"] },
     ]);
   });
 

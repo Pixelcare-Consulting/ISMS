@@ -10,6 +10,7 @@ export const metadata = pageMetadata("Site Traffic");
 export default async function SiteTrafficPage() {
   await requireAnyPermission(["users.manage", "audit_logs.view"]);
   const overview = await getSiteTrafficOverviewAction();
+  const observedAt = new Date().toISOString();
 
   return (
     <div className="space-y-4">
@@ -18,7 +19,7 @@ export default async function SiteTrafficPage() {
         tutorial={SITE_TRAFFIC_PAGE_TUTORIAL}
         description="Who is online, recent activity, and top PS sales this month"
       />
-      <SiteTrafficPanel overview={overview} />
+      <SiteTrafficPanel overview={overview} observedAt={observedAt} />
     </div>
   );
 }

@@ -125,7 +125,7 @@ export const WORKFLOW_MODULE_MAP: Record<WorkflowModule, WorkflowModuleConfig> =
   },
   monthly_sir: {
     sourceHref: "/inventory/monthly-sir",
-    permissionGate: "inventory.view",
+    permissionGate: "inventory.monthly_sir.view",
     tutorial: MONTHLY_SIR_PAGE_TUTORIAL,
     defaultQuery: "Monthly SIR P-COUNT upload",
     helpFilter: (hit) =>

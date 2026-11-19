@@ -43,7 +43,7 @@ export function transferSlipDocuments(
       return {
         modelCode: line.skuCode,
         serialNo: line.serialNo,
-        note: remarks ? `${STOCK_TRANSFER_REMARK} / ${remarks}` : STOCK_TRANSFER_REMARK,
+        notes: [remarks ? `${STOCK_TRANSFER_REMARK} / ${remarks}` : STOCK_TRANSFER_REMARK],
       };
     });
   const base = {

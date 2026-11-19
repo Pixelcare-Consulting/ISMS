@@ -9,9 +9,15 @@ import {
 } from "react";
 import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
 
+import { LogOut } from "lucide-react";
 import { toast } from "sonner";
 
-import { deleteUserAction } from "@/features/users/actions/user.actions";
+import {
+  deleteUserAction,
+  resetUserSessionAction,
+} from "@/features/users/actions/user.actions";
+import { Button } from "@/components/ui/button";
+import type { UserRoleOption } from "@/app/(app)/settings/users/_components/user-role-picker";
 import {
   filterTenantVisibleRoles,
   filterTenantVisibleUsers,
@@ -39,11 +45,6 @@ import { matchesTableSearch } from "@/utils/match-table-search";
 
 const userColumn = createColumnHelper<DataTableFeatures, UserRow>();
 
-interface RoleOption {
-  slug: string;
-  name: string;
-}
-
 interface DepartmentOption {
   id: string;
   name: string;
@@ -60,8 +61,9 @@ interface UserRow {
 
 interface UsersTableProps {
   users: UserRow[];
-  roles: RoleOption[];
+  roles: UserRoleOption[];
   departments: DepartmentOption[];
+  hideSystemRoles: boolean;
   currentUserId: string;
   toolbarActions?: ReactNode;
 }
@@ -80,6 +82,7 @@ export function UsersTable({
   users,
   roles,
   departments,
+  hideSystemRoles,
   currentUserId,
   toolbarActions,
 }: UsersTableProps) {
@@ -99,6 +102,7 @@ export function UsersTable({
   const [query, setQuery] = useState("");
   const [editingUser, setEditingUser] = useState<UserRow | null>(null);
   const [deletingUser, setDeletingUser] = useState<UserRow | null>(null);
+  const [resettingUser, setResettingUser] = useState<UserRow | null>(null);
   const [pending, startTransition] = useTransition();
 
   const visibleRows = useMemo(() => filterTenantVisibleUsers(rows), [rows]);
@@ -109,6 +113,7 @@ export function UsersTable({
       <CreateUserDialog
         roles={visibleRoles}
         departments={departments}
+        hideSystemRoles={hideSystemRoles}
         onCreated={(user) => {
           setRows((currentRows) => [user, ...currentRows]);
           router.refresh();
@@ -179,6 +184,25 @@ export function UsersTable({
       );
       setDeletingUser(null);
       router.refresh();
+    });
+  }
+
+  function handleResetSessionConfirm() {
+    if (!resettingUser) {
+      return;
+    }
+
+    startTransition(async () => {
+      const result = await resetUserSessionAction(resettingUser.id);
+      if (result.error) {
+        toast.error("Could not reset session", { description: result.error });
+        return;
+      }
+
+      toast.success("Session reset", {
+        description: `${resettingUser.name ?? resettingUser.email} can sign in again.`,
+      });
+      setResettingUser(null);
     });
   }
 
@@ -262,7 +286,20 @@ export function UsersTable({
               deleteDisabled={isProtected}
               editTitle={isProtected ? "This user cannot be edited" : "Edit user"}
               deleteTitle={isProtected ? "This user cannot be deleted" : "Delete user"}
-            />
+            >
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                disabled={isProtected}
+                title={isProtected ? "This user's session cannot be reset" : "Reset session"}
+                aria-label="Reset session"
+                onClick={() => setResettingUser(row.original)}
+              >
+                <LogOut className="size-4" />
+              </Button>
+            </TableRowActions>
           );
         },
         meta: { align: "end" },
@@ -327,12 +364,31 @@ export function UsersTable({
           user={editingUser}
           roles={visibleRoles}
           departments={departments}
+          hideSystemRoles={hideSystemRoles}
           onUpdated={(user) => {
             setRows((currentRows) =>
               currentRows.map((row) => (row.id === user.id ? user : row)),
             );
             router.refresh();
           }}
+        />
+      ) : null}
+
+      {resettingUser ? (
+        <DeleteConfirmDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) {
+              setResettingUser(null);
+            }
+          }}
+          title="Reset session"
+          description={`Sign ${resettingUser.name ?? resettingUser.email} out of every device so they can sign in again? Any unsaved work on their open session is lost.`}
+          confirmLabel="Reset session"
+          pendingLabel="Resetting…"
+          confirmVariant="default"
+          pending={pending}
+          onConfirm={handleResetSessionConfirm}
         />
       ) : null}
 

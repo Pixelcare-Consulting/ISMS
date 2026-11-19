@@ -16,3 +16,8 @@ export interface OrderAttachmentSummary {
 export function orderAttachmentHref(attachmentId: string): string {
   return `/api/orders/attachments/${encodeURIComponent(attachmentId)}`;
 }
+
+/** Authenticated preview URL for a path stored on the order (by list index). */
+export function orderAttachmentFileHref(orderId: string, index: number): string {
+  return `/api/orders/${encodeURIComponent(orderId)}/attachments?index=${index}`;
+}

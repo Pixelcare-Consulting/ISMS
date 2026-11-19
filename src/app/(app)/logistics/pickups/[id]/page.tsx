@@ -5,7 +5,7 @@ import { getPulloutDetailAction } from "@/features/logistics/actions/logistics.a
 import { loadWorkflowCatalog } from "@/features/logistics/constants/workflow-catalog";
 import {
   PULLOUTS_VIEW,
-  resolveLogisticsCapabilities,
+  resolvePulloutCapabilities,
 } from "@/features/logistics/constants/logistics-permissions";
 import { isBranchScopeUnrestricted } from "@/features/logistics/services/logistics-posting-access";
 import { getUserBranchIds } from "@/lib/aor/scope";
@@ -23,15 +23,15 @@ export default async function PulloutDetailPage({
     loadWorkflowCatalog(session.user.tenantId, "pullout_workflow"),
   ]);
   if ("error" in result || !result.detail) notFound();
-  const branchScope = isBranchScopeUnrestricted(session.user.permissions)
+  const placeScope = isBranchScopeUnrestricted(session.user.permissions)
     ? null
     : await getUserBranchIds(session.user.tenantId, session.user.id);
 
   return (
     <PulloutDetailView
       detail={result.detail}
-      capabilities={resolveLogisticsCapabilities(session.user.permissions)}
-      branchScope={branchScope}
+      capabilities={resolvePulloutCapabilities(session.user.permissions)}
+      placeScope={placeScope}
       workflowStatuses={workflowStatuses}
     />
   );

@@ -14,17 +14,16 @@ export function branchReturnDocumentTypeScopeWhere(
 ): Prisma.BranchReturnRequestWhereInput {
   if (!scope) return {};
 
-  const serviceNameFilter: Prisma.StringFilter = {
-    in: [...SERVICE_DOCUMENT_TYPE_NAMES],
-    mode: "insensitive",
+  const serviceNameFilter: Prisma.DocumentTypeWhereInput = {
+    OR: SERVICE_DOCUMENT_TYPE_NAMES.map((prefix) => ({
+      name: { startsWith: prefix, mode: "insensitive" as const },
+    })),
   };
 
   if (scope === "service") {
     return {
       documentType: {
-        is: {
-          name: serviceNameFilter,
-        },
+        is: serviceNameFilter,
       },
     };
   }
@@ -35,9 +34,7 @@ export function branchReturnDocumentTypeScopeWhere(
       {
         NOT: {
           documentType: {
-            is: {
-              name: serviceNameFilter,
-            },
+            is: serviceNameFilter,
           },
         },
       },
@@ -65,6 +62,18 @@ export type SalesReturnsListSort =
   | "atrStatus"
   | "returnStatus"
   | "createdAt";
+
+function salesDetailListOrderBy(sort?: {
+  field?: SalesListSort;
+  dir?: SalesListSortDir;
+}): Prisma.BranchSalesTransactionDetailOrderByWithRelationInput[] {
+  return sort?.field
+    ? [
+        salesDetailPrismaOrderBy(sort.field, sort.dir ?? "desc"),
+        { createdAt: "asc" },
+      ]
+    : [{ sale: { createdAt: "desc" } }, { createdAt: "asc" }];
+}
 
 function salesDetailPrismaOrderBy(
   field: SalesListSort,
@@ -124,10 +133,101 @@ const detailStatusCodeSelect = {
   statusCode: { select: { code: true, name: true, color: true } },
 } as const;
 
+/** Serial plus its model, so a replacement can show the original and the new unit. */
+const replacementSerialSelect = {
+  id: true,
+  serialNo: true,
+  model: {
+    select: {
+      skuCode: true,
+      name: true,
+      brand: { select: { name: true } },
+    },
+  },
+} as const;
+
+const saleReplacementPairSelect = {
+  originalInvoiceNo: true,
+  replacementInvoiceNo: true,
+  originalSerialNumber: { select: replacementSerialSelect },
+  replacementSerialNumber: { select: replacementSerialSelect },
+} as const;
+
+const salesDetailListInclude = {
+  ...detailStatusCodeSelect,
+  serialNumber: {
+    select: {
+      id: true,
+      serialNo: true,
+    },
+  },
+  packageType: { select: { id: true, name: true } },
+  brand: { select: { id: true, name: true } },
+  model: { select: { id: true, skuCode: true, name: true } },
+  sale: {
+    select: {
+      id: true,
+      transactionNo: true,
+      transactionDate: true,
+      customerName: true,
+      atrStatus: true,
+      branchId: true,
+      alternateBranchId: true,
+      branch: { select: { id: true, name: true } },
+      stockSourceBranch: { select: { id: true, name: true } },
+      returnRequest: {
+        select: {
+          id: true,
+          status: true,
+          saleDetailId: true,
+          actionType: true,
+          documentType: { select: { name: true } },
+        },
+      },
+      replacements: {
+        orderBy: { createdAt: "asc" as const },
+        select: saleReplacementPairSelect,
+      },
+    },
+  },
+} satisfies Prisma.BranchSalesTransactionDetailInclude;
+
+const salesDetailStatusSourceSelect = {
+  id: true,
+  serialNumberId: true,
+  saleAmount: true,
+  amount: true,
+  modelPrice: true,
+  statusCode: { select: { code: true, name: true, color: true } },
+  serialNumber: { select: { serialNo: true } },
+  packageType: { select: { name: true } },
+  brand: { select: { name: true } },
+  model: { select: { skuCode: true, name: true } },
+  sale: {
+    select: {
+      id: true,
+      transactionNo: true,
+      customerName: true,
+      atrStatus: true,
+      branch: { select: { name: true } },
+      stockSourceBranch: { select: { name: true } },
+      returnRequest: {
+        select: {
+          status: true,
+          saleDetailId: true,
+          actionType: true,
+          documentType: { select: { name: true } },
+        },
+      },
+    },
+  },
+} satisfies Prisma.BranchSalesTransactionDetailSelect;
+
 export const salesRepository = {
   /**
    * One list row per transaction detail (serial line), newest sales first by default.
-   * Only Sold / Official Sold / TO FOLLOW — return workflow rows live on Returns.
+   * Sold / Official Sold / TO FOLLOW, plus open and finished returns so a line
+   * can show its Sales & ATR step, Returned, or Replaced.
    */
   async listDetailsForTenant(
     tenantId: string,
@@ -135,43 +235,13 @@ export const salesRepository = {
     sort?: { field?: SalesListSort; dir?: SalesListSortDir },
   ) {
     const { limit, page, skip } = resolvePagination(pagination);
-    const where = salesListDetailWhere(tenantId);
-    const orderBy = sort?.field
-      ? [
-          salesDetailPrismaOrderBy(sort.field, sort.dir ?? "desc"),
-          { createdAt: "asc" as const },
-        ]
-      : [{ sale: { createdAt: "desc" as const } }, { createdAt: "asc" as const }];
+    const where = salesListDetailWhere(tenantId, { includeReturnHistory: true });
+    const orderBy = salesDetailListOrderBy(sort);
 
     const [items, total] = await Promise.all([
       prisma.branchSalesTransactionDetail.findMany({
         where,
-        include: {
-          ...detailStatusCodeSelect,
-          serialNumber: {
-            select: {
-              id: true,
-              serialNo: true,
-            },
-          },
-          packageType: { select: { id: true, name: true } },
-          brand: { select: { id: true, name: true } },
-          model: { select: { id: true, skuCode: true, name: true } },
-          sale: {
-            select: {
-              id: true,
-              transactionNo: true,
-              transactionDate: true,
-              customerName: true,
-              atrStatus: true,
-              branchId: true,
-              alternateBranchId: true,
-              branch: { select: { id: true, name: true } },
-              stockSourceBranch: { select: { id: true, name: true } },
-              returnRequest: { select: { id: true, status: true } },
-            },
-          },
-        },
+        include: salesDetailListInclude,
         orderBy,
         skip,
         take: limit,
@@ -180,6 +250,37 @@ export const salesRepository = {
     ]);
 
     return toPaginatedResult(items, total, page, limit);
+  },
+
+  /**
+   * Every sales-list line, in list order, with only the fields STATUS needs.
+   * Callers resolve the Sales & ATR step, Returned, or Replaced before counting or filtering.
+   */
+  listDetailStatusSources(
+    tenantId: string,
+    sort?: { field?: SalesListSort; dir?: SalesListSortDir },
+  ) {
+    return prisma.branchSalesTransactionDetail.findMany({
+      where: salesListDetailWhere(tenantId, { includeReturnHistory: true }),
+      select: salesDetailStatusSourceSelect,
+      orderBy: salesDetailListOrderBy(sort),
+    });
+  },
+
+  /** Full list rows for an already ordered page of detail ids. */
+  async listDetailsByIds(tenantId: string, ids: string[]) {
+    if (ids.length === 0) return [];
+    const items = await prisma.branchSalesTransactionDetail.findMany({
+      where: {
+        id: { in: ids },
+        sale: { tenantId },
+      },
+      include: salesDetailListInclude,
+    });
+    const order = new Map(ids.map((id, index) => [id, index]));
+    return items.sort(
+      (left, right) => (order.get(left.id) ?? 0) - (order.get(right.id) ?? 0),
+    );
   },
 
   /**
@@ -241,6 +342,7 @@ export const salesRepository = {
                   id: true,
                   saleAmount: true,
                   modelPrice: true,
+                  brand: { select: { name: true } },
                   model: { select: { skuCode: true, name: true } },
                   serialNumber: { select: { id: true, serialNo: true } },
                 },
@@ -254,9 +356,8 @@ export const salesRepository = {
                   replacementInvoiceNo: true,
                   replacementInvoiceDate: true,
                   replacementBranch: { select: { id: true, name: true } },
-                  replacementSerialNumber: {
-                    select: { id: true, serialNo: true },
-                  },
+                  originalSerialNumber: { select: replacementSerialSelect },
+                  replacementSerialNumber: { select: replacementSerialSelect },
                 },
               },
             },
@@ -305,6 +406,7 @@ export const salesRepository = {
           select: {
             id: true,
             status: true,
+            saleDetailId: true,
             actionType: true,
             stockStatusCode: true,
             atrOdrfPdfPath: true,
@@ -312,6 +414,10 @@ export const salesRepository = {
           },
         },
         createdBy: { select: { name: true, email: true } },
+        replacements: {
+          orderBy: { createdAt: "asc" as const },
+          select: saleReplacementPairSelect,
+        },
         details: {
           orderBy: { createdAt: "asc" as const },
           select: {

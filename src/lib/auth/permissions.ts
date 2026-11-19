@@ -5,6 +5,12 @@ import { PROVIDER_ONLY_ROLE_SLUGS } from "@/features/roles/constants/role.consta
 import { SETUP_HOME, isTenantSetupAdmin } from "@/features/roles/constants/setup-access";
 import { auth, signOutServer } from "@/lib/auth";
 import { prisma } from "@/lib/database/client";
+import { readLiveSessionState } from "@/lib/auth/session-liveness";
+import {
+  LOGIN_ERROR_IDLE,
+  LOGIN_ERROR_SESSION_EXPIRED,
+  LOGIN_ERROR_SIGNED_IN_ELSEWHERE,
+} from "@/lib/auth/session-policy";
 import { toAppSession, type AppSession } from "@/lib/auth/session";
 
 const DASHBOARD_FORBIDDEN = "/dashboard?error=forbidden";
@@ -90,16 +96,37 @@ async function sessionUserExists(session: AppSession): Promise<boolean> {
 const getRequiredSession = cache(async (): Promise<AppSession> => {
   const session = toAppSession(await auth());
   if (!session?.user) {
-    redirect("/login");
+    // Cookie is present enough for the proxy to treat this as signed in, but
+    // the session is gone. Cookies are read-only during render, so the cookie
+    // may survive; the terminal error keeps the proxy from bouncing /login back.
+    return signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_SESSION_EXPIRED}` });
   }
 
   if (!session.user.id || !session.user.tenantId) {
-    await signOutServer({ redirectTo: "/login?error=session-expired" });
+    return signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_SESSION_EXPIRED}` });
   }
 
   const exists = await sessionUserExists(session);
   if (!exists) {
-    await signOutServer({ redirectTo: "/login?error=session-expired" });
+    return signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_SESSION_EXPIRED}` });
+  }
+
+  const sessionId = session.sessionId ?? "";
+  if (!sessionId) {
+    return signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_SESSION_EXPIRED}` });
+  }
+
+  const live = await readLiveSessionState(sessionId, session.user.id);
+  if (live === "idle") {
+    return signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_IDLE}` });
+  }
+  if (live === "missing") {
+    return signOutServer({
+      redirectTo: `/login?error=${LOGIN_ERROR_SIGNED_IN_ELSEWHERE}`,
+    });
+  }
+  if (live === "expired") {
+    return signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_SESSION_EXPIRED}` });
   }
 
   return session;

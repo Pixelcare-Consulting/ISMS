@@ -304,10 +304,12 @@ export function buildReturnBody(i: {
   journalMemo?: string;
   cardCode: string;
   whs: string;
-  /** The branch's SAP code, which is also its Branch dimension code. */
-  branchCode: string;
+  /** The branch's SAP code, which is also its Branch dimension code; an SC order's default, or none. */
+  branchCode: string | null;
   branchName: string;
   lines: SapSerialLine[];
+  /** Fields every line carries, e.g. a service-center SO's dimensions (serviceCenterSoExtra). */
+  extraLine?: Record<string, unknown>;
 }): Record<string, unknown> {
   const text = orderLineText(i.ismsRef, i.branchName);
   return {
@@ -317,9 +319,10 @@ export function buildReturnBody(i: {
       ItemCode: l.itemCode,
       WarehouseCode: i.whs,
       ...serialPayload(l),
-      [SAP_LINE_DIMENSION.branch]: i.branchCode,
+      ...(i.branchCode ? { [SAP_LINE_DIMENSION.branch]: i.branchCode } : {}),
       [SAP_LINE_DIMENSION.businessType]: SAP_BUSINESS_TYPE_OUTRIGHT,
       ...text,
+      ...i.extraLine,
       ...lineRemarks(l),
     })),
   };

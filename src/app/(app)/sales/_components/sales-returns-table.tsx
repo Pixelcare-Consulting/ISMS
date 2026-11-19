@@ -84,6 +84,8 @@ interface ReturnRow {
   hasAtrOdrfPdf: boolean;
   origModelLabel: string | null;
   origSerialNo: string | null;
+  newModelLabel: string | null;
+  newSerialNo: string | null;
   origPrice: string;
   replSerialNo: string | null;
   replBranchName: string | null;
@@ -123,7 +125,7 @@ interface SalesReturnsTableProps {
   >;
   initialSort?: string;
   initialSortDir?: string;
-  listTab?: "branch" | "service" | "approvals";
+  listTab?: "branch" | "approvals";
 }
 
 type EditingLine = {
@@ -141,12 +143,18 @@ type EditingLine = {
 
 const returnColumn = createColumnHelper<DataTableFeatures, ReturnRow>();
 
+/** Sticky right freeze — View details stays on screen while the other columns scroll. */
+const stickyHeadActions =
+  "sticky right-0 z-40 border-l border-border/60 bg-card shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.08)]";
+const stickyCellActions =
+  "sticky right-0 z-20 border-l border-border/60 bg-card shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.06)]";
+
 function buildReturnsHref(
   page: number,
   limit: number,
   sort?: string,
   sortDir?: string,
-  tab: "branch" | "service" | "approvals" = "branch",
+  tab: "branch" | "approvals" = "branch",
 ): string {
   const params = new URLSearchParams();
   params.set("tab", tab);
@@ -233,7 +241,10 @@ export function SalesReturnsTable({
           row.actionType,
           row.documentTypeName,
           row.problemDescriptionText,
+          row.origModelLabel,
           row.origSerialNo,
+          row.newModelLabel,
+          row.newSerialNo,
           row.replSerialNo,
           row.requestNotes,
         ]),
@@ -249,7 +260,10 @@ export function SalesReturnsTable({
         result.items.map((row) => row.customerName ?? ""),
         result.items.map((row) => row.returnStatusCode.name),
         result.items.map((row) => row.documentTypeName ?? ""),
+        result.items.map((row) => row.origModelLabel ?? ""),
         result.items.map((row) => row.origSerialNo ?? ""),
+        result.items.map((row) => row.newModelLabel ?? ""),
+        result.items.map((row) => row.newSerialNo ?? ""),
       ),
     [result.items],
   );
@@ -439,10 +453,29 @@ export function SalesReturnsTable({
         enableSorting: true,
       }),
       returnColumn.display({
+        id: "origModel",
+        header: "ORIG MODEL",
+        enableSorting: false,
+        cell: ({ row }) => row.original.origModelLabel ?? "—",
+      }),
+      returnColumn.display({
         id: "origSerial",
         header: "ORIG SN",
         enableSorting: false,
         cell: ({ row }) => row.original.origSerialNo ?? "—",
+        meta: { className: "font-mono" },
+      }),
+      returnColumn.display({
+        id: "newModel",
+        header: "NEW MODEL",
+        enableSorting: false,
+        cell: ({ row }) => row.original.newModelLabel ?? "—",
+      }),
+      returnColumn.display({
+        id: "newSerial",
+        header: "NEW SN",
+        enableSorting: false,
+        cell: ({ row }) => row.original.newSerialNo ?? "—",
         meta: { className: "font-mono" },
       }),
       returnColumn.display({
@@ -483,13 +516,6 @@ export function SalesReturnsTable({
           enableSorting: false,
           cell: ({ row }) => formatSaleDate(row.original.actualDateReturned),
           meta: { className: "tabular-nums" },
-        }),
-        returnColumn.display({
-          id: "replSerial",
-          header: "REPL SN",
-          enableSorting: false,
-          cell: ({ row }) => row.original.replSerialNo ?? "—",
-          meta: { className: "font-mono" },
         }),
         returnColumn.display({
           id: "replBranch",
@@ -575,6 +601,10 @@ export function SalesReturnsTable({
         header: "ACTIONS",
         enableSorting: false,
         enableHiding: false,
+        meta: {
+          headClassName: stickyHeadActions,
+          className: stickyCellActions,
+        },
         cell: ({ row }) => {
           const canCompleteRow =
             row.original.returnStatus === "approved" &&
@@ -597,8 +627,8 @@ export function SalesReturnsTable({
                   onClick={() => startRowComplete(row.original)}
                 >
                   {row.original.actionType === "replacement"
-                    ? "Replacement"
-                    : "Return"}
+                    ? "Replace Stock"
+                    : "Return Stock"}
                 </Button>
               ) : null}
             </div>

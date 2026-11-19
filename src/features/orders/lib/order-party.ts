@@ -2,9 +2,9 @@ import type { ModeOfPaymentKindValue } from "@/features/lookups/constants/mode-o
 import { noBranchBpCode } from "@/features/orders/services/order-sap-routing";
 
 /**
- * Who an order is for, chosen mode of payment first: consignment goes Dealer → Branch
- * (ITR), outright goes straight to a Branch and bills its BP Code (SO), so outright
- * never asks for a dealer and a BP-Code branch can never end up on a consignment order.
+ * Who an order is for, chosen branch first: the branch names its dealer, and the dealer's
+ * mode of payment is the default (the user may override it). Consignment ships to the
+ * dealer's branch (ITR) so it needs a dealer; outright bills the branch's BP Code (SO).
  */
 
 export interface OrderModeOfPaymentOption {
@@ -28,28 +28,37 @@ export interface OrderBranchOption {
   dealerId: string | null;
 }
 
-/**
- * The dealer filter for the branch list: `null` while the list can't load yet (no mode
- * of payment, or consignment without a dealer), `""` for every branch (outright).
- */
-export function branchDealerFilter(
-  kind: ModeOfPaymentKindValue | null,
-  dealerId: string,
-): string | null {
-  if (kind === "OUTRIGHT") return "";
-  if (kind === "CONSIGNMENT" && dealerId) return dealerId;
-  return null;
+/** The branch's dealer, or null when the branch has none or it is not in the list. */
+export function branchDealer(
+  branch: Pick<OrderBranchOption, "dealerId"> | null,
+  dealers: readonly OrderDealerOption[],
+): OrderDealerOption | null {
+  if (!branch?.dealerId) return null;
+  return dealers.find((dealer) => dealer.id === branch.dealerId) ?? null;
 }
 
-/** Why the order can't continue yet, or null when the mode of payment, dealer and branch fit. */
+/**
+ * The mode of payment a branch defaults to: its dealer's, when that mode is one the order
+ * can use. Otherwise "" so the user picks one.
+ */
+export function defaultModeOfPaymentId(
+  dealer: Pick<OrderDealerOption, "modeOfPaymentId"> | null,
+  modes: readonly Pick<OrderModeOfPaymentOption, "id">[],
+): string {
+  const id = dealer?.modeOfPaymentId ?? "";
+  return id && modes.some((mode) => mode.id === id) ? id : "";
+}
+
+/** Why the order can't continue yet, or null when the branch and mode of payment fit. */
 export function orderPartyBlock(input: {
   kind: ModeOfPaymentKindValue | null;
-  dealerId: string;
-  branch: Pick<OrderBranchOption, "name" | "sapCode" | "bpCode"> | null;
+  branch: Pick<OrderBranchOption, "name" | "sapCode" | "bpCode" | "dealerId"> | null;
 }): string | null {
-  if (!input.kind) return "Select a mode of payment.";
-  if (input.kind === "CONSIGNMENT" && !input.dealerId) return "Select a dealer.";
   if (!input.branch) return "Select a branch.";
+  if (!input.kind) return "Select a mode of payment.";
+  if (input.kind === "CONSIGNMENT" && !input.branch.dealerId) {
+    return `${input.branch.name} has no dealer, so it can't take a consignment order. Set its dealer in Settings → Branches, or choose an outright mode of payment.`;
+  }
   if (input.kind === "OUTRIGHT" && !input.branch.bpCode) return noBranchBpCode(input.branch);
   return null;
 }

@@ -8,6 +8,7 @@ export interface KpiCardProps {
   label: ReactNode;
   value: ReactNode;
   href?: string;
+  selected?: boolean;
   icon?: ReactNode;
   tone?: KpiCardTone;
   hint?: ReactNode;
@@ -32,6 +33,7 @@ export function KpiCard({
   label,
   value,
   href,
+  selected = false,
   icon,
   tone = "neutral",
   hint,
@@ -65,12 +67,17 @@ export function KpiCard({
     "rounded-xl border bg-card p-4 shadow-sm",
     toneBorderClass[tone],
     href && "transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+    selected && "ring-2 ring-primary",
     className,
   );
 
   if (href) {
     return (
-      <Link href={href} className={cn(cardClassName, "block")}>
+      <Link
+        href={href}
+        aria-current={selected ? "true" : undefined}
+        className={cn(cardClassName, "block")}
+      >
         {content}
       </Link>
     );

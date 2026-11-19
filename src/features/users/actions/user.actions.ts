@@ -1,19 +1,19 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
 
+import { createUserSchema } from "@/features/users/schemas/create-user.schema";
 import { userService } from "@/features/users/services/user.service";
 import { updateUserSchema } from "@/features/users/schemas/update-user.schema";
 import { requireAuth, requirePermission } from "@/lib/auth/permissions";
 
-const createUserSchema = z.object({
-  email: z.string().email(),
-  name: z.string().min(2),
-  password: z.string().min(8),
-  roleSlug: z.string().min(1, "Role is required"),
-  departmentId: z.string().optional(),
-});
+function readRoleSlugs(formData: FormData) {
+  return formData
+    .getAll("roleSlugs")
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
 
 export async function listUsersAction() {
   const session = await requirePermission("users.manage");
@@ -41,7 +41,7 @@ export async function createUserAction(formData: FormData) {
     email: formData.get("email"),
     name: formData.get("name"),
     password: formData.get("password"),
-    roleSlug: formData.get("roleSlug") || undefined,
+    roleSlugs: readRoleSlugs(formData),
     departmentId: formData.get("departmentId") || undefined,
   });
 
@@ -69,7 +69,7 @@ export async function updateUserAction(formData: FormData) {
   const parsed = updateUserSchema.safeParse({
     userId: formData.get("userId"),
     name: formData.get("name"),
-    roleSlug: formData.get("roleSlug"),
+    roleSlugs: readRoleSlugs(formData),
     departmentId: formData.get("departmentId") || null,
     password: formData.get("password") || undefined,
   });
@@ -114,6 +114,27 @@ export async function deleteUserAction(userId: string) {
   } catch (e) {
     return {
       error: e instanceof Error ? e.message : "Failed to delete user",
+    };
+  }
+}
+
+export async function resetUserSessionAction(userId: string) {
+  const session = await requirePermission("users.manage");
+
+  if (!userId) {
+    return { error: "User is required" };
+  }
+
+  try {
+    const { cleared } = await userService.resetUserSessions({
+      tenantId: session.user.tenantId,
+      actorUserId: session.user.id,
+      userId,
+    });
+    return { success: true, cleared };
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e.message : "Failed to reset session",
     };
   }
 }

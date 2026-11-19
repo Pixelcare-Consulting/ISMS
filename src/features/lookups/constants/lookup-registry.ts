@@ -1,4 +1,4 @@
-export type LookupGroup = "Products" | "Geography" | "Sales" | "Service" | "Operations";
+export type LookupGroup = "Products" | "Geography" | "Sales" | "Service returns" | "Operations";
 
 export type LookupParentField = "regionId" | "sizeId" | "documentTypeId" | "competitorBrandId";
 
@@ -292,7 +292,7 @@ export const LOOKUP_ENTITIES: Record<LookupEntityKey, LookupEntityConfig> = {
     label: "Problem descriptions",
     singular: "problem description",
     slug: "problem-descriptions",
-    group: "Service",
+    group: "Service returns",
     auditEntity: "ProblemDescription",
     auditKey: "problem_description",
   },

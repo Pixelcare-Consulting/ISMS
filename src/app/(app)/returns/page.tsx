@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { SalesReturnsTable } from "@/app/(app)/sales/_components/sales-returns-table";
 import { ReturnsApprovalsPanel } from "@/app/(app)/returns/_components/returns-approvals-panel";
 import { ReturnsPageTabs } from "@/app/(app)/returns/_components/returns-page-tabs";
-import { ScReturnsPanel } from "@/app/(app)/returns/_components/sc-returns-panel";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import { ModuleGuide } from "@/components/module-guide";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
@@ -20,7 +19,7 @@ import {
 } from "@/features/returns/constants/returns-permissions";
 import { getReturnsKpisAction } from "@/features/returns/actions/returns.actions";
 import { ReturnsKpisStrip } from "@/features/returns/components/returns-kpis";
-import { listScReturnsAction } from "@/features/service-center-ops/actions/sc-sales.actions";
+import { listScReturnsAction } from "@/features/service-center-ops/actions/sc-returns.actions";
 import { requireAuth } from "@/lib/auth/permissions";
 import { pageMetadata } from "@/lib/shared/seo";
 
@@ -45,10 +44,9 @@ interface ReturnsPageProps {
   }>;
 }
 
+/** Old `?tab=service` links land on Branch, which now lists branch Service Returns too. */
 function parseReturnsTab(value?: string): ReturnsPageTab {
-  if (value === "service") return "service";
-  if (value === "approvals") return "approvals";
-  return "branch";
+  return value === "approvals" ? "approvals" : "branch";
 }
 
 export default async function ReturnsPage({ searchParams }: ReturnsPageProps) {
@@ -95,22 +93,13 @@ export default async function ReturnsPage({ searchParams }: ReturnsPageProps) {
     canCompleteReturn: returnsCapabilities.canCompleteReturn,
   };
 
-  const [branchResult, serviceBranchResult, scResult, approvalsBranch, approvalsSc, returnsKpis] =
+  const [branchResult, approvalsBranch, approvalsSc, returnsKpis] =
     await Promise.all([
       activeTab === "branch"
         ? listSalesReturnsAction({
             ...listInput,
-            documentTypeScope: "branch",
+            documentTypeScope: "all",
           })
-        : Promise.resolve(null),
-      activeTab === "service"
-        ? listSalesReturnsAction({
-            ...listInput,
-            documentTypeScope: "service",
-          })
-        : Promise.resolve(null),
-      activeTab === "service"
-        ? listScReturnsAction({ page, limit })
         : Promise.resolve(null),
       activeTab === "approvals"
         ? listSalesReturnsAction({
@@ -129,11 +118,7 @@ export default async function ReturnsPage({ searchParams }: ReturnsPageProps) {
     ]);
 
   const activeKpis =
-    activeTab === "service"
-      ? returnsKpis.service
-      : activeTab === "approvals"
-        ? returnsKpis.approvals
-        : returnsKpis.branch;
+    activeTab === "approvals" ? returnsKpis.approvals : returnsKpis.branch;
 
   return (
     <div className="space-y-6">
@@ -141,7 +126,7 @@ export default async function ReturnsPage({ searchParams }: ReturnsPageProps) {
         title="Returns / Replacement"
         sticky={false}
         tutorial={RETURNS_PAGE_TUTORIAL}
-        description="Track branch and service center customer returns — evaluate, approve, and restore stock. Start a request from the sale’s View details."
+        description="Track customer returns on branch sales. Start a request from the sale’s View details. Dealer Initiated sales returns wait for Team Leader; other sales returns are approved when requested. Service Return and Service Replacement on service center sales are requested from SC Sales and finished by the service center that sold the unit."
       />
       <ModuleGuide {...RETURNS_MODULE_GUIDE} />
       <ReturnsKpisStrip kpis={activeKpis} />
@@ -157,27 +142,6 @@ export default async function ReturnsPage({ searchParams }: ReturnsPageProps) {
               initialSortDir={params.dir ?? "desc"}
               listTab="branch"
             />
-          ) : null
-        }
-        serviceContent={
-          activeTab === "service" ? (
-            <div className="space-y-8">
-              {serviceBranchResult ? (
-                <SalesReturnsTable
-                  result={serviceBranchResult}
-                  capabilities={tableCaps}
-                  initialSort={params.sort ?? ""}
-                  initialSortDir={params.dir ?? "desc"}
-                  listTab="service"
-                />
-              ) : null}
-              {scResult ? (
-                <ScReturnsPanel
-                  items={scResult.items}
-                  capabilities={returnsCapabilities}
-                />
-              ) : null}
-            </div>
           ) : null
         }
         approvalsContent={

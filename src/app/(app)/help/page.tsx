@@ -17,7 +17,9 @@ export default async function HelpPage() {
         title="Help & Support"
         description="Workflow guides, FAQs, and quick links for ISMS."
       />
-      {showAssist ? <HelpAssistPanel configured={isAiConfigured() && assistantOn} /> : null}
+      {showAssist && assistantOn ? (
+        <HelpAssistPanel configured={isAiConfigured()} />
+      ) : null}
       <HelpSupportPortal />
     </div>
   );

@@ -1,6 +1,6 @@
 {
   "name": "isms",
-  "version": "0.92.0",
+  "version": "0.95.14",
   "private": true,
   "packageManager": "pnpm@11.6.0",
   "scripts": {
@@ -36,6 +36,8 @@
     "db:seed:notifications": "dotenv -e .env.local -- node scripts/seed-profile.mjs notifications",
     "db:seed:test-accounts": "dotenv -e .env.local -- node scripts/seed-profile.mjs test-accounts",
     "db:seed:inventory-demo": "dotenv -e .env.local -- tsx scripts/seed-inventory-demo.ts",
+    "db:grant:monthly-sir": "dotenv -e .env.local -- tsx scripts/grant-monthly-sir-view.ts",
+    "db:grant:pullout-actions": "dotenv -e .env.local -- tsx scripts/grant-pullout-actions.ts",
     "demo:warehouse-receive": "dotenv -e .env.local -- tsx scripts/receive-demo-warehouse.ts",
     "db:studio": "dotenv -e .env.local -- prisma studio",
     "docs:modules-matrix": "node scripts/generate-modules-workflow-excel.mjs",

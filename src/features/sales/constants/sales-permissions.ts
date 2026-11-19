@@ -32,6 +32,23 @@ export const SALES_LIST_PERMISSIONS = [
 /** Lookups / proof upload shared by encode and header edit. */
 export const SALES_LOOKUP_PERMISSIONS = [SALES_CREATE, SALES_UPDATE] as const;
 
+/**
+ * Master-data lookups, model price, and proof upload. Service center sales use the same
+ * encode form, so their encode/edit permissions open these too. Branch pickers stay on
+ * SALES_LOOKUP_PERMISSIONS.
+ */
+export const SALE_MASTER_LOOKUP_PERMISSIONS = [
+  ...SALES_LOOKUP_PERMISSIONS,
+  "service_centers.sales.create",
+  "service_centers.sales.update",
+] as const;
+
+/** Encode a sale line (model price): branch or service center sales. */
+export const SALE_ENCODE_PERMISSIONS = [
+  SALES_CREATE,
+  "service_centers.sales.create",
+] as const;
+
 /** Any of these grants Sales nav + `/sales` page access. */
 export const SALES_ACCESS_PERMISSIONS = [
   SALES_VIEW,

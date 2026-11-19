@@ -7,8 +7,8 @@ import { resolveNavLinkCount, type NavCountBadges } from "@/app/(app)/_component
 import { SidebarNavCountBadge } from "@/app/(app)/_components/sidebar-nav-count-badge";
 import { SidebarNavNewBadge } from "@/app/(app)/_components/sidebar-nav-new-badge";
 import {
-  isNavItemActive,
   navSecondarySections,
+  resolveActiveNavHrefs,
   type NavGroupChild,
   type NavLinkItem,
   type NavSecondarySection,
@@ -37,6 +37,7 @@ export function NavDestinationList({
   onNavigate,
 }: NavDestinationListProps) {
   const sections = navSecondarySections(items);
+  const activeHrefs = resolveActiveNavHrefs(pathname, items);
 
   return (
     <ul className={listClass(variant, nested)}>
@@ -44,7 +45,7 @@ export function NavDestinationList({
         <NavDestinationSection
           key={sectionKey(section)}
           section={section}
-          pathname={pathname}
+          activeHrefs={activeHrefs}
           permissions={permissions}
           countBadges={countBadges}
           variant={variant}
@@ -57,14 +58,14 @@ export function NavDestinationList({
 
 function NavDestinationSection({
   section,
-  pathname,
+  activeHrefs,
   permissions,
   countBadges,
   variant,
   onNavigate,
 }: {
   section: NavSecondarySection;
-  pathname: string;
+  activeHrefs: ReadonlySet<string>;
   permissions: string[];
   countBadges?: NavCountBadges;
   variant: NavDestinationVariant;
@@ -76,7 +77,7 @@ function NavDestinationSection({
         <li>
           <NavDestinationLink
             item={section.item}
-            pathname={pathname}
+            active={activeHrefs.has(section.item.href)}
             permissions={permissions}
             countBadges={countBadges}
             variant={variant}
@@ -93,7 +94,7 @@ function NavDestinationSection({
               <li key={item.href}>
                 <NavDestinationLink
                   item={item}
-                  pathname={pathname}
+                  active={activeHrefs.has(item.href)}
                   permissions={permissions}
                   countBadges={countBadges}
                   variant={variant}
@@ -113,25 +114,19 @@ function NavDestinationSection({
 
 function NavDestinationLink({
   item,
-  pathname,
+  active,
   permissions,
   countBadges,
   variant,
   onNavigate,
 }: {
   item: NavLinkItem;
-  pathname: string;
+  active: boolean;
   permissions: string[];
   countBadges?: NavCountBadges;
   variant: NavDestinationVariant;
   onNavigate?: () => void;
 }) {
-  const active = isNavItemActive(
-    pathname,
-    item.href,
-    item.exact,
-    item.activePathPrefixes,
-  );
   const count = resolveNavLinkCount(item, permissions, countBadges);
   const Icon = item.icon;
 
@@ -143,8 +138,9 @@ function NavDestinationLink({
       className={linkClass(variant, active)}
     >
       {active ? <ActiveBar variant={variant} /> : null}
-      <Icon className="mt-0.5 size-4 shrink-0" aria-hidden />
-      <span className="min-w-0 flex-1 text-left leading-snug break-words">
+      <Icon className="size-4 shrink-0" aria-hidden />
+      {/* One line, and the same weight active or not, so a label never reflows when selected. */}
+      <span className="min-w-0 flex-1 truncate text-left leading-snug" title={item.label}>
         {item.label}
       </span>
       {count > 0 ? (
@@ -248,18 +244,18 @@ function linkClass(variant: NavDestinationVariant, active: boolean): string {
   switch (variant) {
     case "contextual":
       return cn(
-        "relative flex min-h-8 items-start gap-2 rounded-md px-3 py-1.5 text-sm",
+        "relative flex min-h-8 items-center gap-2 rounded-md px-3 py-1.5 text-sm",
         "focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none",
         active
-          ? "bg-primary/10 font-medium text-primary"
+          ? "bg-primary/10 text-primary"
           : "text-neutral-800 hover:bg-neutral-100 hover:text-neutral-950",
       );
     case "drawer":
       return cn(
-        "relative flex min-h-8 items-start gap-2 rounded-md px-2 py-1.5 text-sm",
+        "relative flex min-h-8 items-center gap-2 rounded-md px-2 py-1.5 text-sm",
         "focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none",
         active
-          ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+          ? "bg-sidebar-accent text-sidebar-accent-foreground"
           : "text-sidebar-foreground hover:bg-sidebar-accent/70",
       );
     default: {

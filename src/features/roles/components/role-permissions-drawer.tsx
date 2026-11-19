@@ -90,6 +90,7 @@ export function RolePermissionsDrawer({
     return groups
       .map((group) => {
         const moduleMatch = matchesTableSearch(trimmed, [
+          group.area,
           group.moduleName,
           group.description,
         ]);

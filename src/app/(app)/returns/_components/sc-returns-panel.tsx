@@ -11,8 +11,12 @@ import {
   evaluateScReturnAction,
   listScReturnsAction,
   rejectScReturnAction,
-} from "@/features/service-center-ops/actions/sc-sales.actions";
+} from "@/features/service-center-ops/actions/sc-returns.actions";
 import type { ReturnsActionCapabilities } from "@/features/returns/constants/returns-permissions";
+import {
+  isReturnHistoryStatus,
+  SERVICE_RETURNED_REPLACED_STATUS,
+} from "@/features/sales/constants/return-history-status";
 import { useClientTablePagination } from "@/components/data-table";
 import {
   DataTable,
@@ -48,9 +52,11 @@ export function ScReturnsPanel({
           row.transactionNo,
           row.customerName ?? "",
           row.serviceCenter.name,
-          row.serialNumber?.serialNo ?? "",
+          row.serialNos.join(" "),
           row.atrStatus,
-          row.returnRequest?.status ?? "",
+          row.returnRequest && isReturnHistoryStatus(row.returnRequest.status)
+            ? SERVICE_RETURNED_REPLACED_STATUS
+            : (row.returnRequest?.status ?? ""),
           row.returnRequest?.requestNotes ?? "",
         ]),
       ),
@@ -61,7 +67,10 @@ export function ScReturnsPanel({
     txn: (row) => row.transactionNo,
     center: (row) => row.serviceCenter.name,
     atr: (row) => row.atrStatus,
-    status: (row) => row.returnRequest?.status ?? "",
+    status: (row) =>
+      row.returnRequest && isReturnHistoryStatus(row.returnRequest.status)
+        ? SERVICE_RETURNED_REPLACED_STATUS
+        : (row.returnRequest?.status ?? ""),
   });
   const {
     page,
@@ -130,7 +139,8 @@ export function ScReturnsPanel({
         id: "serial",
         header: "Serial",
         enableSorting: false,
-        cell: ({ row }) => row.original.serialNumber?.serialNo ?? "—",
+        cell: ({ row }) =>
+          row.original.serialNos.length > 0 ? row.original.serialNos.join(", ") : "—",
         meta: { className: "font-mono text-sm" },
       }),
       returnColumn.display({
@@ -145,7 +155,11 @@ export function ScReturnsPanel({
         enableSorting: true,
         cell: ({ row }) =>
           row.original.returnRequest ? (
-            <Badge variant="outline">{row.original.returnRequest.status}</Badge>
+            <Badge variant="outline">
+              {isReturnHistoryStatus(row.original.returnRequest.status)
+                ? SERVICE_RETURNED_REPLACED_STATUS
+                : row.original.returnRequest.status.replaceAll("_", " ")}
+            </Badge>
           ) : (
             "—"
           ),

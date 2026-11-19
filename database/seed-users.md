@@ -29,8 +29,19 @@ Local demo still includes `superadmin@demo.local` on the **demo** tenant — a *
 | `pnpm run db:seed:notifications` | Sample header-bell notifications (tenant / role / user) | Fill the notifications bell after core seed |
 | `pnpm run db:seed:test-accounts` | Branch AORs for `tl@`, `ps@` and `receiver@demo.local` on real branches | Transfer and pull-out testing. Only adds missing rows |
 | `pnpm run db:migrate:only` | migrate without seed | Faster schema-only migrations |
+| `pnpm run db:grant:monthly-sir` | Monthly SIR permission, granted only to roles that already have branch Inventory | **Once** on the client server after deploy. Not a seed |
 
 Optional env: `SEED_BCRYPT_ROUNDS=8` (default) — lower for faster local re-seed.
+
+## Live server after deploy
+
+Run this once on the client server after deploy:
+
+```bash
+pnpm run db:grant:monthly-sir
+```
+
+Do not run `pnpm run db:seed` or `pnpm run db:seed:full` on the client server. `db:seed:core` is not the update for a live server because it only grants built-in demo roles and can create the demo tenant.
 
 ## ISO / admin roles (demo tenant)
 

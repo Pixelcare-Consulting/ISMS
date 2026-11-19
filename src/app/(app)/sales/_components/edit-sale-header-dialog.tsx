@@ -5,6 +5,17 @@ import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import type { SaleDetailsPayload } from "@/app/(app)/sales/_components/sale-details-dialog";
+import { useSalesSource } from "@/app/(app)/sales/_components/sales-source";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,26 +30,16 @@ import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  listBranchesForSalesAction,
   listCustomerDeliveryMethodsForSalesAction,
   listPaymentTypesForSalesAction,
   listSaleTypesForSalesAction,
-  listStockSourceBranchesForSalesAction,
-  updateSaleHeaderAction,
   uploadSaleProofAction,
 } from "@/features/sales/actions/sales.actions";
 import { SALE_PROOF_MAX_FILES } from "@/features/sales/utils/sale-proof";
+import { earliestSaleTransactionIso } from "@/features/sales/utils/transaction-date";
 
 type LookupOption = { id: string; name: string };
 type ProofAttachment = { path: string; name: string };
-
-function todayInputValue(): string {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
 
 function EditSaleHeaderFormSkeleton() {
   return (
@@ -78,8 +79,11 @@ export function EditSaleHeaderDialog({
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
 }) {
+  const source = useSalesSource();
+  const { listSoldPlaces, listStockSources, updateSaleHeader } = source.actions;
   const [pending, startTransition] = useTransition();
   const [loading, setLoading] = useState(true);
+  const [saveConfirmOpen, setSaveConfirmOpen] = useState(false);
   const [branches, setBranches] = useState<LookupOption[]>([]);
   const [stockSources, setStockSources] = useState<LookupOption[]>([]);
   const [paymentTypes, setPaymentTypes] = useState<LookupOption[]>([]);
@@ -93,8 +97,13 @@ export function EditSaleHeaderDialog({
     sale.alternateBranchId,
   );
   const [transactionDate, setTransactionDate] = useState(
-    sale.transactionDateInput ?? todayInputValue(),
+    sale.transactionDateInput ?? "",
   );
+  const earliestTransactionDate = earliestSaleTransactionIso();
+  const transactionDateMin =
+    transactionDate && transactionDate < earliestTransactionDate
+      ? transactionDate
+      : earliestTransactionDate;
   const [customerName, setCustomerName] = useState(sale.customerName ?? "");
   const [contactNo, setContactNo] = useState(sale.contactNo ?? "");
   const [infoSlipVsoRrReleased, setInfoSlipVsoRrReleased] = useState(
@@ -127,7 +136,7 @@ export function EditSaleHeaderDialog({
       try {
         const [branchRows, paymentRows, saleTypeRows, deliveryRows] =
           await Promise.all([
-            listBranchesForSalesAction(),
+            listSoldPlaces(),
             listPaymentTypesForSalesAction(),
             listSaleTypesForSalesAction(),
             listCustomerDeliveryMethodsForSalesAction(),
@@ -146,27 +155,27 @@ export function EditSaleHeaderDialog({
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, listSoldPlaces]);
 
   useEffect(() => {
     if (!open || !branchId) return;
     let cancelled = false;
     void (async () => {
       try {
-        const rows = await listStockSourceBranchesForSalesAction(branchId);
+        const rows = await listStockSources(branchId);
         if (cancelled) return;
         setStockSources(rows);
         setAlternateBranchId((prev) =>
           rows.some((r) => r.id === prev) ? prev : (rows[0]?.id ?? branchId),
         );
       } catch {
-        if (!cancelled) toast.error("Failed to load stock source branches");
+        if (!cancelled) toast.error(source.copy.stockSourceLoadError);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [open, branchId]);
+  }, [open, branchId, listStockSources, source.copy.stockSourceLoadError]);
 
   async function onProofsSelected(fileList: FileList | null) {
     if (!fileList?.length) return;
@@ -202,17 +211,17 @@ export function EditSaleHeaderDialog({
     }
   }
 
-  function submit() {
+  function requestSave() {
     if (!transactionNo.trim()) {
       toast.error("Transaction number is required");
       return;
     }
     if (!branchId) {
-      toast.error("Select a branch");
+      toast.error(source.copy.selectSoldError);
       return;
     }
     if (!alternateBranchId) {
-      toast.error("Select a stock source branch");
+      toast.error(source.copy.selectStockSourceError);
       return;
     }
     if (!customerName.trim()) {
@@ -231,13 +240,17 @@ export function EditSaleHeaderDialog({
       toast.error("Customer delivery method is required");
       return;
     }
+    setSaveConfirmOpen(true);
+  }
 
+  function submit() {
+    setSaveConfirmOpen(false);
     startTransition(async () => {
-      const result = await updateSaleHeaderAction({
+      const result = await updateSaleHeader({
         saleId: sale.id,
         transactionNo: transactionNo.trim(),
-        branchId,
-        alternateBranchId,
+        soldId: branchId,
+        stockSourceId: alternateBranchId,
         customerName: customerName.trim(),
         contactNo: contactNo.trim() || undefined,
         siTrans: transactionNo.trim(),
@@ -261,7 +274,13 @@ export function EditSaleHeaderDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next && saveConfirmOpen) return;
+        onOpenChange(next);
+      }}
+    >
       <DialogContent className="flex max-h-[90svh] w-[min(calc(100vw-2rem),40rem)] max-w-2xl flex-col gap-0 overflow-hidden p-4 sm:p-6">
         <DialogHeader className="shrink-0 space-y-1.5 pr-8 pb-4 text-left">
           <DialogTitle>Edit transaction header</DialogTitle>
@@ -288,7 +307,7 @@ export function EditSaleHeaderDialog({
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Branch sold *</Label>
+                  <Label>{source.copy.soldLabel} *</Label>
                   <SearchableSelect
                     options={branches.map((b) => ({ id: b.id, label: b.name }))}
                     value={branchId}
@@ -297,19 +316,18 @@ export function EditSaleHeaderDialog({
                       setStockSources([]);
                       setAlternateBranchId("");
                     }}
-                    placeholder="Select branch…"
-                    searchPlaceholder="Search branches…"
+                    placeholder={source.copy.soldPlaceholder}
+                    searchPlaceholder={source.copy.soldSearchPlaceholder}
                     disabled={hasRealSerials || pending}
                   />
                   {hasRealSerials ? (
                     <p className="text-xs text-muted-foreground">
-                      Branch is locked because this sale already has real
-                      serials.
+                      {source.copy.soldLocked}
                     </p>
                   ) : null}
                 </div>
                 <div className="space-y-2">
-                  <Label>Branch or alternate branch *</Label>
+                  <Label>{source.copy.stockSourceLabel} *</Label>
                   <SearchableSelect
                     options={stockSources.map((b) => ({
                       id: b.id,
@@ -327,6 +345,7 @@ export function EditSaleHeaderDialog({
                   <Input
                     id="edit-sale-date"
                     type="date"
+                    min={transactionDateMin}
                     value={transactionDate}
                     onChange={(e) => setTransactionDate(e.target.value)}
                   />
@@ -484,12 +503,31 @@ export function EditSaleHeaderDialog({
           <Button
             type="button"
             disabled={pending || loading}
-            onClick={submit}
+            onClick={requestSave}
           >
             Save header
           </Button>
         </DialogFooter>
       </DialogContent>
+      <AlertDialog
+        open={saveConfirmOpen}
+        onOpenChange={(next) => {
+          if (!next) setSaveConfirmOpen(false);
+        }}
+      >
+        <AlertDialogContent className="z-60" overlayClassName="z-60">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Save this record?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to save this record?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No</AlertDialogCancel>
+            <AlertDialogAction onClick={submit}>Yes</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }

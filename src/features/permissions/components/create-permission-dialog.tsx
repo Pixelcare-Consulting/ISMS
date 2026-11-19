@@ -6,7 +6,7 @@ import { useMemo, useState, useTransition } from "react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
-import { appModules } from "@/config/app-modules";
+import { visibleAppModules } from "@/config/app-modules";
 import { createPermissionAction } from "@/features/permissions/actions/permission.actions";
 import {
   buildPermissionDefaults,
@@ -24,8 +24,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-const defaultModuleId = appModules[0]?.id ?? "";
-const defaultAction = appModules[0]?.actions[0]?.value ?? "";
+const selectableModules = visibleAppModules();
+const defaultModuleId = selectableModules[0]?.id ?? "";
+const defaultAction = selectableModules[0]?.actions[0]?.value ?? "";
 
 export function CreatePermissionDialog() {
   const router = useRouter();
@@ -103,7 +104,7 @@ export function CreatePermissionDialog() {
           </DialogHeader>
           <form onSubmit={onSubmit} className="space-y-4">
             <PermissionModuleFields
-              modules={appModules}
+              modules={selectableModules}
               moduleId={moduleId}
               action={action}
               slug={defaults.slug}

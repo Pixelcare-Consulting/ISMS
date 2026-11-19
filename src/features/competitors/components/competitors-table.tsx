@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { createColumnHelper } from "@tanstack/react-table";
+import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -15,8 +15,11 @@ import {
 import type { CompetitorObservationDto } from "@/features/competitors/services/competitor.service";
 import {
   DeleteConfirmDialog,
+  TablePageSizeSelect,
   TableRowActions,
+  TableSelectionBadge,
   uniqueSearchSuggestions,
+  useClientTablePagination,
 } from "@/components/data-table";
 import {
   DataTable,
@@ -24,7 +27,11 @@ import {
   type DataTableColumn,
   type DataTableFeatures,
 } from "@/lib/data-table";
+import { buildCsvContent } from "@/lib/shared/csv";
+import { downloadCsvFile } from "@/lib/shared/download-csv";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { formatPeso } from "@/utils/format-currency";
 import { matchesTableSearch } from "@/utils/match-table-search";
@@ -36,6 +43,7 @@ interface CompetitorsTableProps {
   canManage: boolean;
   competitors: CompetitorFormOption[];
   branches: CompetitorFormOption[];
+  aorBranches: CompetitorFormOption[];
   brands: CompetitorFormOption[];
   models: CompetitorModelOption[];
 }
@@ -44,6 +52,15 @@ function formatObservedDate(iso: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleDateString();
+}
+
+/** Local calendar day, matching the Observed column. */
+function observedDay(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${month}-${day}`;
 }
 
 function brandDisplay(row: CompetitorObservationDto) {
@@ -59,6 +76,7 @@ export function CompetitorsTable({
   canManage,
   competitors,
   branches,
+  aorBranches,
   brands,
   models,
 }: CompetitorsTableProps) {
@@ -66,15 +84,24 @@ export function CompetitorsTable({
   const [query, setQuery] = useState("");
   const [branchFilter, setBranchFilter] = useState("");
   const [brandFilter, setBrandFilter] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [pending, startTransition] = useTransition();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<CompetitorObservationDto | null>(null);
   const [deleting, setDeleting] = useState<CompetitorObservationDto | null>(null);
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
 
   const filtered = useMemo(() => {
     return observations.filter((row) => {
       if (branchFilter && row.branchId !== branchFilter) return false;
       if (brandFilter && row.competitorBrandId !== brandFilter) return false;
+      if (fromDate || toDate) {
+        const day = observedDay(row.observedAt);
+        if (!day) return false;
+        if (fromDate && day < fromDate) return false;
+        if (toDate && day > toDate) return false;
+      }
       return matchesTableSearch(query, [
         row.competitorName,
         row.promotion ?? "",
@@ -87,7 +114,9 @@ export function CompetitorsTable({
         row.createdBy.email,
       ]);
     });
-  }, [observations, query, branchFilter, brandFilter]);
+  }, [observations, query, branchFilter, brandFilter, fromDate, toDate]);
+
+  const selectedCount = filtered.filter((row) => rowSelection[row.id]).length;
 
   const sort = useClientTableSort(filtered, {
     competitor: (row) => row.competitorName,
@@ -96,6 +125,19 @@ export function CompetitorsTable({
     promotion: (row) => row.promotion,
     observed: (row) => row.observedAt,
     loggedBy: (row) => row.createdBy.name ?? row.createdBy.email,
+  });
+
+  const {
+    pageItems,
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
+    total,
+    totalPages,
+    indexOffset,
+  } = useClientTablePagination(sort.sorted, {
+    resetKey: `${query.trim()}:${branchFilter}:${brandFilter}:${fromDate}:${toDate}:${sort.sortKey}:${sort.sortDir}`,
   });
 
   const suggestions = useMemo(
@@ -143,8 +185,58 @@ export function CompetitorsTable({
       ? "No competitor observations yet."
       : "No observations match your filters.";
 
+  function rowsForReport() {
+    const selected = observations.filter((row) => rowSelection[row.id]);
+    if (selected.length > 0) {
+      const order = new Map(sort.sorted.map((row, index) => [row.id, index]));
+      return [...selected].sort(
+        (a, b) => (order.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (order.get(b.id) ?? Number.MAX_SAFE_INTEGER),
+      );
+    }
+    return observations.filter((row) => {
+      if (!fromDate && !toDate) return true;
+      const day = observedDay(row.observedAt);
+      if (!day) return false;
+      if (fromDate && day < fromDate) return false;
+      if (toDate && day > toDate) return false;
+      return true;
+    });
+  }
+
+  function generateReport() {
+    const rows = rowsForReport();
+    const csv = buildCsvContent(
+      ["Competitor", "Branch", "Brand", "Model", "Price", "Promotion", "Observed", "Notes", "Logged by"],
+      rows.map((row) => [
+        row.competitorName,
+        row.branch ? `${row.branch.name} (${row.branch.sapCode})` : "",
+        brandDisplay(row) ?? "",
+        modelDisplay(row) ?? "",
+        row.price ?? "",
+        row.promotion ?? "",
+        formatObservedDate(row.observedAt),
+        row.notes ?? "",
+        row.createdBy.name ?? row.createdBy.email,
+      ]),
+    );
+    const stamp = observedDay(new Date().toISOString());
+    downloadCsvFile(csv, `competitor-observations-${stamp}.csv`);
+    toast.success(
+      rows.length === 0
+        ? "Report downloaded with no observations"
+        : `Report downloaded (${rows.length} observation${rows.length === 1 ? "" : "s"})`,
+    );
+  }
+
   const columns = useMemo(() => {
     const cols: DataTableColumn<CompetitorObservationDto>[] = [
+      observationColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "w-12 tabular-nums text-muted-foreground" },
+      }),
       observationColumn.display({
         id: "competitor",
         header: "Competitor",
@@ -228,12 +320,12 @@ export function CompetitorsTable({
       );
     }
     return cols;
-  }, [canManage, pending]);
+  }, [canManage, pending, indexOffset]);
 
   return (
     <div className="space-y-4">
       <DataTable
-        data={sort.sorted}
+        data={pageItems}
         columns={columns}
         getRowId={(row) => row.id}
         manualSorting
@@ -244,7 +336,20 @@ export function CompetitorsTable({
           onSort: sort.toggleSort,
         }}
         stickyHeader
-        toolbarLeading={<span className="text-sm font-medium">Observations</span>}
+        enableRowSelection
+        rowSelection={rowSelection}
+        onRowSelectionChange={setRowSelection}
+        selectAllLabel="Select all observations"
+        getSelectionLabel={(row) => `Select observation ${row.competitorName}`}
+        toolbarLeading={
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">Observations</span>
+            <TableSelectionBadge
+              count={selectedCount}
+              onClear={() => setRowSelection({})}
+            />
+          </div>
+        }
         search={{
           value: query,
           onChange: setQuery,
@@ -252,18 +357,26 @@ export function CompetitorsTable({
           suggestions,
         }}
         toolbarActions={
-          canManage ? (
-            <Button size="sm" onClick={openCreate} className="shrink-0">
-              <Plus className="size-4" /> Add observation
+          <>
+            <Button size="sm" variant="outline" onClick={generateReport} className="shrink-0">
+              Generate report
             </Button>
-          ) : null
+            {canManage ? (
+              <Button size="sm" onClick={openCreate} className="shrink-0">
+                <Plus className="size-4" /> Add observation
+              </Button>
+            ) : null}
+          </>
         }
         banner={
-          <div className="flex flex-wrap gap-3 px-4 pb-3">
+          <div className="flex flex-wrap items-end gap-3 px-4 pb-3">
+            <div className="[&_[data-slot=select-trigger]]:h-9">
+              <TablePageSizeSelect value={pageSize} onChange={setPageSize} />
+            </div>
             <SearchableSelect
               label="Branch"
               id="filter-branch"
-              className="min-w-[10rem]"
+              className="w-[14rem]"
               options={branches.map((b) => ({ id: b.id, label: b.label }))}
               value={branchFilter}
               onChange={setBranchFilter}
@@ -274,7 +387,7 @@ export function CompetitorsTable({
             <SearchableSelect
               label="Brand"
               id="filter-brand"
-              className="min-w-[10rem]"
+              className="w-[12rem]"
               options={brands.map((b) => ({ id: b.id, label: b.label }))}
               value={brandFilter}
               onChange={setBrandFilter}
@@ -282,9 +395,34 @@ export function CompetitorsTable({
               placeholder="All brands"
               searchPlaceholder="Search brands…"
             />
+            <div className="w-[11rem] space-y-1.5">
+              <Label htmlFor="filter-from">From</Label>
+              <Input
+                id="filter-from"
+                type="date"
+                value={fromDate}
+                onChange={(event) => setFromDate(event.target.value)}
+              />
+            </div>
+            <div className="w-[11rem] space-y-1.5">
+              <Label htmlFor="filter-to">To</Label>
+              <Input
+                id="filter-to"
+                type="date"
+                value={toDate}
+                onChange={(event) => setToDate(event.target.value)}
+              />
+            </div>
           </div>
         }
-        empty={sort.sorted.length === 0}
+        pagination={{
+          total,
+          page,
+          totalPages,
+          itemLabel: "observation",
+          onPageChange: setPage,
+        }}
+        empty={pageItems.length === 0}
         emptyMessage={emptyMessage}
       />
 
@@ -295,6 +433,7 @@ export function CompetitorsTable({
           onOpenChange={setFormOpen}
           observation={editing}
           competitors={competitors}
+          branches={aorBranches}
           brands={brands}
           models={models}
         />

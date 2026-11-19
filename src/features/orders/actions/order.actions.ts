@@ -8,6 +8,12 @@ import {
 } from "@/features/orders/services/order.service";
 import { suggestionApplyService } from "@/features/orders/services/suggestion-apply.service";
 import { orderAttachmentService } from "@/features/orders/services/order-attachment.service";
+import {
+  buildPendingOrderAttachmentPath,
+  isOrderAttachmentFile,
+} from "@/features/orders/utils/order-attachment-paths";
+import { SALE_PROOF_MAX_FILES } from "@/features/sales/utils/sale-proof";
+import { getObjectStorage } from "@/lib/storage";
 import { orderRepository } from "@/features/orders/repositories/order.repository";
 import type {
   OrderListSort,
@@ -422,6 +428,7 @@ export async function createOrderAction(input: {
   branchId: string;
   orderType: "auto_replenish" | "manual" | "special";
   notes?: string;
+  attachments?: string[];
   brandId?: string | null;
   modeOfPaymentId?: string | null;
   details: { modelId: string; quantity: number; remarks?: string | null }[];
@@ -436,6 +443,48 @@ export async function createOrderAction(input: {
     return { success: true as const, orderId: order.id };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to create order" };
+  }
+}
+
+/**
+ * Uploads images or PDFs before the order exists.
+ * Same count as sale proofs. Create order then stores the returned paths.
+ */
+export async function uploadCreateOrderAttachmentsAction(formData: FormData) {
+  const session = await requireAnyPermission(anyOrderTypePermissions("create"));
+  try {
+    const files = formData
+      .getAll("attachment")
+      .filter((entry): entry is File => entry instanceof File && entry.size > 0);
+    if (files.length === 0) return { error: "No file selected" as const };
+    if (files.length > SALE_PROOF_MAX_FILES) {
+      return { error: `You can attach up to ${SALE_PROOF_MAX_FILES} files` as const };
+    }
+    const refused = files.find((file) => !isOrderAttachmentFile(file));
+    if (refused) {
+      return { error: `${refused.name} must be an image or PDF` as const };
+    }
+
+    const storage = getObjectStorage();
+    const paths: string[] = [];
+    for (const file of files) {
+      const storagePath = buildPendingOrderAttachmentPath({
+        tenantId: session.user.tenantId,
+        fileId: crypto.randomUUID(),
+        fileName: file.name,
+      });
+      await storage.upload({
+        path: storagePath,
+        body: Buffer.from(await file.arrayBuffer()),
+        contentType: file.type || "application/octet-stream",
+      });
+      paths.push(storagePath);
+    }
+    return { success: true as const, paths };
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e.message : "Failed to upload attachment",
+    };
   }
 }
 

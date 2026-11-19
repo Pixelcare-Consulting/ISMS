@@ -30,11 +30,21 @@ const BASE_STYLES = `
     .letterhead .contact p { margin: 0; }
     @media print { body { margin: 12px; } }`;
 
-/** No lines and no logo leaves the header out, so an unset tenant prints as before. */
-export function letterheadHtml(letterhead: PrintLetterhead | null): string {
-  if (!letterhead) return "";
+/**
+ * The letterhead with blank lines dropped. Null when there is no logo and no line, so an unset
+ * tenant prints without a header. Shared by the HTML slips and the PDF documents.
+ */
+export function printableLetterhead(letterhead: PrintLetterhead | null): PrintLetterhead | null {
+  if (!letterhead) return null;
   const lines = letterhead.lines.map((line) => line.trim()).filter(Boolean);
-  if (!letterhead.logo && lines.length === 0) return "";
+  if (!letterhead.logo && lines.length === 0) return null;
+  return { ...letterhead, lines };
+}
+
+export function letterheadHtml(input: PrintLetterhead | null): string {
+  const letterhead = printableLetterhead(input);
+  if (!letterhead) return "";
+  const { lines } = letterhead;
   const mark = letterhead.logo
     ? `<img src="${escapeHtml(letterhead.logo)}" alt="${escapeHtml(letterhead.companyName)}" />`
     : `<div class="company-name">${escapeHtml(letterhead.companyName)}</div>`;

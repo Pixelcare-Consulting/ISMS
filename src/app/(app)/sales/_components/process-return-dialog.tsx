@@ -4,6 +4,17 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import type { SaleDetailsPayload } from "@/app/(app)/sales/_components/sale-details-dialog";
+import { useSalesSource } from "@/app/(app)/sales/_components/sales-source";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -19,11 +30,7 @@ import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  listProcessReturnLookupsAction,
-  requestReturnAction,
-  type ProcessReturnPayload,
-} from "@/features/sales/actions/sales.actions";
-import {
+  isDealerInitiatedDocumentTypeName,
   isReplacementDocumentTypeName,
   isReturnDocumentTypeName,
   isServiceDocumentTypeName,
@@ -33,6 +40,7 @@ import {
   type ReturnStockStatusValue,
 } from "@/features/sales/constants/process-return";
 import { TO_FOLLOW_SERIAL_LABEL } from "@/features/sales/constants/to-follow-serial";
+import type { ProcessReturnPayload } from "@/features/sales/services/process-return-input";
 import { cn } from "@/utils/cn";
 
 type LookupOption = { id: string; name: string };
@@ -66,8 +74,12 @@ export function ProcessReturnDialog({
   onOpenChange,
   onSubmitted,
 }: ProcessReturnDialogProps) {
+  const { processReturn } = useSalesSource();
   const [pending, startTransition] = useTransition();
   const [loading, setLoading] = useState(true);
+  const [confirmAction, setConfirmAction] = useState<
+    ProcessReturnPayload["actionType"] | null
+  >(null);
   const [documentTypes, setDocumentTypes] = useState<LookupOption[]>([]);
   const [problems, setProblems] = useState<LookupOption[]>([]);
   const [serviceCenters, setServiceCenters] = useState<LookupOption[]>([]);
@@ -97,7 +109,9 @@ export function ProcessReturnDialog({
   const headerSn = selectedLine?.serialNo ?? TO_FOLLOW_SERIAL_LABEL;
 
   const selectedDocType = documentTypes.find((d) => d.id === documentTypeId);
-  const showServiceExtras = isServiceDocumentTypeName(selectedDocType?.name);
+  // SC sales has no Service Return section: the selling service center finishes the request.
+  const showServiceExtras =
+    isServiceDocumentTypeName(selectedDocType?.name) && !processReturn.sellerFinishes;
   const showReturnAction = isReturnDocumentTypeName(selectedDocType?.name);
   const showReplacementAction = isReplacementDocumentTypeName(
     selectedDocType?.name,
@@ -117,7 +131,7 @@ export function ProcessReturnDialog({
     });
     void (async () => {
       try {
-        const lookups = await listProcessReturnLookupsAction();
+        const lookups = await processReturn.listLookups();
         if (cancelled) return;
         setDocumentTypes(lookups.documentTypes);
         setProblems(lookups.problemDescriptions);
@@ -133,7 +147,7 @@ export function ProcessReturnDialog({
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, processReturn]);
 
   function toggleProblem(id: string) {
     setProblemIds((prev) =>
@@ -166,6 +180,22 @@ export function ProcessReturnDialog({
       toast.error("Selected document type requires Return, not Replacement");
       return;
     }
+    setConfirmAction(actionType);
+  }
+
+  function approvalNote(documentTypeName: string | null | undefined): string {
+    if (isServiceDocumentTypeName(documentTypeName)) return processReturn.serviceNextStep;
+    if (isDealerInitiatedDocumentTypeName(documentTypeName)) {
+      return "This request waits for the Team Leader Approval.";
+    }
+    return "This request is automatically approved when you send it.";
+  }
+
+  function confirmSubmit() {
+    const actionType = confirmAction;
+    if (!actionType) return;
+    const nextStep = approvalNote(selectedDocType?.name);
+    setConfirmAction(null);
 
     const payload: ProcessReturnPayload = {
       saleDetailId,
@@ -173,7 +203,8 @@ export function ProcessReturnDialog({
       stockStatusCode,
       actionType,
       problemDescriptionIds: problemIds,
-      serviceCenterId: showServiceExtras ? serviceCenterId || null : null,
+      serviceCenterId:
+        showServiceExtras ? serviceCenterId || null : null,
       classification: showServiceExtras ? classification || null : null,
       serviceModelId: showServiceExtras ? serviceModelId || null : null,
       customerDealerBranch: showServiceExtras
@@ -189,7 +220,7 @@ export function ProcessReturnDialog({
     };
 
     startTransition(async () => {
-      const res = await requestReturnAction(sale.id, payload);
+      const res = await processReturn.request(sale.id, payload);
       if ("error" in res && res.error) {
         toast.error(res.error);
         return;
@@ -198,6 +229,7 @@ export function ProcessReturnDialog({
         actionType === "replacement"
           ? "Replacement request submitted"
           : "Return request submitted",
+        { description: nextStep },
       );
       onOpenChange(false);
       onSubmitted();
@@ -205,7 +237,13 @@ export function ProcessReturnDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next && confirmAction) return;
+        onOpenChange(next);
+      }}
+    >
       <DialogContent className="flex max-h-[90svh] w-[min(calc(100vw-2rem),36rem)] max-w-xl flex-col overflow-hidden">
         <DialogHeader className="shrink-0 pr-8 text-left">
           <DialogTitle>Process Return</DialogTitle>
@@ -440,6 +478,29 @@ export function ProcessReturnDialog({
           ) : null}
         </DialogFooter>
       </DialogContent>
+      <AlertDialog
+        open={confirmAction !== null}
+        onOpenChange={(next) => {
+          if (!next) setConfirmAction(null);
+        }}
+      >
+        <AlertDialogContent className="z-[80]" overlayClassName="z-[80]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmAction === "replacement"
+                ? "Are you sure you want to replace this serial no.?"
+                : "Are you sure you want to return this serial no.?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {approvalNote(selectedDocType?.name)}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmSubmit}>Yes</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }

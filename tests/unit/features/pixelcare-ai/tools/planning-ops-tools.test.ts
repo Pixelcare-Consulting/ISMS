@@ -151,6 +151,7 @@ function sessionWithPermissions(permissions: string[]): AppSession {
       permissions,
       roleSlugs: [],
       isPlatformOperator: false,
+      mustChangePassword: false,
     },
   };
 }

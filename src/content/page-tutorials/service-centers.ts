@@ -12,14 +12,14 @@ export const SERVICE_CENTERS_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "What this page is for",
       description:
-        "Service centers hold repair and service locations. Nested locations are the stock and sales sites used under the Service nav group.",
+        "Service centers hold repair and service locations. Nested locations are the stock and sales sites used from Inventory, Orders, and Sales & Returns.",
     },
     {
       title: "How to use it",
       bullets: [
         "Maintain accurate center names and codes for reporting.",
         "Add nested locations before stocking or selling at a site.",
-        "Settings CRUD uses service_centers.manage; day-to-day ops use the Service menu permissions.",
+        "Day-to-day inventory, orders, sales, deliveries, and pull-outs open from Inventory, Orders, and Sales & Returns.",
       ],
     },
     {

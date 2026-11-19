@@ -10,10 +10,12 @@ import {
   getBranchInventoryV2StatusAmountsAction,
   getInventoryKpisAction,
   getInventorySeriesSummaryAction,
+  listBranchInventorySeriesOptionsAction,
   listInventoryAction,
   listInventoryGroupsAction,
   listInventoryStatusOptionsAction,
   listUnreadBranchInventoryIdsAction,
+  type BranchInventorySeriesOption,
   type InventoryGroupBranchItemDto,
   type InventoryGroupModelItemDto,
   type InventoryStatusOption,
@@ -42,6 +44,7 @@ interface BranchInventoryV2PageProps {
     limit?: string;
     offPlanogram?: string;
     sku?: string;
+    series?: string;
   }>;
 }
 
@@ -120,6 +123,25 @@ function withoutSoldBranchRows(
   }));
 }
 
+/** Branch still has a name, but this series has no units there. */
+function branchWithNoSeriesUnits(
+  identity: InventoryGroupBranchItemDto,
+): InventoryGroupBranchItemDto {
+  return {
+    branch: identity.branch,
+    counts: {
+      total: 0,
+      available: 0,
+      defective: 0,
+      reserved: 0,
+      pendingInspection: 0,
+      notStockedIn: 0,
+      statusCounts: {},
+      statuses: identity.counts.statuses.map((status) => ({ ...status, count: 0 })),
+    },
+  };
+}
+
 export default async function BranchInventoryV2Page({
   searchParams,
 }: BranchInventoryV2PageProps) {
@@ -132,28 +154,49 @@ export default async function BranchInventoryV2Page({
   const statusCodeId = params.status?.trim() || undefined;
   const offPlanogram = params.offPlanogram === "1";
   const sku = params.sku?.trim() || undefined;
+  // Series filters one open branch. The all-branches list ignores the param.
+  const seriesOptions =
+    screen.kind === "branch" ? await listBranchInventorySeriesOptionsAction() : [];
+  const requestedSeriesId = screen.kind === "branch" ? (params.series?.trim() ?? "") : "";
+  const seriesId = seriesOptions.some((option) => option.id === requestedSeriesId)
+    ? requestedSeriesId
+    : undefined;
 
   const [kpis, seriesSummary, groupResult, offPlanogramResult, approvalBranchIds, unread, cardAmounts, statusAmounts] =
     await Promise.all([
       getInventoryKpisAction(),
       getInventorySeriesSummaryAction(
-        screen.kind === "branch" ? { branchId: screen.branchId } : undefined,
+        screen.kind === "branch"
+          ? {
+              branchId: screen.branchId,
+              ...(seriesId ? { seriesId } : {}),
+            }
+          : {},
       ),
       listInventoryGroupsAction({ groupBy: "by-branch", all: true }),
-      listInventoryGroupsAction({ groupBy: "by-branch", all: true, offPlanogram: true }),
+      listInventoryGroupsAction({
+        groupBy: "by-branch",
+        all: true,
+        offPlanogram: true,
+      }),
       defectApprovalBranchIds(
         session.user.tenantId,
         session.user.id,
         session.user.roleSlugs,
       ),
       getBranchInventoryUnreadAction(
-        screen.kind === "branch" ? { branchId: screen.branchId } : undefined,
+        screen.kind === "branch"
+          ? {
+              branchId: screen.branchId,
+              ...(seriesId ? { seriesId } : {}),
+            }
+          : undefined,
       ),
       screen.kind === "all"
         ? getBranchInventoryV2CardAmountsAction()
         : Promise.resolve(null),
       screen.kind === "branch"
-        ? getBranchInventoryV2StatusAmountsAction(screen.branchId)
+        ? getBranchInventoryV2StatusAmountsAction(screen.branchId, seriesId)
         : Promise.resolve(null),
     ]);
 
@@ -180,6 +223,8 @@ export default async function BranchInventoryV2Page({
         statusCodeId,
         offPlanogram,
         sku,
+        seriesId,
+        seriesOptions,
         singleBranch,
         approvalBranchIds,
         unreadByCode: unread.byCode,
@@ -204,6 +249,8 @@ async function renderScreen(input: {
   statusCodeId?: string;
   offPlanogram: boolean;
   sku?: string;
+  seriesId?: string;
+  seriesOptions: BranchInventorySeriesOption[];
   singleBranch: boolean;
   approvalBranchIds: string[] | null;
   unreadByCode: Record<string, number>;
@@ -232,13 +279,31 @@ async function renderScreen(input: {
       );
     case "branch": {
       const branchId = screen.branchId;
-      const [statusOptions, modelGroups] = await Promise.all([
+      const [statusOptions, modelGroups, scopedBranches, scopedOffPlanogram] = await Promise.all([
         listInventoryStatusOptionsAction({ includeDefective: true }),
         listInventoryGroupsAction({
           groupBy: "by-model",
           branchId,
           all: true,
+          seriesId: input.seriesId,
         }),
+        input.seriesId
+          ? listInventoryGroupsAction({
+              groupBy: "by-branch",
+              branchId,
+              all: true,
+              seriesId: input.seriesId,
+            })
+          : Promise.resolve(null),
+        input.seriesId
+          ? listInventoryGroupsAction({
+              groupBy: "by-branch",
+              branchId,
+              all: true,
+              offPlanogram: true,
+              seriesId: input.seriesId,
+            })
+          : Promise.resolve(null),
       ]);
       const statusCodeId = statusOptions.some(
         (option) =>
@@ -255,11 +320,25 @@ async function renderScreen(input: {
         statusCodeId,
         q: input.q,
         sku: input.sku,
+        seriesId: input.seriesId,
         offPlanogram: input.offPlanogram,
       });
-      const branch = input.branches.find((row) => row.branch.id === branchId) ?? null;
-      const offPlanogramRow =
-        input.offPlanogramBranches.find((row) => row.branch.id === branchId) ?? null;
+      const identity = input.branches.find((row) => row.branch.id === branchId) ?? null;
+      const scopedBranch = scopedBranches
+        ? (withoutSoldBranchRows(branchGroups(scopedBranches)).find(
+            (row) => row.branch.id === branchId,
+          ) ?? null)
+        : null;
+      const branch = input.seriesId
+        ? (scopedBranch ?? (identity ? branchWithNoSeriesUnits(identity) : null))
+        : identity;
+      const offPlanogramRow = input.seriesId
+        ? (scopedOffPlanogram
+            ? (withoutSoldBranchRows(branchGroups(scopedOffPlanogram)).find(
+                (row) => row.branch.id === branchId,
+              ) ?? null)
+            : null)
+        : (input.offPlanogramBranches.find((row) => row.branch.id === branchId) ?? null);
       const offPlanogramCount = offPlanogramRow
         ? branchInventoryUnitTotal(offPlanogramRow.counts)
         : 0;
@@ -268,7 +347,7 @@ async function renderScreen(input: {
       );
       return (
         <BranchInventorySerialScreen
-          key={`${branchId}:${statusCodeId ?? ""}:${input.sku ?? ""}:${input.offPlanogram ? "1" : "0"}`}
+          key={`${branchId}:${statusCodeId ?? ""}:${input.sku ?? ""}:${input.seriesId ?? ""}:${input.offPlanogram ? "1" : "0"}`}
           branchId={branchId}
           branch={branch}
           result={result}
@@ -277,6 +356,8 @@ async function renderScreen(input: {
           q={input.q}
           statusCodeId={statusCodeId}
           sku={input.sku}
+          seriesId={input.seriesId}
+          seriesOptions={input.seriesOptions}
           initialOffPlanogram={input.offPlanogram}
           limit={input.limit}
           approvalBranchIds={input.approvalBranchIds}

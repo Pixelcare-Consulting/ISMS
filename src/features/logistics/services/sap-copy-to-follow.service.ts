@@ -258,8 +258,9 @@ async function recordNotApplied(
 /**
  * Serial ids for the document's serials, registering any ISMS has not synced yet from
  * the line's item (as the serial sync would). A soft-deleted serial is restored.
+ * Also used by the service-center order Check SAP.
  */
-async function resolveSerials(
+export async function resolveSerials(
   tx: Prisma.TransactionClient,
   tenantId: string,
   doc: FollowedDocument,

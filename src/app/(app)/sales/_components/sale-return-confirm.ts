@@ -15,7 +15,7 @@ export const SALE_RETURN_CONFIRM_COPY: Record<
   request: {
     title: "Are you sure you want to request a return?",
     description:
-      "This starts an ATR return for this sale and sends it for CS evaluation.",
+      "Dealer Initiated Return / Replacement waits for Team Leader. Every other sales-return type is approved now, under your name.",
     confirmLabel: "Request return",
     successMessage: "Return request submitted",
   },
@@ -41,17 +41,17 @@ export const SALE_RETURN_CONFIRM_COPY: Record<
     successMessage: "Return rejected",
   },
   restore: {
-    title: "Are you sure you want to restore stock?",
+    title: "Return stock?",
     description:
-      "This restores inventory for the selected serial on this return and closes the ATR. Other serials on the package stay unchanged.",
-    confirmLabel: "Restore stock",
-    successMessage: "Inventory restored — ATR closed",
+      "This returns the selected serial to stock and closes the sale. Other serials on the package stay unchanged.",
+    confirmLabel: "Return Stock",
+    successMessage: "Stock returned",
   },
   complete_replacement: {
-    title: "Complete replacement?",
+    title: "Replace stock?",
     description:
-      "This opens Same Invoice or New Invoice so you can finish the replacement and close the ATR.",
-    confirmLabel: "Continue",
+      "This opens Same Invoice or New Invoice so you can finish the replacement and close the sale.",
+    confirmLabel: "Replace Stock",
     successMessage: "Replacement completed",
   },
 };

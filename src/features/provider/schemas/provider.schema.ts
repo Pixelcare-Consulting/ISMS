@@ -1,7 +1,5 @@
 import { z } from "zod";
 
-import { updateUserSchema } from "@/features/users/schemas/update-user.schema";
-
 export const createTenantWithAdminSchema = z.object({
   organizationName: z.string().min(2, "Organization name is required"),
   adminName: z.string().min(2, "Admin name is required"),
@@ -56,8 +54,18 @@ export const createProviderCustomerUserSchema = z.object({
   departmentId: z.string().optional().nullable(),
 });
 
-export const updateProviderCustomerUserSchema = updateUserSchema.extend({
+export const updateProviderCustomerUserSchema = z.object({
   tenantId: z.string().min(1, "Tenant is required"),
+  userId: z.string().min(1),
+  name: z.string().trim().min(2, "Name must be at least 2 characters").max(100),
+  roleSlug: z.string().min(1, "Role is required"),
+  departmentId: z.string().optional().nullable(),
+  password: z
+    .string()
+    .optional()
+    .refine((value) => !value || value.length >= 8, {
+      message: "Password must be at least 8 characters",
+    }),
 });
 
 export const deleteProviderCustomerUserSchema = z.object({

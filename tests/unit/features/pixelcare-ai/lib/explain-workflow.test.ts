@@ -41,7 +41,7 @@ describe("explainIsmsWorkflow helper", () => {
       module: "monthly_sir",
       query: "how do I upload",
       sampleMode: false,
-      permissions: ["inventory.view"],
+      permissions: ["inventory.monthly_sir.view"],
       retrievedAt: "2026-10-16T00:00:00.000Z",
     });
 
