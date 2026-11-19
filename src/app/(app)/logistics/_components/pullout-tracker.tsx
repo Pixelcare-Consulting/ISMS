@@ -81,7 +81,7 @@ export function pulloutAuditLabel(action: string): string {
     case "pullout.created":
       return "Request submitted";
     case "pullout.approved":
-      return "Approved by Team Lead";
+      return "Approved";
     case "pullout.line_approved":
       return "Unit approved";
     case "pullout.line_deleted":
