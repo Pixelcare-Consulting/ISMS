@@ -60,7 +60,7 @@ export function transferAuditLabel(action: string): string {
     case "transfer.created":
       return "Request submitted";
     case "transfer.approved":
-      return "Approved by Team Lead";
+      return "Approved";
     case "transfer.rejected":
       return "Rejected";
     case "transfer.released":
