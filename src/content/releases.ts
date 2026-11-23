@@ -120,6 +120,11 @@ export const RELEASES: ReleaseNote[] = [
         description:
           "Refreshing the same page does not change the time shown on Site Traffic.",
       },
+      {
+        type: "fix",
+        description:
+          "Creating a user works again, and a duplicate email says the address is already in use.",
+      },
     ],
   },
   {

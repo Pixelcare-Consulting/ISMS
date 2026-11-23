@@ -1,9 +1,23 @@
 import { prisma } from "@/lib/database/client";
 
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
 export const userRepository = {
+  /**
+   * Includes soft-deleted rows. `users_tenant_id_email_key` is on
+   * (tenantId, email) with no deletedAt filter, so a deleted person still
+   * occupies the address. A live row is preferred when casing differs.
+   */
   findByEmail(tenantId: string, email: string) {
+    const normalized = normalizeEmail(email);
     return prisma.user.findFirst({
-      where: { tenantId, email: email.toLowerCase(), deletedAt: null },
+      where: {
+        tenantId,
+        email: { equals: normalized, mode: "insensitive" },
+      },
+      orderBy: { deletedAt: { sort: "asc", nulls: "first" } },
     });
   },
 
@@ -39,7 +53,7 @@ export const userRepository = {
     return prisma.user.create({
       data: {
         tenantId: data.tenantId,
-        email: data.email.toLowerCase(),
+        email: normalizeEmail(data.email),
         name: data.name,
         passwordHash: data.passwordHash,
         departmentId: data.departmentId ?? null,
@@ -110,6 +124,31 @@ export const userRepository = {
     return prisma.user.update({
       where: { id, tenantId },
       data: { deletedAt: new Date() },
+    });
+  },
+
+  /** Puts a soft-deleted person back. Same shape as tenant restore: clear deletedAt on the existing row. */
+  restore(
+    tenantId: string,
+    id: string,
+    data: {
+      email: string;
+      name: string;
+      passwordHash: string;
+      departmentId?: string | null;
+    },
+  ) {
+    return prisma.user.update({
+      where: { id, tenantId },
+      data: {
+        email: normalizeEmail(data.email),
+        name: data.name,
+        passwordHash: data.passwordHash,
+        departmentId: data.departmentId ?? null,
+        deletedAt: null,
+        disabledAt: null,
+        mustChangePassword: false,
+      },
     });
   },
 
