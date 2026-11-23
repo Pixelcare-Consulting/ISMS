@@ -17,7 +17,8 @@ function readRoleSlugs(formData: FormData) {
 
 export async function listUsersAction() {
   const session = await requirePermission("users.manage");
-  return userService.listUsers(session.user.tenantId, false);
+  // Organization Users includes Super Admin. Role pickers and AOR lists stay filtered.
+  return userService.listUsers(session.user.tenantId, true);
 }
 
 export async function listRolesAction() {
@@ -131,10 +132,56 @@ export async function resetUserSessionAction(userId: string) {
       actorUserId: session.user.id,
       userId,
     });
+    revalidatePath("/settings/users");
+    revalidatePath("/dashboard/site-traffic");
     return { success: true, cleared };
   } catch (e) {
     return {
       error: e instanceof Error ? e.message : "Failed to reset session",
+    };
+  }
+}
+
+export async function disableUserAction(userId: string) {
+  const session = await requirePermission("users.manage");
+
+  if (!userId) {
+    return { error: "User is required" };
+  }
+
+  try {
+    await userService.disableUser({
+      tenantId: session.user.tenantId,
+      actorUserId: session.user.id,
+      userId,
+    });
+    revalidatePath("/settings/users");
+    return { success: true, userId };
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e.message : "Failed to disable account",
+    };
+  }
+}
+
+export async function enableUserAction(userId: string) {
+  const session = await requirePermission("users.manage");
+
+  if (!userId) {
+    return { error: "User is required" };
+  }
+
+  try {
+    await userService.enableUser({
+      tenantId: session.user.tenantId,
+      actorUserId: session.user.id,
+      userId,
+    });
+    revalidatePath("/settings/users");
+    return { success: true, userId };
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e.message : "Failed to enable account",
     };
   }
 }

@@ -8,7 +8,7 @@ import { pageMetadata } from "@/lib/shared/seo";
 export const metadata = pageMetadata("Site Traffic");
 
 export default async function SiteTrafficPage() {
-  await requireAnyPermission(["users.manage", "audit_logs.view"]);
+  const session = await requireAnyPermission(["users.manage", "audit_logs.view"]);
   const overview = await getSiteTrafficOverviewAction();
   const observedAt = new Date().toISOString();
 
@@ -19,7 +19,12 @@ export default async function SiteTrafficPage() {
         tutorial={SITE_TRAFFIC_PAGE_TUTORIAL}
         description="Who is online, recent activity, and top PS sales this month"
       />
-      <SiteTrafficPanel overview={overview} observedAt={observedAt} />
+      <SiteTrafficPanel
+        overview={overview}
+        observedAt={observedAt}
+        currentUserId={session.user.id}
+        canResetSessions={session.user.permissions.includes("users.manage")}
+      />
     </div>
   );
 }
