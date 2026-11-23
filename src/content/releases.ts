@@ -68,6 +68,28 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.95.16",
+    date: "2026-11-23",
+    releasedAt: "2026-11-23T15:20:00+08:00",
+    title: "Serial logs name both units in a replacement",
+    highlights: [
+      "Serial number logs name which unit replaced which.",
+      "Search on Serial number logs updates the list as you type.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Pick a suggestion or press Enter to search right away. Event and date filters still apply when you choose Apply filters.",
+      },
+      {
+        type: "fix",
+        description:
+          "A replaced sale no longer looks like one unit was replaced by itself.",
+      },
+    ],
+  },
+  {
     version: "0.95.15",
     date: "2026-11-23",
     releasedAt: "2026-11-23T10:38:00+08:00",
@@ -99,7 +121,7 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "improvement",
         description:
-          "Using the app keeps you signed in. You are signed out only after 5 minutes with nothing happening.",
+          "Using the app keeps you signed in. You are signed out only after 5 minutes when idle.",
       },
       {
         type: "improvement",
