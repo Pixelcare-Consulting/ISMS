@@ -23,6 +23,7 @@ import {
 import { PixelcareAwareShell } from "@/app/(app)/_components/pixelcare-aware-shell";
 import { WhatsNewHeaderAction } from "@/app/(app)/_components/whats-new-header-action";
 import { SessionActivity } from "@/components/auth/session-activity";
+import { recordSiteVisitSafe } from "@/features/dashboard/services/site-traffic-visit.service";
 import { DocumentTitle } from "@/components/document-title";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { resolveRouteTitle } from "@/config/route-titles";
@@ -106,6 +107,11 @@ export default async function AppLayout({
             return [];
           })
       : Promise.resolve([]),
+    recordSiteVisitSafe({
+      sessionId: session.sessionId ?? "",
+      tenantId: session.user.tenantId,
+      path: pathname,
+    }),
   ]);
 
   const countBadges = operationalBadges

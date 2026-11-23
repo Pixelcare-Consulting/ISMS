@@ -3,6 +3,7 @@ import {
   decideSessionCreate,
   evaluateLiveSession,
   isTerminalLoginError,
+  loginErrorMessage,
   shouldRevokeBrowserSession,
 } from "@/lib/auth/session-policy";
 
@@ -50,11 +51,11 @@ describe("decideSessionCreate", () => {
 describe("evaluateLiveSession", () => {
   const expiresAt = new Date(now.getTime() + 60 * 60 * 1000);
 
-  it("rejects a session that has been idle longer than 15 minutes", () => {
+  it("rejects a session that has been idle longer than 5 minutes", () => {
     const state = evaluateLiveSession({
       row: {
         expiresAt,
-        lastActiveAt: new Date(now.getTime() - SESSION_IDLE_MS - 1),
+        lastActiveAt: new Date(now.getTime() - 5 * 60 * 1000 - 1),
       },
       now,
     });
@@ -62,7 +63,19 @@ describe("evaluateLiveSession", () => {
     expect(state).toBe("idle");
   });
 
-  it("keeps a session that was active exactly 15 minutes ago", () => {
+  it("keeps a session that was active 4 minutes ago", () => {
+    const state = evaluateLiveSession({
+      row: {
+        expiresAt,
+        lastActiveAt: new Date(now.getTime() - 4 * 60 * 1000),
+      },
+      now,
+    });
+
+    expect(state).toBe("ok");
+  });
+
+  it("keeps a session that was active exactly 5 minutes ago", () => {
     const state = evaluateLiveSession({
       row: {
         expiresAt,
@@ -113,6 +126,10 @@ describe("isTerminalLoginError", () => {
     expect(isTerminalLoginError("idle")).toBe(true);
     expect(isTerminalLoginError("signed-in-elsewhere")).toBe(true);
     expect(isTerminalLoginError("session-expired")).toBe(true);
+    expect(isTerminalLoginError("disabled")).toBe(true);
+    expect(loginErrorMessage("idle")).toBe(
+      "You were signed out after 5 minutes of inactivity.",
+    );
     expect(isTerminalLoginError(null)).toBe(false);
     expect(isTerminalLoginError("forbidden")).toBe(false);
   });

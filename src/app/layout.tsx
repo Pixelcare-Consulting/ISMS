@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import localFont from "next/font/local";
 
 import { AppToaster } from "@/components/providers/app-toaster";
 import { AuthSessionProvider } from "@/components/providers/session-provider";
@@ -7,14 +7,23 @@ import { APP_NAME } from "@/lib/shared/constants";
 
 import "./globals.css";
 
-const geistSans = Geist({
+/** SIL OFL files already in the repo. Loaded locally so Next never calls fonts.googleapis.com. */
+const geistSans = localFont({
+  src: [
+    { path: "../../public/fonts/geist/Geist-Regular.ttf", weight: "400", style: "normal" },
+    { path: "../../public/fonts/geist/Geist-Bold.ttf", weight: "700", style: "normal" },
+  ],
   variable: "--font-geist-sans",
-  subsets: ["latin"],
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
+const geistMono = localFont({
+  src: [
+    { path: "../../public/fonts/geist/GeistMono-Regular.ttf", weight: "400", style: "normal" },
+    { path: "../../public/fonts/geist/GeistMono-Bold.ttf", weight: "700", style: "normal" },
+  ],
   variable: "--font-geist-mono",
-  subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {

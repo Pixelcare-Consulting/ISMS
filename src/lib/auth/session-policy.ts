@@ -1,5 +1,5 @@
 /** No clicks, keys, or scrolling for this long signs the person out. */
-export const SESSION_IDLE_MS = 15 * 60 * 1000;
+export const SESSION_IDLE_MS = 5 * 60 * 1000;
 
 /** Sent with sign-in when the person chooses to replace the other device. */
 export const REPLACE_OTHER_SESSIONS_HEADER = "x-isms-replace-sessions";
@@ -11,16 +11,21 @@ export const SIGNED_OUT_ELSEWHERE_MESSAGE =
   "You were signed out because this account signed in somewhere else.";
 
 export const IDLE_SIGNOUT_MESSAGE =
-  "You were signed out after 15 minutes of inactivity.";
+  "You were signed out after 5 minutes of inactivity.";
+
+export const DISABLED_ACCOUNT_MESSAGE =
+  "This account is disabled. Ask an administrator to turn it back on.";
 
 export const LOGIN_ERROR_SIGNED_IN_ELSEWHERE = "signed-in-elsewhere";
 export const LOGIN_ERROR_IDLE = "idle";
 export const LOGIN_ERROR_SESSION_EXPIRED = "session-expired";
+export const LOGIN_ERROR_DISABLED = "disabled";
 
 const TERMINAL_LOGIN_ERRORS = new Set<string>([
   LOGIN_ERROR_IDLE,
   LOGIN_ERROR_SIGNED_IN_ELSEWHERE,
   LOGIN_ERROR_SESSION_EXPIRED,
+  LOGIN_ERROR_DISABLED,
 ]);
 
 /**
@@ -68,7 +73,7 @@ export type LiveSessionRow = {
 
 export type LiveSessionState = "ok" | "missing" | "expired" | "idle";
 
-/** Reject a missing row, an expired row, or one idle longer than 15 minutes. */
+/** Reject a missing row, an expired row, or one idle longer than 5 minutes. */
 export function evaluateLiveSession(input: {
   row: LiveSessionRow | null;
   now: Date;
@@ -87,9 +92,16 @@ export function evaluateLiveSession(input: {
   return "ok";
 }
 
+export function isDisabledAccountMessage(message: string | null | undefined): boolean {
+  return (message ?? "").toLowerCase().includes("account is disabled");
+}
+
 export function loginErrorMessage(code: string | null): string | null {
   if (code === LOGIN_ERROR_IDLE) {
     return IDLE_SIGNOUT_MESSAGE;
+  }
+  if (code === LOGIN_ERROR_DISABLED) {
+    return DISABLED_ACCOUNT_MESSAGE;
   }
   if (code === LOGIN_ERROR_SIGNED_IN_ELSEWHERE) {
     return SIGNED_OUT_ELSEWHERE_MESSAGE;
