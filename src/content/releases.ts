@@ -103,6 +103,11 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "improvement",
         description:
+          "You see a Session expired dialog and choose OK before signing in again.",
+      },
+      {
+        type: "improvement",
+        description:
           "Create user keeps the buttons on screen, and a password can be 6 characters.",
       },
       {

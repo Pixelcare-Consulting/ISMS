@@ -1,7 +1,16 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { authClient } from "@/lib/auth/client";
 import {
   LOGIN_ERROR_DISABLED,
@@ -27,12 +36,33 @@ async function readBrowserSessionId(): Promise<string | null> {
   }
 }
 
+function goToLogin(error: string) {
+  // Full load so the login page does not reuse the signed-in app shell.
+  // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- sign-out must not reuse the signed-in app shell
+  window.location.assign(`/login?error=${error}`);
+}
+
+/** Idle and expired kicks pause on the current page. The login page already explains them. */
+function holdsForSessionExpiredDialog(error: string): boolean {
+  if (error !== LOGIN_ERROR_IDLE && error !== LOGIN_ERROR_SESSION_EXPIRED) {
+    return false;
+  }
+  const path = window.location.pathname;
+  return path !== "/login" && !path.startsWith("/login/");
+}
+
 /**
  * Records clicks, keys, and scrolling, and signs out after 5 idle minutes.
  * A separate read notices when this session row was removed elsewhere.
  * The read does not refresh last activity.
  */
 export function SessionActivity() {
+  const [pendingError, setPendingError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const finishSignOutRef = useRef<(error: string) => Promise<void>>(
+    async () => {},
+  );
+
   useEffect(() => {
     let lastInput = Date.now();
     let lastPing = 0;
@@ -53,15 +83,7 @@ export function SessionActivity() {
       return capture;
     }
 
-    function goToLogin(error: string) {
-      // Full load so the login page does not reuse the signed-in app shell.
-      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- sign-out must not reuse the signed-in app shell
-      window.location.assign(`/login?error=${error}`);
-    }
-
-    async function leave(error: string) {
-      if (stopped) return;
-      stopped = true;
+    async function finishSignOut(error: string) {
       const ownedId = await captureTabSession();
       const currentSessionId = await readBrowserSessionId();
       if (
@@ -81,6 +103,18 @@ export function SessionActivity() {
         // The login page still explains the sign-out if the cookie clear fails.
       }
       goToLogin(error);
+    }
+
+    finishSignOutRef.current = finishSignOut;
+
+    async function leave(error: string) {
+      if (stopped) return;
+      stopped = true;
+      if (holdsForSessionExpiredDialog(error)) {
+        setPendingError(error);
+        return;
+      }
+      await finishSignOut(error);
     }
 
     async function readBody(response: Response): Promise<string | null> {
@@ -169,5 +203,33 @@ export function SessionActivity() {
     };
   }, []);
 
-  return null;
+  async function onOk(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    if (!pendingError || confirming) return;
+    setConfirming(true);
+    await finishSignOutRef.current(pendingError);
+  }
+
+  return (
+    <AlertDialog
+      open={pendingError !== null}
+      onOpenChange={() => {
+        // Stay on this page until OK signs the person out.
+      }}
+    >
+      <AlertDialogContent className="z-[200]" overlayClassName="z-[200]">
+        <AlertDialogHeader>
+          <AlertDialogTitle>SESSION EXPIRED</AlertDialogTitle>
+          <AlertDialogDescription>
+            Your session has been expired. Please re-login again.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogAction disabled={confirming} onClick={onOk}>
+            OK
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
 }

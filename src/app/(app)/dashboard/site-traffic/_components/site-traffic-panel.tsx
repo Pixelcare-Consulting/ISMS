@@ -77,9 +77,9 @@ function TrafficRing({
   const dash = circumference * ratio;
 
   return (
-    <div className="flex flex-col items-center gap-2 rounded-xl border bg-card px-3 py-4 shadow-sm">
-      <div className="relative size-20" role="img" aria-label={`${label}: ${value}`}>
-        <svg viewBox="0 0 80 80" className="size-20 -rotate-90" aria-hidden>
+    <div className="flex flex-col items-center gap-2">
+      <div className="relative size-32" role="img" aria-label={`${label}: ${value}`}>
+        <svg viewBox="0 0 80 80" className="size-32 -rotate-90" aria-hidden>
           <circle
             cx="40"
             cy="40"
@@ -97,11 +97,11 @@ function TrafficRing({
             strokeDasharray={`${dash} ${circumference}`}
           />
         </svg>
-        <div className="absolute inset-0 flex items-center justify-center text-lg font-semibold tabular-nums">
+        <div className="absolute inset-0 flex items-center justify-center text-3xl font-semibold tabular-nums">
           {value}
         </div>
       </div>
-      <p className="text-center text-xs font-medium text-muted-foreground">{label}</p>
+      <p className="text-center text-sm font-medium text-muted-foreground">{label}</p>
     </div>
   );
 }
@@ -296,9 +296,9 @@ export function SiteTrafficPanel({
           <TrafficRing label="Active PS" value={kpis.activePs} total={kpis.totalPs} tone="green" />
           <TrafficRing label="Login PS" value={kpis.loginPs} total={kpis.totalPs} tone="blue" />
         </div>
-        <p className="text-xs text-muted-foreground">
+        {/* DO NOT UNCOMMENT THIS, NO NEED TO SHOW IN THE SITE TRAFFIC PANEL <p className="text-xs text-muted-foreground">
           Orange is the total. Green is active. Blue is signed in within the last 5 minutes.
-        </p>
+        </p> */}
       </div>
 
       <Card>
