@@ -18,6 +18,7 @@ jest.mock("@/features/users/repositories/user.repository", () => ({
     deleteSessions: jest.fn(),
     setDisabledAt: jest.fn(),
     softDelete: jest.fn(),
+    restore: jest.fn(),
   },
 }));
 
@@ -41,11 +42,13 @@ jest.mock("bcryptjs", () => ({
   },
 }));
 
+import { departmentRepository } from "@/features/users/repositories/department.repository";
 import { roleRepository } from "@/features/users/repositories/role.repository";
 import { userRepository } from "@/features/users/repositories/user.repository";
 import { userService } from "@/features/users/services/user.service";
 
 const findBySlug = roleRepository.findBySlug as jest.Mock;
+const findDepartment = departmentRepository.findById as jest.Mock;
 const findByEmail = userRepository.findByEmail as jest.Mock;
 const findById = userRepository.findById as jest.Mock;
 const create = userRepository.create as jest.Mock;
@@ -55,6 +58,7 @@ const update = userRepository.update as jest.Mock;
 const deleteSessions = userRepository.deleteSessions as jest.Mock;
 const setDisabledAt = userRepository.setDisabledAt as jest.Mock;
 const softDelete = userRepository.softDelete as jest.Mock;
+const restore = userRepository.restore as jest.Mock;
 
 const superAdmin = {
   id: "user-sa",
@@ -91,6 +95,84 @@ describe("userService roles", () => {
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({ mustChangePassword: false }),
     );
+    expect(restore).not.toHaveBeenCalled();
+  });
+
+  it("restores a soft-deleted user instead of inserting another row", async () => {
+    findBySlug.mockResolvedValue({ id: "role-cashier", slug: "cashier" });
+    findDepartment.mockResolvedValue({ id: "dept-1", name: "Support" });
+    findByEmail.mockResolvedValue({
+      id: "user-deleted",
+      email: "ada@example.com",
+      deletedAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+    restore.mockResolvedValue({
+      id: "user-deleted",
+      email: "ada@example.com",
+    });
+
+    await userService.createUser({
+      tenantId: "tenant-1",
+      email: "Ada@example.com",
+      name: "Ada Lovelace",
+      password: "long-enough-password",
+      roleSlugs: ["cashier"],
+      departmentId: "dept-1",
+    });
+
+    expect(create).not.toHaveBeenCalled();
+    expect(findByEmail).toHaveBeenCalledWith("tenant-1", "ada@example.com");
+    expect(restore).toHaveBeenCalledWith("tenant-1", "user-deleted", {
+      email: "ada@example.com",
+      name: "Ada Lovelace",
+      passwordHash: "hashed",
+      departmentId: "dept-1",
+    });
+    expect(setRoles).toHaveBeenCalledWith("user-deleted", ["role-cashier"]);
+    expect(assignRole).not.toHaveBeenCalled();
+  });
+
+  it("refuses an email that already belongs to an active user", async () => {
+    findByEmail.mockResolvedValue({
+      id: "user-1",
+      email: "ada@example.com",
+      deletedAt: null,
+    });
+
+    await expect(
+      userService.createUser({
+        tenantId: "tenant-1",
+        email: "ADA@example.com",
+        name: "Ada",
+        password: "long-enough-password",
+        roleSlugs: ["cashier"],
+      }),
+    ).rejects.toThrow(/^User with this email already exists$/);
+
+    expect(create).not.toHaveBeenCalled();
+    expect(restore).not.toHaveBeenCalled();
+  });
+
+  it("hides a unique-constraint failure behind the duplicate email message", async () => {
+    findBySlug.mockResolvedValue({ id: "role-cashier", slug: "cashier" });
+    create.mockRejectedValue(
+      Object.assign(
+        new Error(
+          "Invalid `prisma.user.create()` invocation: Unique constraint failed on the constraint: `users_tenant_id_email_key`",
+        ),
+        { code: "P2002" },
+      ),
+    );
+
+    await expect(
+      userService.createUser({
+        tenantId: "tenant-1",
+        email: "ada@example.com",
+        name: "Ada",
+        password: "long-enough-password",
+        roleSlugs: ["cashier"],
+      }),
+    ).rejects.toThrow(/^User with this email already exists$/);
   });
 
   it("refuses to create a user with no role", async () => {

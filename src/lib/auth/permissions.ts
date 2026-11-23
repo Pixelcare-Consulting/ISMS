@@ -6,8 +6,8 @@ import { SETUP_HOME, isTenantSetupAdmin } from "@/features/roles/constants/setup
 import { auth, signOutServer } from "@/lib/auth";
 import { prisma } from "@/lib/database/client";
 import {
+  admitActiveSession,
   deleteIdleSessions,
-  readLiveSessionState,
 } from "@/lib/auth/session-liveness";
 import {
   LOGIN_ERROR_DISABLED,
@@ -125,8 +125,12 @@ const getRequiredSession = cache(async (): Promise<AppSession> => {
     return signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_SESSION_EXPIRED}` });
   }
 
-  const live = await readLiveSessionState(sessionId, session.user.id);
-  await deleteIdleSessions();
+  // This page or action is activity. Stamp it before the idle check, and do not
+  // delete this row in the same request. A closed browser sends nothing, so its
+  // row is still removed and cannot block the next sign-in.
+  const now = new Date();
+  const live = await admitActiveSession(sessionId, session.user.id, now);
+  await deleteIdleSessions(now, undefined, sessionId);
   if (live === "idle") {
     return signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_IDLE}` });
   }

@@ -50,6 +50,11 @@ interface TableSearchBarProps {
   suggestions?: string[];
   /** Called after a suggestion is applied (fills value via onChange first). */
   onSuggestionSelect?: (label: string) => void;
+  /**
+   * Called when Enter is pressed and no highlighted suggestion is chosen.
+   * Optional so existing callers keep their current Enter behavior.
+   */
+  onSubmit?: (value: string) => void;
 }
 
 export function TableSearchBar({
@@ -59,6 +64,7 @@ export function TableSearchBar({
   className,
   suggestions,
   onSuggestionSelect,
+  onSubmit,
 }: TableSearchBarProps) {
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -96,6 +102,21 @@ export function TableSearchBar({
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Enter") {
+      if (highlight >= 0 && matches[highlight]) {
+        event.preventDefault();
+        applySuggestion(matches[highlight]);
+        return;
+      }
+      if (onSubmit) {
+        event.preventDefault();
+        setOpen(false);
+        setHighlight(-1);
+        onSubmit(value);
+      }
+      return;
+    }
+
     if (!matches.length) return;
 
     if (event.key === "ArrowDown") {
@@ -108,11 +129,6 @@ export function TableSearchBar({
       event.preventDefault();
       setOpen(true);
       setHighlight((prev) => (prev <= 0 ? matches.length - 1 : prev - 1));
-      return;
-    }
-    if (event.key === "Enter" && highlight >= 0 && matches[highlight]) {
-      event.preventDefault();
-      applySuggestion(matches[highlight]);
       return;
     }
     if (event.key === "Escape") {

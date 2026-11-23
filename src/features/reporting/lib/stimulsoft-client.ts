@@ -16,12 +16,19 @@ export type StimulsoftApi = typeof StimulsoftNamespace;
 let viewerPromise: Promise<StimulsoftApi> | null = null;
 let designerPromise: Promise<StimulsoftApi> | null = null;
 
-function applyLicense(api: StimulsoftApi): void {
-  const key = process.env.NEXT_PUBLIC_STIMULSOFT_LICENSE_KEY;
-  if (key) {
-    api.Base.StiLicense.key = key;
-  } else if (process.env.NODE_ENV !== "production") {
-    console.warn("[reporting] NEXT_PUBLIC_STIMULSOFT_LICENSE_KEY is not set; Stimulsoft runs in trial mode.");
+/** Key comes from an authenticated route, not the bundle. A failure leaves Stimulsoft in trial mode. */
+async function applyLicense(api: StimulsoftApi): Promise<void> {
+  try {
+    const response = await fetch("/api/reporting/license", { cache: "no-store", signal: AbortSignal.timeout(10_000) });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const { key } = (await response.json()) as { key: string | null };
+    if (key) {
+      api.Base.StiLicense.key = key;
+    } else {
+      console.warn("[reporting] STIMULSOFT_LICENSE_KEY is not set on the server; Stimulsoft runs in trial mode.");
+    }
+  } catch (error: unknown) {
+    console.warn("[reporting] could not load the Stimulsoft license; running in trial mode", error);
   }
 }
 
@@ -59,7 +66,7 @@ async function importViewerModules(): Promise<StimulsoftApi> {
   await import("stimulsoft-dashboards-js-react/stimulsoft.dashboards.mjs");
   await import("stimulsoft-dashboards-js-react/stimulsoft.viewer.mjs");
   const api = Stimulsoft as StimulsoftApi;
-  applyLicense(api);
+  await applyLicense(api);
   await registerReportFonts(api);
   return api;
 }

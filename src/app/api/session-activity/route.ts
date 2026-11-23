@@ -37,15 +37,16 @@ export async function GET() {
   const disabled = await rejectIfDisabled(session.user.id);
   if (disabled) return disabled;
 
-  const state = await readLiveSessionState(session.sessionId, session.user.id);
-  await deleteIdleSessions();
+  const now = new Date();
+  const state = await readLiveSessionState(session.sessionId, session.user.id, now);
+  await deleteIdleSessions(now, undefined, session.sessionId);
   if (state !== "ok") {
     return rejected(state);
   }
   return NextResponse.json({ ok: true });
 }
 
-/** Refresh last activity while the person is still within the idle window. */
+/** A click, key, or scroll. The stamp moves to now before the idle check. */
 export async function POST() {
   const session = await currentSession();
   if (!session?.sessionId) {
@@ -54,8 +55,9 @@ export async function POST() {
   const disabled = await rejectIfDisabled(session.user.id);
   if (disabled) return disabled;
 
-  const state = await touchSessionActivity(session.sessionId, session.user.id);
-  await deleteIdleSessions();
+  const now = new Date();
+  const state = await touchSessionActivity(session.sessionId, session.user.id, now);
+  await deleteIdleSessions(now, undefined, session.sessionId);
   if (state !== "ok") {
     return rejected(state);
   }

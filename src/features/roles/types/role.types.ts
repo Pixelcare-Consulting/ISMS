@@ -17,4 +17,6 @@ export interface RolePermissionRow {
 export interface RolesPermissionsMatrix {
   roles: RolePermissionRow[];
   permissions: PermissionRow[];
+  /** Every live slug in the organization, including hidden built-in roles. */
+  occupiedSlugs: string[];
 }

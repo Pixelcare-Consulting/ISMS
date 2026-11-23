@@ -1,4 +1,7 @@
-/** No clicks, keys, or scrolling for this long signs the person out. */
+/**
+ * No clicks, keys, scrolling, or page use for this long signs the person out.
+ * This is not a session lifetime. `expiresAt` stays the normal length.
+ */
 export const SESSION_IDLE_MS = 5 * 60 * 1000;
 
 /** Sent with sign-in when the person chooses to replace the other device. */
@@ -73,6 +76,20 @@ export type LiveSessionRow = {
 
 export type LiveSessionState = "ok" | "missing" | "expired" | "idle";
 
+/**
+ * `active` is a page open or an action the person started.
+ * `none` is a liveness read that does not count as use.
+ */
+export type RequestActivity = "active" | "none";
+
+export type LiveSessionDecision = {
+  state: LiveSessionState;
+  /** Stamp to persist. An active request moves this to `now` before the idle check. */
+  lastActiveAt: Date | null;
+  /** Unchanged. Five minutes never shortens the session lifetime. */
+  expiresAt: Date | null;
+};
+
 /** Reject a missing row, an expired row, or one idle longer than 5 minutes. */
 export function evaluateLiveSession(input: {
   row: LiveSessionRow | null;
@@ -90,6 +107,74 @@ export function evaluateLiveSession(input: {
     return "idle";
   }
   return "ok";
+}
+
+function stampForRequest(input: {
+  activity: RequestActivity;
+  now: Date;
+  lastActiveAt: Date;
+}): Date {
+  switch (input.activity) {
+    case "active":
+      return input.now;
+    case "none":
+      return input.lastActiveAt;
+    default: {
+      const _exhaustive: never = input.activity;
+      return _exhaustive;
+    }
+  }
+}
+
+/**
+ * Opening a page or running an action counts as activity, so `lastActiveAt`
+ * moves to `now` before the idle check and the person stays signed in.
+ * A request with no activity keeps the stored stamp: more than 5 minutes is idle.
+ */
+export function resolveLiveSessionOnRequest(input: {
+  row: LiveSessionRow | null;
+  now: Date;
+  activity: RequestActivity;
+  idleMs?: number;
+}): LiveSessionDecision {
+  if (!input.row) {
+    return { state: "missing", lastActiveAt: null, expiresAt: null };
+  }
+  if (input.row.expiresAt.getTime() <= input.now.getTime()) {
+    return {
+      state: "expired",
+      lastActiveAt: input.row.lastActiveAt,
+      expiresAt: input.row.expiresAt,
+    };
+  }
+
+  const lastActiveAt = stampForRequest({
+    activity: input.activity,
+    now: input.now,
+    lastActiveAt: input.row.lastActiveAt,
+  });
+  return {
+    state: evaluateLiveSession({
+      row: { expiresAt: input.row.expiresAt, lastActiveAt },
+      now: input.now,
+      idleMs: input.idleMs,
+    }),
+    lastActiveAt,
+    expiresAt: input.row.expiresAt,
+  };
+}
+
+/** True while the last click, key, scroll, or page use is still inside 5 minutes. */
+export function isRecentPageUse(
+  lastInputAt: number,
+  now: number,
+  idleMs = SESSION_IDLE_MS,
+): boolean {
+  return now - lastInputAt < idleMs;
+}
+
+export function isLoginPathname(pathname: string): boolean {
+  return pathname === "/login" || pathname.startsWith("/login/");
 }
 
 export function isDisabledAccountMessage(message: string | null | undefined): boolean {

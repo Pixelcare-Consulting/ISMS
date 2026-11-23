@@ -77,11 +77,42 @@ export function filterTenantVisibleUsers<
   return users.filter((user) => !userHasProviderOnlyRole(user.userRoles));
 }
 
+const ROLE_SLUG_MAX_LENGTH = 48;
+
 export function slugifyRoleName(name: string) {
   return name
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_|_$/g, "")
-    .slice(0, 48);
+    .slice(0, ROLE_SLUG_MAX_LENGTH);
+}
+
+/**
+ * Next unused slug for a name that already exists in the organization.
+ * `tenant_admin` stays on the built-in role; the new role becomes `tenant_admin_2`.
+ */
+export function nextFreeRoleSlug(
+  baseSlug: string,
+  isTaken: (slug: string) => boolean,
+): string {
+  if (!isTaken(baseSlug)) {
+    return baseSlug;
+  }
+
+  for (let suffixNumber = 2; suffixNumber < 1000; suffixNumber += 1) {
+    const suffix = `_${suffixNumber}`;
+    const stem = baseSlug
+      .slice(0, ROLE_SLUG_MAX_LENGTH - suffix.length)
+      .replace(/_+$/g, "");
+    const candidate = `${stem}${suffix}`;
+    if (candidate.length < 2 || isProviderOnlyRole(candidate)) {
+      continue;
+    }
+    if (!isTaken(candidate)) {
+      return candidate;
+    }
+  }
+
+  throw new Error("Could not allocate a unique role slug");
 }
