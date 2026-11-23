@@ -1501,8 +1501,9 @@ const DELIVERY_RETURN_LEDGER_ROWS: Prisma.SerialNumberHistoryWhereInput = {
 };
 
 /**
- * Completed replacements for these ledger rows, newest first.
- * The invoice is the one already parsed from `details`; either serial side can match.
+ * Completed replacements for these ledger rows, newest first (branch SalesReplacement rows,
+ * then older service center ones). The invoice is the one already parsed from `details`;
+ * either serial side can match.
  */
 async function loadReplacementSerialPairs(
   tenantId: string,
@@ -1549,14 +1550,47 @@ async function loadReplacementSerialPairs(
     },
   });
 
-  return found.map((row) => ({
-    originalSerialNumberId: row.originalSerialNumberId,
-    replacementSerialNumberId: row.replacementSerialNumberId,
-    originalInvoiceNo: row.originalInvoiceNo,
-    replacementInvoiceNo: row.replacementInvoiceNo,
-    originalSerialNo: row.originalSerialNumber?.serialNo ?? null,
-    replacementSerialNo: row.replacementSerialNumber?.serialNo ?? null,
-  }));
+  // Service center replacements on older SC-encoded sales have no SalesReplacement row: the
+  // pair is the request's sale line (returned unit) and its replacement serial. Copies of
+  // branch sales are already covered by the branch sale's SalesReplacement row.
+  const scFound = await prisma.serviceCenterReturnRequest.findMany({
+    where: {
+      tenantId,
+      status: "completed",
+      replacementSerialNumberId: { not: null },
+      sale: { sourceBranchSaleId: null, transactionNo: { in: invoices } },
+      OR: [
+        { replacementSerialNumberId: { in: serialIds } },
+        { saleDetail: { serialNumberId: { in: serialIds } } },
+      ],
+    },
+    orderBy: { completedAt: "desc" },
+    select: {
+      replacementSerialNumberId: true,
+      replacementSerialNumber: { select: { serialNo: true } },
+      sale: { select: { transactionNo: true } },
+      saleDetail: { select: { serialNumberId: true, serialNumber: { select: { serialNo: true } } } },
+    },
+  });
+
+  return [
+    ...found.map((row) => ({
+      originalSerialNumberId: row.originalSerialNumberId,
+      replacementSerialNumberId: row.replacementSerialNumberId,
+      originalInvoiceNo: row.originalInvoiceNo,
+      replacementInvoiceNo: row.replacementInvoiceNo,
+      originalSerialNo: row.originalSerialNumber?.serialNo ?? null,
+      replacementSerialNo: row.replacementSerialNumber?.serialNo ?? null,
+    })),
+    ...scFound.map((row) => ({
+      originalSerialNumberId: row.saleDetail?.serialNumberId ?? null,
+      replacementSerialNumberId: row.replacementSerialNumberId,
+      originalInvoiceNo: row.sale.transactionNo,
+      replacementInvoiceNo: row.sale.transactionNo,
+      originalSerialNo: row.saleDetail?.serialNumber?.serialNo ?? null,
+      replacementSerialNo: row.replacementSerialNumber?.serialNo ?? null,
+    })),
+  ];
 }
 
 /**

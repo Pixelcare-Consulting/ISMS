@@ -198,7 +198,7 @@ export function SalesTable({
   const router = useRouter();
   const searchParams = useSearchParams();
   const source = useSalesSource();
-  const { getSaleDetails } = source.actions;
+  const { getSaleDetails } = source;
   const committedQuery = searchQuery.trim();
   const [query, setQuery] = useState(committedQuery);
   const urlQueryRef = useRef(committedQuery);
@@ -238,6 +238,7 @@ export function SalesTable({
       router.push(
         buildSalesPageHref({
           basePath: source.listHref,
+          tab: source.listTab,
           page: 1,
           limit: pageSize,
           sort: sort || undefined,
@@ -249,7 +250,7 @@ export function SalesTable({
       );
     }, SEARCH_DEBOUNCE_MS);
     return () => window.clearTimeout(handle);
-  }, [committedQuery, pageSize, query, router, sort, sortDir, status, source.listHref]);
+  }, [committedQuery, pageSize, query, router, sort, sortDir, status, source.listHref, source.listTab]);
 
   function salesHref(
     page: number,
@@ -259,6 +260,7 @@ export function SalesTable({
   ) {
     return buildSalesPageHref({
       basePath: source.listHref,
+      tab: source.listTab,
       page,
       limit,
       sort: nextSort,

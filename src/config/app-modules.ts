@@ -405,11 +405,12 @@ export const appModules: AppModule[] = [
   {
     id: "service_centers_sales",
     name: "Service center sales",
-    route: "/service-centers/sales",
+    route: "/sales?tab=service-center",
     slugPrefix: "service_centers.sales",
     navPermission: "service_centers.sales.view",
     area: "Sales & Returns",
-    description: "Opens Service Center Sales.",
+    description:
+      "Opens the Service Center tab in Sales Transactions (read only: copies of branch sales sent to a service center).",
     actions: permissionActions("view", "create", "update"),
   },
   {

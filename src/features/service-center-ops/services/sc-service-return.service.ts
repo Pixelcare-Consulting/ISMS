@@ -1,4 +1,4 @@
-import type { ReturnActionType } from "@prisma/client";
+import type { AtrStatus, ReturnActionType, ReturnRequestStatus } from "@prisma/client";
 
 import { auditService } from "@/features/audit/services/audit.service";
 import {
@@ -6,7 +6,12 @@ import {
   recordServiceInspectionDecided,
   type ReturnApprovalRef,
 } from "@/features/inventory-approvals/services/return-approvals";
-import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
+import { statusUpdatedStamp } from "@/features/inventory/lib/status-updated-stamp";
+import {
+  assertExclusivePlacement,
+  loadCurrentPlacements,
+  lockSerialNumbers,
+} from "@/features/inventory/services/serial-placement";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import {
   isReplacementDocumentTypeName,
@@ -15,11 +20,13 @@ import {
 } from "@/features/sales/constants/process-return";
 import {
   RESERVE_ODRF_CODE,
+  RESERVE_ODRF_STATUS,
   returnHistoryStatusLabel,
 } from "@/features/sales/constants/return-history-status";
 import { TO_FOLLOW_SERIAL_LABEL } from "@/features/sales/constants/to-follow-serial";
 import { generateAndStoreAtrOdrfPdf } from "@/features/sales/services/atr-odrf-pdf";
 import type { ProcessReturnPayload } from "@/features/sales/services/process-return-input";
+import { nextReplacementNo } from "@/features/sales/services/replacement-no";
 import { assertScInScope } from "@/features/service-center-ops/services/sc-scope";
 import { assertSerialsNotFrozenInStockCount } from "@/features/stock-audit/services/stock-count-freeze";
 import {
@@ -28,20 +35,26 @@ import {
 } from "@/features/service-center-ops/services/sc-service-return-notify";
 import { SC_ORDER_APPROVABLE_STATUSES } from "@/features/service-center-ordering/constants";
 import { scOrderService } from "@/features/service-center-ordering/services/sc-order.service";
+import { placeServiceCenterUnit } from "@/features/service-center-ops/services/service-center-placement";
 import { prisma } from "@/lib/database/client";
 import type { Prisma } from "@/lib/database/generated/prisma/client";
 import { logger } from "@/lib/shared/logger";
 
 /**
- * Process V-b on service center sales. The CSR requests a Service Return / Replacement on an
- * SC sale line in SC Sales; the sold unit becomes Reserve ODRF in SC stock and the request waits
- * at `pending_sc` for the selling service center, which:
+ * Process V-b. The CSR requests a Service Return / Replacement on a branch sale line and picks
+ * a service center. The sale is copied to that service center (Sales → Service Center tab), the
+ * unit moves from branch stock to the service center as Reserve ODRF, and the SC request on the
+ * copy waits at `pending_sc`. The service center then:
  * - Submit Return (no inspection step): puts the unit into SC stock as STK/DEF (the CSR's choice).
- * - Replace from SC stock: same, plus the SC STK unit the service center chooses becomes the sale line's unit (Sold).
+ * - Replace from SC stock: same, plus the SC STK unit the service center chooses is sold to the
+ *   customer. The sale lines keep the returned serial; the new one is on the request (and on a
+ *   SalesReplacement row of the branch sale).
  * - Special Order: no SC unit; a `special` SC order is raised and the request waits at
  *   `awaiting_stock` until that order's delivery is accepted (the unit is then held RSV).
- * - Reject: the unit goes back to the status it had (Sold / Reserved); the sale reopens.
- * Branch sales never route here.
+ * - Reject: the unit goes back to the status it had (Sold / Reserved) at the branch; the sale reopens.
+ * Every step is mirrored on the branch sale's return request, so branch Sales and Returns show
+ * the same status. Older requests on sales encoded at a service center (no branch sale) run the
+ * same steps with the unit staying at the service center.
  */
 
 export interface ScServiceReturnActor {
@@ -49,6 +62,14 @@ export interface ScServiceReturnActor {
   userId: string;
   /** Service centers the actor may work on; null is every one. */
   scopedServiceCenterIds: string[] | null;
+}
+
+/** The CSR sending a branch sale's Service Return / Replacement to a service center. */
+export interface BranchServiceReturnRequester {
+  tenantId: string;
+  userId: string;
+  /** Printed on the ATR/ODRF. */
+  name: string;
 }
 
 type Tx = Prisma.TransactionClient;
@@ -78,8 +99,12 @@ const requestSelect = {
     select: {
       id: true,
       transactionNo: true,
+      transactionDate: true,
       serviceCenterId: true,
       serviceCenter: { select: { id: true, name: true, sapCode: true } },
+      sourceBranchSale: {
+        select: { id: true, branchId: true, branch: { select: { name: true, dealerId: true } } },
+      },
       details: {
         orderBy: { createdAt: "asc" as const },
         select: { id: true, serialNumberId: true, brandId: true },
@@ -205,6 +230,146 @@ async function releaseHeldUnit(
   });
 }
 
+/**
+ * The service center the CSR picked, active, with the location the unit waits at as Reserve
+ * ODRF (its first by code). The service center chooses the receiving location when it finishes.
+ */
+async function requireReceivingServiceCenter(tenantId: string, serviceCenterId: string | null | undefined) {
+  const id = serviceCenterId?.trim();
+  if (!id) throw new Error("Service center is required for Service Return / Replacement");
+  const center = await prisma.serviceCenter.findFirst({
+    where: { id, tenantId, deletedAt: null, status: "active" },
+    select: {
+      id: true,
+      name: true,
+      sapCode: true,
+      locations: { orderBy: { code: "asc" }, take: 1, select: { id: true, code: true } },
+    },
+  });
+  if (!center) throw new Error("Service center not found");
+  const holdLocation = center.locations[0];
+  if (!holdLocation) {
+    throw new Error(`${center.name} has no locations yet. Add one in Settings → Service Centers first.`);
+  }
+  return { id: center.id, name: center.name, sapCode: center.sapCode, holdLocation };
+}
+
+/**
+ * Keeps the branch sale this SC copy came from in step with the SC request: its return request
+ * gets the same status, and its sale the matching ATR status. Older SC sales have no branch sale.
+ */
+async function syncBranchSale(
+  tx: Tx,
+  request: { tenantId: string; sale: { sourceBranchSale: { id: string } | null } },
+  update: {
+    status: ReturnRequestStatus;
+    atrStatus?: AtrStatus;
+    completedAt?: Date;
+    evaluationNotes?: string;
+  },
+) {
+  const branchSaleId = request.sale.sourceBranchSale?.id;
+  if (!branchSaleId) return;
+  await tx.branchReturnRequest.updateMany({
+    where: { saleId: branchSaleId, tenantId: request.tenantId },
+    data: {
+      status: update.status,
+      ...(update.completedAt ? { completedAt: update.completedAt } : {}),
+      ...(update.evaluationNotes ? { evaluationNotes: update.evaluationNotes } : {}),
+    },
+  });
+  if (update.atrStatus) {
+    await tx.branchSalesTransaction.update({
+      where: { id: branchSaleId },
+      data: { atrStatus: update.atrStatus },
+    });
+  }
+}
+
+/**
+ * The branch sale shows the new unit the way it shows its own replacements: a SalesReplacement
+ * row on the same invoice, at the line's price (an SC replacement does not change the price).
+ */
+async function recordBranchSaleReplacement(
+  tx: Tx,
+  input: {
+    request: ScServiceRequest;
+    userId: string;
+    originalSerialNumberId: string;
+    replacementSerialNumberId: string;
+    at: Date;
+  },
+) {
+  const { request } = input;
+  const branchSale = request.sale.sourceBranchSale;
+  if (!branchSale) return;
+  const line = await tx.branchSalesTransactionDetail.findFirst({
+    where: { salesId: branchSale.id, serialNumberId: input.originalSerialNumberId },
+    select: { modelPrice: true, saleAmount: true, amount: true },
+  });
+  const price = line?.modelPrice ?? line?.saleAmount ?? line?.amount ?? null;
+  await tx.salesReplacement.create({
+    data: {
+      tenantId: request.tenantId,
+      saleId: branchSale.id,
+      replacementNo: await nextReplacementNo(request.tenantId, tx),
+      originalSerialNumberId: input.originalSerialNumberId,
+      originalModelPrice: price,
+      originalInvoiceDate: request.sale.transactionDate,
+      originalInvoiceNo: request.sale.transactionNo,
+      replacementSerialNumberId: input.replacementSerialNumberId,
+      replacementDealerId: branchSale.branch.dealerId ?? null,
+      replacementAmount: price,
+      replacementModelPrice: price,
+      replacementInvoiceDate: request.sale.transactionDate ?? input.at,
+      replacementInvoiceNo: request.sale.transactionNo,
+      transactedById: input.userId,
+      transactedAt: input.at,
+    },
+  });
+}
+
+/** Rejected: the Reserve ODRF unit leaves the service center and is back at the branch sold. */
+async function returnUnitToBranch(
+  tx: Tx,
+  input: {
+    tenantId: string;
+    userId: string;
+    serviceCenterId: string;
+    branchId: string;
+    serialNumberId: string;
+    odrfCodeId: string;
+    priorCode: SoldCode;
+    priorCodeId: string;
+  },
+) {
+  const removed = await tx.serviceCenterInventory.deleteMany({
+    where: {
+      tenantId: input.tenantId,
+      serviceCenterId: input.serviceCenterId,
+      serialNumberId: input.serialNumberId,
+      statusCodeId: input.odrfCodeId,
+    },
+  });
+  if (removed.count !== 1) {
+    throw new Error("The returned unit is no longer Reserve ODRF at this service center");
+  }
+  assertExclusivePlacement({
+    placements: await loadCurrentPlacements(tx, [input.serialNumberId]),
+    replacingIds: [],
+  });
+  await tx.branchInventory.create({
+    data: {
+      tenantId: input.tenantId,
+      branchId: input.branchId,
+      serialNumberId: input.serialNumberId,
+      statusCodeId: input.priorCodeId,
+      updatedById: input.userId,
+      ...statusUpdatedStamp(RESERVE_ODRF_CODE, input.priorCode),
+    },
+  });
+}
+
 async function afterDecision(
   actor: ScServiceReturnActor,
   request: ScServiceRequest,
@@ -219,6 +384,7 @@ async function afterDecision(
     transactionNo: request.sale.transactionNo,
     actionType: request.actionType,
     serviceCenterName: scLabel(request.sale.serviceCenter),
+    fromBranchSale: request.sale.sourceBranchSale != null,
     outcome,
     reason,
   });
@@ -232,7 +398,7 @@ async function validateRequestInput(tenantId: string, data: ProcessReturnPayload
   });
   if (!documentType) throw new Error("Document type not found or inactive");
   if (!isServiceDocumentTypeName(documentType.name)) {
-    throw new Error("Service center sales take Service Return or Service Replacement only");
+    throw new Error("Only a Service Return or Service Replacement goes to a service center");
   }
   if (data.actionType === "return" && !isReturnDocumentTypeName(documentType.name)) {
     throw new Error("Selected document type requires Replacement, not Return");
@@ -279,33 +445,58 @@ async function validateRequestInput(tenantId: string, data: ProcessReturnPayload
 
 export const scServiceReturnService = {
   /**
-   * CSR, SC Sales: request a Service Return / Replacement on one SC sale line. The unit
-   * becomes Reserve ODRF in SC stock, the sale goes to reserve, and the selling service
-   * center is notified.
+   * CSR, branch Sales: a Service Return / Replacement on a branch sale line, sent to the
+   * service center the CSR chose. In one transaction:
+   * - the branch sale gets its return request at `pending_sc` and goes to reserve;
+   * - a copy of the sale (header plus the returned line) is saved at that service center;
+   * - the unit leaves branch stock and becomes Reserve ODRF at the service center;
+   * - the SC request on the copy waits at `pending_sc` for the service center.
+   * The service center then finishes it in SC Returns; every decision updates the branch sale.
    */
-  async request(
-    actor: ScServiceReturnActor,
-    input: { saleId: string; payload: ProcessReturnPayload; requesterName: string },
-  ): Promise<{ id: string }> {
+  async requestFromBranchSale(
+    requester: BranchServiceReturnRequester,
+    input: { saleId: string; payload: ProcessReturnPayload },
+  ): Promise<{ branchReturnRequestId: string; scReturnRequestId: string }> {
+    const { tenantId, userId } = requester;
     const { payload } = input;
-    const checked = await validateRequestInput(actor.tenantId, payload);
+    const checked = await validateRequestInput(tenantId, payload);
+    const center = await requireReceivingServiceCenter(tenantId, payload.serviceCenterId);
 
-    const sale = await prisma.serviceCenterSalesTransaction.findFirst({
-      where: { id: input.saleId, tenantId: actor.tenantId },
+    const sale = await prisma.branchSalesTransaction.findFirst({
+      where: { id: input.saleId, tenantId },
       select: {
         id: true,
+        branchId: true,
+        packageTypeId: true,
+        paymentTypeId: true,
+        saleTypeId: true,
+        promoTypeId: true,
+        customerDeliveryMethodId: true,
         transactionNo: true,
         transactionDate: true,
         customerName: true,
+        contactNo: true,
+        siTrans: true,
+        infoSlipVsoRrReleased: true,
+        rrReceiveDeliver: true,
+        proof: true,
         atrStatus: true,
         notes: true,
-        serviceCenterId: true,
-        serviceCenter: { select: { name: true, sapCode: true } },
+        branch: { select: { name: true } },
         returnRequest: { select: { id: true } },
+        serviceCenterCopy: { select: { id: true } },
         details: {
           select: {
             id: true,
+            packageTypeId: true,
+            brandId: true,
+            promoTypeId: true,
+            modelId: true,
             serialNumberId: true,
+            statusCodeId: true,
+            deliveryNo: true,
+            deliveryDate: true,
+            modelPrice: true,
             saleAmount: true,
             amount: true,
             model: { select: { skuCode: true, name: true } },
@@ -315,101 +506,175 @@ export const scServiceReturnService = {
       },
     });
     if (!sale) throw new Error("Sale not found");
-    assertScInScope(sale.serviceCenterId, actor.scopedServiceCenterIds);
-    if (sale.returnRequest) throw new Error("Return already requested");
+    if (sale.returnRequest || sale.serviceCenterCopy) throw new Error("Return already requested");
     if (sale.atrStatus !== "open") throw new Error("Sale is not eligible for return");
     const line = sale.details.find((detail) => detail.id === payload.saleDetailId);
     if (!line) throw new Error("Selected sale line does not belong to this transaction");
     if (!line.serialNumberId) throw new Error("Encode the serial number on this line before requesting a return");
     const serialNumberId = line.serialNumberId;
+    const lineAmount = line.saleAmount ?? line.amount ?? line.modelPrice ?? 0;
 
-    const odrfCodeId = await reasonStatusService.findCodeId(actor.tenantId, "inventory_system", RESERVE_ODRF_CODE);
+    const odrfCodeId = await reasonStatusService.findCodeId(tenantId, "inventory_system", RESERVE_ODRF_CODE);
     if (!odrfCodeId) throw new Error("Status code not configured: inventory_system/ODRF");
 
     const actionLabel = payload.actionType === "replacement" ? "Replacement" : "Return";
     const summaryNote = `[${actionLabel} requested] ${checked.documentType.name} · ${payload.stockStatusCode} · ${checked.problemDescriptionText}`;
+    const scName = scLabel(center);
+    const serviceFields = {
+      actionType: payload.actionType,
+      stockStatusCode: payload.stockStatusCode,
+      documentTypeId: checked.documentType.id,
+      problemDescriptionId: checked.problemDescriptionId,
+      problemDescriptionText: checked.problemDescriptionText,
+      classification: payload.classification?.trim() || null,
+      serviceModelId: checked.serviceModel?.id ?? null,
+      customerDealerBranch: payload.customerDealerBranch?.trim() || null,
+      natureOfTransaction: payload.natureOfTransaction?.trim() || null,
+      refContactPo: payload.refContactPo?.trim() || null,
+      warehouseLocationId: checked.warehouseLocation?.id ?? null,
+    };
 
     const created = await prisma.$transaction(async (tx) => {
       await lockSerialNumbers(tx, [serialNumberId]);
-      const unit = await tx.serviceCenterInventory.findFirst({
-        where: { tenantId: actor.tenantId, serviceCenterId: sale.serviceCenterId, serialNumberId },
+      const unit = await tx.branchInventory.findFirst({
+        where: {
+          tenantId,
+          branchId: sale.branchId,
+          serialNumberId,
+          statusCode: { code: { in: [...SOLD_CODES] } },
+        },
         select: { id: true, statusCode: { select: { code: true } } },
       });
-      const priorCode = unit?.statusCode?.code;
+      const priorCode = unit?.statusCode.code;
       if (!unit || !isSoldCode(priorCode)) {
-        throw new Error(`${line.serialNumber?.serialNo ?? "This unit"} is not Sold at ${sale.serviceCenter.name}`);
+        throw new Error(`${line.serialNumber?.serialNo ?? "This unit"} is not Sold at ${sale.branch.name}`);
       }
+      // Claimed against the sold code just read, so a concurrent change fails here.
+      const removed = await tx.branchInventory.deleteMany({
+        where: { id: unit.id, statusCode: { code: priorCode } },
+      });
+      if (removed.count !== 1) throw new Error(STALE_REQUEST);
+      await placeServiceCenterUnit(tx, {
+        tenantId,
+        serviceCenterId: center.id,
+        serviceCenterLocationId: center.holdLocation.id,
+        serialNumberId,
+        statusCodeId: odrfCodeId,
+      });
 
-      const request = await tx.serviceCenterReturnRequest.create({
+      const branchRequest = await tx.branchReturnRequest.create({
         data: {
-          tenantId: actor.tenantId,
+          tenantId,
           saleId: sale.id,
           saleDetailId: line.id,
           status: "pending_sc",
-          requestedById: actor.userId,
-          actionType: payload.actionType,
-          stockStatusCode: payload.stockStatusCode,
-          documentTypeId: checked.documentType.id,
-          problemDescriptionId: checked.problemDescriptionId,
-          problemDescriptionText: checked.problemDescriptionText,
-          priorStatusCode: priorCode,
-          classification: payload.classification?.trim() || null,
-          serviceModelId: checked.serviceModel?.id ?? null,
-          customerDealerBranch: payload.customerDealerBranch?.trim() || null,
-          natureOfTransaction: payload.natureOfTransaction?.trim() || null,
-          refContactPo: payload.refContactPo?.trim() || null,
-          warehouseLocationId: checked.warehouseLocation?.id ?? null,
-          requestNotes: summaryNote,
+          requestedById: userId,
+          requestNotes: checked.problemDescriptionText,
+          serviceCenterId: center.id,
+          ...serviceFields,
         },
-        select: { id: true, tenantId: true, createdAt: true },
+        select: { id: true },
       });
-      // Claimed against the sold code just read, so a concurrent change fails here.
-      const held = await tx.serviceCenterInventory.updateMany({
-        where: { id: unit.id, statusCode: { code: priorCode } },
-        data: { statusCodeId: odrfCodeId },
-      });
-      if (held.count !== 1) throw new Error(STALE_REQUEST);
-      await tx.serviceCenterSalesTransaction.update({
+      await tx.branchSalesTransaction.update({
         where: { id: sale.id },
         data: { atrStatus: "reserve", notes: [sale.notes, summaryNote].filter(Boolean).join("\n") },
       });
+
+      const copy = await tx.serviceCenterSalesTransaction.create({
+        data: {
+          tenantId,
+          serviceCenterId: center.id,
+          serviceCenterLocationId: center.holdLocation.id,
+          sourceBranchSaleId: sale.id,
+          packageTypeId: sale.packageTypeId,
+          paymentTypeId: sale.paymentTypeId,
+          saleTypeId: sale.saleTypeId,
+          promoTypeId: sale.promoTypeId,
+          customerDeliveryMethodId: sale.customerDeliveryMethodId,
+          transactionNo: sale.transactionNo,
+          transactionDate: sale.transactionDate,
+          customerName: sale.customerName,
+          contactNo: sale.contactNo,
+          siTrans: sale.siTrans,
+          infoSlipVsoRrReleased: sale.infoSlipVsoRrReleased,
+          rrReceiveDeliver: sale.rrReceiveDeliver,
+          proof: sale.proof,
+          modelPrice: line.modelPrice,
+          amount: lineAmount,
+          atrStatus: "reserve",
+          notes: `Copy of branch sale ${sale.transactionNo} (${sale.branch.name})\n${summaryNote}`,
+          createdById: userId,
+          details: {
+            create: {
+              packageTypeId: line.packageTypeId,
+              brandId: line.brandId,
+              promoTypeId: line.promoTypeId,
+              modelId: line.modelId,
+              serialNumberId,
+              statusCodeId: line.statusCodeId,
+              deliveryNo: line.deliveryNo,
+              deliveryDate: line.deliveryDate,
+              modelPrice: line.modelPrice,
+              saleAmount: line.saleAmount,
+              amount: line.amount,
+            },
+          },
+        },
+        select: { id: true, details: { select: { id: true } } },
+      });
+      const copyLine = copy.details[0];
+      if (!copyLine) throw new Error("Could not copy the sale line to the service center");
+
+      const scRequest = await tx.serviceCenterReturnRequest.create({
+        data: {
+          tenantId,
+          saleId: copy.id,
+          saleDetailId: copyLine.id,
+          status: "pending_sc",
+          requestedById: userId,
+          priorStatusCode: priorCode,
+          requestNotes: summaryNote,
+          ...serviceFields,
+        },
+        select: { id: true, tenantId: true, createdAt: true },
+      });
       await tx.serialNumberHistory.create({
         data: {
-          tenantId: actor.tenantId,
+          tenantId,
           serialNumberId,
           txnType: payload.actionType === "replacement" ? "replacement" : "return",
-          details: `Service ${actionLabel.toLowerCase()} requested on ${sale.transactionNo} at ${scLabel(sale.serviceCenter)} · was ${priorCode} (request ${request.id})`,
-          status: "Reserve ODRF",
-          createdById: actor.userId,
+          details: `Service ${actionLabel.toLowerCase()} requested on ${sale.transactionNo} at ${sale.branch.name} · sent to ${scName} / ${center.holdLocation.code} · was ${priorCode} (request ${scRequest.id})`,
+          status: RESERVE_ODRF_STATUS.name,
+          createdById: userId,
         },
       });
       await recordReturnRequested(
         tx,
-        approvalRef(request, sale.transactionNo, serialNumberId),
-        { requestedById: actor.userId, problemDescription: checked.problemDescriptionText },
+        approvalRef(scRequest, sale.transactionNo, serialNumberId),
+        { requestedById: userId, problemDescription: checked.problemDescriptionText },
         "INSPECTION",
       );
-      return request;
+      return { branchRequestId: branchRequest.id, scRequestId: scRequest.id, createdAt: scRequest.createdAt };
     });
 
     // Best effort: the request stands even when the PDF cannot be stored.
     try {
       const path = await generateAndStoreAtrOdrfPdf({
-        tenantId: actor.tenantId,
-        returnRequestId: created.id,
+        tenantId,
+        returnRequestId: created.scRequestId,
         data: {
           documentTitle: "ATR / ODRF",
           actionTypeLabel: actionLabel,
           transactionNo: sale.transactionNo,
           transactionDate: sale.transactionDate ? sale.transactionDate.toLocaleDateString() : null,
-          branchName: sale.serviceCenter.name,
+          branchName: sale.branch.name,
           customerName: sale.customerName,
           documentTypeName: checked.documentType.name,
           stockStatusCode: payload.stockStatusCode,
           problemDescriptionText: checked.problemDescriptionText,
-          requestedByName: input.requesterName,
+          requestedByName: requester.name,
           requestedAt: created.createdAt.toLocaleString(),
-          serviceCenterName: scLabel(sale.serviceCenter),
+          serviceCenterName: scName,
           classification: payload.classification,
           serviceModelLabel: checked.serviceModel
             ? checked.serviceModel.skuCode
@@ -431,25 +696,37 @@ export const scServiceReturnService = {
             {
               modelLabel: line.model ? line.model.skuCode || line.model.name || "—" : "—",
               serialNo: line.serialNumber?.serialNo ?? TO_FOLLOW_SERIAL_LABEL,
-              saleAmount: (line.saleAmount ?? line.amount ?? 0).toString(),
+              saleAmount: lineAmount.toString(),
             },
           ],
         },
       });
-      await prisma.serviceCenterReturnRequest.update({ where: { id: created.id }, data: { atrOdrfPdfPath: path } });
+      // Both requests point at the same PDF: branch Returns and SC Returns each offer it.
+      await prisma.$transaction([
+        prisma.serviceCenterReturnRequest.update({
+          where: { id: created.scRequestId },
+          data: { atrOdrfPdfPath: path },
+        }),
+        prisma.branchReturnRequest.update({
+          where: { id: created.branchRequestId },
+          data: { atrOdrfPdfPath: path },
+        }),
+      ]);
     } catch (error) {
-      logger.warn({ tenantId: actor.tenantId, returnRequestId: created.id, err: error }, "sc service return ATR/ODRF PDF failed");
+      logger.warn({ tenantId, returnRequestId: created.scRequestId, err: error }, "sc service return ATR/ODRF PDF failed");
     }
 
     await auditService.log({
-      tenantId: actor.tenantId,
-      userId: actor.userId,
-      action: "sc_sale.service_return_requested",
-      entityType: "ServiceCenterSalesTransaction",
+      tenantId,
+      userId,
+      action: "sale.service_return_sent_to_sc",
+      entityType: "BranchSalesTransaction",
       entityId: sale.id,
       metadata: {
         transactionNo: sale.transactionNo,
-        returnRequestId: created.id,
+        returnRequestId: created.branchRequestId,
+        scReturnRequestId: created.scRequestId,
+        serviceCenterId: center.id,
         actionType: payload.actionType,
         stockStatusCode: payload.stockStatusCode,
         documentTypeId: checked.documentType.id,
@@ -457,15 +734,15 @@ export const scServiceReturnService = {
       },
     });
     await notifyScServiceReturnRequested({
-      tenantId: actor.tenantId,
-      actorUserId: actor.userId,
-      returnRequestId: created.id,
-      serviceCenterId: sale.serviceCenterId,
+      tenantId,
+      actorUserId: userId,
+      returnRequestId: created.scRequestId,
+      serviceCenterId: center.id,
       transactionNo: sale.transactionNo,
       actionType: payload.actionType,
       serialNo: line.serialNumber?.serialNo ?? null,
     });
-    return { id: created.id };
+    return { branchReturnRequestId: created.branchRequestId, scReturnRequestId: created.scRequestId };
   },
 
   /** 8a. No replacement: the returned unit goes into SC stock; the request completes. */
@@ -502,6 +779,7 @@ export const scServiceReturnService = {
         stockCodeId,
       });
       await tx.serviceCenterSalesTransaction.update({ where: { id: request.sale.id }, data: { atrStatus: "closed" } });
+      await syncBranchSale(tx, request, { status: "completed", atrStatus: "closed", completedAt: now });
       await tx.serialNumberHistory.create({
         data: {
           tenantId: actor.tenantId,
@@ -676,6 +954,14 @@ export const scServiceReturnService = {
         data: { statusCodeId: sldCodeId },
       });
       await tx.serviceCenterSalesTransaction.update({ where: { id: request.sale.id }, data: { atrStatus: "closed" } });
+      await syncBranchSale(tx, request, { status: "completed", atrStatus: "closed", completedAt: now });
+      await recordBranchSaleReplacement(tx, {
+        request,
+        userId: actor.userId,
+        originalSerialNumberId: line.serialNumberId,
+        replacementSerialNumberId: replacement.id,
+        at: now,
+      });
 
       await tx.serialNumberHistory.createMany({
         data: [
@@ -744,9 +1030,13 @@ export const scServiceReturnService = {
       lines: [{ modelId: input.modelId, quantity: 1 }],
     });
 
-    const linked = await prisma.serviceCenterReturnRequest.updateMany({
-      where: { id: request.id, status: "pending_sc", specialOrderId: null },
-      data: { status: "awaiting_stock", specialOrderId: order.id },
+    const linked = await prisma.$transaction(async (tx) => {
+      const claimed = await tx.serviceCenterReturnRequest.updateMany({
+        where: { id: request.id, status: "pending_sc", specialOrderId: null },
+        data: { status: "awaiting_stock", specialOrderId: order.id },
+      });
+      if (claimed.count === 1) await syncBranchSale(tx, request, { status: "awaiting_stock" });
+      return claimed;
     });
     if (linked.count !== 1) {
       // Someone finished the request meanwhile: the order must not stay open for nothing.
@@ -792,23 +1082,42 @@ export const scServiceReturnService = {
         heldSerialNumberId: null,
       });
       await lockSerialNumbers(tx, [line.serialNumberId]);
-      await tx.serviceCenterInventory.updateMany({
-        where: {
+      const branchSale = request.sale.sourceBranchSale;
+      if (branchSale) {
+        await returnUnitToBranch(tx, {
           tenantId: actor.tenantId,
+          userId: actor.userId,
           serviceCenterId: request.sale.serviceCenterId,
+          branchId: branchSale.branchId,
           serialNumberId: line.serialNumberId,
-          statusCodeId: odrfCodeId,
-        },
-        data: { statusCodeId: priorCodeId },
+          odrfCodeId,
+          priorCode,
+          priorCodeId,
+        });
+      } else {
+        await tx.serviceCenterInventory.updateMany({
+          where: {
+            tenantId: actor.tenantId,
+            serviceCenterId: request.sale.serviceCenterId,
+            serialNumberId: line.serialNumberId,
+            statusCodeId: odrfCodeId,
+          },
+          data: { statusCodeId: priorCodeId },
+        });
+      }
+      // The copy closes: the sale reopens on the branch, where a new request would start.
+      await tx.serviceCenterSalesTransaction.update({
+        where: { id: request.sale.id },
+        data: { atrStatus: branchSale ? "closed" : "open" },
       });
-      await tx.serviceCenterSalesTransaction.update({ where: { id: request.sale.id }, data: { atrStatus: "open" } });
+      await syncBranchSale(tx, request, { status: "rejected", atrStatus: "open", evaluationNotes: reason });
       await releaseHeldUnit(tx, { tenantId: actor.tenantId, serialNumberId: request.heldSerialNumberId, rsvCodeId, stkCodeId });
       await tx.serialNumberHistory.create({
         data: {
           tenantId: actor.tenantId,
           serialNumberId: line.serialNumberId,
           txnType: actionOf(request) === "replacement" ? "replacement" : "return",
-          details: `Service request rejected on ${request.sale.transactionNo}: ${reason} (request ${request.id})`,
+          details: `Service request rejected on ${request.sale.transactionNo}: ${reason}${request.sale.sourceBranchSale ? ` · back to ${request.sale.sourceBranchSale.branch.name}` : ""} (request ${request.id})`,
           status: priorCode,
           createdById: actor.userId,
         },
@@ -846,7 +1155,9 @@ export async function holdSpecialOrderUnitForReturn(
     where: { tenantId: input.tenantId, specialOrderId: input.orderId, status: "awaiting_stock" },
     select: {
       id: true,
-      sale: { select: { transactionNo: true, serviceCenterId: true } },
+      sale: {
+        select: { transactionNo: true, serviceCenterId: true, sourceBranchSale: { select: { id: true } } },
+      },
       specialOrder: { select: { orderNumber: true, details: { select: { modelId: true } } } },
     },
   });
@@ -869,6 +1180,7 @@ export async function holdSpecialOrderUnitForReturn(
     where: { id: request.id },
     data: { status: "pending_sc", heldSerialNumberId: unit?.id ?? null },
   });
+  await syncBranchSale(tx, { tenantId: input.tenantId, sale: request.sale }, { status: "pending_sc" });
   return {
     returnRequestId: request.id,
     serviceCenterId: request.sale.serviceCenterId,
@@ -884,13 +1196,19 @@ export async function releaseReturnFromRejectedOrder(
 ): Promise<{ returnRequestId: string; serviceCenterId: string; transactionNo: string } | null> {
   const request = await tx.serviceCenterReturnRequest.findFirst({
     where: { tenantId: input.tenantId, specialOrderId: input.orderId, status: "awaiting_stock" },
-    select: { id: true, sale: { select: { transactionNo: true, serviceCenterId: true } } },
+    select: {
+      id: true,
+      sale: {
+        select: { transactionNo: true, serviceCenterId: true, sourceBranchSale: { select: { id: true } } },
+      },
+    },
   });
   if (!request) return null;
   await tx.serviceCenterReturnRequest.update({
     where: { id: request.id },
     data: { status: "pending_sc", specialOrderId: null },
   });
+  await syncBranchSale(tx, { tenantId: input.tenantId, sale: request.sale }, { status: "pending_sc" });
   return {
     returnRequestId: request.id,
     serviceCenterId: request.sale.serviceCenterId,

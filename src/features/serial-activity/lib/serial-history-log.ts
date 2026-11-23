@@ -88,7 +88,8 @@ const DETAIL_PHRASES: ReadonlyArray<{
 const DOCUMENT_PREFIX =
   /\b((?:DLV|XFR|UTR|RTN|PLT|CNT|REPL|SCS|SCO|SAP|SP)-[A-Z0-9]+(?:-[A-Z0-9]+)*)\b/iu;
 
-const UNTIL_ARROW = /^(?:return|replacement)\s+(.+?)\s+→/iu;
+/** `Return SI → STK …`, `Replacement SI → …`, and the service center's `Service replacement SI → …`. */
+const UNTIL_ARROW = /^(?:service\s+)?(?:return|replacement)\s+(.+?)\s+→/iu;
 
 function cleanReference(value: string): string | null {
   const cleaned = value.trim().replace(/[.,;:]+$/u, "").trim();

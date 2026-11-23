@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { toast } from "sonner";
 
 import { SaleSerialField } from "@/app/(app)/sales/_components/sale-serial-field";
-import { useSalesSource } from "@/app/(app)/sales/_components/sales-source";
+import { useSalesEditSource } from "@/app/(app)/sales/_components/sales-source";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -188,7 +188,7 @@ export function AddTransactionDetailDialog({
   onAdd: (rows: DraftSaleDetail[]) => void;
   onClose: () => void;
 }) {
-  const { countAgingSellableStock } = useSalesSource().actions;
+  const { countAgingSellableStock } = useSalesEditSource().actions;
   const isEdit = Boolean(initialRows && initialRows.length > 0);
   const editGroupKey = initialRows?.[0]?.packageGroupKey;
   const initialRowsRef = useRef(initialRows);

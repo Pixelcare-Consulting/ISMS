@@ -1,4 +1,5 @@
 import { notificationService } from "@/features/notifications/services/notification.service";
+import { buildSalesPageHref } from "@/features/sales/utils/sales-page-href";
 import { SC_RETURNS_PROCESS } from "@/features/service-center-ops/constants/sc-permissions";
 import { prisma } from "@/lib/database/client";
 import { logger } from "@/lib/shared/logger";
@@ -14,9 +15,12 @@ export function scServiceReturnHref(returnRequestId: string): string {
   return `/service-centers/returns?request=${encodeURIComponent(returnRequestId)}`;
 }
 
-/** The CSR follows the request on the SC sale it was raised from. */
-function csrTrackingHref(transactionNo: string): string {
-  return `/service-centers/sales?q=${encodeURIComponent(transactionNo)}`;
+/**
+ * The CSR follows the request on the sale it was raised from: the branch sale, or for older
+ * requests the sale encoded at the service center (Sales → Service Center tab).
+ */
+function csrTrackingHref(transactionNo: string, fromBranchSale: boolean): string {
+  return buildSalesPageHref({ tab: fromBranchSale ? undefined : "service-center", q: transactionNo });
 }
 
 /** Users assigned to the service center whose role can process its service returns. */
@@ -148,6 +152,8 @@ export async function notifyCsrScServiceReturnDecided(input: {
   transactionNo: string;
   actionType: "return" | "replacement" | null;
   serviceCenterName: string;
+  /** The request came from a branch sale (every new one does). */
+  fromBranchSale: boolean;
   outcome: "COMPLETED" | "REJECTED";
   reason?: string | null;
 }): Promise<void> {
@@ -161,7 +167,7 @@ export async function notifyCsrScServiceReturnDecided(input: {
       body: completed
         ? `${input.serviceCenterName} finished this request.`
         : `${input.serviceCenterName} rejected this request${input.reason ? `: ${input.reason}` : "."} The sale is open again.`,
-      href: csrTrackingHref(input.transactionNo),
+      href: csrTrackingHref(input.transactionNo, input.fromBranchSale),
       returnRequestId: input.returnRequestId,
     });
   } catch (error) {

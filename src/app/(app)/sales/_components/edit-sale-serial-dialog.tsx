@@ -25,7 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useSalesSource } from "@/app/(app)/sales/_components/sales-source";
+import { useSalesEditSource } from "@/app/(app)/sales/_components/sales-source";
 import {
   isToFollowSerial,
   TO_FOLLOW_SERIAL_ID,
@@ -58,7 +58,7 @@ export function EditSaleSerialDialog({
   showDelivery: boolean;
   onClose: () => void;
 }) {
-  const { updateSaleSerial } = useSalesSource().actions;
+  const { updateSaleSerial } = useSalesEditSource().actions;
   const [pending, startTransition] = useTransition();
   const [saveConfirmOpen, setSaveConfirmOpen] = useState(false);
   // The line is already TO-FOLLOW. Keep that choice; do not replace it when

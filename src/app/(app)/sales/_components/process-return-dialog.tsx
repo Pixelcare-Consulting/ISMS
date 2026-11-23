@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import type { SaleDetailsPayload } from "@/app/(app)/sales/_components/sale-details-dialog";
-import { useSalesSource } from "@/app/(app)/sales/_components/sales-source";
+import { useSalesEditSource } from "@/app/(app)/sales/_components/sales-source";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,6 +45,9 @@ import { cn } from "@/utils/cn";
 
 type LookupOption = { id: string; name: string };
 
+const SERVICE_NEXT_STEP =
+  "The sale is copied to the selected service center, and the unit goes there as Reserve ODRF. The service center finishes the request in SC Returns and Replacement.";
+
 type ProcessReturnDialogProps = {
   sale: SaleDetailsPayload;
   /** Sale line targeted for this return / replacement. */
@@ -74,7 +77,7 @@ export function ProcessReturnDialog({
   onOpenChange,
   onSubmitted,
 }: ProcessReturnDialogProps) {
-  const { processReturn } = useSalesSource();
+  const { processReturn } = useSalesEditSource();
   const [pending, startTransition] = useTransition();
   const [loading, setLoading] = useState(true);
   const [confirmAction, setConfirmAction] = useState<
@@ -109,9 +112,8 @@ export function ProcessReturnDialog({
   const headerSn = selectedLine?.serialNo ?? TO_FOLLOW_SERIAL_LABEL;
 
   const selectedDocType = documentTypes.find((d) => d.id === documentTypeId);
-  // SC sales has no Service Return section: the selling service center finishes the request.
-  const showServiceExtras =
-    isServiceDocumentTypeName(selectedDocType?.name) && !processReturn.sellerFinishes;
+  // Service Return / Replacement goes to the service center picked here, which finishes it.
+  const showServiceExtras = isServiceDocumentTypeName(selectedDocType?.name);
   const showReturnAction = isReturnDocumentTypeName(selectedDocType?.name);
   const showReplacementAction = isReplacementDocumentTypeName(
     selectedDocType?.name,
@@ -184,7 +186,7 @@ export function ProcessReturnDialog({
   }
 
   function approvalNote(documentTypeName: string | null | undefined): string {
-    if (isServiceDocumentTypeName(documentTypeName)) return processReturn.serviceNextStep;
+    if (isServiceDocumentTypeName(documentTypeName)) return SERVICE_NEXT_STEP;
     if (isDealerInitiatedDocumentTypeName(documentTypeName)) {
       return "This request waits for the Team Leader Approval.";
     }

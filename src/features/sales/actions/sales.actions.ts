@@ -74,6 +74,7 @@ import {
   resolveSalesAtrStatusCode,
 } from "@/features/sales/utils/resolve-line-status";
 import { generateAndStoreAtrOdrfPdf } from "@/features/sales/services/atr-odrf-pdf";
+import { scServiceReturnService } from "@/features/service-center-ops/services/sc-service-return.service";
 import {
   loadProcessReturnLookups,
   processReturnPayloadSchema,
@@ -1090,6 +1091,15 @@ export async function listProcessReturnLookupsAction(): Promise<ProcessReturnLoo
 
 export type { ProcessReturnPayload };
 
+/** A Service Return / Replacement sent to a service center changes branch and SC pages. */
+function revalidateServiceReturnSent() {
+  revalidatePath("/sales");
+  revalidatePath("/returns");
+  revalidatePath("/inventory");
+  revalidatePath("/service-centers/returns");
+  revalidatePath("/service-centers/inventory");
+}
+
 export async function requestReturnAction(
   saleId: string,
   payload: ProcessReturnPayload | string,
@@ -1126,6 +1136,25 @@ export async function requestReturnAction(
     return { error: "Document type not found or inactive" as const };
   }
 
+  // Service Return / Replacement goes to the chosen service center (Process V-b): the sale is
+  // copied there and the service center finishes it in SC Returns.
+  if (isServiceDocumentTypeName(documentType.name)) {
+    try {
+      const sent = await scServiceReturnService.requestFromBranchSale(
+        {
+          tenantId: session.user.tenantId,
+          userId: session.user.id,
+          name: session.user.name?.trim() || session.user.email || session.user.id,
+        },
+        { saleId, payload: data },
+      );
+      revalidateServiceReturnSent();
+      return { success: true as const, returnRequestId: sent.branchReturnRequestId };
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : "Could not request the return" };
+    }
+  }
+
   const problems = await prisma.problemDescription.findMany({
     where: {
       tenantId: session.user.tenantId,
@@ -1147,46 +1176,6 @@ export async function requestReturnAction(
   }
   const problemDescriptionText = orderedProblems.map((p) => p.name).join("; ");
   const problemDescriptionId = orderedProblems[0]!.id;
-
-  const serviceReturn = isServiceDocumentTypeName(documentType.name);
-  if (serviceReturn && !data.serviceCenterId?.trim()) {
-    return {
-      error: "Service center is required for Service Return / Replacement" as const,
-    };
-  }
-
-  if (data.serviceCenterId) {
-    const sc = await prisma.serviceCenter.findFirst({
-      where: {
-        id: data.serviceCenterId,
-        tenantId: session.user.tenantId,
-        deletedAt: null,
-      },
-      select: { id: true },
-    });
-    if (!sc) return { error: "Service center not found" as const };
-  }
-  if (data.serviceModelId) {
-    const model = await prisma.productModel.findFirst({
-      where: {
-        id: data.serviceModelId,
-        tenantId: session.user.tenantId,
-        status: "active",
-      },
-      select: { id: true },
-    });
-    if (!model) return { error: "Service model not found" as const };
-  }
-  if (data.warehouseLocationId) {
-    const loc = await prisma.warehouseLocation.findFirst({
-      where: {
-        id: data.warehouseLocationId,
-        warehouse: { tenantId: session.user.tenantId },
-      },
-      select: { id: true },
-    });
-    if (!loc) return { error: "Warehouse location not found" as const };
-  }
 
   const sale = await prisma.branchSalesTransaction.findFirst({
     where: { id: saleId, tenantId: session.user.tenantId },
@@ -1256,21 +1245,6 @@ export async function requestReturnAction(
         problemDescriptionId,
         problemDescriptionText,
         requestNotes: problemDescriptionText,
-        serviceCenterId: serviceReturn ? data.serviceCenterId || null : null,
-        classification: serviceReturn
-          ? data.classification?.trim() || null
-          : null,
-        serviceModelId: serviceReturn ? data.serviceModelId || null : null,
-        customerDealerBranch: serviceReturn
-          ? data.customerDealerBranch?.trim() || null
-          : null,
-        natureOfTransaction: serviceReturn
-          ? data.natureOfTransaction?.trim() || null
-          : null,
-        refContactPo: serviceReturn ? data.refContactPo?.trim() || null : null,
-        warehouseLocationId: serviceReturn
-          ? data.warehouseLocationId || null
-          : null,
       },
       select: { id: true, createdAt: true },
     });
@@ -1318,7 +1292,7 @@ export async function requestReturnAction(
             returnRequest.id,
             priorStatus,
           ),
-          status: returnHistoryStatusLabel(serviceReturn, data.actionType),
+          status: returnHistoryStatusLabel(false, data.actionType),
           createdById: session.user.id,
         },
       });
@@ -1330,35 +1304,10 @@ export async function requestReturnAction(
   // Best-effort ATR/ODRF PDF — return still succeeds if PDF generation fails.
   let atrOdrfPdfPath: string | null = null;
   try {
-    const [serviceCenter, serviceModel, warehouseLocation, requester] =
-      await Promise.all([
-        data.serviceCenterId
-          ? prisma.serviceCenter.findFirst({
-              where: { id: data.serviceCenterId },
-              select: { name: true, sapCode: true },
-            })
-          : Promise.resolve(null),
-        data.serviceModelId
-          ? prisma.productModel.findFirst({
-              where: { id: data.serviceModelId },
-              select: { skuCode: true, name: true },
-            })
-          : Promise.resolve(null),
-        data.warehouseLocationId
-          ? prisma.warehouseLocation.findFirst({
-              where: { id: data.warehouseLocationId },
-              select: {
-                code: true,
-                name: true,
-                warehouse: { select: { name: true, code: true } },
-              },
-            })
-          : Promise.resolve(null),
-        prisma.user.findFirst({
-          where: { id: session.user.id },
-          select: { name: true, email: true },
-        }),
-      ]);
+    const requester = await prisma.user.findFirst({
+      where: { id: session.user.id },
+      select: { name: true, email: true },
+    });
 
     atrOdrfPdfPath = await generateAndStoreAtrOdrfPdf({
       tenantId: session.user.tenantId,
@@ -1378,28 +1327,6 @@ export async function requestReturnAction(
         problemDescriptionText,
         requestedByName: requester?.name ?? requester?.email ?? session.user.id,
         requestedAt: created.createdAt.toLocaleString(),
-        serviceCenterName: serviceCenter
-          ? serviceCenter.sapCode
-            ? `${serviceCenter.sapCode} · ${serviceCenter.name}`
-            : serviceCenter.name
-          : null,
-        classification: data.classification,
-        serviceModelLabel: serviceModel
-          ? serviceModel.skuCode
-            ? `${serviceModel.skuCode} · ${serviceModel.name}`
-            : serviceModel.name
-          : null,
-        customerDealerBranch: data.customerDealerBranch,
-        natureOfTransaction: data.natureOfTransaction,
-        refContactPo: data.refContactPo,
-        warehouseLocationLabel: warehouseLocation
-          ? [
-              warehouseLocation.warehouse.code || warehouseLocation.warehouse.name,
-              warehouseLocation.code || warehouseLocation.name,
-            ]
-              .filter(Boolean)
-              .join(" · ")
-          : null,
         lines: [targetDetail].map((d) => ({
           modelLabel: d.model
             ? d.model.skuCode || d.model.name || "—"

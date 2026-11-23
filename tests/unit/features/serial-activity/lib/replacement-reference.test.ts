@@ -1,6 +1,7 @@
 import {
   historyReplacementReference,
-  replacementSerialReferenceLine,
+  replacedSnRemark,
+  replacementSnRemark,
   saleLineReplacementReference,
   type HistoryReplacementPair,
   type ReplacementSerialPair,
@@ -8,7 +9,10 @@ import {
 
 const ORIGINAL = "55QUHW01L112400548";
 const REPLACEMENT = "55QUHW01L112400999";
-const ARROW = `${ORIGINAL} → ${REPLACEMENT}`;
+/** On the returned (old) unit's row. */
+const ON_ORIGINAL = `Replacement SN: ${REPLACEMENT}`;
+/** On the replacement (new) unit's row. */
+const ON_REPLACEMENT = `Replaced SN: ${ORIGINAL}`;
 
 const sameInvoice: ReplacementSerialPair = {
   originalSerialNo: ORIGINAL,
@@ -24,49 +28,50 @@ const newInvoice: ReplacementSerialPair = {
   replacementInvoiceNo: "INV-200",
 };
 
-describe("replacementSerialReferenceLine", () => {
-  it("names the original serial and the replacement serial", () => {
-    expect(replacementSerialReferenceLine(ORIGINAL, REPLACEMENT)).toBe(ARROW);
-  });
-
-  it("trims both serials", () => {
-    expect(replacementSerialReferenceLine(` ${ORIGINAL} `, `\t${REPLACEMENT}`)).toBe(ARROW);
-  });
-
-  it("omits the line when either serial is blank", () => {
-    expect(replacementSerialReferenceLine("  ", REPLACEMENT)).toBeNull();
-    expect(replacementSerialReferenceLine(ORIGINAL, null)).toBeNull();
-    expect(replacementSerialReferenceLine(undefined, undefined)).toBeNull();
-  });
-
-  it("omits the line when both serials are the same", () => {
-    expect(replacementSerialReferenceLine(` ${ORIGINAL} `, ORIGINAL)).toBeNull();
+describe("replacement remarks", () => {
+  it("names the other serial from each side", () => {
+    expect(replacementSnRemark(REPLACEMENT)).toBe(ON_ORIGINAL);
+    expect(replacedSnRemark(ORIGINAL)).toBe(ON_REPLACEMENT);
   });
 });
 
 describe("saleLineReplacementReference", () => {
-  it("matches a same-invoice line that now holds the replacement serial", () => {
-    expect(
-      saleLineReplacementReference([sameInvoice], REPLACEMENT, "test11111111"),
-    ).toBe(ARROW);
+  it("shows the replaced SN on a same-invoice line that now holds the replacement serial", () => {
+    expect(saleLineReplacementReference([sameInvoice], REPLACEMENT, "test11111111")).toBe(
+      ON_REPLACEMENT,
+    );
   });
 
-  it("does not treat the original serial as the same-invoice line", () => {
-    expect(saleLineReplacementReference([sameInvoice], ORIGINAL, "test11111111")).toBeNull();
+  it("shows the replacement SN on a same-invoice line that kept the returned serial (service center)", () => {
+    expect(saleLineReplacementReference([sameInvoice], ORIGINAL, "test11111111")).toBe(ON_ORIGINAL);
   });
 
-  it("matches a new-invoice line that still holds the original serial", () => {
-    expect(saleLineReplacementReference([newInvoice], ORIGINAL, "test11111111")).toBe(ARROW);
+  it("shows the replacement SN on a new-invoice line that still holds the original serial", () => {
+    expect(saleLineReplacementReference([newInvoice], ORIGINAL, "test11111111")).toBe(ON_ORIGINAL);
   });
 
   it("does not match the replacement serial on the new invoice", () => {
     expect(saleLineReplacementReference([newInvoice], REPLACEMENT, "INV-200")).toBeNull();
   });
 
-  it("omits the line when the stored serials match", () => {
+  it("trims serials and omits the remark when they match or one is blank", () => {
+    expect(
+      saleLineReplacementReference(
+        [{ ...sameInvoice, replacementSerialNo: ` ${REPLACEMENT} ` }],
+        REPLACEMENT,
+        "test11111111",
+      ),
+    ).toBe(ON_REPLACEMENT);
     expect(
       saleLineReplacementReference(
         [{ ...sameInvoice, replacementSerialNo: ORIGINAL }],
+        ORIGINAL,
+        "test11111111",
+      ),
+    ).toBeNull();
+    expect(
+      saleLineReplacementReference(
+        [{ ...sameInvoice, replacementSerialNo: "  " }],
         ORIGINAL,
         "test11111111",
       ),
@@ -90,33 +95,35 @@ describe("historyReplacementReference", () => {
     replacementSerialNumberId: "third-id",
   };
 
-  it("matches the unit sold as the replacement on the new invoice", () => {
-    expect(historyReplacementReference([pair], "new-id", "INV-200")).toBe(ARROW);
+  it("shows the replaced SN on the unit sold as the replacement on the new invoice", () => {
+    expect(historyReplacementReference([pair], "new-id", "INV-200")).toBe(ON_REPLACEMENT);
   });
 
-  it("matches the original unit restored against the old invoice", () => {
-    expect(historyReplacementReference([pair], "orig-id", "test11111111")).toBe(ARROW);
+  it("shows the replacement SN on the original unit restored against the old invoice", () => {
+    expect(historyReplacementReference([pair], "orig-id", "test11111111")).toBe(ON_ORIGINAL);
   });
 
   it("does not match the replacement serial against the original invoice", () => {
     expect(historyReplacementReference([pair], "new-id", "test11111111")).toBeNull();
   });
 
-  it("matches a same-invoice replacement from either serial", () => {
+  it("labels a same-invoice replacement from each serial's side", () => {
     const same: HistoryReplacementPair = {
       ...sameInvoice,
       originalSerialNumberId: "orig-id",
       replacementSerialNumberId: "new-id",
     };
-    expect(historyReplacementReference([same], "new-id", "test11111111")).toBe(ARROW);
-    expect(historyReplacementReference([same], "orig-id", "test11111111")).toBe(ARROW);
+    expect(historyReplacementReference([same], "new-id", "test11111111")).toBe(ON_REPLACEMENT);
+    expect(historyReplacementReference([same], "orig-id", "test11111111")).toBe(ON_ORIGINAL);
   });
 
   it("does not use a later replacement that reused the serial on another invoice", () => {
-    expect(historyReplacementReference([laterPair, pair], "new-id", "INV-200")).toBe(ARROW);
+    expect(historyReplacementReference([laterPair, pair], "new-id", "INV-200")).toBe(
+      ON_REPLACEMENT,
+    );
   });
 
-  it("omits the line when the invoice or the pair is missing", () => {
+  it("omits the remark when the invoice or the pair is missing", () => {
     expect(historyReplacementReference([pair], "new-id", null)).toBeNull();
     expect(historyReplacementReference([pair], "missing", "INV-200")).toBeNull();
   });

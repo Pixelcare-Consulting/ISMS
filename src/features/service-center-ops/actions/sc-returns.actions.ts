@@ -40,7 +40,7 @@ import { prisma } from "@/lib/database/client";
  */
 
 function revalidateScReturns() {
-  revalidatePath("/service-centers/sales");
+  revalidatePath("/sales");
   revalidatePath("/service-centers/inventory");
   revalidatePath("/returns");
 }
