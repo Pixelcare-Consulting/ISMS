@@ -6,10 +6,13 @@ import {
 import { CompetitorKpisStrip } from "@/features/competitors/components/competitor-kpis";
 import { CompetitorsTable } from "@/features/competitors/components/competitors-table";
 import { PageHeader } from "@/app/(app)/_components/page-header";
-import { hasPermission, requirePermission } from "@/lib/auth/permissions";
+import {
+  hasPermission,
+  requireTenantSetupAdminOrAnyPermission,
+} from "@/lib/auth/permissions";
 
 export default async function CompetitorsPage() {
-  const session = await requirePermission("competitors.view");
+  const session = await requireTenantSetupAdminOrAnyPermission(["competitors.view"]);
   const canManage = hasPermission(session.user.permissions, "competitors.manage");
 
   const [observations, kpis, options] = await Promise.all([

@@ -12,14 +12,14 @@ export const SITE_TRAFFIC_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "What this page is for",
       description:
-        "A lightweight usage overview for head office. Numbers come from real sessions, users, audit logs, and sales — never invented placeholders.",
+        "A lightweight usage overview for head office. Numbers come from real sessions, page visits, and sales.",
     },
     {
       title: "How to read it",
       bullets: [
         "Total / Active / Login users (and PS) summarize accounts and fresh sessions.",
-        "Recent users lists the latest Better Auth sessions with role and AOR branch when available.",
-        "Pages currently summarizes audit activity (entity/action) because full page-path tracking is not wired yet.",
+        "Recent users lists who opened the app, the page they opened, and when. Refreshing the same page does not move that time. Reset session signs that person out.",
+        "Pages lists each app address, how many times it was opened, and when it was last opened.",
         "Top PS ranks sales transactions created this Manila calendar month.",
       ],
     },

@@ -622,18 +622,19 @@ export const appNavigation: NavEntry[] = [
           },
         ],
       },
-      {
-        label: "Planning",
-        icon: ChartColumn,
-        items: [
-          {
-            href: "/reports/demand-planning",
-            label: "Supply Planning",
-            icon: ChartColumn,
-            anyPermissions: ["forecast.view", "forecast.manage"],
-          },
-        ],
-      },
+      // DO NOT UNCOMMENT THIS, NO NEED TO SHOW IN THE NAVIGATION 
+      // {
+      //   label: "Planning",
+      //   icon: ChartColumn,
+      //   items: [
+      //     {
+      //       href: "/reports/demand-planning",
+      //       label: "Supply Planning",
+      //       icon: ChartColumn,
+      //       anyPermissions: ["forecast.view", "forecast.manage"],
+      //     },
+      //   ],
+      // },
     ],
   },
   {

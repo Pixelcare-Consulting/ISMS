@@ -30,6 +30,8 @@ import { CUSTOM_DASHBOARD_ACCESS } from "@/features/custom-dashboards/constants/
 /**
  * Sidebar for a customer-tenant Super Admin.
  * Same permission fields as the matching links in app navigation, with no queue counts.
+ * Overview, P-Count Dashboard, and Market Survey stay visible without
+ * inventory, reports, or competitor permissions. Operations and Sales are omitted.
  */
 export const setupNavigation: NavEntry[] = [
   {
@@ -57,10 +59,27 @@ export const setupNavigation: NavEntry[] = [
         icon: LayoutDashboard,
         items: [
           {
+            href: "/dashboard",
+            label: "Overview",
+            icon: LayoutDashboard,
+            exact: true,
+          },
+          {
+            href: "/dashboard/pcount",
+            label: "P-Count Dashboard",
+            icon: ClipboardList,
+            badge: "new",
+          },
+          {
             href: "/dashboard/site-traffic",
             label: "Site Traffic",
             icon: Users,
             anyPermissions: ["users.manage", "audit_logs.view"],
+          },
+          {
+            href: "/competitors",
+            label: "Market Survey",
+            icon: ChartColumn,
           },
           {
             href: "/dashboard/custom",
