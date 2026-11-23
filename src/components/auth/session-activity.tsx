@@ -4,7 +4,9 @@ import { useEffect } from "react";
 
 import { authClient } from "@/lib/auth/client";
 import {
+  LOGIN_ERROR_DISABLED,
   LOGIN_ERROR_IDLE,
+  LOGIN_ERROR_SESSION_EXPIRED,
   LOGIN_ERROR_SIGNED_IN_ELSEWHERE,
   SESSION_IDLE_MS,
   shouldRevokeBrowserSession,
@@ -26,7 +28,7 @@ async function readBrowserSessionId(): Promise<string | null> {
 }
 
 /**
- * Records clicks, keys, and scrolling, and signs out after 15 idle minutes.
+ * Records clicks, keys, and scrolling, and signs out after 5 idle minutes.
  * A separate read notices when this session row was removed elsewhere.
  * The read does not refresh last activity.
  */
@@ -100,7 +102,7 @@ export function SessionActivity() {
         });
         if (response.ok || stopped) return;
         const error = await readBody(response);
-        await leave(error === "idle" ? LOGIN_ERROR_IDLE : error === "expired" ? "session-expired" : LOGIN_ERROR_SIGNED_IN_ELSEWHERE);
+        await leave(loginErrorFor(error));
       } catch {
         // A failed request is not inactivity.
       }
@@ -119,16 +121,17 @@ export function SessionActivity() {
         if (error === "idle" && Date.now() - lastInput < SESSION_IDLE_MS) {
           return;
         }
-        await leave(
-          error === "idle"
-            ? LOGIN_ERROR_IDLE
-            : error === "expired"
-              ? "session-expired"
-              : LOGIN_ERROR_SIGNED_IN_ELSEWHERE,
-        );
+        await leave(loginErrorFor(error));
       } catch {
         // Ignore a dropped check. The next navigation still runs requireAuth.
       }
+    }
+
+    function loginErrorFor(error: string | null): string {
+      if (error === "idle") return LOGIN_ERROR_IDLE;
+      if (error === "expired") return LOGIN_ERROR_SESSION_EXPIRED;
+      if (error === "disabled") return LOGIN_ERROR_DISABLED;
+      return LOGIN_ERROR_SIGNED_IN_ELSEWHERE;
     }
 
     function onActivity() {

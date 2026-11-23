@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-/** Tenant Add user only. Profile, register, and the provider dialog keep their own rules. */
-export const TENANT_CREATE_USER_PASSWORD_MIN = 12;
+/** Tenant Add user only. A minimum length, not a cap. Profile, register, and the provider dialog keep their own rules. */
+export const TENANT_CREATE_USER_PASSWORD_MIN = 6;
 
 export const createUserSchema = z.object({
   email: z.string().email(),

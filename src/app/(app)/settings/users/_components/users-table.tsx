@@ -9,18 +9,24 @@ import {
 } from "react";
 import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
 
-import { LogOut } from "lucide-react";
+import { Ban, CircleCheck, LogOut } from "lucide-react";
 import { toast } from "sonner";
 
 import {
   deleteUserAction,
+  disableUserAction,
+  enableUserAction,
   resetUserSessionAction,
 } from "@/features/users/actions/user.actions";
+import {
+  disableAccountDeniedReason,
+  resetSessionConfirmDescription,
+  resetSessionDeniedReason,
+} from "@/features/users/lib/user-account-guards";
 import { Button } from "@/components/ui/button";
 import type { UserRoleOption } from "@/app/(app)/settings/users/_components/user-role-picker";
 import {
   filterTenantVisibleRoles,
-  filterTenantVisibleUsers,
   isProviderOnlyRole,
   userHasProviderOnlyRole,
 } from "@/features/roles/constants/role.constants";
@@ -57,6 +63,7 @@ interface UserRow {
   image: string | null;
   userRoles: { role: { slug: string; name: string } }[];
   department: { id: string; name: string } | null;
+  disabledAt?: Date | string | null;
 }
 
 interface UsersTableProps {
@@ -72,10 +79,12 @@ function isProtectedUser(user: UserRow, currentUserId: string): boolean {
   return user.id === currentUserId || userHasProviderOnlyRole(user.userRoles);
 }
 
-function tenantVisibleRoleNames(user: UserRow) {
-  return user.userRoles
-    .filter((userRole) => !isProviderOnlyRole(userRole.role.slug))
-    .map((userRole) => userRole.role.name);
+function roleNames(user: UserRow) {
+  return user.userRoles.map((userRole) => userRole.role.name);
+}
+
+function displayName(user: UserRow) {
+  return user.name ?? user.email;
 }
 
 export function UsersTable({
@@ -103,9 +112,10 @@ export function UsersTable({
   const [editingUser, setEditingUser] = useState<UserRow | null>(null);
   const [deletingUser, setDeletingUser] = useState<UserRow | null>(null);
   const [resettingUser, setResettingUser] = useState<UserRow | null>(null);
+  const [accessUser, setAccessUser] = useState<UserRow | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const visibleRows = useMemo(() => filterTenantVisibleUsers(rows), [rows]);
+  const visibleRows = rows;
   const visibleRoles = useMemo(() => filterTenantVisibleRoles(roles), [roles]);
 
   const addUserAction =
@@ -128,7 +138,8 @@ export function UsersTable({
           user.name,
           user.email,
           user.department?.name,
-          ...tenantVisibleRoleNames(user),
+          ...roleNames(user),
+          user.disabledAt ? "Disabled" : "",
         ]),
       ),
     [query, visibleRows],
@@ -140,7 +151,7 @@ export function UsersTable({
         visibleRows.map((user) => user.name),
         visibleRows.map((user) => user.email),
         visibleRows.map((user) => user.department?.name),
-        visibleRows.flatMap((user) => tenantVisibleRoleNames(user)),
+        visibleRows.flatMap((user) => roleNames(user)),
       ),
     [visibleRows],
   );
@@ -150,7 +161,7 @@ export function UsersTable({
   const sort = useClientTableSort(filteredUsers, {
     name: (user) => user.name,
     email: (user) => user.email,
-    roles: (user) => tenantVisibleRoleNames(user).join(", "),
+    roles: (user) => roleNames(user).join(", "),
     department: (user) => user.department?.name,
   });
   const {
@@ -203,6 +214,37 @@ export function UsersTable({
         description: `${resettingUser.name ?? resettingUser.email} can sign in again.`,
       });
       setResettingUser(null);
+      router.refresh();
+    });
+  }
+
+  function handleAccessConfirm() {
+    if (!accessUser) {
+      return;
+    }
+
+    const enabling = Boolean(accessUser.disabledAt);
+    startTransition(async () => {
+      const result = enabling
+        ? await enableUserAction(accessUser.id)
+        : await disableUserAction(accessUser.id);
+      if (result.error) {
+        toast.error(enabling ? "Could not enable account" : "Could not disable account", {
+          description: result.error,
+        });
+        return;
+      }
+
+      toast.success(enabling ? "Account enabled" : "Account disabled");
+      setRows((currentRows) =>
+        currentRows.map((user) =>
+          user.id === accessUser.id
+            ? { ...user, disabledAt: enabling ? null : new Date().toISOString() }
+            : user,
+        ),
+      );
+      setAccessUser(null);
+      router.refresh();
     });
   }
 
@@ -230,6 +272,11 @@ export function UsersTable({
               </AvatarFallback>
             </Avatar>
             <span className="font-medium">{row.original.name ?? "—"}</span>
+            {row.original.disabledAt ? (
+              <span className="rounded-md bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
+                Disabled
+              </span>
+            ) : null}
           </div>
         ),
       }),
@@ -246,17 +293,19 @@ export function UsersTable({
         enableSorting: true,
         cell: ({ row }) => (
           <div className="flex flex-wrap gap-1">
-            {tenantVisibleRoleNames(row.original).length > 0 ? (
-              row.original.userRoles
-                .filter((userRole) => !isProviderOnlyRole(userRole.role.slug))
-                .map((userRole) => (
-                  <span
-                    key={userRole.role.slug}
-                    className="rounded-md bg-accent px-2 py-0.5 text-xs font-medium"
-                  >
-                    {userRole.role.name}
-                  </span>
-                ))
+            {roleNames(row.original).length > 0 ? (
+              row.original.userRoles.map((userRole) => (
+                <span
+                  key={userRole.role.slug}
+                  className={
+                    isProviderOnlyRole(userRole.role.slug)
+                      ? "rounded-md bg-orange-500/15 px-2 py-0.5 text-xs font-medium text-orange-700 dark:text-orange-300"
+                      : "rounded-md bg-accent px-2 py-0.5 text-xs font-medium"
+                  }
+                >
+                  {userRole.role.name}
+                </span>
+              ))
             ) : (
               <span className="text-muted-foreground">—</span>
             )}
@@ -277,6 +326,19 @@ export function UsersTable({
         enableSorting: false,
         cell: ({ row }) => {
           const isProtected = isProtectedUser(row.original, currentUserId);
+          const resetDenied = resetSessionDeniedReason({
+            actorUserId: currentUserId,
+            targetUserId: row.original.id,
+            targetRoles: row.original.userRoles,
+          });
+          const isDisabled = Boolean(row.original.disabledAt);
+          const disableDenied = isDisabled
+            ? null
+            : disableAccountDeniedReason({
+                actorUserId: currentUserId,
+                targetUserId: row.original.id,
+                targetRoles: row.original.userRoles,
+              });
           return (
             <TableRowActions
               asCell={false}
@@ -292,12 +354,34 @@ export function UsersTable({
                 variant="ghost"
                 size="icon"
                 className="size-8"
-                disabled={isProtected}
-                title={isProtected ? "This user's session cannot be reset" : "Reset session"}
+                disabled={Boolean(resetDenied)}
+                title={resetDenied ?? "Reset session"}
                 aria-label="Reset session"
                 onClick={() => setResettingUser(row.original)}
               >
                 <LogOut className="size-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className={
+                  isDisabled
+                    ? "size-8"
+                    : "size-8 text-destructive hover:text-destructive"
+                }
+                disabled={Boolean(disableDenied)}
+                title={
+                  isDisabled ? "Enable account" : (disableDenied ?? "Disable account")
+                }
+                aria-label={isDisabled ? "Enable account" : "Disable account"}
+                onClick={() => setAccessUser(row.original)}
+              >
+                {isDisabled ? (
+                  <CircleCheck className="size-4" />
+                ) : (
+                  <Ban className="size-4" />
+                )}
               </Button>
             </TableRowActions>
           );
@@ -383,12 +467,36 @@ export function UsersTable({
             }
           }}
           title="Reset session"
-          description={`Sign ${resettingUser.name ?? resettingUser.email} out of every device so they can sign in again? Any unsaved work on their open session is lost.`}
+          description={resetSessionConfirmDescription(
+            resettingUser.name ?? resettingUser.email,
+          )}
           confirmLabel="Reset session"
           pendingLabel="Resetting…"
           confirmVariant="default"
           pending={pending}
           onConfirm={handleResetSessionConfirm}
+        />
+      ) : null}
+
+      {accessUser ? (
+        <DeleteConfirmDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) {
+              setAccessUser(null);
+            }
+          }}
+          title={accessUser.disabledAt ? "Enable account" : "Disable account"}
+          description={
+            accessUser.disabledAt
+              ? `Turn ${displayName(accessUser)}'s account back on so they can sign in again?`
+              : `Turn off ${displayName(accessUser)}'s account? They are signed out of every device and cannot sign in until the account is enabled.`
+          }
+          confirmLabel={accessUser.disabledAt ? "Enable account" : "Disable account"}
+          pendingLabel={accessUser.disabledAt ? "Enabling…" : "Disabling…"}
+          confirmVariant={accessUser.disabledAt ? "default" : "destructive"}
+          pending={pending}
+          onConfirm={handleAccessConfirm}
         />
       ) : null}
 

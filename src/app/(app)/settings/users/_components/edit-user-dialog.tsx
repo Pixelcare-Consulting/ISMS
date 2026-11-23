@@ -5,6 +5,7 @@ import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { updateUserAction } from "@/features/users/actions/user.actions";
+import { UPDATE_USER_PASSWORD_MIN } from "@/features/users/schemas/update-user.schema";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -139,15 +140,16 @@ export function EditUserDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[1050px]">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[calc(100svh-2rem)] max-w-[1050px] flex-col gap-0 overflow-hidden p-0 sm:max-w-[1050px] sm:p-0">
+        <DialogHeader className="shrink-0 space-y-1.5 border-b px-4 py-4 pr-12 text-left sm:px-6">
           <DialogTitle>Edit user</DialogTitle>
           <DialogDescription>
             Update this user&apos;s details, role, or password.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={onSubmit} className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
+        <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
+            <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="edit-user-name">Name</Label>
               <Input
@@ -172,7 +174,7 @@ export function EditUserDialog({
               <PasswordInput
                 id="edit-user-password"
                 name="password"
-                minLength={8}
+                minLength={UPDATE_USER_PASSWORD_MIN}
                 disabled={pending}
                 placeholder="Leave blank to keep current password"
                 autoComplete="new-password"
@@ -201,7 +203,8 @@ export function EditUserDialog({
           />
 
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
-          <DialogFooter>
+          </div>
+          <DialogFooter className="shrink-0 gap-2 border-t px-4 py-4 sm:px-6">
             <Button
               type="button"
               variant="outline"

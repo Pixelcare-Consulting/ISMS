@@ -4,10 +4,7 @@ import {
   listUsersAction,
 } from "@/features/users/actions/user.actions";
 import { permissionAreaName } from "@/features/users/lib/permission-area";
-import {
-  filterTenantVisibleRoles,
-  filterTenantVisibleUsers,
-} from "@/features/roles/constants/role.constants";
+import { filterTenantVisibleRoles } from "@/features/roles/constants/role.constants";
 import { tenantRepository } from "@/features/tenants/repositories/tenant.repository";
 import { requirePermission } from "@/lib/auth/permissions";
 import { USERS_PAGE_TUTORIAL } from "@/content/page-tutorials/users";
@@ -33,7 +30,6 @@ export default async function SettingsUsersPage() {
       area: permissionAreaName(rolePermission.permission.slug),
     })),
   }));
-  const visibleUsers = filterTenantVisibleUsers(users);
   const departmentOptions = departments.map((department) => ({
     id: department.id,
     name: department.name,
@@ -48,7 +44,7 @@ export default async function SettingsUsersPage() {
         sticky={false}
       />
       <UsersTable
-        users={visibleUsers}
+        users={users}
         roles={roleOptions}
         departments={departmentOptions}
         hideSystemRoles={hideSystemRoles}

@@ -68,6 +68,56 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.95.15",
+    date: "2026-11-23",
+    releasedAt: "2026-11-23T10:38:00+08:00",
+    title: "Manage accounts and open the main dashboards",
+    highlights: [
+      "Super Admin can work from the main dashboards and still be managed on Users.",
+      "Idle time, turned-off accounts, and Site Traffic stay predictable.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Super Admin appears on Users and can be signed out, including when that account is your own.",
+      },
+      {
+        type: "feature",
+        description: "You can turn an account off and turn it back on.",
+      },
+      {
+        type: "feature",
+        description:
+          "An account with no activity for 7 days is turned off on its own. Super Admin is not turned off this way.",
+      },
+      {
+        type: "feature",
+        description:
+          "Super Admin can open Overview, P-Count Dashboard, and Market Survey. Operations and Sales stay closed.",
+      },
+      {
+        type: "improvement",
+        description: "You are signed out after 5 minutes with no activity.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Create user keeps the buttons on screen, and a password can be 6 characters.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Site Traffic shows totals in rings and the real page address.",
+      },
+      {
+        type: "fix",
+        description:
+          "Refreshing the same page does not change the time shown on Site Traffic.",
+      },
+    ],
+  },
+  {
     version: "0.95.14",
     date: "2026-11-19",
     releasedAt: "2026-11-19T11:08:00+08:00",

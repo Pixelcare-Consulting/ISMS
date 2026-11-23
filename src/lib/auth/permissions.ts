@@ -5,8 +5,12 @@ import { PROVIDER_ONLY_ROLE_SLUGS } from "@/features/roles/constants/role.consta
 import { SETUP_HOME, isTenantSetupAdmin } from "@/features/roles/constants/setup-access";
 import { auth, signOutServer } from "@/lib/auth";
 import { prisma } from "@/lib/database/client";
-import { readLiveSessionState } from "@/lib/auth/session-liveness";
 import {
+  deleteIdleSessions,
+  readLiveSessionState,
+} from "@/lib/auth/session-liveness";
+import {
+  LOGIN_ERROR_DISABLED,
   LOGIN_ERROR_IDLE,
   LOGIN_ERROR_SESSION_EXPIRED,
   LOGIN_ERROR_SIGNED_IN_ELSEWHERE,
@@ -79,17 +83,18 @@ export async function getSession() {
  * is one statement instead of two round trips — it runs on every request and every
  * server action. Soft-disabled customer tenants cannot keep an active session.
  */
-async function sessionUserExists(session: AppSession): Promise<boolean> {
-  const user = await prisma.user.findFirst({
+async function loadActiveAccount(
+  session: AppSession,
+): Promise<{ disabledAt: Date | null } | null> {
+  return prisma.user.findFirst({
     where: {
       id: session.user.id,
       tenantId: session.user.tenantId,
       deletedAt: null,
       tenant: { deletedAt: null },
     },
-    select: { id: true },
+    select: { disabledAt: true },
   });
-  return user !== null;
 }
 
 /** Deduped per RSC request — layout, page, and server actions share one auth check. */
@@ -106,9 +111,13 @@ const getRequiredSession = cache(async (): Promise<AppSession> => {
     return signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_SESSION_EXPIRED}` });
   }
 
-  const exists = await sessionUserExists(session);
-  if (!exists) {
+  const account = await loadActiveAccount(session);
+  if (!account) {
     return signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_SESSION_EXPIRED}` });
+  }
+  if (account.disabledAt) {
+    await prisma.session.deleteMany({ where: { userId: session.user.id } });
+    return signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_DISABLED}` });
   }
 
   const sessionId = session.sessionId ?? "";
@@ -117,6 +126,7 @@ const getRequiredSession = cache(async (): Promise<AppSession> => {
   }
 
   const live = await readLiveSessionState(sessionId, session.user.id);
+  await deleteIdleSessions();
   if (live === "idle") {
     return signOutServer({ redirectTo: `/login?error=${LOGIN_ERROR_IDLE}` });
   }
@@ -152,6 +162,35 @@ export async function requireAnyPermission(required: string[]): Promise<AppSessi
     redirect(forbiddenDestination(session));
   }
   return session;
+}
+
+/**
+ * Passes when the session holds one of `required`, or the account is a
+ * customer-tenant Super Admin.
+ * P-Count and Market Survey use this so those pages open without granting
+ * inventory.view, reports.view, or competitors.view. Other routes keep
+ * requirePermission / requireAnyPermission, so Operations and Sales stay closed.
+ */
+export async function requireTenantSetupAdminOrAnyPermission(
+  required: readonly string[],
+): Promise<AppSession> {
+  const session = await requireAuth();
+  const permissions = session.user.permissions ?? [];
+  if (required.some((permission) => permissions.includes(permission))) {
+    return session;
+  }
+
+  const isPlatformOperator = await resolveSessionPlatformOperator(session.user);
+  if (
+    isTenantSetupAdmin({
+      roleSlugs: session.user.roleSlugs,
+      isPlatformOperator,
+    })
+  ) {
+    return session;
+  }
+
+  redirect(forbiddenDestination(session));
 }
 
 export async function requirePlatformOperator(): Promise<AppSession> {
