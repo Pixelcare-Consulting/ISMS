@@ -1,7 +1,6 @@
 import { APIError } from "better-auth/api";
 
 import { prisma } from "@/lib/database/client";
-import { deleteIdleSessions } from "@/lib/auth/session-liveness";
 import {
   ALREADY_SIGNED_IN_MESSAGE,
   decideSessionCreate,
@@ -40,7 +39,6 @@ export async function enforceSingleSessionOnCreate(
   replaceOtherSessions: boolean,
   now = new Date(),
 ): Promise<void> {
-  await deleteIdleSessions(now, userId);
   const existing = await prisma.session.findMany({
     where: { userId },
     select: { id: true, expiresAt: true },

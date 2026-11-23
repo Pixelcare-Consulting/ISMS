@@ -1,26 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createColumnHelper } from "@tanstack/react-table";
-import { LogOut } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 
 import { formatSiteTrafficRelativeTime } from "@/features/dashboard/lib/site-traffic-time";
 import type { SiteTrafficOverview } from "@/features/dashboard/services/site-traffic.service";
-import { resetUserSessionAction } from "@/features/users/actions/user.actions";
-import {
-  resetSessionConfirmDescription,
-  resetSessionDeniedReason,
-} from "@/features/users/lib/user-account-guards";
+import { GlobalKpiCards } from "@/lib/kpi-cards";
+import type { KpiCardItem } from "@/lib/kpi-cards";
 import {
   DataTable,
   type DataTableColumn,
   type DataTableFeatures,
 } from "@/lib/data-table";
-import { DeleteConfirmDialog } from "@/components/data-table";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -29,7 +21,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { cn } from "@/utils/cn";
 
 type RecentUserRow = SiteTrafficOverview["recentUsers"][number];
 type PageRow = SiteTrafficOverview["pages"][number];
@@ -43,79 +34,17 @@ interface SiteTrafficPanelProps {
   overview: SiteTrafficOverview;
   /** Server render instant. First paint uses this clock so the label matches the HTML. */
   observedAt: string;
-  currentUserId: string;
-  canResetSessions: boolean;
-}
-
-const RING_STROKE = {
-  orange: "stroke-orange-500",
-  green: "stroke-emerald-500",
-  blue: "stroke-sky-500",
-} as const;
-
-function TrafficRing({
-  label,
-  value,
-  total,
-  tone,
-}: {
-  label: string;
-  value: number;
-  total: number;
-  tone: keyof typeof RING_STROKE;
-}) {
-  const radius = 32;
-  const circumference = 2 * Math.PI * radius;
-  const ratio =
-    tone === "orange"
-      ? value > 0
-        ? 1
-        : 0
-      : total > 0
-        ? Math.min(value / total, 1)
-        : 0;
-  const dash = circumference * ratio;
-
-  return (
-    <div className="flex flex-col items-center gap-2">
-      <div className="relative size-32" role="img" aria-label={`${label}: ${value}`}>
-        <svg viewBox="0 0 80 80" className="size-32 -rotate-90" aria-hidden>
-          <circle
-            cx="40"
-            cy="40"
-            r={radius}
-            className="fill-none stroke-muted"
-            strokeWidth="8"
-          />
-          <circle
-            cx="40"
-            cy="40"
-            r={radius}
-            className={cn("fill-none", RING_STROKE[tone])}
-            strokeWidth="8"
-            strokeLinecap="round"
-            strokeDasharray={`${dash} ${circumference}`}
-          />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center text-3xl font-semibold tabular-nums">
-          {value}
-        </div>
-      </div>
-      <p className="text-center text-sm font-medium text-muted-foreground">{label}</p>
-    </div>
-  );
 }
 
 function SiteTrafficTimestamp({
   value,
   observedAt,
 }: {
-  value: Date | string | null;
+  value: Date | string;
   observedAt: string;
 }) {
   const [liveNowMs, setLiveNowMs] = useState<number | null>(null);
-  const valueMs =
-    value == null ? Number.NaN : value instanceof Date ? value.getTime() : Date.parse(value);
+  const valueMs = value instanceof Date ? value.getTime() : Date.parse(value);
   const valueKey = Number.isNaN(valueMs) ? "" : String(valueMs);
 
   useEffect(() => {
@@ -126,36 +55,11 @@ function SiteTrafficTimestamp({
     return () => clearInterval(id);
   }, [valueKey]);
 
-  if (!valueKey || value == null) return "—";
   return formatSiteTrafficRelativeTime(value, liveNowMs ?? observedAt);
 }
 
-export function SiteTrafficPanel({
-  overview,
-  observedAt,
-  currentUserId,
-  canResetSessions,
-}: SiteTrafficPanelProps) {
-  const router = useRouter();
+export function SiteTrafficPanel({ overview, observedAt }: SiteTrafficPanelProps) {
   const { kpis } = overview;
-  const [resettingUser, setResettingUser] = useState<RecentUserRow | null>(null);
-  const [pending, startTransition] = useTransition();
-
-  function handleResetSessionConfirm() {
-    if (!resettingUser) return;
-    startTransition(async () => {
-      const result = await resetUserSessionAction(resettingUser.userId);
-      if (result.error) {
-        toast.error("Could not reset session", { description: result.error });
-        return;
-      }
-      toast.success("Session reset", {
-        description: `${resettingUser.userName} can sign in again.`,
-      });
-      setResettingUser(null);
-      router.refresh();
-    });
-  }
 
   const recentColumns = useMemo(() => {
     const cols: DataTableColumn<RecentUserRow>[] = [
@@ -208,41 +112,8 @@ export function SiteTrafficPanel({
         meta: { className: "whitespace-nowrap text-xs tabular-nums" },
       }),
     ];
-    if (canResetSessions) {
-      cols.push(
-        recentColumn.display({
-          id: "reset",
-          header: "",
-          enableSorting: false,
-          cell: ({ row }) => {
-            const denied = resetSessionDeniedReason({
-              actorUserId: currentUserId,
-              targetUserId: row.original.userId,
-              targetRoles: row.original.isSuperAdmin
-                ? [{ role: { slug: "super_admin" } }]
-                : [],
-            });
-            return (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-8"
-                disabled={Boolean(denied)}
-                title={denied ?? "Reset session"}
-                aria-label="Reset session"
-                onClick={() => setResettingUser(row.original)}
-              >
-                <LogOut className="size-4" />
-              </Button>
-            );
-          },
-          meta: { align: "end" },
-        }),
-      );
-    }
     return cols;
-  }, [canResetSessions, currentUserId, observedAt]);
+  }, [observedAt]);
 
   const pageColumns = useMemo(() => {
     const cols: DataTableColumn<PageRow>[] = [
@@ -285,21 +156,50 @@ export function SiteTrafficPanel({
     return cols;
   }, []);
 
+  const kpiItems: KpiCardItem[] = [
+    {
+      key: "total-users",
+      label: "Total users",
+      value: kpis.totalUsers,
+      tone: "neutral",
+    },
+    {
+      key: "active-users",
+      label: "Active users",
+      value: kpis.activeUsers,
+      tone: "info",
+      hint: "With recent session or update (30 days)",
+    },
+    {
+      key: "login-users",
+      label: "Login users",
+      value: kpis.loginUsers,
+      tone: kpis.loginUsers > 0 ? "warning" : "neutral",
+      hint: "Fresh session activity (~15 min)",
+    },
+    {
+      key: "total-ps",
+      label: "Total PS",
+      value: kpis.totalPs,
+      tone: "neutral",
+    },
+    {
+      key: "active-ps",
+      label: "Active PS",
+      value: kpis.activePs,
+      tone: "info",
+    },
+    {
+      key: "login-ps",
+      label: "Login PS",
+      value: kpis.loginPs,
+      tone: kpis.loginPs > 0 ? "warning" : "neutral",
+    },
+  ];
+
   return (
     <div className="space-y-4">
-      <div className="space-y-2">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          <TrafficRing label="Total users" value={kpis.totalUsers} total={kpis.totalUsers} tone="orange" />
-          <TrafficRing label="Active users" value={kpis.activeUsers} total={kpis.totalUsers} tone="green" />
-          <TrafficRing label="Login users" value={kpis.loginUsers} total={kpis.totalUsers} tone="blue" />
-          <TrafficRing label="Total PS" value={kpis.totalPs} total={kpis.totalPs} tone="orange" />
-          <TrafficRing label="Active PS" value={kpis.activePs} total={kpis.totalPs} tone="green" />
-          <TrafficRing label="Login PS" value={kpis.loginPs} total={kpis.totalPs} tone="blue" />
-        </div>
-        {/* DO NOT UNCOMMENT THIS, NO NEED TO SHOW IN THE SITE TRAFFIC PANEL <p className="text-xs text-muted-foreground">
-          Orange is the total. Green is active. Blue is signed in within the last 5 minutes.
-        </p> */}
-      </div>
+      <GlobalKpiCards items={kpiItems} />
 
       <Card>
         <CardHeader className="pb-3">
@@ -330,6 +230,7 @@ export function SiteTrafficPanel({
             </TabsContent>
 
             <TabsContent value="pages" className="mt-4 space-y-3">
+              <p className="text-xs text-muted-foreground">{overview.pagesNote}</p>
               <DataTable
                 chrome="plain"
                 data={overview.pages}
@@ -337,7 +238,7 @@ export function SiteTrafficPanel({
                 getRowId={(row) => row.location}
                 stickyHeader
                 empty={overview.pages.length === 0}
-                emptyMessage="No page visits recorded yet."
+                emptyMessage="No audit activity to summarize yet."
               />
             </TabsContent>
 
@@ -362,22 +263,6 @@ export function SiteTrafficPanel({
           </Tabs>
         </CardContent>
       </Card>
-
-      {resettingUser ? (
-        <DeleteConfirmDialog
-          open
-          onOpenChange={(open) => {
-            if (!open) setResettingUser(null);
-          }}
-          title="Reset session"
-          description={resetSessionConfirmDescription(resettingUser.userName)}
-          confirmLabel="Reset session"
-          pendingLabel="Resetting…"
-          confirmVariant="default"
-          pending={pending}
-          onConfirm={handleResetSessionConfirm}
-        />
-      ) : null}
     </div>
   );
 }

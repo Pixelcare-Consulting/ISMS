@@ -5,10 +5,8 @@ export const SETUP_HOME = "/setup";
 
 /**
  * Permissions a customer-tenant Super Admin may hold.
- * Orders, logistics, inventory, sales, returns, reports, and competitor
- * permissions stay with the teams that run them.
- * Overview, P-Count Dashboard, and Market Survey open by role, not by
- * inventory.view, reports.view, or competitors.view.
+ * Orders, logistics, inventory, sales, returns, reports, and live dashboards
+ * stay with the teams that run them.
  * Oversight covers audit logs, policies, SAP integration, and planning.
  * Custom dashboard setup is included. Site traffic reuses users.manage.
  */
@@ -46,25 +44,15 @@ export const SETUP_PERMISSION_SLUGS = [
 ] as const;
 
 /**
- * Exact paths only.
- * `/dashboard` is Overview. Treating it as a prefix would also open
- * Operations, Sales, and every other board under `/dashboard/...`.
- */
-const SETUP_ALLOWED_EXACT_PATHS: ReadonlySet<string> = new Set(["/dashboard"]);
-
-/**
  * App paths a tenant setup admin may open.
  * Each entry allows that path and its descendants, including policy documents
  * and planning runs.
- * P-Count and Market Survey are listed on their own.
- * Operations, Sales, and every other `/dashboard/...` route stay omitted.
+ * Live dashboard boards and day-to-day operations stay omitted.
  */
 const SETUP_ALLOWED_PATH_PREFIXES = [
   SETUP_HOME,
   "/dashboard/custom",
-  "/dashboard/pcount",
   "/dashboard/site-traffic",
-  "/competitors",
   "/help",
   "/settings/profile",
   "/settings/company",
@@ -106,9 +94,6 @@ function isPathOrDescendant(pathname: string, prefix: string): boolean {
 
 /** True when a tenant setup admin may open this app path. */
 export function isSetupPathAllowed(pathname: string): boolean {
-  if (SETUP_ALLOWED_EXACT_PATHS.has(pathname)) {
-    return true;
-  }
   return SETUP_ALLOWED_PATH_PREFIXES.some((prefix) =>
     isPathOrDescendant(pathname, prefix),
   );

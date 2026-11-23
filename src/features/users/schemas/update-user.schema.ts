@@ -1,8 +1,5 @@
 import { z } from "zod";
 
-/** Optional new password on edit. Minimum length only; longer passwords stay allowed. */
-export const UPDATE_USER_PASSWORD_MIN = 6;
-
 export const updateUserSchema = z.object({
   userId: z.string().min(1),
   name: z.string().trim().min(2, "Name must be at least 2 characters").max(100),
@@ -11,8 +8,8 @@ export const updateUserSchema = z.object({
   password: z
     .string()
     .optional()
-    .refine((value) => !value || value.length >= UPDATE_USER_PASSWORD_MIN, {
-      message: `Password must be at least ${UPDATE_USER_PASSWORD_MIN} characters`,
+    .refine((value) => !value || value.length >= 8, {
+      message: "Password must be at least 8 characters",
     }),
 });
 

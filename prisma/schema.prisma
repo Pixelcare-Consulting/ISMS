@@ -382,7 +382,6 @@ model Tenant {
   aiAssistantPolicy           AiAssistantPolicy?
   aiReplenishmentConfirmations AiReplenishmentConfirmation[]
   customDashboards            CustomDashboard[]
-  sitePageHits                SitePageHit[]
 
   @@index([isPlatform])
   @@map("tenants")
@@ -403,10 +402,6 @@ model User {
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
   deletedAt     DateTime? @map("deleted_at")
-  /// Account turned off by an administrator or the 7-day idle job. Separate from delete.
-  disabledAt    DateTime? @map("disabled_at")
-  /// Newest session activity. Kept after the session row is removed.
-  lastActiveAt  DateTime? @map("last_active_at")
 
   tenant                             Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   department                         Department?                   @relation(fields: [departmentId], references: [id])
@@ -500,7 +495,6 @@ model User {
   @@unique([tenantId, email])
   @@index([tenantId])
   @@index([email])
-  @@index([lastActiveAt])
   @@map("users")
 }
 
@@ -702,34 +696,15 @@ model Session {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
   /** Last click, key, or scroll. Idle sign-out uses this, not `updatedAt`. */
-  lastActiveAt DateTime  @default(now()) @map("last_active_at")
-  /// App path last opened. Refreshing this same path does not change `lastPathAt`.
-  lastPath     String?   @map("last_path")
-  lastPathAt   DateTime? @map("last_path_at")
-  ipAddress    String?   @map("ip_address")
-  userAgent    String?   @map("user_agent")
-  userId       String    @map("user_id")
+  lastActiveAt DateTime @default(now()) @map("last_active_at")
+  ipAddress    String?  @map("ip_address")
+  userAgent    String?  @map("user_agent")
+  userId       String   @map("user_id")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
-  @@index([lastActiveAt])
   @@map("sessions")
-}
-
-/// One row per tenant and app path. Count and time move only when someone opens that path.
-model SitePageHit {
-  id        String   @id @default(cuid())
-  tenantId  String   @map("tenant_id")
-  path      String
-  hitCount  Int      @default(0) @map("hit_count")
-  lastHitAt DateTime @map("last_hit_at")
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, path])
-  @@index([tenantId, lastHitAt])
-  @@map("site_page_hits")
 }
 
 model Verification {

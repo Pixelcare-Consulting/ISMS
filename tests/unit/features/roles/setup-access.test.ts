@@ -19,8 +19,6 @@ const OMITTED_OPERATION_SLUGS = [
   "returns.manage",
   "reports.view",
   "reports.manage",
-  "competitors.view",
-  "competitors.manage",
   "dashboard.view",
   "forecast.view",
 ] as const;
@@ -149,11 +147,6 @@ describe("isSetupPathAllowed", () => {
       "/dashboard/custom/dash-1",
       "/dashboard/custom/dash-1/edit",
       "/dashboard/custom/ready/branch-sales",
-      "/dashboard",
-      "/dashboard/pcount",
-      "/dashboard/pcount/branch-1",
-      "/competitors",
-      "/competitors/obs-1",
       "/dashboard/site-traffic",
       "/settings/planning",
       "/settings/planning/runs",
@@ -172,22 +165,13 @@ describe("isSetupPathAllowed", () => {
     }
   });
 
-  it("allows overview, p-count, and market survey without opening other dashboards", () => {
-    expect(isSetupPathAllowed("/dashboard")).toBe(true);
-    expect(isSetupPathAllowed("/dashboard/pcount")).toBe(true);
-    expect(isSetupPathAllowed("/competitors")).toBe(true);
-
-    expect(isSetupPathAllowed("/dashboard/operations")).toBe(false);
-    expect(isSetupPathAllowed("/dashboard/sales")).toBe(false);
-    expect(isSetupPathAllowed("/dashboard/reports")).toBe(false);
-    expect(isSetupPathAllowed("/dashboard/pcounts")).toBe(false);
-    expect(isSetupPathAllowed("/competitors-extra")).toBe(false);
-  });
-
-  it("blocks operations, sales, orders, logistics, and other day-to-day routes", () => {
+  it("blocks dashboard, orders, logistics, and other operations", () => {
     const blocked = [
+      "/dashboard",
       "/dashboard/operations",
       "/dashboard/sales",
+      "/dashboard/pcount",
+      "/competitors",
       "/orders",
       "/orders/manual",
       "/logistics",

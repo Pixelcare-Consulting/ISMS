@@ -28,10 +28,8 @@ import { authClient } from "@/lib/auth/client";
 import { queuePendingAuthToast } from "@/lib/auth/pending-auth-toast";
 import {
   ALREADY_SIGNED_IN_MESSAGE,
-  DISABLED_ACCOUNT_MESSAGE,
   REPLACE_OTHER_SESSIONS_HEADER,
   isAlreadySignedInMessage,
-  isDisabledAccountMessage,
   loginErrorMessage,
 } from "@/lib/auth/session-policy";
 import { cn } from "@/utils/cn";
@@ -109,11 +107,6 @@ export function LoginForm() {
       if (isAlreadySignedInMessage(result.error.message)) {
         setAlreadySignedIn(true);
         setError(ALREADY_SIGNED_IN_MESSAGE);
-        return;
-      }
-      if (isDisabledAccountMessage(result.error.message)) {
-        setAlreadySignedIn(false);
-        setError(DISABLED_ACCOUNT_MESSAGE);
         return;
       }
       setAlreadySignedIn(false);

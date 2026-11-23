@@ -113,13 +113,6 @@ export const userRepository = {
     });
   },
 
-  setDisabledAt(tenantId: string, id: string, disabledAt: Date | null) {
-    return prisma.user.update({
-      where: { id, tenantId },
-      data: { disabledAt },
-    });
-  },
-
   /** Removes every login session row so the user is signed out everywhere. */
   async deleteSessions(userId: string) {
     const { count } = await prisma.session.deleteMany({ where: { userId } });

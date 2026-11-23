@@ -60,11 +60,11 @@ export function AccessPreviewPanel({
       {selectedItems.length === 0 ? (
         <p className="mt-2 text-sm text-muted-foreground">{emptySelection}</p>
       ) : (
-        <ul className="mt-2 max-h-[calc(5*2.5rem+4*0.5rem)] space-y-2 overflow-y-auto overscroll-contain pr-0.5">
+        <ul className="mt-2 max-h-36 space-y-2 overflow-y-auto">
           {selectedItems.map((item) => (
             <li
               key={item.id}
-              className="flex min-h-10 items-center justify-between gap-2 rounded-md border border-[#E2EEEB] bg-white px-3 py-2"
+              className="flex items-center justify-between gap-2 rounded-md border border-[#E2EEEB] bg-white px-3 py-2"
             >
               <span className="min-w-0">
                 <span className="block truncate text-sm font-medium text-foreground">
@@ -78,7 +78,7 @@ export function AccessPreviewPanel({
               </span>
               <button
                 type="button"
-                className="inline-flex size-5 shrink-0 items-center justify-center rounded-md p-0 leading-none text-muted-foreground hover:bg-[#F1F6F5] hover:text-foreground"
+                className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-[#F1F6F5] hover:text-foreground"
                 aria-label={`Remove ${previewItemLabel(item)}`}
                 disabled={disabled}
                 onClick={() => onRemove(item.id)}
@@ -96,9 +96,9 @@ export function AccessPreviewPanel({
       {accessNames.length === 0 ? (
         <p className="mt-2 text-sm text-muted-foreground">{emptyAccess}</p>
       ) : (
-        <ul className="mt-2 max-h-[calc(10*1.25rem+9*0.375rem)] space-y-1.5 overflow-y-auto overscroll-contain pr-0.5">
+        <ul className="mt-2 min-h-0 flex-1 space-y-1.5 overflow-y-auto">
           {accessNames.map((name) => (
-            <li key={name} className="flex items-start gap-2 text-sm leading-5 text-foreground">
+            <li key={name} className="flex items-start gap-2 text-sm text-foreground">
               <Check className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
               <span className="min-w-0">{name}</span>
             </li>

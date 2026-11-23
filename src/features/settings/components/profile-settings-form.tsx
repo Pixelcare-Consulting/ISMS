@@ -10,7 +10,6 @@ import {
   updateProfileAction,
 } from "@/features/settings/actions/profile.actions";
 import { SettingsSection } from "@/features/settings/components/settings-section";
-import { PROFILE_PASSWORD_MIN } from "@/features/settings/schemas/profile-settings.schema";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -285,7 +284,6 @@ export function ProfileSettingsForm({ initialValues }: ProfileSettingsFormProps)
                 onChange={(event) => setCurrentPassword(event.target.value)}
                 disabled={passwordPending}
                 autoComplete="current-password"
-                minLength={PROFILE_PASSWORD_MIN}
                 required
               />
             </div>
@@ -298,7 +296,7 @@ export function ProfileSettingsForm({ initialValues }: ProfileSettingsFormProps)
                 onChange={(event) => setNewPassword(event.target.value)}
                 disabled={passwordPending}
                 autoComplete="new-password"
-                minLength={PROFILE_PASSWORD_MIN}
+                minLength={8}
                 required
               />
             </div>
@@ -311,7 +309,7 @@ export function ProfileSettingsForm({ initialValues }: ProfileSettingsFormProps)
                 onChange={(event) => setConfirmPassword(event.target.value)}
                 disabled={passwordPending}
                 autoComplete="new-password"
-                minLength={PROFILE_PASSWORD_MIN}
+                minLength={8}
                 required
               />
             </div>

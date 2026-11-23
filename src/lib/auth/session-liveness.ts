@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/database/client";
 import {
   evaluateLiveSession,
-  SESSION_IDLE_MS,
   type LiveSessionState,
 } from "@/lib/auth/session-policy";
 
@@ -42,42 +41,9 @@ export async function touchSessionActivity(
   if (state !== "ok") {
     return state;
   }
-  await prisma.$transaction([
-    prisma.session.update({
-      where: { id: sessionId },
-      data: { lastActiveAt: now },
-    }),
-    prisma.user.update({
-      where: { id: userId },
-      data: { lastActiveAt: now },
-    }),
-  ]);
+  await prisma.session.update({
+    where: { id: sessionId },
+    data: { lastActiveAt: now },
+  });
   return "ok";
-}
-
-/** True when the account is turned off and is not deleted. */
-export async function isAccountDisabled(userId: string): Promise<boolean> {
-  const account = await prisma.user.findFirst({
-    where: { id: userId },
-    select: { disabledAt: true, deletedAt: true },
-  });
-  return Boolean(account && !account.deletedAt && account.disabledAt);
-}
-
-/**
- * Remove every session whose last click, key, or scroll is older than 5 minutes.
- * Pass a user id to clear only that account. A closed browser then cannot block the next sign-in.
- */
-export async function deleteIdleSessions(
-  now = new Date(),
-  userId?: string,
-): Promise<number> {
-  const cutoff = new Date(now.getTime() - SESSION_IDLE_MS);
-  const result = await prisma.session.deleteMany({
-    where: {
-      lastActiveAt: { lt: cutoff },
-      ...(userId ? { userId } : {}),
-    },
-  });
-  return result.count;
 }

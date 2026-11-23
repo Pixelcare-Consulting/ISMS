@@ -1,7 +1,6 @@
 import { dash } from "@better-auth/infra";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { APIError } from "better-auth/api";
 import { customSession } from "better-auth/plugins";
 import { nextCookies } from "better-auth/next-js";
 import bcrypt from "bcryptjs";
@@ -11,10 +10,7 @@ import {
   enforceSingleSessionOnCreate,
   replaceOtherSessionsRequested,
 } from "@/lib/auth/enforce-single-session";
-import {
-  DISABLED_ACCOUNT_MESSAGE,
-  REPLACE_OTHER_SESSIONS_HEADER,
-} from "@/lib/auth/session-policy";
+import { REPLACE_OTHER_SESSIONS_HEADER } from "@/lib/auth/session-policy";
 import { prisma } from "@/lib/database/client";
 import { logger } from "@/lib/shared/logger";
 import { rateLimit } from "@/lib/cache/redis";
@@ -159,7 +155,7 @@ export const auth = betterAuth({
      *
      * The cookie can stay warm for `maxAge` after the row is deleted. `requireAuth`
      * reads the session row and its last activity on every call, so a second
-     * sign-in or 5 minutes of idle still signs the person out on the next request.
+     * sign-in or 15 minutes of idle still signs the person out on the next request.
      */
     cookieCache: {
       enabled: true,
@@ -201,28 +197,13 @@ export const auth = betterAuth({
           if (!userId) {
             return;
           }
-          const account = await prisma.user.findFirst({
-            where: { id: userId },
-            select: { disabledAt: true, deletedAt: true },
-          });
-          if (account && !account.deletedAt && account.disabledAt) {
-            await prisma.session.deleteMany({ where: { userId } });
-            throw new APIError("FORBIDDEN", {
-              message: DISABLED_ACCOUNT_MESSAGE,
-            });
-          }
           await enforceSingleSessionOnCreate(
             userId,
             replaceOtherSessionsRequested(context, REPLACE_OTHER_SESSIONS_HEADER),
           );
-          const now = new Date();
-          await prisma.user.update({
-            where: { id: userId },
-            data: { lastActiveAt: now },
-          });
           return {
             data: {
-              lastActiveAt: now,
+              lastActiveAt: new Date(),
             },
           };
         },
