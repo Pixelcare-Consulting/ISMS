@@ -17,6 +17,7 @@ jest.mock("@/features/roles/actions/role.actions", () => ({
 
 const matrix: RolesPermissionsMatrix = {
   permissions: [],
+  occupiedSlugs: ["tenant_admin", "cashier"],
   roles: [
     {
       id: "system-1",
@@ -48,6 +49,51 @@ function renderRoles(hideSystemRolesOnUsers: boolean) {
     />,
   );
 }
+
+describe("RolesSimpleView custom dashboard access", () => {
+  it("shows Custom dashboards and Build custom dashboards on the role card", () => {
+    render(
+      <RolesSimpleView
+        matrix={{
+          occupiedSlugs: ["cashier"],
+          permissions: [
+            {
+              id: "custom-view",
+              slug: "dashboard.custom.view",
+              name: "View custom dashboards",
+            },
+            {
+              id: "custom-manage",
+              slug: "dashboard.custom.manage",
+              name: "Build custom dashboards",
+            },
+          ],
+          roles: [
+            {
+              id: "custom-1",
+              slug: "cashier",
+              name: "Cashier",
+              description: "Takes payments",
+              isSystem: false,
+              userCount: 0,
+              permissionSlugs: ["dashboard.custom.view"],
+            },
+          ],
+        }}
+        hideSystemRolesOnUsers
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Access" }));
+
+    expect(
+      screen.getByRole("checkbox", { name: "Toggle Custom dashboards" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: "Toggle Build custom dashboards" }),
+    ).toBeInTheDocument();
+  });
+});
 
 describe("RolesSimpleView built-in cards", () => {
   it("hides built-in role cards while the switch is on, including search", () => {

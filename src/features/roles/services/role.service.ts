@@ -3,6 +3,7 @@ import { auditService } from "@/features/audit/services/audit.service";
 import {
   filterRolesForPermissionsUi,
   isProviderOnlyRole,
+  nextFreeRoleSlug,
 } from "@/features/roles/constants/role.constants";
 import {
   createRoleSchema,
@@ -10,6 +11,24 @@ import {
 } from "@/features/roles/schemas/create-role.schema";
 import { updateRoleSchema } from "@/features/roles/schemas/update-role.schema";
 import type { RolesPermissionsMatrix } from "@/features/roles/types/role.types";
+
+/**
+ * Keep the display name when the slug is already used.
+ * The existing role (often a hidden built-in) keeps its slug and its permissions.
+ * The new role gets the next free slug and stays a custom role with no grants yet.
+ */
+async function allocateUniqueRoleSlug(tenantId: string, baseSlug: string) {
+  const takenSlugs = new Set<string>();
+
+  for (let attempt = 0; attempt < 1000; attempt += 1) {
+    const slug = nextFreeRoleSlug(baseSlug, (candidate) => takenSlugs.has(candidate));
+    const existing = await roleRepository.findBySlug(tenantId, slug);
+    if (!existing) return slug;
+    takenSlugs.add(slug);
+  }
+
+  throw new Error("Could not allocate a unique role slug");
+}
 
 export const roleService = {
   async getPermissionsMatrix(
@@ -38,6 +57,7 @@ export const roleService = {
         slug: permission.slug,
         name: permission.name,
       })),
+      occupiedSlugs: roles.map((role) => role.slug),
     };
   },
 
@@ -53,11 +73,8 @@ export const roleService = {
       throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
     }
 
-    const slug = resolveRoleSlug(parsed.data);
-    const existing = await roleRepository.findBySlug(input.tenantId, slug);
-    if (existing) {
-      throw new Error("A role with this slug already exists");
-    }
+    const baseSlug = resolveRoleSlug(parsed.data);
+    const slug = await allocateUniqueRoleSlug(input.tenantId, baseSlug);
 
     const role = await roleRepository.create({
       tenantId: input.tenantId,

@@ -98,7 +98,8 @@ export const RELEASES: ReleaseNote[] = [
       },
       {
         type: "improvement",
-        description: "You are signed out after 5 minutes with no activity.",
+        description:
+          "Using the app keeps you signed in. You are signed out only after 5 minutes with nothing happening.",
       },
       {
         type: "improvement",
@@ -116,6 +117,16 @@ export const RELEASES: ReleaseNote[] = [
           "Site Traffic shows totals in rings and the real page address.",
       },
       {
+        type: "improvement",
+        description:
+          "A new role can use the same name as a built-in role. It only has the access you select.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Custom dashboards and Build custom dashboards can be included when you set a role's access.",
+      },
+      {
         type: "fix",
         description:
           "Refreshing the same page does not change the time shown on Site Traffic.",
@@ -124,6 +135,10 @@ export const RELEASES: ReleaseNote[] = [
         type: "fix",
         description:
           "Creating a user works again, and a duplicate email says the address is already in use.",
+      },
+      {
+        type: "fix",
+        description: "Custom Dashboards shows in the sidebar for Super Admin.",
       },
     ],
   },
