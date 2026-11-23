@@ -2793,6 +2793,8 @@ model BranchSalesTransaction {
   returnRequest          BranchReturnRequest?
   details                BranchSalesTransactionDetail[]
   replacements           SalesReplacement[]
+  /// Service center copy made when a Service Return / Replacement was sent to a service center.
+  serviceCenterCopy      ServiceCenterSalesTransaction?        @relation("ScSaleCopyOfBranchSale")
 
   @@unique([tenantId, branchId, transactionNo])
   @@index([tenantId, branchId])
@@ -3989,11 +3991,15 @@ model ServiceCenterSalesTransaction {
   amount                   Decimal   @default(0) @db.Decimal(12, 2)
   atrStatus                AtrStatus @default(open) @map("atr_status")
   notes                    String?
+  /// Branch sale this copy was made from: the CSR sent its Service Return / Replacement to
+  /// this service center. Null on older sales encoded at the service center.
+  sourceBranchSaleId       String?   @unique @map("source_branch_sale_id")
   createdById              String?   @map("created_by_id")
   createdAt                DateTime  @default(now()) @map("created_at")
   updatedAt                DateTime  @updatedAt @map("updated_at")
 
   tenant                 Tenant                                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sourceBranchSale       BranchSalesTransaction?               @relation("ScSaleCopyOfBranchSale", fields: [sourceBranchSaleId], references: [id], onDelete: SetNull)
   serviceCenter          ServiceCenter                         @relation(fields: [serviceCenterId], references: [id], onDelete: Cascade)
   serviceCenterLocation  ServiceCenterLocation?                @relation(fields: [serviceCenterLocationId], references: [id], onDelete: SetNull)
   createdBy              User?                                 @relation("ServiceCenterSalesTransactionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
@@ -4005,7 +4011,7 @@ model ServiceCenterSalesTransaction {
   returnRequest          ServiceCenterReturnRequest?
   details                ServiceCenterSalesTransactionDetail[]
 
-  @@unique([tenantId, serviceCenterId, transactionNo])
+  /// Not unique: copies keep the branch sale's number, and two branches can share one.
   @@index([tenantId, serviceCenterId])
   @@index([tenantId, atrStatus])
   @@index([createdById])

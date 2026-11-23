@@ -26,7 +26,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { useSalesSource } from "@/app/(app)/sales/_components/sales-source";
+import { useSalesEditSource } from "@/app/(app)/sales/_components/sales-source";
 import { uploadSaleProofAction } from "@/features/sales/actions/sales.actions";
 import { isToFollowSerial } from "@/features/sales/constants/to-follow-serial";
 import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
@@ -58,7 +58,7 @@ function SalesEncodeBanner({
   saveDisabled: boolean;
   onSave: () => void;
 }) {
-  const source = useSalesSource();
+  const source = useSalesEditSource();
   return (
     <header className="flex flex-col gap-4 rounded-xl bg-sidebar px-5 py-5 text-sidebar-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6">
       <div className="min-w-0">
@@ -114,7 +114,7 @@ export function NewSalesTransactionForm({
   brands,
 }: NewSalesTransactionFormProps) {
   const router = useRouter();
-  const source = useSalesSource();
+  const source = useSalesEditSource();
   const { createSale, listStockSources } = source.actions;
   const [pending, startTransition] = useTransition();
   const resolvedBranchId = autoResolveBranch ? (branches[0]?.id ?? "") : "";

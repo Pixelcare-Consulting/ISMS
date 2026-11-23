@@ -60,7 +60,7 @@ export interface SaleDetailsSource {
     atrOdrfPdfPath?: string | null;
     documentType: { name: string } | null;
   } | null;
-  /** Original and new serials stored on SalesReplacement. Absent for service-center sales. */
+  /** Original and new serials: SalesReplacement rows on branch sales, the SC request on SC copies. */
   replacements?: Array<{
     originalSerialNumber: {
       serialNo: string;

@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 
 import {
@@ -17,7 +18,8 @@ import {
   LOGIN_ERROR_IDLE,
   LOGIN_ERROR_SESSION_EXPIRED,
   LOGIN_ERROR_SIGNED_IN_ELSEWHERE,
-  SESSION_IDLE_MS,
+  isLoginPathname,
+  isRecentPageUse,
   shouldRevokeBrowserSession,
 } from "@/lib/auth/session-policy";
 
@@ -47,16 +49,16 @@ function holdsForSessionExpiredDialog(error: string): boolean {
   if (error !== LOGIN_ERROR_IDLE && error !== LOGIN_ERROR_SESSION_EXPIRED) {
     return false;
   }
-  const path = window.location.pathname;
-  return path !== "/login" && !path.startsWith("/login/");
+  return !isLoginPathname(window.location.pathname);
 }
 
 /**
- * Records clicks, keys, and scrolling, and signs out after 5 idle minutes.
- * A separate read notices when this session row was removed elsewhere.
- * The read does not refresh last activity.
+ * Records clicks, keys, scrolling, and page use, and signs out after 5 idle minutes.
+ * The SESSION EXPIRED dialog waits until that time, and it does not open on the login page.
+ * A liveness read does not refresh last activity.
  */
 export function SessionActivity() {
+  const pathname = usePathname();
   const [pendingError, setPendingError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const finishSignOutRef = useRef<(error: string) => Promise<void>>(
@@ -107,8 +109,16 @@ export function SessionActivity() {
 
     finishSignOutRef.current = finishSignOut;
 
+    function stillUsingPage(): boolean {
+      return isRecentPageUse(lastInput, Date.now());
+    }
+
     async function leave(error: string) {
       if (stopped) return;
+      if (isLoginPathname(window.location.pathname)) {
+        stopped = true;
+        return;
+      }
       stopped = true;
       if (holdsForSessionExpiredDialog(error)) {
         setPendingError(error);
@@ -136,6 +146,7 @@ export function SessionActivity() {
         });
         if (response.ok || stopped) return;
         const error = await readBody(response);
+        if (stillUsingPage() && error !== "disabled") return;
         await leave(loginErrorFor(error));
       } catch {
         // A failed request is not inactivity.
@@ -152,9 +163,7 @@ export function SessionActivity() {
         });
         if (response.ok || stopped) return;
         const error = await readBody(response);
-        if (error === "idle" && Date.now() - lastInput < SESSION_IDLE_MS) {
-          return;
-        }
+        if (stillUsingPage() && error !== "disabled") return;
         await leave(loginErrorFor(error));
       } catch {
         // Ignore a dropped check. The next navigation still runs requireAuth.
@@ -178,7 +187,8 @@ export function SessionActivity() {
 
     const interval = window.setInterval(() => {
       if (stopped) return;
-      if (Date.now() - lastInput >= SESSION_IDLE_MS) {
+      if (isLoginPathname(window.location.pathname)) return;
+      if (!stillUsingPage()) {
         void leave(LOGIN_ERROR_IDLE);
         return;
       }
@@ -212,7 +222,7 @@ export function SessionActivity() {
 
   return (
     <AlertDialog
-      open={pendingError !== null}
+      open={pendingError !== null && !isLoginPathname(pathname)}
       onOpenChange={() => {
         // Stay on this page until OK signs the person out.
       }}

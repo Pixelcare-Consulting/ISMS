@@ -2,8 +2,11 @@ import {
   SESSION_IDLE_MS,
   decideSessionCreate,
   evaluateLiveSession,
+  isLoginPathname,
+  isRecentPageUse,
   isTerminalLoginError,
   loginErrorMessage,
+  resolveLiveSessionOnRequest,
   shouldRevokeBrowserSession,
 } from "@/lib/auth/session-policy";
 
@@ -89,6 +92,52 @@ describe("evaluateLiveSession", () => {
 
   it("rejects a missing session row", () => {
     expect(evaluateLiveSession({ row: null, now })).toBe("missing");
+  });
+
+  it("keeps an active request inside the idle window signed in and treats no activity for more than 5 minutes as idle", () => {
+    const expiresAt = new Date(now.getTime() + 60 * 60 * 1000);
+    const insideWindow = new Date(now.getTime() - 4 * 60 * 1000);
+    const pastWindow = new Date(now.getTime() - SESSION_IDLE_MS - 1);
+
+    const active = resolveLiveSessionOnRequest({
+      row: { expiresAt, lastActiveAt: insideWindow },
+      now,
+      activity: "active",
+    });
+    expect(active.state).toBe("ok");
+    expect(active.lastActiveAt).toEqual(now);
+    expect(active.expiresAt).toEqual(expiresAt);
+
+    const idle = resolveLiveSessionOnRequest({
+      row: { expiresAt, lastActiveAt: pastWindow },
+      now,
+      activity: "none",
+    });
+    expect(idle.state).toBe("idle");
+    expect(idle.lastActiveAt).toEqual(pastWindow);
+    expect(idle.expiresAt).toEqual(expiresAt);
+
+    const pageOpenedAfterQuiet = resolveLiveSessionOnRequest({
+      row: { expiresAt, lastActiveAt: pastWindow },
+      now,
+      activity: "active",
+    });
+    expect(pageOpenedAfterQuiet.state).toBe("ok");
+    expect(pageOpenedAfterQuiet.lastActiveAt).toEqual(now);
+    expect(pageOpenedAfterQuiet.expiresAt).toEqual(expiresAt);
+  });
+});
+
+describe("session expired dialog", () => {
+  it("stays hidden while the person is using the page and on the login page", () => {
+    const lastInputAt = now.getTime() - 4 * 60 * 1000;
+    expect(isRecentPageUse(lastInputAt, now.getTime())).toBe(true);
+    expect(isRecentPageUse(now.getTime() - SESSION_IDLE_MS - 1, now.getTime())).toBe(
+      false,
+    );
+    expect(isLoginPathname("/login")).toBe(true);
+    expect(isLoginPathname("/login/forgot")).toBe(true);
+    expect(isLoginPathname("/dashboard")).toBe(false);
   });
 });
 

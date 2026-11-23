@@ -236,7 +236,11 @@ export function RolesSimpleView({
             <Grid3x3 className="size-3.5" />
             Permission matrix
           </Link>
-          <CreateRoleWizard groups={groups} permissions={permissions} />
+          <CreateRoleWizard
+            groups={groups}
+            permissions={permissions}
+            occupiedSlugs={matrix.occupiedSlugs}
+          />
         </TableSearchToolbar>
 
         {roles.length === 0 ? (

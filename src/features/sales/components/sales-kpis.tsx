@@ -1,5 +1,5 @@
 import type { SalesKpis } from "@/features/sales/services/sales-kpi.service";
-import { buildSalesPageHref } from "@/features/sales/utils/sales-page-href";
+import { buildSalesPageHref, type SalesPageTab } from "@/features/sales/utils/sales-page-href";
 import { GlobalKpiCards, buildStatusKpiItems } from "@/lib/kpi-cards";
 
 interface SalesKpisStripProps {
@@ -11,8 +11,8 @@ interface SalesKpisStripProps {
   limit: number;
   sort?: string;
   sortDir?: string;
-  /** List page the cards link to. Defaults to branch Sales. */
-  basePath?: string;
+  /** Sales Transactions tab the cards link to. Defaults to the branch tab. */
+  tab?: SalesPageTab;
 }
 
 export function SalesKpisStrip({
@@ -22,7 +22,7 @@ export function SalesKpisStrip({
   limit,
   sort,
   sortDir,
-  basePath,
+  tab,
 }: SalesKpisStripProps) {
   const items = buildStatusKpiItems({
     totalLabel: "Total lines",
@@ -34,7 +34,7 @@ export function SalesKpisStrip({
     return {
       ...item,
       href: buildSalesPageHref({
-        basePath,
+        tab,
         limit,
         sort,
         sortDir: sort ? sortDir : undefined,

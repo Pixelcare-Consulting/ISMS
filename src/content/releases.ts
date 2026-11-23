@@ -68,6 +68,28 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.95.16",
+    date: "2026-11-23",
+    releasedAt: "2026-11-23T15:20:00+08:00",
+    title: "Serial logs name both units in a replacement",
+    highlights: [
+      "Serial number logs name which unit replaced which.",
+      "Search on Serial number logs updates the list as you type.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Pick a suggestion or press Enter to search right away. Event and date filters still apply when you choose Apply filters.",
+      },
+      {
+        type: "fix",
+        description:
+          "A replaced sale no longer looks like one unit was replaced by itself.",
+      },
+    ],
+  },
+  {
     version: "0.95.15",
     date: "2026-11-23",
     releasedAt: "2026-11-23T10:38:00+08:00",
@@ -98,7 +120,8 @@ export const RELEASES: ReleaseNote[] = [
       },
       {
         type: "improvement",
-        description: "You are signed out after 5 minutes with no activity.",
+        description:
+          "Using the app keeps you signed in. You are signed out only after 5 minutes when idle.",
       },
       {
         type: "improvement",
@@ -116,9 +139,28 @@ export const RELEASES: ReleaseNote[] = [
           "Site Traffic shows totals in rings and the real page address.",
       },
       {
+        type: "improvement",
+        description:
+          "A new role can use the same name as a built-in role. It only has the access you select.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Custom dashboards and Build custom dashboards can be included when you set a role's access.",
+      },
+      {
         type: "fix",
         description:
           "Refreshing the same page does not change the time shown on Site Traffic.",
+      },
+      {
+        type: "fix",
+        description:
+          "Creating a user works again, and a duplicate email says the address is already in use.",
+      },
+      {
+        type: "fix",
+        description: "Custom Dashboards shows in the sidebar for Super Admin.",
       },
     ],
   },

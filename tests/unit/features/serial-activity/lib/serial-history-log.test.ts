@@ -29,6 +29,12 @@ describe("documentReferenceFromHistoryDetails", () => {
       "INV-9",
     ],
     ["Replacement sold on same invoice SI-100", "SI-100"],
+    [
+      "Service replacement SI-300 → STK at SC01 · Makati SC / L1 (request abc)",
+      "SI-300",
+    ],
+    ["Service return SI-301 → DEF at Makati SC / L1 (request abc)", "SI-301"],
+    ["Service replacement from Makati SC sold on same invoice SI-300", "SI-300"],
     ["Replacement sold on new invoice SI-200", "SI-200"],
     ["Posted against SAP-ITR-ABCD1234 yesterday", "SAP-ITR-ABCD1234"],
     ["Returned to warehouse on RTN-MH7K2 (SAP RETURN 991)", "RTN-MH7K2"],

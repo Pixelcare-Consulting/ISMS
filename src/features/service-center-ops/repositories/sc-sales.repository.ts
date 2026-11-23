@@ -100,6 +100,12 @@ function toReturnRef(
 
 const locationSelect = { select: { id: true, name: true, code: true } } as const;
 
+/** Serial with the model text the replacement pair shows. */
+const replacementSerialSelect = {
+  serialNo: true,
+  model: { select: { skuCode: true, name: true, brand: { select: { name: true } } } },
+} as const;
+
 const scSalesLineInclude = {
   statusCode: { select: { code: true, name: true, color: true } },
   serialNumber: { select: { id: true, serialNo: true } },
@@ -242,7 +248,13 @@ export const scSalesRepository = {
         paymentType: { select: { id: true, name: true } },
         saleType: { select: { id: true, name: true } },
         customerDeliveryMethod: { select: { id: true, name: true } },
-        returnRequest: returnRefSelect,
+        returnRequest: {
+          select: {
+            ...returnRefSelect.select,
+            saleDetail: { select: { serialNumber: { select: replacementSerialSelect } } },
+            replacementSerialNumber: { select: replacementSerialSelect },
+          },
+        },
         createdBy: { select: { name: true, email: true } },
         details: {
           orderBy: { createdAt: "asc" },
@@ -267,13 +279,23 @@ export const scSalesRepository = {
     if (!sale) return null;
 
     const { serviceCenter, serviceCenterLocation, serviceCenterLocationId, ...rest } = sale;
+    const request = sale.returnRequest;
     return {
       ...rest,
       branchId: sale.serviceCenterId,
       alternateBranchId: serviceCenterLocationId,
       branch: serviceCenter,
       stockSourceBranch: toLocationRef(serviceCenterLocation),
-      returnRequest: toReturnRef(sale.returnRequest),
+      returnRequest: toReturnRef(request),
+      // The line keeps the returned serial; the SC's replacement unit is on the request.
+      replacements: request?.replacementSerialNumber
+        ? [
+            {
+              originalSerialNumber: request.saleDetail?.serialNumber ?? null,
+              replacementSerialNumber: request.replacementSerialNumber,
+            },
+          ]
+        : [],
     };
   },
 

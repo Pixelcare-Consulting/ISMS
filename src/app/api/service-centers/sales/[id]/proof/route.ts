@@ -4,6 +4,7 @@ import {
   serveSaleProofFile,
   type ProofBackLink,
 } from "@/features/sales/server/sale-proof-response";
+import { buildSalesPageHref } from "@/features/sales/utils/sales-page-href";
 import { SC_SALES_ACCESS } from "@/features/service-center-ops/constants/sc-permissions";
 import { scSalesRepository } from "@/features/service-center-ops/repositories/sc-sales.repository";
 import { resolveScIdsForUser } from "@/features/service-center-ops/services/sc-scope";
@@ -12,7 +13,7 @@ import { hasPermission } from "@/lib/auth/permissions";
 import { toAppSession } from "@/lib/auth/session";
 
 const SC_SALES_BACK_LINK: ProofBackLink = {
-  href: "/service-centers/sales",
+  href: buildSalesPageHref({ tab: "service-center" }),
   label: "Back to service center sales",
 };
 

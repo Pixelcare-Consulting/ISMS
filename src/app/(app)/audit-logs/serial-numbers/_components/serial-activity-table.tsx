@@ -2,7 +2,7 @@
 
 import { createColumnHelper } from "@tanstack/react-table";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   SERIAL_ACTIVITY_LABELS,
@@ -57,6 +57,8 @@ interface SerialActivityFilters {
   dir?: string;
 }
 
+const SEARCH_DEBOUNCE_MS = 300;
+
 const TYPE_BADGE_CLASS: Record<SerialActivityType, string> = {
   registered: "bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300",
   status: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
@@ -105,6 +107,15 @@ export function SerialActivityTable({
   const sortDir = (
     (searchParams.get("dir") ?? initialSortDir) === "asc" ? "asc" : "desc"
   ) as SerialActivitySortDir;
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const committedQueryRef = useRef((currentSearch ?? "").trim());
+  const appliedFiltersRef = useRef({
+    pageSize,
+    sortDir,
+    type: currentType,
+    dateFrom: currentDateFrom,
+    dateTo: currentDateTo,
+  });
 
   const rows = result.items;
 
@@ -128,15 +139,91 @@ export function SerialActivityTable({
     currentType || currentSearch || currentDateFrom || currentDateTo,
   );
 
+  function cancelSearchTimer() {
+    if (searchTimerRef.current !== null) {
+      clearTimeout(searchTimerRef.current);
+      searchTimerRef.current = null;
+    }
+  }
+
+  function commitSearch(nextSearch: string) {
+    const q = nextSearch.trim();
+    if (q === committedQueryRef.current) return;
+    committedQueryRef.current = q;
+    const applied = appliedFiltersRef.current;
+    router.push(
+      buildHref(1, applied.pageSize, {
+        type: applied.type,
+        q: q || undefined,
+        dateFrom: applied.dateFrom,
+        dateTo: applied.dateTo,
+        dir: applied.sortDir,
+      }),
+    );
+  }
+
+  function scheduleSearch(nextSearch: string) {
+    cancelSearchTimer();
+    searchTimerRef.current = setTimeout(() => {
+      searchTimerRef.current = null;
+      commitSearch(nextSearch);
+    }, SEARCH_DEBOUNCE_MS);
+  }
+
+  function searchImmediately(nextSearch: string) {
+    cancelSearchTimer();
+    commitSearch(nextSearch);
+  }
+
+  useEffect(() => {
+    appliedFiltersRef.current = {
+      pageSize,
+      sortDir,
+      type: currentType,
+      dateFrom: currentDateFrom,
+      dateTo: currentDateTo,
+    };
+  }, [pageSize, sortDir, currentType, currentDateFrom, currentDateTo]);
+
+  useEffect(() => {
+    const fromUrl = (currentSearch ?? "").trim();
+    if (fromUrl === committedQueryRef.current) return;
+    cancelSearchTimer();
+    committedQueryRef.current = fromUrl;
+    setSearch(currentSearch ?? "");
+  }, [currentSearch]);
+
+  useEffect(() => () => cancelSearchTimer(), []);
+
+  function handleSearchChange(value: string) {
+    setSearch(value);
+    if (!value.trim()) {
+      searchImmediately(value);
+      return;
+    }
+    scheduleSearch(value);
+  }
+
   function handlePageSizeChange(limit: TablePageSize) {
-    router.push(buildHref(1, limit, activeFilters));
+    cancelSearchTimer();
+    const q = search.trim();
+    committedQueryRef.current = q;
+    router.push(
+      buildHref(1, limit, {
+        ...activeFilters,
+        q: q || undefined,
+      }),
+    );
   }
 
   function applyFilters() {
+    cancelSearchTimer();
+    const q = search.trim();
+    committedQueryRef.current = q;
     router.push(
       buildHref(1, pageSize, {
         type: type || undefined,
-        q: search.trim() || undefined,
+        q: q || undefined,
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
         dir: sortDir,
@@ -145,6 +232,8 @@ export function SerialActivityTable({
   }
 
   function clearFilters() {
+    cancelSearchTimer();
+    committedQueryRef.current = "";
     setType("");
     setSearch("");
     setDateFrom("");
@@ -153,8 +242,17 @@ export function SerialActivityTable({
   }
 
   function toggleSortDir() {
+    cancelSearchTimer();
+    const q = search.trim();
+    committedQueryRef.current = q;
     const next: SerialActivitySortDir = sortDir === "asc" ? "desc" : "asc";
-    router.push(buildHref(1, pageSize, { ...activeFilters, dir: next }));
+    router.push(
+      buildHref(1, pageSize, {
+        ...activeFilters,
+        q: q || undefined,
+        dir: next,
+      }),
+    );
   }
 
   const indexOffset = (result.page - 1) * result.pageSize;
@@ -270,7 +368,9 @@ export function SerialActivityTable({
         <div className="space-y-4 border-b px-4 py-4">
           <TableSearchBar
             value={search}
-            onChange={setSearch}
+            onChange={handleSearchChange}
+            onSuggestionSelect={searchImmediately}
+            onSubmit={searchImmediately}
             placeholder="Search by serial number or reference…"
             suggestions={suggestions}
           />

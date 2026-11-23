@@ -17,6 +17,48 @@ import { userRepository } from "@/features/users/repositories/user.repository";
 import { updateUserSchema } from "@/features/users/schemas/update-user.schema";
 import { syncCredentialAccountPassword } from "@/lib/auth/auth";
 
+const DUPLICATE_USER_EMAIL = "User with this email already exists";
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code: string }).code === "P2002"
+  );
+}
+
+async function saveUser(
+  existing: { id: string; deletedAt: Date | null } | null,
+  profile: {
+    tenantId: string;
+    email: string;
+    name: string;
+    passwordHash: string;
+    departmentId: string | null;
+  },
+) {
+  try {
+    if (existing) {
+      return await userRepository.restore(profile.tenantId, existing.id, {
+        email: profile.email,
+        name: profile.name,
+        passwordHash: profile.passwordHash,
+        departmentId: profile.departmentId,
+      });
+    }
+    return await userRepository.create({
+      ...profile,
+      mustChangePassword: false,
+    });
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      throw new Error(DUPLICATE_USER_EMAIL);
+    }
+    throw error;
+  }
+}
+
 async function resolveAssignableRoles(input: {
   tenantId: string;
   roleSlugs: string[];
@@ -72,12 +114,10 @@ export const userService = {
     departmentId?: string | null;
     allowProviderOnlyRoles?: boolean;
   }) {
-    const existing = await userRepository.findByEmail(
-      input.tenantId,
-      input.email,
-    );
-    if (existing) {
-      throw new Error("User with this email already exists");
+    const email = input.email.trim().toLowerCase();
+    const existing = await userRepository.findByEmail(input.tenantId, email);
+    if (existing && existing.deletedAt == null) {
+      throw new Error(DUPLICATE_USER_EMAIL);
     }
 
     if (input.departmentId) {
@@ -97,24 +137,35 @@ export const userService = {
     });
 
     const passwordHash = await bcrypt.hash(input.password, 12);
-    const user = await userRepository.create({
-      tenantId: input.tenantId,
-      email: input.email,
+    const profile = {
+      email,
       name: input.name,
       passwordHash,
       departmentId: input.departmentId ?? null,
-      mustChangePassword: false,
+    };
+
+    const user = await saveUser(existing, {
+      tenantId: input.tenantId,
+      ...profile,
     });
+
     await syncCredentialAccountPassword(user.id, passwordHash);
 
-    for (const role of roles) {
-      await userRepository.assignRole(user.id, role.id);
+    if (existing) {
+      await userRepository.setRoles(
+        user.id,
+        roles.map((role) => role.id),
+      );
+    } else {
+      for (const role of roles) {
+        await userRepository.assignRole(user.id, role.id);
+      }
     }
 
     await auditService.log({
       tenantId: input.tenantId,
       userId: input.actorUserId,
-      action: "user.created",
+      action: existing ? "user.restored" : "user.created",
       entityType: "User",
       entityId: user.id,
       metadata: { email: user.email },

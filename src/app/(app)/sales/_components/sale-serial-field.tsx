@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { useSalesSource } from "@/app/(app)/sales/_components/sales-source";
+import { useSalesEditSource } from "@/app/(app)/sales/_components/sales-source";
 import type { AgingSellableSerial } from "@/features/sales/actions/sales.actions";
 import {
   isToFollowSerial,
@@ -92,7 +92,7 @@ export function SaleSerialField({
   popoverClassName?: string;
   id?: string;
 }) {
-  const { listSaleableSerials } = useSalesSource().actions;
+  const { listSaleableSerials } = useSalesEditSource().actions;
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [retryNonce, setRetryNonce] = useState(0);
   const requestKey = `${stockBranchId}\0${modelId}\0${debouncedSearch}\0${retryNonce}`;

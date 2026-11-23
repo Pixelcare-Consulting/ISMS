@@ -299,13 +299,8 @@ export const appNavigation: NavEntry[] = [
             href: "/sales",
             label: "Sales Transactions",
             icon: Store,
-            anyPermissions: ["sales.view", "sales.create", "sales.update"],
-          },
-          {
-            href: "/service-centers/sales",
-            label: "Service Center Sales",
-            icon: Store,
-            anyPermissions: SC_SALES_ACCESS,
+            // Branch tab, and the Service Center tab for SC users.
+            anyPermissions: ["sales.view", "sales.create", "sales.update", ...SC_SALES_ACCESS],
           },
         ],
       },

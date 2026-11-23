@@ -12,7 +12,10 @@ import {
 } from "@/features/roles/actions/role.actions";
 import { AccessPreviewPanel } from "@/features/roles/components/access-preview-panel";
 import { GroupedPermissionsChecklist } from "@/features/roles/components/grouped-permissions-checklist";
-import { slugifyRoleName } from "@/features/roles/constants/role.constants";
+import {
+  isProviderOnlyRole,
+  slugifyRoleName,
+} from "@/features/roles/constants/role.constants";
 import type { PermissionModuleGroup } from "@/features/roles/lib/group-permissions-by-module";
 import {
   ROLE_TEMPLATES,
@@ -45,11 +48,14 @@ const STEP_LABELS: Record<WizardStep, string> = {
 interface CreateRoleWizardProps {
   groups: PermissionModuleGroup[];
   permissions: PermissionRow[];
+  /** Slugs already used here, including hidden built-in roles. */
+  occupiedSlugs: readonly string[];
 }
 
 export function CreateRoleWizard({
   groups,
   permissions,
+  occupiedSlugs,
 }: CreateRoleWizardProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -68,6 +74,19 @@ export function CreateRoleWizard({
     () => new Set(permissions.map((permission) => permission.slug)),
     [permissions],
   );
+
+  const occupiedSlugSet = useMemo(
+    () => new Set(occupiedSlugs),
+    [occupiedSlugs],
+  );
+
+  const resolvedSlug = slug.trim() || slugifyRoleName(name);
+  const slugReserved =
+    resolvedSlug.length > 0 && isProviderOnlyRole(resolvedSlug);
+  const slugCollides =
+    resolvedSlug.length > 0 &&
+    !slugReserved &&
+    occupiedSlugSet.has(resolvedSlug);
 
   const selectedList = useMemo(
     () => Array.from(selectedSlugs).sort(),
@@ -166,9 +185,9 @@ export function CreateRoleWizard({
 
   function canGoNext(): boolean {
     if (step === 1) {
-      return name.trim().length > 0;
+      return name.trim().length > 0 && !slugReserved;
     }
-    return true;
+    return !slugReserved;
   }
 
   function goNext() {
@@ -218,6 +237,11 @@ export function CreateRoleWizard({
     setError(null);
     if (!name.trim()) {
       setError("Name is required.");
+      setStep(1);
+      return;
+    }
+
+    if (slugReserved) {
       setStep(1);
       return;
     }
@@ -473,6 +497,13 @@ export function CreateRoleWizard({
               </div>
             ) : null}
 
+            {slugReserved ? (
+              <p className="mt-3 text-sm text-destructive">This slug is reserved.</p>
+            ) : slugCollides ? (
+              <p className="mt-3 text-sm text-muted-foreground" role="status">
+                This is a new role, and it only has the access selected here.
+              </p>
+            ) : null}
             {error ? (
               <p className="mt-3 text-sm text-destructive">{error}</p>
             ) : null}
@@ -510,7 +541,11 @@ export function CreateRoleWizard({
                   Continue
                 </Button>
               ) : (
-                <Button type="button" onClick={onSubmit} disabled={pending}>
+                <Button
+                  type="button"
+                  onClick={onSubmit}
+                  disabled={pending || slugReserved}
+                >
                   {pending ? "Creating…" : "Create role"}
                 </Button>
               )}
