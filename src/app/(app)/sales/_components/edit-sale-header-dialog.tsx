@@ -5,7 +5,7 @@ import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import type { SaleDetailsPayload } from "@/app/(app)/sales/_components/sale-details-dialog";
-import { useSalesSource } from "@/app/(app)/sales/_components/sales-source";
+import { useSalesEditSource } from "@/app/(app)/sales/_components/sales-source";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -79,7 +79,7 @@ export function EditSaleHeaderDialog({
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
 }) {
-  const source = useSalesSource();
+  const source = useSalesEditSource();
   const { listSoldPlaces, listStockSources, updateSaleHeader } = source.actions;
   const [pending, startTransition] = useTransition();
   const [loading, setLoading] = useState(true);

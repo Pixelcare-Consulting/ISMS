@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import {
   SC_RETURNS_PROCESS,
   SC_SALES_ACCESS,
-  SC_SERVICE_RETURN_REQUEST_PERMISSIONS,
 } from "@/features/service-center-ops/constants/sc-permissions";
 import { resolveScIdsForUser } from "@/features/service-center-ops/services/sc-scope";
 import { auth } from "@/lib/auth";
@@ -17,11 +16,7 @@ interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
-const DOWNLOAD_PERMISSIONS = [
-  ...SC_SALES_ACCESS,
-  ...SC_SERVICE_RETURN_REQUEST_PERMISSIONS,
-  SC_RETURNS_PROCESS,
-] as const;
+const DOWNLOAD_PERMISSIONS = [...SC_SALES_ACCESS, SC_RETURNS_PROCESS] as const;
 
 /** ATR/ODRF PDF of a Service Return / Replacement on an SC sale, limited to the user's SCs. */
 export async function GET(_request: Request, context: RouteContext) {

@@ -15,6 +15,10 @@ export const SALES_MODULE_GUIDE: ModuleGuideContent = {
       label:
         "Request return opens Process Return (document type, STK/DEF, problems, Return or Replacement); finish under Returns / Replacement",
     },
+    {
+      label:
+        "Service Return / Service Replacement: pick the service center. The sale is copied to the Service Center tab and that service center finishes it",
+    },
   ],
   storageKey: "module-guide.sales",
 };

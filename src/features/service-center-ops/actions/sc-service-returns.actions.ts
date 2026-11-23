@@ -4,15 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
-import {
-  loadProcessReturnLookups,
-  processReturnPayloadSchema,
-  type ProcessReturnLookups,
-} from "@/features/sales/services/process-return-input";
-import {
-  SC_RETURNS_PROCESS,
-  SC_SERVICE_RETURN_REQUEST_PERMISSIONS,
-} from "@/features/service-center-ops/constants/sc-permissions";
+import { SC_RETURNS_PROCESS } from "@/features/service-center-ops/constants/sc-permissions";
 import {
   scAtrOdrfDownloadUrl,
   type ScServiceReturnStatus,
@@ -29,11 +21,11 @@ import {
   type ScServiceReturnActor,
 } from "@/features/service-center-ops/services/sc-service-return.service";
 import { SC_ORDER_PO_NUMBER_MAX } from "@/features/service-center-ordering/constants";
-import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
+import { requirePermission } from "@/lib/auth/permissions";
 
 /**
  * Service center lane of a Service Return / Replacement (Process V-b). The CSR requests it
- * from SC Sales; the selling service center finishes it here.
+ * on a branch sale (Sales → View details); the service center it was sent to finishes it here.
  */
 
 async function requireActor(): Promise<ScServiceReturnActor> {
@@ -49,26 +41,14 @@ async function requireActor(): Promise<ScServiceReturnActor> {
   };
 }
 
+/** SC decisions also move the branch sale they came from (Sales, Returns, branch stock). */
 function revalidateScServiceReturns() {
   revalidatePath("/service-centers/returns");
-  revalidatePath("/service-centers/sales");
   revalidatePath("/service-centers/inventory");
   revalidatePath("/service-centers/orders");
-}
-
-/** CSR, SC Sales: request a Service Return / Replacement on an SC sale line. */
-async function requireRequester() {
-  const session = await requireAnyPermission([...SC_SERVICE_RETURN_REQUEST_PERMISSIONS]);
-  const actor: ScServiceReturnActor = {
-    tenantId: session.user.tenantId,
-    userId: session.user.id,
-    scopedServiceCenterIds: await resolveScIdsForUser(
-      session.user.tenantId,
-      session.user.id,
-      session.user.permissions,
-    ),
-  };
-  return { actor, requesterName: session.user.name?.trim() || session.user.email || "—" };
+  revalidatePath("/sales");
+  revalidatePath("/returns");
+  revalidatePath("/inventory");
 }
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -167,26 +147,6 @@ function toDetailDto(row: ScServiceReturnDetailRow) {
 }
 
 export type ScServiceReturnDetail = ReturnType<typeof toDetailDto>;
-
-/** Process Return form lookups for SC sales: service document types only, no SC picker. */
-export async function listScProcessReturnLookupsAction(): Promise<ProcessReturnLookups> {
-  const { actor } = await requireRequester();
-  return loadProcessReturnLookups(actor.tenantId, { serviceOnly: true });
-}
-
-export async function requestScServiceReturnAction(saleId: string, payload: unknown) {
-  const { actor, requesterName } = await requireRequester();
-  if (!saleId) return { error: "Sale not found" };
-  const parsed = processReturnPayloadSchema.safeParse(payload);
-  if (!parsed.success) return { error: "Invalid process return details" };
-  try {
-    await scServiceReturnService.request(actor, { saleId, payload: parsed.data, requesterName });
-  } catch (e) {
-    return { error: errorMessage(e, "Could not request the return") };
-  }
-  revalidateScServiceReturns();
-  return { success: true as const };
-}
 
 export async function listScServiceReturnsAction(input?: {
   page?: number;

@@ -1,9 +1,8 @@
 import { z } from "zod";
 
-import { isServiceDocumentTypeName } from "@/features/sales/constants/process-return";
 import { prisma } from "@/lib/database/client";
 
-/** What the Process Return dialog sends, for branch and service center sales alike. */
+/** What the Process Return dialog sends on a branch sale line. */
 export const processReturnPayloadSchema = z.object({
   saleDetailId: z.string().min(1),
   documentTypeId: z.string().min(1),
@@ -35,14 +34,10 @@ export interface ProcessReturnLookups {
 }
 
 /**
- * Lookups for the Process Return dialog. `serviceOnly` (service center sales) keeps only the
- * Service Return / Service Replacement document types and leaves out the service center list,
- * since the selling service center finishes the request.
+ * Lookups for the Process Return dialog on a branch sale. The service center list is where a
+ * Service Return / Replacement is sent.
  */
-export async function loadProcessReturnLookups(
-  tenantId: string,
-  options: { serviceOnly?: boolean } = {},
-): Promise<ProcessReturnLookups> {
+export async function loadProcessReturnLookups(tenantId: string): Promise<ProcessReturnLookups> {
   const [documentTypes, problemDescriptions, serviceCenters, models, warehouseLocations] =
     await Promise.all([
       prisma.documentType.findMany({
@@ -55,13 +50,11 @@ export async function loadProcessReturnLookups(
         select: { id: true, name: true },
         orderBy: { name: "asc" },
       }),
-      options.serviceOnly
-        ? Promise.resolve([])
-        : prisma.serviceCenter.findMany({
-            where: { tenantId, deletedAt: null, status: "active" },
-            select: { id: true, name: true, sapCode: true },
-            orderBy: { name: "asc" },
-          }),
+      prisma.serviceCenter.findMany({
+        where: { tenantId, deletedAt: null, status: "active" },
+        select: { id: true, name: true, sapCode: true },
+        orderBy: { name: "asc" },
+      }),
       prisma.productModel.findMany({
         where: { tenantId, status: "active" },
         select: { id: true, skuCode: true, name: true },
@@ -82,9 +75,7 @@ export async function loadProcessReturnLookups(
     ]);
 
   return {
-    documentTypes: options.serviceOnly
-      ? documentTypes.filter((type) => isServiceDocumentTypeName(type.name))
-      : documentTypes,
+    documentTypes,
     problemDescriptions,
     serviceCenters: serviceCenters.map((sc) => ({
       id: sc.id,

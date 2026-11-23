@@ -7,23 +7,36 @@ import {
   resolveScSalesCapabilities,
   SC_RETURN_REQUEST,
   SC_SALES_CREATE,
+  SC_SALES_UPDATE,
   SC_SALES_VIEW,
 } from "@/features/service-center-ops/constants/sc-permissions";
 
 describe("resolveScSalesCapabilities", () => {
-  it.each([SC_RETURN_REQUEST, SC_SALES_CREATE])("lets %s request a Service Return / Replacement", (slug) => {
-    expect(resolveScSalesCapabilities([slug]).canRequestReturn).toBe(true);
+  it.each([SC_SALES_VIEW, SC_SALES_CREATE, SC_SALES_UPDATE])("lets %s open the Service Center tab", (slug) => {
+    expect(resolveScSalesCapabilities([slug]).canViewSalesList).toBe(true);
   });
 
-  it("keeps view-only users from requesting", () => {
-    expect(resolveScSalesCapabilities([SC_SALES_VIEW]).canRequestReturn).toBe(false);
+  it("keeps users without SC sales access out of the tab", () => {
+    expect(resolveScSalesCapabilities([SC_RETURN_REQUEST]).canViewSalesList).toBe(false);
   });
 
-  it("never turns on the branch evaluate / approve / complete steps", () => {
-    const caps = resolveScSalesCapabilities([SC_RETURN_REQUEST, SC_SALES_CREATE, "returns.approve"]);
-    expect(caps.canViewReturns).toBe(false);
-    expect(caps.canEvaluateReturn).toBe(false);
-    expect(caps.canApproveReturn).toBe(false);
-    expect(caps.canCompleteReturn).toBe(false);
+  it("is read only: SC copies are never encoded, edited, or returned from the tab", () => {
+    const caps = resolveScSalesCapabilities([
+      SC_SALES_VIEW,
+      SC_SALES_CREATE,
+      SC_SALES_UPDATE,
+      SC_RETURN_REQUEST,
+      "returns.approve",
+    ]);
+    expect(caps).toEqual({
+      canViewSalesList: true,
+      canViewReturns: false,
+      canCreateSale: false,
+      canUpdateSaleHeader: false,
+      canRequestReturn: false,
+      canEvaluateReturn: false,
+      canApproveReturn: false,
+      canCompleteReturn: false,
+    });
   });
 });
