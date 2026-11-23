@@ -3,7 +3,7 @@ import {
   hasPcountDashboardBranchAccessAction,
 } from "@/features/stock-audit/actions/pcount-dashboard.actions";
 import { resolvePcountPeriod } from "@/features/stock-audit/services/pcount-dashboard.service";
-import { requireAnyPermission } from "@/lib/auth/permissions";
+import { requireTenantSetupAdminOrAnyPermission } from "@/lib/auth/permissions";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import { PcountDashboardPanel } from "@/app/(app)/dashboard/pcount/_components/pcount-dashboard-panel";
 import { PCOUNT_DASHBOARD_PAGE_TUTORIAL } from "@/content/page-tutorials/pcount-dashboard";
@@ -21,7 +21,7 @@ interface PcountDashboardPageProps {
 export default async function PcountDashboardPage({
   searchParams,
 }: PcountDashboardPageProps) {
-  await requireAnyPermission(["inventory.view", "reports.view"]);
+  await requireTenantSetupAdminOrAnyPermission(["inventory.view", "reports.view"]);
   const params = await searchParams;
   const resolved = resolvePcountPeriod(params.period);
   const period = `${resolved.year}-${String(resolved.month).padStart(2, "0")}`;

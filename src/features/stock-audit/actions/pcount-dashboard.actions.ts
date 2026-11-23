@@ -4,7 +4,7 @@ import ExcelJS from "exceljs";
 
 import {
   hasPermission,
-  requireAnyPermission,
+  requireTenantSetupAdminOrAnyPermission,
 } from "@/lib/auth/permissions";
 import { aorService } from "@/features/aors/services/aor.service";
 import {
@@ -22,7 +22,7 @@ function isUnrestricted(permissions: string[] | undefined) {
 }
 
 async function requirePcountDashboardAccess() {
-  const session = await requireAnyPermission([...PCOUNT_DASHBOARD_ACCESS]);
+  const session = await requireTenantSetupAdminOrAnyPermission(PCOUNT_DASHBOARD_ACCESS);
   return {
     session,
     unrestricted: isUnrestricted(session.user.permissions),

@@ -15,6 +15,9 @@ jest.mock("@/features/users/repositories/user.repository", () => ({
     setRoles: jest.fn(),
     update: jest.fn(),
     updatePasswordHash: jest.fn(),
+    deleteSessions: jest.fn(),
+    setDisabledAt: jest.fn(),
+    softDelete: jest.fn(),
   },
 }));
 
@@ -49,6 +52,15 @@ const create = userRepository.create as jest.Mock;
 const assignRole = userRepository.assignRole as jest.Mock;
 const setRoles = userRepository.setRoles as jest.Mock;
 const update = userRepository.update as jest.Mock;
+const deleteSessions = userRepository.deleteSessions as jest.Mock;
+const setDisabledAt = userRepository.setDisabledAt as jest.Mock;
+const softDelete = userRepository.softDelete as jest.Mock;
+
+const superAdmin = {
+  id: "user-sa",
+  email: "superadmin@demo.local",
+  userRoles: [{ role: { slug: "super_admin", name: "Super Admin" } }],
+};
 
 describe("userService roles", () => {
   beforeEach(() => {
@@ -114,5 +126,115 @@ describe("userService roles", () => {
       "role-cashier",
       "role-warehouse",
     ]);
+  });
+});
+
+describe("userService sessions and access", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    findById.mockResolvedValue({
+      id: "user-1",
+      email: "ada@example.com",
+      userRoles: [{ role: { slug: "cashier" } }],
+    });
+    deleteSessions.mockResolvedValue(1);
+    setDisabledAt.mockResolvedValue({});
+    softDelete.mockResolvedValue({});
+  });
+
+  it("deletes a Super Admin session, including their own", async () => {
+    findById.mockResolvedValue(superAdmin);
+
+    const result = await userService.resetUserSessions({
+      tenantId: "tenant-1",
+      actorUserId: "user-sa",
+      userId: "user-sa",
+    });
+
+    expect(deleteSessions).toHaveBeenCalledWith("user-sa");
+    expect(result).toEqual({ cleared: 1 });
+  });
+
+  it("still refuses a normal user resetting their own session", async () => {
+    await expect(
+      userService.resetUserSessions({
+        tenantId: "tenant-1",
+        actorUserId: "user-1",
+        userId: "user-1",
+      }),
+    ).rejects.toThrow("You cannot reset your own session");
+
+    expect(deleteSessions).not.toHaveBeenCalled();
+  });
+
+  it("refuses to update a Super Admin", async () => {
+    findById.mockResolvedValue(superAdmin);
+
+    await expect(
+      userService.updateUser({
+        tenantId: "tenant-1",
+        actorUserId: "actor-1",
+        userId: "user-sa",
+        name: "Super Admin",
+        roleSlugs: ["cashier"],
+      }),
+    ).rejects.toThrow("This user cannot be modified");
+
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("refuses to delete a Super Admin", async () => {
+    findById.mockResolvedValue(superAdmin);
+
+    await expect(
+      userService.deleteUser({
+        tenantId: "tenant-1",
+        actorUserId: "actor-1",
+        userId: "user-sa",
+      }),
+    ).rejects.toThrow("This user cannot be deleted");
+
+    expect(softDelete).not.toHaveBeenCalled();
+  });
+
+  it("refuses to disable a Super Admin", async () => {
+    findById.mockResolvedValue(superAdmin);
+
+    await expect(
+      userService.disableUser({
+        tenantId: "tenant-1",
+        actorUserId: "actor-1",
+        userId: "user-sa",
+      }),
+    ).rejects.toThrow("This user cannot be disabled");
+
+    expect(setDisabledAt).not.toHaveBeenCalled();
+    expect(deleteSessions).not.toHaveBeenCalled();
+  });
+
+  it("disables an account and clears its sessions", async () => {
+    await userService.disableUser({
+      tenantId: "tenant-1",
+      actorUserId: "actor-1",
+      userId: "user-1",
+    });
+
+    expect(setDisabledAt).toHaveBeenCalledWith(
+      "tenant-1",
+      "user-1",
+      expect.any(Date),
+    );
+    expect(deleteSessions).toHaveBeenCalledWith("user-1");
+  });
+
+  it("clears disabledAt when an account is enabled", async () => {
+    await userService.enableUser({
+      tenantId: "tenant-1",
+      actorUserId: "actor-1",
+      userId: "user-1",
+    });
+
+    expect(setDisabledAt).toHaveBeenCalledWith("tenant-1", "user-1", null);
+    expect(deleteSessions).not.toHaveBeenCalled();
   });
 });

@@ -7,12 +7,15 @@ import {
   isProviderOnlyRole,
   userHasProviderOnlyRole,
 } from "@/features/roles/constants/role.constants";
+import {
+  disableAccountDeniedReason,
+  resetSessionDeniedReason,
+} from "@/features/users/lib/user-account-guards";
 import { departmentRepository } from "@/features/users/repositories/department.repository";
 import { roleRepository } from "@/features/users/repositories/role.repository";
 import { userRepository } from "@/features/users/repositories/user.repository";
-import { syncCredentialAccountPassword } from "@/lib/auth/auth";
-
 import { updateUserSchema } from "@/features/users/schemas/update-user.schema";
+import { syncCredentialAccountPassword } from "@/lib/auth/auth";
 
 async function resolveAssignableRoles(input: {
   tenantId: string;
@@ -241,17 +244,18 @@ export const userService = {
     actorUserId: string;
     userId: string;
   }) {
-    if (input.actorUserId === input.userId) {
-      throw new Error("You cannot reset your own session");
-    }
-
     const user = await userRepository.findById(input.tenantId, input.userId);
     if (!user) {
       throw new Error("User not found");
     }
 
-    if (userHasProviderOnlyRole(user.userRoles)) {
-      throw new Error("This user's session cannot be reset");
+    const denied = resetSessionDeniedReason({
+      actorUserId: input.actorUserId,
+      targetUserId: input.userId,
+      targetRoles: user.userRoles,
+    });
+    if (denied) {
+      throw new Error(denied);
     }
 
     const cleared = await userRepository.deleteSessions(user.id);
@@ -266,5 +270,61 @@ export const userService = {
     });
 
     return { cleared };
+  },
+
+  /** Signs the person out everywhere and blocks the next sign-in. Separate from delete. */
+  async disableUser(input: {
+    tenantId: string;
+    actorUserId: string;
+    userId: string;
+  }) {
+    const user = await userRepository.findById(input.tenantId, input.userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const denied = disableAccountDeniedReason({
+      actorUserId: input.actorUserId,
+      targetUserId: input.userId,
+      targetRoles: user.userRoles,
+    });
+    if (denied) {
+      throw new Error(denied);
+    }
+
+    await userRepository.setDisabledAt(input.tenantId, input.userId, new Date());
+    const cleared = await userRepository.deleteSessions(user.id);
+
+    await auditService.log({
+      tenantId: input.tenantId,
+      userId: input.actorUserId,
+      action: "user.disabled",
+      entityType: "User",
+      entityId: user.id,
+      metadata: { email: user.email, sessionsCleared: cleared },
+    });
+  },
+
+  /** Turns an account back on. Does not create a session. */
+  async enableUser(input: {
+    tenantId: string;
+    actorUserId: string;
+    userId: string;
+  }) {
+    const user = await userRepository.findById(input.tenantId, input.userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    await userRepository.setDisabledAt(input.tenantId, input.userId, null);
+
+    await auditService.log({
+      tenantId: input.tenantId,
+      userId: input.actorUserId,
+      action: "user.enabled",
+      entityType: "User",
+      entityId: user.id,
+      metadata: { email: user.email },
+    });
   },
 };

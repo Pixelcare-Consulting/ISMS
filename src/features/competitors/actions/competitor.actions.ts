@@ -7,7 +7,11 @@ import {
   createCompetitorObservationSchema,
   updateCompetitorObservationSchema,
 } from "@/features/competitors/schemas/competitor.schema";
-import { hasPermission, requirePermission } from "@/lib/auth/permissions";
+import {
+  hasPermission,
+  requirePermission,
+  requireTenantSetupAdminOrAnyPermission,
+} from "@/lib/auth/permissions";
 
 function revalidateCompetitors() {
   revalidatePath("/competitors");
@@ -20,12 +24,16 @@ function hasFullAccess(permissions: string[] | undefined) {
   );
 }
 
+function requireCompetitorView() {
+  return requireTenantSetupAdminOrAnyPermission(["competitors.view"]);
+}
+
 export async function listCompetitorObservationsAction(filter?: {
   branchId?: string | null;
   competitorBrandId?: string | null;
   competitorName?: string | null;
 }) {
-  const session = await requirePermission("competitors.view");
+  const session = await requireCompetitorView();
   return competitorService.list(
     session.user.tenantId,
     session.user.id,
@@ -39,7 +47,7 @@ export async function listCompetitorObservationsAction(filter?: {
 }
 
 export async function getCompetitorKpisAction() {
-  const session = await requirePermission("competitors.view");
+  const session = await requireCompetitorView();
   return competitorService.getKpis(
     session.user.tenantId,
     session.user.id,
@@ -48,7 +56,7 @@ export async function getCompetitorKpisAction() {
 }
 
 export async function listCompetitorFormOptionsAction() {
-  const session = await requirePermission("competitors.view");
+  const session = await requireCompetitorView();
   return competitorService.listFormOptions(
     session.user.tenantId,
     session.user.id,

@@ -18,11 +18,21 @@ export const updateProfileSchema = z.object({
   image: profileImageSchema.optional().nullable(),
 });
 
+/** Profile password change. Minimum length only; longer passwords stay allowed. */
+export const PROFILE_PASSWORD_MIN = 6;
+
 export const changePasswordSchema = z
   .object({
-    currentPassword: z.string().min(8, "Current password is required"),
-    newPassword: z.string().min(8, "New password must be at least 8 characters"),
-    confirmPassword: z.string().min(8),
+    currentPassword: z
+      .string()
+      .min(PROFILE_PASSWORD_MIN, "Current password is required"),
+    newPassword: z
+      .string()
+      .min(
+        PROFILE_PASSWORD_MIN,
+        `New password must be at least ${PROFILE_PASSWORD_MIN} characters`,
+      ),
+    confirmPassword: z.string().min(PROFILE_PASSWORD_MIN),
   })
   .refine((data) => data.newPassword === data.confirmPassword, {
     message: "Passwords do not match",
