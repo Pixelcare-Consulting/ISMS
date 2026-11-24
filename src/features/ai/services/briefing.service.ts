@@ -163,7 +163,7 @@ export async function getCachedDashboardBriefing(
   surface: DashboardBriefingSurface = "operations",
 ): Promise<DashboardBriefing | null> {
   const caps = resolveDashboardCapabilities(session.user.permissions);
-  const { persona } = resolveDashboardPersona(session.user.roleSlugs, caps);
+  const { persona } = resolveDashboardPersona(caps, session.user.permissions);
   const key = briefingCacheKey(session, persona, surface);
   const local = memoryGet(key);
   if (local) return local;
@@ -183,7 +183,7 @@ export async function generateDashboardBriefing(
   const surface = options?.surface ?? "operations";
   const permissions = session.user.permissions;
   const caps = resolveDashboardCapabilities(permissions);
-  const { persona, label } = resolveDashboardPersona(session.user.roleSlugs, caps);
+  const { persona, label } = resolveDashboardPersona(caps, permissions);
   const key = briefingCacheKey(session, persona, surface);
 
   if (!options?.force) {

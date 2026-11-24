@@ -1,11 +1,12 @@
 import { DELIVERY_WORKFLOW_CODE } from "@/features/logistics/constants/workflow-codes";
 import { lockDeliveryRow, txWorkflowCodeId } from "@/features/logistics/services/delivery-settle";
 import { prisma } from "@/lib/database/client";
+import { holdsPermissionWhere } from "@/lib/auth/permission-holders";
+import { orderStepPermission } from "@/features/orders/constants/order-step-permissions";
 import { resolvePagination, toPaginatedResult } from "@/lib/shared/pagination";
 import {
   getInitialOrderStatus,
   getOrderApprovalChain,
-  TEAM_LEADER_ROLE_SLUG,
 } from "@/features/orders/constants/order-workflow";
 import {
   hasQueryableTypeScopes,
@@ -108,17 +109,13 @@ function orderPrismaOrderBy(
 
 export const orderRepository = {
   /**
-   * Every active Team Leader for the Orders filter. A leader with no branches is
-   * still listed. Choosing one limits orders to that person's branches.
+   * Team Leaders for the Orders filter: every active user holding the Team Leader review
+   * checkbox. A leader with no branches is still listed. Choosing one limits orders to that
+   * person's branches.
    */
   listTeamLeaderOptions(tenantId: string) {
     return prisma.user.findMany({
-      where: {
-        tenantId,
-        deletedAt: null,
-        disabledAt: null,
-        userRoles: { some: { role: { slug: TEAM_LEADER_ROLE_SLUG, deletedAt: null } } },
-      },
+      where: holdsPermissionWhere(tenantId, orderStepPermission("auto_replenish", "approve_tl")),
       select: { id: true, name: true, email: true },
       orderBy: [{ name: "asc" }, { email: "asc" }],
     });

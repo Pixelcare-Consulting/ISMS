@@ -205,7 +205,7 @@ export async function OrdersTypePage({
   const activeTab = parseOrdersPageTab(params.tab, pageTabs);
   const page = Number(params.page) || 1;
   const limit = parseTablePageSize(params.limit);
-  const viewerRoleSlugs = session.user.roleSlugs ?? [];
+  const viewerPermissions = session.user.permissions ?? [];
   const canCreateManual = hasOrderPermission(session.user.permissions, "manual", "create");
   const canCreateSpecial = hasOrderPermission(session.user.permissions, "special", "create");
   const canEdit = combinedManualSpecial
@@ -367,7 +367,7 @@ export async function OrdersTypePage({
                 <OrdersTable
                   result={ordersResult}
                   canCheckSap={canCheckSap}
-                  viewerRoleSlugs={viewerRoleSlugs}
+                  viewerPermissions={viewerPermissions}
                   canEdit={canEdit}
                   fixedOrderType={combinedManualSpecial ? undefined : orderType}
                   listFilter={combinedManualSpecial ? listFilter : undefined}

@@ -1,3 +1,6 @@
+jest.mock("@/lib/auth/permission-holders", () => ({
+  listUserIdsWithPermission: jest.fn().mockResolvedValue([]),
+}));
 jest.mock("@/features/orders/services/order-sap-close", () => ({
   closeOrderSapDocument: jest.fn(),
 }));
@@ -87,6 +90,14 @@ import { orderingPolicyService } from "@/features/ordering/services/ordering-pol
 import { sapService } from "@/features/sap/services/sap.service";
 import { sendWorkflowEmail } from "@/lib/notifications/workflow-email";
 
+/** Supply Planning approval on every order type. */
+const SP_STEPS = [
+  "orders.manual.approve_sp",
+  "orders.special.approve_sp",
+  "orders.auto_replenish.approve_sp",
+];
+const TL_STEPS = ["orders.auto_replenish.approve_tl"];
+
 const findById = orderRepository.findById as jest.Mock;
 const addApproval = orderRepository.addApproval as jest.Mock;
 const updateStatus = orderRepository.updateStatus as jest.Mock;
@@ -164,7 +175,7 @@ describe("order approval integrity", () => {
     findById.mockResolvedValue(reviewOrder());
 
     await expect(
-      orderService.approve("tenant-1", "user-1", "order-1", ["sp"], {
+      orderService.approve("tenant-1", "user-1", "order-1", SP_STEPS, {
         lineAdjustments: [{ detailId: "foreign-detail", approvedQty: 0 }],
       }),
     ).rejects.toThrow("One or more lines do not belong to this order.");
@@ -178,7 +189,7 @@ describe("order approval integrity", () => {
     findById.mockResolvedValue(reviewOrder());
 
     await expect(
-      orderService.approve("tenant-1", "user-1", "order-1", ["sp"], {
+      orderService.approve("tenant-1", "user-1", "order-1", SP_STEPS, {
         lineAdjustments: [{ detailId: "detail-1", approvedQty }],
       }),
     ).rejects.toThrow("Approved quantity must be a whole number from 0 through 100,000.");
@@ -191,7 +202,7 @@ describe("order approval integrity", () => {
     findById.mockResolvedValue(reviewOrder());
 
     await expect(
-      orderService.approve("tenant-1", "user-1", "order-1", ["sp"], {
+      orderService.approve("tenant-1", "user-1", "order-1", SP_STEPS, {
         lineAdjustments: [{ detailId: "detail-1", approvedQty: 0 }],
       }),
     ).rejects.toThrow("Approve at least one unit, or cancel the request instead.");
@@ -204,7 +215,7 @@ describe("order approval integrity", () => {
     findOrderableModels.mockResolvedValue([{ id: "model-2", brandId: "brand-2" }]);
     completeSapPost();
 
-    await orderService.approve("tenant-1", "user-1", "order-1", ["sp"], {
+    await orderService.approve("tenant-1", "user-1", "order-1", SP_STEPS, {
       lineAdjustments: [
         { detailId: "detail-1", approvedQty: 6 },
         { modelId: "model-2", approvedQty: 3, spRemarks: "Added by SP" },
@@ -228,7 +239,7 @@ describe("order approval integrity", () => {
     findById.mockResolvedValue(reviewOrder());
 
     await expect(
-      orderService.approve("tenant-1", "user-1", "order-1", ["sp"], {
+      orderService.approve("tenant-1", "user-1", "order-1", SP_STEPS, {
         lineAdjustments: [{ modelId: "model-1", approvedQty: 2 }],
       }),
     ).rejects.toThrow("A model was approved twice. Refresh the order and try again.");
@@ -240,7 +251,7 @@ describe("order approval integrity", () => {
     findById.mockResolvedValue(reviewOrder());
 
     await expect(
-      orderService.approve("tenant-1", "user-1", "order-1", ["sp"], {
+      orderService.approve("tenant-1", "user-1", "order-1", SP_STEPS, {
         expectedUpdatedAt: "2026-10-18T02:00:00.000Z",
         lineAdjustments: [{ detailId: "detail-1", approvedQty: 2, spRemarks: "Align to shelf" }],
       }),
@@ -258,7 +269,7 @@ describe("order approval integrity", () => {
     );
 
     await expect(
-      orderService.approve("tenant-1", "user-1", "order-1", ["tl"], {
+      orderService.approve("tenant-1", "user-1", "order-1", TL_STEPS, {
         lineAdjustments: [{ detailId: "detail-1", approvedQty: 4, spRemarks: "Not yet" }],
       }),
     ).rejects.toThrow(
@@ -276,7 +287,7 @@ describe("order approval integrity", () => {
       reviewOrder({ status: "pending_tl", orderType: "auto_replenish" }),
     );
 
-    await orderService.approve("tenant-1", "user-1", "order-1", ["tl"], {
+    await orderService.approve("tenant-1", "user-1", "order-1", TL_STEPS, {
       comment: "Looks good",
     });
 
@@ -297,7 +308,7 @@ describe("order approval integrity", () => {
     });
 
     await expect(
-      orderService.approve("tenant-1", "user-1", "order-1", ["sp"], {
+      orderService.approve("tenant-1", "user-1", "order-1", SP_STEPS, {
         expectedUpdatedAt: LOADED_AT.toISOString(),
       }),
     ).rejects.toThrow("North Branch has no dealer. Set the dealer before final approval.");
@@ -307,7 +318,7 @@ describe("order approval integrity", () => {
   it("stores the routed SAP document type on final approval", async () => {
     findById.mockResolvedValue(reviewOrder());
     completeSapPost();
-    await orderService.approve("tenant-1", "user-1", "order-1", ["sp"], {
+    await orderService.approve("tenant-1", "user-1", "order-1", SP_STEPS, {
       expectedUpdatedAt: LOADED_AT.toISOString(),
     });
     expect(finalizeApproved).toHaveBeenCalledWith(
@@ -337,7 +348,7 @@ describe("order approval integrity", () => {
     });
     completeSapPost();
 
-    await orderService.approve("tenant-1", "user-1", "order-1", ["sp"], {
+    await orderService.approve("tenant-1", "user-1", "order-1", SP_STEPS, {
       comment: "Approved for the window",
       expectedUpdatedAt: LOADED_AT.toISOString(),
       reviewSnapshot: { onHand: 4, sales: "N/A" },
@@ -391,7 +402,7 @@ describe("order approval integrity", () => {
     ]);
 
     await expect(
-      orderService.approve("tenant-1", "user-1", "order-1", ["sp"], {
+      orderService.approve("tenant-1", "user-1", "order-1", SP_STEPS, {
         comment: "Approved for the window",
         expectedUpdatedAt: LOADED_AT.toISOString(),
         lineAdjustments: [{ detailId: "detail-1", approvedQty: 2, spRemarks: "Align to shelf" }],
@@ -420,7 +431,7 @@ describe("order approval integrity", () => {
     processPendingJobs.mockResolvedValue([{ jobId: "job-1", status: "completed" }]);
 
     await expect(
-      orderService.approve("tenant-1", "user-1", "order-1", ["sp"], {
+      orderService.approve("tenant-1", "user-1", "order-1", SP_STEPS, {
         expectedUpdatedAt: LOADED_AT.toISOString(),
       }),
     ).rejects.toThrow("SAP could not finish this order.");
@@ -471,7 +482,7 @@ describe("orderService.cancelApproved", () => {
   it("closes the ITR in SAP, then cancels the order and its empty delivery", async () => {
     findApprovedCancelContext.mockResolvedValue(approvedOrder());
 
-    const result = await orderService.cancelApproved("tenant-1", "sp-1", "order-1", ["sp"]);
+    const result = await orderService.cancelApproved("tenant-1", "sp-1", "order-1", SP_STEPS);
 
     expect(closeSap).toHaveBeenCalledWith("tenant-1", {
       type: "ITR",
@@ -491,7 +502,7 @@ describe("orderService.cancelApproved", () => {
   it("refuses a role that is not Supply Planning, before touching SAP", async () => {
     findApprovedCancelContext.mockResolvedValue(approvedOrder());
 
-    await expect(orderService.cancelApproved("tenant-1", "tl-1", "order-1", ["tl"])).rejects.toThrow(
+    await expect(orderService.cancelApproved("tenant-1", "tl-1", "order-1", TL_STEPS)).rejects.toThrow(
       "Only Supply Planning",
     );
     expect(closeSap).not.toHaveBeenCalled();
@@ -500,7 +511,7 @@ describe("orderService.cancelApproved", () => {
   it("refuses once the delivery has units or followed SAP documents", async () => {
     findApprovedCancelContext.mockResolvedValue(approvedOrder({ sapDocuments: 1 }));
 
-    await expect(orderService.cancelApproved("tenant-1", "sp-1", "order-1", ["sp"])).rejects.toThrow(
+    await expect(orderService.cancelApproved("tenant-1", "sp-1", "order-1", SP_STEPS)).rejects.toThrow(
       "already received SAP documents or units",
     );
     expect(closeSap).not.toHaveBeenCalled();
@@ -510,7 +521,7 @@ describe("orderService.cancelApproved", () => {
     findApprovedCancelContext.mockResolvedValue(approvedOrder(null));
     cancelApproved.mockRejectedValue(new Error("This order changed. Refresh and review again."));
 
-    await expect(orderService.cancelApproved("tenant-1", "sp-1", "order-1", ["sp"])).rejects.toThrow(
+    await expect(orderService.cancelApproved("tenant-1", "sp-1", "order-1", SP_STEPS)).rejects.toThrow(
       "ITR 372656 is closed in SAP, but the order could not be cancelled in ISMS",
     );
   });

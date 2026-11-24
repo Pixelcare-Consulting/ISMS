@@ -4,14 +4,13 @@ jest.mock("@/lib/database/client", () => ({
   },
 }));
 
-import { TEAM_LEADER_ROLE_SLUG } from "@/features/orders/constants/order-workflow";
 import { orderRepository } from "@/features/orders/repositories/order.repository";
 import { prisma } from "@/lib/database/client";
 
 const findMany = prisma.user.findMany as jest.Mock;
 
 describe("orderRepository.listTeamLeaderOptions", () => {
-  it("lists every active user with the Team Leader role", async () => {
+  it("lists every active user holding the Team Leader review checkbox", async () => {
     findMany.mockResolvedValue([
       { id: "tl-maria", name: "Maria Santos", email: "maria@example.com" },
     ]);
@@ -25,7 +24,17 @@ describe("orderRepository.listTeamLeaderOptions", () => {
         tenantId: "tenant-1",
         deletedAt: null,
         disabledAt: null,
-        userRoles: { some: { role: { slug: TEAM_LEADER_ROLE_SLUG, deletedAt: null } } },
+        userRoles: {
+          some: {
+            role: {
+              tenantId: "tenant-1",
+              deletedAt: null,
+              rolePermissions: {
+                some: { permission: { slug: "orders.auto_replenish.approve_tl" } },
+              },
+            },
+          },
+        },
       },
       select: { id: true, name: true, email: true },
       orderBy: [{ name: "asc" }, { email: "asc" }],

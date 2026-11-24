@@ -129,7 +129,7 @@ export async function approveInventoryDefectAction(input: unknown) {
     await defectService.approveDefect({
       tenantId: session.user.tenantId,
       actorUserId: session.user.id,
-      roleSlugs: session.user.roleSlugs,
+      permissions: session.user.permissions,
       reportId: parsed.data.reportId,
       decisionRemarks: parsed.data.decisionRemarks,
     });
@@ -153,7 +153,7 @@ export async function rejectInventoryDefectAction(input: unknown) {
     await defectService.rejectDefect({
       tenantId: session.user.tenantId,
       actorUserId: session.user.id,
-      roleSlugs: session.user.roleSlugs,
+      permissions: session.user.permissions,
       reportId: parsed.data.reportId,
       decisionRemarks: parsed.data.decisionRemarks,
     });

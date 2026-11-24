@@ -1,18 +1,38 @@
 import type { BranchOrderSource, BranchOrderStatus, BranchOrderType } from "@prisma/client";
 
 import { BRANCH_ORDER_STATUS_LABELS } from "@/features/orders/constants/order-status";
+import {
+  holdsOrderStep,
+  orderStepPermission,
+} from "@/features/orders/constants/order-step-permissions";
 
-/** Role slug of Team Leaders: the first approver on auto-replenish orders. */
-export const TEAM_LEADER_ROLE_SLUG = "tl";
-
-/** Seeded Product Specialist role. Manual and special lists for this slug are their own orders. */
-export const PRODUCT_SPECIALIST_ROLE_SLUG = "ps";
+export type OrderApprovalStage = "tl" | "sp";
 
 export interface OrderApprovalStep {
   level: number;
-  roleSlug: string;
+  /** Written to approval history (`role_slug`) and used for its labels. Never an access check. */
+  roleSlug: OrderApprovalStage;
   status: BranchOrderStatus;
   label: string;
+  /** Checkbox that lets a person act at this step. */
+  permission: string;
+}
+
+const STAGE_ACTION = { tl: "approve_tl", sp: "approve_sp" } as const;
+const STAGE_LABEL = { tl: "Team Leader", sp: "Supply Planning" } as const;
+
+function step(
+  orderType: BranchOrderType,
+  level: number,
+  stage: OrderApprovalStage,
+): OrderApprovalStep {
+  return {
+    level,
+    roleSlug: stage,
+    status: stage === "tl" ? "pending_tl" : "pending_sp",
+    label: STAGE_LABEL[stage],
+    permission: orderStepPermission(orderType, STAGE_ACTION[stage]),
+  };
 }
 
 /**
@@ -28,19 +48,10 @@ export interface OrderApprovalStep {
 export function getOrderApprovalChain(orderType: BranchOrderType): OrderApprovalStep[] {
   switch (orderType) {
     case "special":
-      return [{ level: 1, roleSlug: "sp", status: "pending_sp", label: "Supply Planning" }];
-    case "auto_replenish":
-      return [
-        { level: 1, roleSlug: "tl", status: "pending_tl", label: "Team Leader" },
-        { level: 2, roleSlug: "sp", status: "pending_sp", label: "Supply Planning" },
-      ];
     case "manual":
-      return [{ level: 1, roleSlug: "sp", status: "pending_sp", label: "Supply Planning" }];
-    default:
-      return [
-        { level: 1, roleSlug: "tl", status: "pending_tl", label: "Team Leader" },
-        { level: 2, roleSlug: "sp", status: "pending_sp", label: "Supply Planning" },
-      ];
+      return [step(orderType, 1, "sp")];
+    case "auto_replenish":
+      return [step(orderType, 1, "tl"), step(orderType, 2, "sp")];
   }
 }
 
@@ -68,40 +79,30 @@ export function nextStatusAfterApprove(
   return chain[idx + 1].status;
 }
 
-/** Roles that may perform Supply Planning (SP) final approval — includes SPA aliases. */
-export const SUPPLY_PLANNING_APPROVER_SLUGS = [
-  "sp",
-  "spa",
-  "supply_planning",
-  "supply_planning_associate",
-] as const;
-
-export function isSupplyPlanningApproverRole(roleSlugs: string[]): boolean {
-  return SUPPLY_PLANNING_APPROVER_SLUGS.some((slug) => roleSlugs.includes(slug));
+/** Holds the type's Supply Planning approval checkbox. */
+export function holdsSupplyPlanningStep(
+  orderType: BranchOrderType,
+  permissions: readonly string[] | undefined,
+): boolean {
+  return holdsOrderStep(permissions, orderType, "approve_sp");
 }
 
+/**
+ * Whether this person may approve or decline at the order's current step.
+ * Legacy `pending_ps` / `pending_logistics` rows (no new orders reach them) are decided
+ * by the type's Supply Planning approval holders.
+ */
 export function canApproveOrder(
   status: BranchOrderStatus,
   orderType: BranchOrderType,
-  roleSlugs: string[],
+  permissions: readonly string[] | undefined,
 ): boolean {
-  if (status === "pending_logistics" && roleSlugs.includes("logistics")) {
-    return true;
+  if (status === "pending_logistics" || (status === "pending_ps" && orderType === "manual")) {
+    return holdsSupplyPlanningStep(orderType, permissions);
   }
-  if (
-    status === "pending_ps" &&
-    orderType === "manual" &&
-    roleSlugs.includes(PRODUCT_SPECIALIST_ROLE_SLUG)
-  ) {
-    return true;
-  }
-
-  const step = getOrderApprovalChain(orderType).find((s) => s.status === status);
-  if (!step) return false;
-  if (step.roleSlug === "sp") {
-    return isSupplyPlanningApproverRole(roleSlugs);
-  }
-  return roleSlugs.includes(step.roleSlug);
+  const current = getOrderApprovalChain(orderType).find((s) => s.status === status);
+  if (!current) return false;
+  return permissions?.includes(current.permission) ?? false;
 }
 
 /**
@@ -109,23 +110,34 @@ export function canApproveOrder(
  * anything was copied from that document yet is checked against SAP on cancel.
  */
 export function canCancelApprovedOrder(
-  order: { status: BranchOrderStatus; source: BranchOrderSource; sapDocEntry: number | null },
-  roleSlugs: string[],
+  order: {
+    status: BranchOrderStatus;
+    orderType: BranchOrderType;
+    source: BranchOrderSource;
+    sapDocEntry: number | null;
+  },
+  permissions: readonly string[] | undefined,
 ): boolean {
   return (
     order.status === "approved" &&
     order.source === "ISMS" &&
     order.sapDocEntry != null &&
-    isSupplyPlanningApproverRole(roleSlugs)
+    holdsSupplyPlanningStep(order.orderType, permissions)
   );
 }
 
-/** PS / TL may optionally edit Manual orders while they await Supply Planning. */
-export function canOptionallyEditManualOrder(roleSlugs: string[]): boolean {
-  return (
-    roleSlugs.includes(PRODUCT_SPECIALIST_ROLE_SLUG) ||
-    roleSlugs.includes(TEAM_LEADER_ROLE_SLUG)
-  );
+/** "Edit while Pending SP": change Manual lines before Supply Planning decides. */
+export function canOptionallyEditManualOrder(permissions: readonly string[] | undefined): boolean {
+  return holdsOrderStep(permissions, "manual", "edit_pending");
+}
+
+/** SP remarks on lines are saved only by the Supply Planning step. */
+export function canPersistSpRemarks(
+  status: BranchOrderStatus,
+  orderType: BranchOrderType,
+  permissions: readonly string[] | undefined,
+): boolean {
+  return status === "pending_sp" && holdsSupplyPlanningStep(orderType, permissions);
 }
 
 /**
@@ -136,7 +148,7 @@ export function canOptionallyEditManualOrder(roleSlugs: string[]): boolean {
 export function canEditOrderLines(opts: {
   status: BranchOrderStatus;
   orderType: BranchOrderType;
-  roleSlugs: string[];
+  permissions: readonly string[] | undefined;
   hasCreatePermission: boolean;
 }): boolean {
   if (!isOrderEditable(opts.status, opts.orderType)) return false;
@@ -144,7 +156,7 @@ export function canEditOrderLines(opts: {
   return (
     opts.orderType === "manual" &&
     opts.status === "pending_sp" &&
-    canOptionallyEditManualOrder(opts.roleSlugs)
+    canOptionallyEditManualOrder(opts.permissions)
   );
 }
 
@@ -160,16 +172,16 @@ export function isSupplyPlanningApprovalStep(
   status: BranchOrderStatus,
   orderType: BranchOrderType,
 ): boolean {
-  const step = getOrderApprovalChain(orderType).find((s) => s.status === status);
-  return step?.roleSlug === "sp";
+  const current = getOrderApprovalChain(orderType).find((s) => s.status === status);
+  return current?.roleSlug === "sp";
 }
 
 export function getApprovalLevelForStatus(
   status: BranchOrderStatus,
   orderType: BranchOrderType,
 ): number {
-  const step = getOrderApprovalChain(orderType).find((s) => s.status === status);
-  if (step) return step.level;
+  const current = getOrderApprovalChain(orderType).find((s) => s.status === status);
+  if (current) return current.level;
   if (status === "pending_logistics") return 4;
   return 1;
 }
@@ -178,8 +190,8 @@ export function getRoleSlugForApproval(
   status: BranchOrderStatus,
   orderType: BranchOrderType,
 ): string {
-  const step = getOrderApprovalChain(orderType).find((s) => s.status === status);
-  if (step) return step.roleSlug;
+  const current = getOrderApprovalChain(orderType).find((s) => s.status === status);
+  if (current) return current.roleSlug;
   if (status === "pending_logistics") return "logistics";
   return "reviewer";
 }
@@ -218,76 +230,78 @@ const _allStatusesPartitioned: Record<BranchOrderStatus, OrderLifecycleStatus> =
 };
 void _allStatusesPartitioned;
 
-const ORDER_QUEUE_OVERSIGHT_ROLE_SLUGS = ["super_admin", "tenant_admin"] as const;
-
-export function isOrderQueueOversightRole(roleSlugs: string[]): boolean {
-  return ORDER_QUEUE_OVERSIGHT_ROLE_SLUGS.some((slug) => roleSlugs.includes(slug));
+/** "See every pending step": the full live pipeline for this type. */
+export function canViewFullOrderQueue(
+  orderType: BranchOrderType,
+  permissions: readonly string[] | undefined,
+): boolean {
+  return holdsOrderStep(permissions, orderType, "view_queue");
 }
 
 /**
- * Product Specialists see only manual and special orders they created.
- * Oversight and Supply Planning keep the wider queue, including other people's Pending SP.
- * A Team Leader who is not a Product Specialist does not match, so that queue stays as it is.
+ * Manual and special lists show only the viewer's own orders unless they hold
+ * "See everyone's orders" for that type. Auto replenish has no creator limit.
  */
-export function isProductSpecialistOwnOrdersOnly(roleSlugs: string[]): boolean {
-  return (
-    roleSlugs.includes(PRODUCT_SPECIALIST_ROLE_SLUG) &&
-    !isOrderQueueOversightRole(roleSlugs) &&
-    !isSupplyPlanningApproverRole(roleSlugs)
-  );
+export function isOwnOrdersOnly(
+  orderType: BranchOrderType,
+  permissions: readonly string[] | undefined,
+): boolean {
+  if (orderType === "auto_replenish") return false;
+  return !holdsOrderStep(permissions, orderType, "view_all");
 }
 
 /** Direct order pages use the same creator limit as the manual and special lists. */
-export function mayViewOrderAsProductSpecialist(input: {
-  roleSlugs: string[];
+export function mayViewOrder(input: {
+  orderType: BranchOrderType;
+  permissions: readonly string[] | undefined;
   viewerUserId: string;
   createdById: string;
 }): boolean {
-  if (!isProductSpecialistOwnOrdersOnly(input.roleSlugs)) return true;
+  if (!isOwnOrdersOnly(input.orderType, input.permissions)) return true;
   return input.createdById === input.viewerUserId;
 }
 
 /**
  * Statuses shown on the Orders tab for this viewer.
- * Workflow roles only see the step they can review (plus drafts if they can create).
- * For Manual, PS/TL also see pending_sp so they can optionally edit before SP decides.
- * Tenant / Super Admin see the full live pipeline. Approved / rejected / cancelled stay in History.
+ * Each person sees the steps they can act on (plus drafts if they can create).
+ * For Manual, "Edit while Pending SP" also shows pending_sp.
+ * "See every pending step" shows the full live pipeline. Finished orders stay in History.
  */
 export function getOrderQueueStatuses(
   orderType: BranchOrderType,
-  roleSlugs: string[],
+  permissions: readonly string[] | undefined,
   options?: { includeDraft?: boolean },
 ): BranchOrderStatus[] {
-  if (isOrderQueueOversightRole(roleSlugs)) {
+  if (canViewFullOrderQueue(orderType, permissions)) {
     return [...ORDER_QUEUE_STATUSES];
   }
 
   return ORDER_QUEUE_STATUSES.filter((status) => {
     if (status === "draft") return Boolean(options?.includeDraft);
-    if (canApproveOrder(status, orderType, roleSlugs)) return true;
+    if (canApproveOrder(status, orderType, permissions)) return true;
     return (
       orderType === "manual" &&
       status === "pending_sp" &&
-      canOptionallyEditManualOrder(roleSlugs)
+      canOptionallyEditManualOrder(permissions)
     );
   });
 }
 
 /**
- * Sidebar badge: only approval/review steps this role can act on (never drafts).
- * Oversight roles see every live pending step except draft.
+ * Sidebar badge: only steps this person can act on (never drafts).
+ * "See every pending step" counts every live pending step except draft.
  * Optional Manual edit visibility does not inflate the badge.
  */
 export function getOrderActionableQueueStatuses(
   orderType: BranchOrderType,
-  roleSlugs: string[],
+  permissions: readonly string[] | undefined,
 ): BranchOrderStatus[] {
-  if (isOrderQueueOversightRole(roleSlugs)) {
+  if (canViewFullOrderQueue(orderType, permissions)) {
     return ORDER_QUEUE_STATUSES.filter((status) => status !== "draft");
   }
   return ORDER_QUEUE_STATUSES.filter(
     (status) =>
-      status !== "draft" && canApproveOrder(status, orderType, roleSlugs),
+      status !== "draft" && canApproveOrder(status, orderType, permissions),
   );
 }
 
@@ -311,12 +325,7 @@ export function canDeleteDraftOrder(opts: { status: BranchOrderStatus }): boolea
   return opts.status === "draft";
 }
 
-/** Super Admin bulk cancel / discard on the Orders list (not Tenant Admin). */
-export function isSuperAdminOrderOverride(roleSlugs: string[]): boolean {
-  return roleSlugs.includes("super_admin");
-}
-
-/** Live pending queue rows a Super Admin may force to Cancelled (Order History). */
+/** Live pending queue rows "Cancel any pending order" may force to Cancelled (Order History). */
 export function canAdminForceCancelOrder(opts: { status: BranchOrderStatus }): boolean {
   return isOrderPendingApproval(opts.status);
 }

@@ -26,8 +26,8 @@ jest.mock("@/lib/auth/permissions", () => ({
   hasPermission: jest.fn(() => true),
 }));
 jest.mock("@/lib/aor/scope", () => ({ getUserBranchIds: jest.fn() }));
-jest.mock("@/features/aors/repositories/aor.repository", () => ({
-  aorRepository: { listUserIdsForBranchByRole: jest.fn() },
+jest.mock("@/lib/auth/permission-holders", () => ({
+  listUserIdsWithPermission: jest.fn(),
 }));
 jest.mock("@/features/notifications/services/notification.service", () => ({
   notificationService: { createNotification: jest.fn() },
@@ -61,7 +61,7 @@ jest.mock("@/features/reason-status/services/reason-status.service", () => ({
 import * as dbClient from "@/lib/database/client";
 import { authorizeCreateBranches, claimInventory } from "@/features/logistics/services/posting-support";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
-import { aorRepository } from "@/features/aors/repositories/aor.repository";
+import { listUserIdsWithPermission } from "@/lib/auth/permission-holders";
 import { transferPostingService } from "@/features/logistics/services/transfer-posting.service";
 import { notificationService } from "@/features/notifications/services/notification.service";
 import { getUserBranchIds } from "@/lib/aor/scope";
@@ -72,12 +72,11 @@ const mockTx = (dbClient as unknown as { mockTx: Mocks }).mockTx;
 const actor = {
   tenantId: "t1",
   userId: "u1",
-  permissions: ["logistics.manage"],
-  roleSlugs: ["tl"],
+  permissions: ["logistics.manage", "logistics.delivery_transfer.approve"],
 };
 
 const assignedBranches = getUserBranchIds as jest.Mock;
-const branchTls = aorRepository.listUserIdsForBranchByRole as jest.Mock;
+const branchTls = listUserIdsWithPermission as jest.Mock;
 const createNotification = notificationService.createNotification as jest.Mock;
 
 function transfer(code: string, decision = "pending") {
@@ -143,40 +142,45 @@ function requestTransfer() {
 }
 
 describe("who can decide a transfer", () => {
-  const onlyTl = "Only the team leader assigned to the releasing branch can decide this transfer";
+  const onlyTl = "Only an approver assigned to the releasing branch can decide this transfer";
 
   it.each([
-    ["a team leader on another branch", ["tl"], ["b9"]],
-    ["a team leader with no AOR rows", ["tl"], null],
-    ["another role assigned to the branch", ["logistics"], ["b1"]],
-    ["a tenant admin", ["tenant_admin"], null],
-  ])("refuses %s", async (_label, roleSlugs, branches) => {
+    ["an approver on another branch", ["logistics.delivery_transfer.approve"], ["b9"]],
+    ["an approver with no AOR rows", ["logistics.delivery_transfer.approve"], null],
+    ["someone assigned to the branch without the checkbox", ["logistics.manage", "tl"], ["b1"]],
+    ["Manage branches without the checkbox", ["branches.manage"], null],
+  ])("refuses %s", async (_label, permissions, branches) => {
     setUp("pending_tl", "RSV");
     assignedBranches.mockResolvedValue(branches);
-    const someone = { ...actor, roleSlugs };
+    const someone = { ...actor, permissions };
 
     await expect(transferPostingService.approve(someone, "x1")).rejects.toThrow(onlyTl);
     await expect(transferPostingService.reject(someone, "x1")).rejects.toThrow(onlyTl);
     expect(mockTx.inventoryApproval.updateMany).not.toHaveBeenCalled();
   });
 
-  it("lets a super admin step in", async () => {
+  it("lets Manage branches with the checkbox step in on any branch", async () => {
     setUp("pending_tl", "RSV");
     assignedBranches.mockResolvedValue(null);
 
-    await transferPostingService.approve({ ...actor, roleSlugs: ["super_admin"] }, "x1");
+    await transferPostingService.approve(
+      { ...actor, permissions: ["logistics.delivery_transfer.approve", "branches.manage"] },
+      "x1",
+    );
 
     expect(mockTx.inventoryApproval.updateMany).toHaveBeenCalled();
   });
 });
 
 describe("approval request", () => {
-  it("goes to each team leader assigned to the releasing branch", async () => {
+  it("goes to each Transfers Approve holder assigned to the releasing branch", async () => {
     branchTls.mockResolvedValue(["tl-1", "tl-2"]);
 
     await requestTransfer();
 
-    expect(branchTls).toHaveBeenCalledWith("t1", "b1", "tl");
+    expect(branchTls).toHaveBeenCalledWith("t1", "logistics.delivery_transfer.approve", {
+      aorBranchId: "b1",
+    });
     expect(createNotification.mock.calls.map(([call]) => call.data)).toEqual([
       expect.objectContaining({
         audience: "USER",

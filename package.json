@@ -38,6 +38,7 @@
     "db:seed:inventory-demo": "dotenv -e .env.local -- tsx scripts/seed-inventory-demo.ts",
     "db:grant:monthly-sir": "dotenv -e .env.local -- tsx scripts/grant-monthly-sir-view.ts",
     "db:grant:pullout-actions": "dotenv -e .env.local -- tsx scripts/grant-pullout-actions.ts",
+    "db:report:step-permissions": "dotenv -e .env.local -- tsx scripts/report-step-permissions.ts",
     "demo:warehouse-receive": "dotenv -e .env.local -- tsx scripts/receive-demo-warehouse.ts",
     "db:studio": "dotenv -e .env.local -- prisma studio",
     "docs:modules-matrix": "node scripts/generate-modules-workflow-excel.mjs",

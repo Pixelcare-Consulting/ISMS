@@ -1,5 +1,6 @@
 import {
   appModules,
+  isHiddenPermissionSlug,
   permissionActionLabel,
   parsePermissionSlug,
   roleSectionKey,
@@ -38,7 +39,7 @@ export function groupPermissionsByModule(
 
   for (const permission of permissions) {
     const { module, action } = parsePermissionSlug(permission.slug);
-    if (module?.hidden || (module && roleSectionModule(module).hidden)) {
+    if (isHiddenPermissionSlug(permission.slug)) {
       continue;
     }
     const section = module ? roleSectionModule(module) : null;

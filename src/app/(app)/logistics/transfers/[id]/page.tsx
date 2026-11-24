@@ -32,7 +32,7 @@ export default async function TransferDetailPage({
       detail={result.detail}
       capabilities={resolveLogisticsCapabilities(session.user.permissions)}
       branchScope={branchScope}
-      approvalBranchIds={transferApprovalBranchIds(session.user.roleSlugs, assignedBranchIds)}
+      approvalBranchIds={transferApprovalBranchIds(session.user.permissions, assignedBranchIds)}
       workflowStatuses={workflowStatuses}
     />
   );

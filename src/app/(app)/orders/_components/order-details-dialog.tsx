@@ -74,7 +74,8 @@ interface OrderDetailsDialogProps {
   modeOfPaymentLabel?: string | null;
   lines: OrderDetailsLine[];
   approvalLevels?: OrderDetailsApproval[];
-  roleSlugs?: string[];
+  /** Viewer's permissions, for the Edit button. */
+  permissions?: string[];
   hasCreatePermission?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -125,7 +126,7 @@ export function OrderDetailsDialog({
   sapDocNum = null,
   lines,
   approvalLevels = [],
-  roleSlugs = [],
+  permissions = [],
   hasCreatePermission = false,
   open,
   onOpenChange,
@@ -177,7 +178,7 @@ export function OrderDetailsDialog({
   const showEdit = canEditOrderLines({
     status,
     orderType,
-    roleSlugs,
+    permissions,
     hasCreatePermission,
   });
 

@@ -164,6 +164,7 @@ const SC_ORDERS_ACCESS = [
   "service_centers.orders.view",
   "service_centers.orders.create",
   "service_centers.orders.approve",
+  "service_centers.orders.approve_sp",
 ] as const;
 
 const SC_LOGISTICS_ACCESS = [

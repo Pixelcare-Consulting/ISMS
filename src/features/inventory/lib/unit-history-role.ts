@@ -1,7 +1,14 @@
-import {
-  SUPPLY_PLANNING_APPROVER_SLUGS,
-  TEAM_LEADER_ROLE_SLUG,
-} from "@/features/orders/constants/order-workflow";
+/**
+ * Display label only: which role an approver had, for unit history rows. Never an
+ * access check. Matches the seeded role slugs, like the approval history `role_slug`.
+ */
+const SUPPLY_PLANNING_APPROVER_SLUGS = [
+  "sp",
+  "spa",
+  "supply_planning",
+  "supply_planning_associate",
+] as const;
+const TEAM_LEADER_ROLE_SLUG = "tl";
 
 export const UNIT_HISTORY_SUPPLY_PLANNING = "Supply Planning";
 export const UNIT_HISTORY_TEAM_LEADER = "Team Leader";

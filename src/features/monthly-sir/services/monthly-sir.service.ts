@@ -102,11 +102,10 @@ async function loadFreeSlotCountsForAllowance(input: {
 
 function assertCallerMayUploadPcount(input: {
   permissions: string[] | undefined;
-  roleSlugs: string[] | undefined;
   unrestricted: boolean;
   at?: Date;
 }) {
-  const role = resolvePcountAllowanceRole(input.permissions, input.roleSlugs, {
+  const role = resolvePcountAllowanceRole(input.permissions, {
     unrestricted: input.unrestricted,
   });
   const windows = pcountMonthWindows(input.at);
@@ -181,7 +180,6 @@ export const monthlySirService = {
     userId: string;
     branchId: string;
     permissions: string[] | undefined;
-    roleSlugs: string[] | undefined;
     unrestricted: boolean;
     at?: Date;
   }): Promise<PcountUploadAllowance> {
@@ -191,7 +189,7 @@ export const monthlySirService = {
       input.branchId,
       input.unrestricted,
     );
-    const role = resolvePcountAllowanceRole(input.permissions, input.roleSlugs, {
+    const role = resolvePcountAllowanceRole(input.permissions, {
       unrestricted: input.unrestricted,
     });
     const [counts, policy] = await Promise.all([
@@ -221,7 +219,6 @@ export const monthlySirService = {
     purpose: string;
     unrestricted: boolean;
     permissions: string[] | undefined;
-    roleSlugs: string[] | undefined;
     mode?: "direct" | "request";
   }) {
     const mode = input.mode ?? "request";
@@ -240,7 +237,6 @@ export const monthlySirService = {
       userId: input.userId,
       branchId: input.branchId,
       permissions: input.permissions,
-      roleSlugs: input.roleSlugs,
       unrestricted: input.unrestricted,
     });
     if (allowance.canDirectUpload) {
@@ -278,7 +274,6 @@ export const monthlySirService = {
     purpose: string;
     unrestricted: boolean;
     permissions: string[] | undefined;
-    roleSlugs: string[] | undefined;
   }) {
     await assertBranchAccess(
       input.tenantId,
@@ -291,7 +286,6 @@ export const monthlySirService = {
       userId: input.userId,
       branchId: input.branchId,
       permissions: input.permissions,
-      roleSlugs: input.roleSlugs,
       unrestricted: input.unrestricted,
     });
     if (!allowance.canDirectUpload) {
@@ -540,7 +534,6 @@ export const monthlySirService = {
     requestId: string;
     unrestricted: boolean;
     permissions: string[] | undefined;
-    roleSlugs: string[] | undefined;
     file: Buffer;
   }) {
     const request = await this.getApprovedRequest(
@@ -574,7 +567,6 @@ export const monthlySirService = {
     requestId: string;
     unrestricted: boolean;
     permissions: string[] | undefined;
-    roleSlugs: string[] | undefined;
     file: Buffer;
   }) {
     const request = await this.getApprovedRequest(

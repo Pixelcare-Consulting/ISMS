@@ -1,34 +1,38 @@
 import { getOrderActionableQueueStatuses } from "@/features/orders/constants/order-workflow";
 
 describe("getOrderActionableQueueStatuses", () => {
-  it("does not badge Team Leaders for Manual pending_sp (edit-only, not approve)", () => {
-    expect(getOrderActionableQueueStatuses("manual", ["tl"])).toEqual([]);
+  it("does not badge Edit while Pending SP (edit-only, not approve)", () => {
+    expect(getOrderActionableQueueStatuses("manual", ["orders.manual.edit_pending"])).toEqual([]);
   });
 
-  it("returns SP step for Supply Planning on special orders", () => {
-    expect(getOrderActionableQueueStatuses("special", ["sp"])).toEqual([
+  it("returns the SP step (and legacy pending_logistics) for Supply Planning on special orders", () => {
+    expect(getOrderActionableQueueStatuses("special", ["orders.special.approve_sp"])).toEqual([
       "pending_sp",
+      "pending_logistics",
     ]);
   });
 
-  it("returns SP step for Supply Planning on manual orders", () => {
-    expect(getOrderActionableQueueStatuses("manual", ["sp"])).toEqual([
-      "pending_sp",
-    ]);
-  });
-
-  it("keeps legacy pending_ps for Product Specialists on manual orders", () => {
-    expect(getOrderActionableQueueStatuses("manual", ["ps"])).toEqual([
+  it("returns the SP step and legacy steps for Supply Planning approval on manual orders", () => {
+    expect(getOrderActionableQueueStatuses("manual", ["orders.manual.approve_sp"])).toEqual([
       "pending_ps",
+      "pending_sp",
+      "pending_logistics",
     ]);
   });
 
-  it("returns empty when the role cannot approve any live step", () => {
-    expect(getOrderActionableQueueStatuses("special", ["tl"])).toEqual([]);
+  it("returns the TL step for Team Leader review on auto replenish", () => {
+    expect(
+      getOrderActionableQueueStatuses("auto_replenish", ["orders.auto_replenish.approve_tl"]),
+    ).toEqual(["pending_tl"]);
   });
 
-  it("lets oversight roles see every pending step except draft", () => {
-    expect(getOrderActionableQueueStatuses("manual", ["tenant_admin"])).toEqual([
+  it("returns empty for role slugs or another type's checkbox", () => {
+    expect(getOrderActionableQueueStatuses("special", ["tl", "sp"])).toEqual([]);
+    expect(getOrderActionableQueueStatuses("special", ["orders.manual.approve_sp"])).toEqual([]);
+  });
+
+  it("lets See every pending step count every pending step except draft", () => {
+    expect(getOrderActionableQueueStatuses("manual", ["orders.manual.view_queue"])).toEqual([
       "pending_ps",
       "pending_tl",
       "pending_sp",

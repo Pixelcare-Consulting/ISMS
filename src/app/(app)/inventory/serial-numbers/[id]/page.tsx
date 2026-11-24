@@ -23,7 +23,7 @@ export default async function SerialTraceabilityPage({
     defectApprovalBranchIds(
       session.user.tenantId,
       session.user.id,
-      session.user.roleSlugs,
+      session.user.permissions,
     ),
   ]);
   if (!serial) {

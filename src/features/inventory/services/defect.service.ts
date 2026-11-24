@@ -1,5 +1,4 @@
 import { auditService } from "@/features/audit/services/audit.service";
-import { aorRepository } from "@/features/aors/repositories/aor.repository";
 import {
   inventoryApprovalLedger,
   type InventoryApprovalDocument,
@@ -8,11 +7,12 @@ import { lockSerialNumbers } from "@/features/inventory/services/serial-placemen
 import { aorService } from "@/features/aors/services/aor.service";
 import {
   assertDefectApprover,
+  DEFECT_APPROVE_PERMISSION,
   defectApprovalBranchIds,
 } from "@/features/inventory/lib/defect-approver";
 import { statusUpdatedStamp } from "@/features/inventory/lib/status-updated-stamp";
 import { defectRepository } from "@/features/inventory/repositories/defect.repository";
-import { TEAM_LEADER_ROLE_SLUG } from "@/features/orders/constants/order-workflow";
+import { listUserIdsWithPermission } from "@/lib/auth/permission-holders";
 import { notificationService } from "@/features/notifications/services/notification.service";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { hasPermission } from "@/lib/auth/permissions";
@@ -74,10 +74,10 @@ async function notifyBranchTeamLeaders(input: {
   reason: string;
 }) {
   try {
-    const approverIds = await aorRepository.listUserIdsForBranchByRole(
+    const approverIds = await listUserIdsWithPermission(
       input.tenantId,
-      input.branchId,
-      TEAM_LEADER_ROLE_SLUG,
+      DEFECT_APPROVE_PERMISSION,
+      { aorBranchId: input.branchId },
     );
     const recipients = approverIds.filter((userId) => userId !== input.actorUserId);
     if (recipients.length === 0) return;
@@ -227,7 +227,7 @@ export const defectService = {
   async approveDefect(input: {
     tenantId: string;
     actorUserId: string;
-    roleSlugs: string[] | undefined;
+    permissions: readonly string[] | undefined;
     reportId: string;
     decisionRemarks?: string;
   }) {
@@ -242,7 +242,7 @@ export const defectService = {
     const approvalBranchIds = await defectApprovalBranchIds(
       input.tenantId,
       input.actorUserId,
-      input.roleSlugs,
+      input.permissions,
     );
     assertDefectApprover(approvalBranchIds, report.branchId);
 
@@ -308,7 +308,7 @@ export const defectService = {
   async rejectDefect(input: {
     tenantId: string;
     actorUserId: string;
-    roleSlugs: string[] | undefined;
+    permissions: readonly string[] | undefined;
     reportId: string;
     decisionRemarks?: string;
   }) {
@@ -323,7 +323,7 @@ export const defectService = {
     const approvalBranchIds = await defectApprovalBranchIds(
       input.tenantId,
       input.actorUserId,
-      input.roleSlugs,
+      input.permissions,
     );
     assertDefectApprover(approvalBranchIds, report.branchId);
 

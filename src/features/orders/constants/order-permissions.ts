@@ -1,6 +1,13 @@
 import type { BranchOrderType } from "@prisma/client";
 
+import {
+  holdsOrderStep,
+  ORDER_TYPE_PERMISSION_PREFIX,
+  orderApprovalStepPermissions,
+} from "@/features/orders/constants/order-step-permissions";
 import { hasPermission } from "@/lib/auth/permissions";
+
+export { ORDER_TYPE_PERMISSION_PREFIX };
 
 export type OrderPermissionAction = "view" | "create" | "approve";
 
@@ -17,12 +24,6 @@ export const ORDER_TYPE_NAV_LABEL: Record<BranchOrderType, string> = {
   auto_replenish: "Auto replenish",
 };
 
-export const ORDER_TYPE_PERMISSION_PREFIX: Record<BranchOrderType, string> = {
-  manual: "orders.manual",
-  special: "orders.special",
-  auto_replenish: "orders.auto_replenish",
-};
-
 export const BRANCH_ORDER_TYPES = [
   "manual",
   "special",
@@ -36,18 +37,25 @@ export function orderTypePermission(
   return `${ORDER_TYPE_PERMISSION_PREFIX[orderType]}.${action}`;
 }
 
-/** Type-specific slug plus legacy `orders.<action>` for pre-reseed tenants. */
+/**
+ * Type-specific slug plus legacy `orders.<action>` for pre-reseed tenants.
+ * For `approve` this also lists the type's approval-step checkboxes, so a role that only
+ * holds a step (e.g. Supply Planning approval) still opens the pages. Who may act at a
+ * step is decided by `canApproveOrder`, not by this list.
+ */
 export function orderPermissionCandidates(
   orderType: BranchOrderType,
   action: OrderPermissionAction,
 ): string[] {
-  return [orderTypePermission(orderType, action), `orders.${action}`];
+  const candidates = [orderTypePermission(orderType, action), `orders.${action}`];
+  return action === "approve"
+    ? [...candidates, ...orderApprovalStepPermissions(orderType)]
+    : candidates;
 }
 
 export function anyOrderTypePermissions(action: OrderPermissionAction): string[] {
   return [
-    `orders.${action}`,
-    ...BRANCH_ORDER_TYPES.map((type) => orderTypePermission(type, action)),
+    ...new Set(BRANCH_ORDER_TYPES.flatMap((type) => orderPermissionCandidates(type, action))),
   ];
 }
 
@@ -79,17 +87,12 @@ export function hasAnyOrderPermission(
   );
 }
 
-/**
- * Super Admin force-cancel still needs an orders view or approve permission.
- * The role slug alone is not enough.
- */
-export function hasOrdersForceCancelPermission(
+/** Cancel or discard any pending order of this type from the Orders list. */
+export function canForceCancelOrderType(
   permissions: string[] | undefined,
+  orderType: BranchOrderType,
 ): boolean {
-  return (
-    hasAnyOrderPermission(permissions, "view") ||
-    hasAnyOrderPermission(permissions, "approve")
-  );
+  return holdsOrderStep(permissions, orderType, "force_cancel");
 }
 
 export function canAccessOrderType(

@@ -55,13 +55,12 @@ const scPulloutSchema = z.object({
 type ActionResult = { success: true } | { error: string };
 
 function actor(session: {
-  user: { tenantId: string; id: string; permissions?: string[]; roleSlugs?: string[] };
+  user: { tenantId: string; id: string; permissions?: string[] };
 }): PostingActor {
   return {
     tenantId: session.user.tenantId,
     userId: session.user.id,
     permissions: session.user.permissions,
-    roleSlugs: session.user.roleSlugs,
   };
 }
 

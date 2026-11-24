@@ -29,6 +29,11 @@ export interface AppModule {
    * The current page is gated by a newer permission.
    */
   hidden?: boolean;
+  /**
+   * Actions kept in the catalog for existing grants but not shown in the role editor,
+   * e.g. the old order Approve that workflow-step checkboxes replaced.
+   */
+  hiddenActions?: readonly string[];
   /** Allowlisted vocabulary actions for this module */
   actions: PermissionActionOption[];
 }
@@ -237,8 +242,12 @@ export const appModules: AppModule[] = [
     slugPrefix: "inventory",
     navPermission: "inventory.view",
     area: "Inventory",
-    description: "Opens branch Inventory.",
-    actions: permissionActions("view", "manage"),
+    description:
+      "Opens branch Inventory. Approve defect reports decides defects for branches in the person's area of responsibility.",
+    actions: [
+      ...permissionActions("view", "manage"),
+      { value: "defect.approve", label: "Approve defect reports" },
+    ],
   },
   {
     id: "inventory_monthly_sir",
@@ -248,12 +257,14 @@ export const appModules: AppModule[] = [
     navPermission: "inventory.monthly_sir.view",
     area: "Inventory",
     description:
-      "Opens Monthly SIR (P-COUNT, PCount) in Inventory. Download template, Scan serials, Upload P-COUNT, Generate variance, Open P-Count, and Approve each follow their own checkbox. Upload P-COUNT also covers Request to upload.",
+      "Opens Monthly SIR (P-COUNT, PCount) in Inventory. Download template, Scan serials, Upload P-COUNT, Generate variance, Open P-Count, and Approve each follow their own checkbox. Upload P-COUNT also covers Request to upload. Without Manage inventory, the upload budget is the scheduled Manila days or the monthly free slots.",
     actions: [
       { value: "view", label: "View" },
       { value: "download_template", label: "Download template" },
       { value: "scan_serials", label: "Scan serials" },
       { value: "upload", label: "Upload P-COUNT" },
+      { value: "upload_scheduled", label: "Upload on scheduled days" },
+      { value: "upload_slots", label: "Upload with free slots" },
       { value: "generate_variance", label: "Generate variance" },
       { value: "open_pcount", label: "Open P-Count" },
       { value: "approve", label: "Approve" },
@@ -302,7 +313,7 @@ export const appModules: AppModule[] = [
     slugPrefix: "logistics.delivery_transfer",
     area: "Inventory",
     description:
-      "Opens Transfers in Inventory. Create, Approve, and Receive control this page and also cover units not accepted on a delivery. Opening Transfers uses Branch deliveries View, Create, or Manage.",
+      "Opens Transfers in Inventory. Create, Approve, and Receive control this page and also cover units not accepted on a delivery. Approve applies to branches in the person's area of responsibility (all branches with Manage branches). Opening Transfers uses Branch deliveries View, Create, or Manage.",
     actions: [
       { value: "create", label: "Create" },
       { value: "approve", label: "Approve" },
@@ -358,8 +369,17 @@ export const appModules: AppModule[] = [
     slugPrefix: "orders.manual",
     navPermission: "orders.manual.view",
     area: "Orders",
-    description: "Opens Manual Order.",
-    actions: permissionActions("view", "create", "approve"),
+    description:
+      "Opens Manual Order. Without See everyone's orders, the list shows only the person's own orders.",
+    hiddenActions: ["approve"],
+    actions: [
+      ...permissionActions("view", "create"),
+      { value: "approve_sp", label: "Supply Planning approval" },
+      { value: "edit_pending", label: "Edit while Pending SP" },
+      { value: "view_all", label: "See everyone's orders" },
+      { value: "view_queue", label: "See every pending step" },
+      { value: "force_cancel", label: "Cancel any pending order" },
+    ],
   },
   {
     id: "orders_special",
@@ -368,8 +388,16 @@ export const appModules: AppModule[] = [
     slugPrefix: "orders.special",
     navPermission: "orders.special.view",
     area: "Orders",
-    description: "Opens the special-order lines on Manual Order.",
-    actions: permissionActions("view", "create", "approve"),
+    description:
+      "Opens the special-order lines on Manual Order. Without See everyone's orders, the list shows only the person's own orders.",
+    hiddenActions: ["approve"],
+    actions: [
+      ...permissionActions("view", "create"),
+      { value: "approve_sp", label: "Supply Planning approval" },
+      { value: "view_all", label: "See everyone's orders" },
+      { value: "view_queue", label: "See every pending step" },
+      { value: "force_cancel", label: "Cancel any pending order" },
+    ],
   },
   {
     id: "orders_auto_replenish",
@@ -379,7 +407,14 @@ export const appModules: AppModule[] = [
     navPermission: "orders.auto_replenish.view",
     area: "Orders",
     description: "Opens Auto replenish.",
-    actions: permissionActions("view", "create", "approve"),
+    hiddenActions: ["approve"],
+    actions: [
+      ...permissionActions("view", "create"),
+      { value: "approve_tl", label: "Team Leader review" },
+      { value: "approve_sp", label: "Supply Planning approval" },
+      { value: "view_queue", label: "See every pending step" },
+      { value: "force_cancel", label: "Cancel any pending order" },
+    ],
   },
   {
     id: "service_centers_orders",
@@ -388,8 +423,12 @@ export const appModules: AppModule[] = [
     slugPrefix: "service_centers.orders",
     navPermission: "service_centers.orders.view",
     area: "Orders",
-    description: "Opens Service Center Orders.",
-    actions: permissionActions("view", "create", "approve"),
+    description:
+      "Opens Service Center Orders. Supply Planning approval approves or rejects SC orders. Approve is used by SC pull-out and return approval.",
+    actions: [
+      ...permissionActions("view", "create", "approve"),
+      { value: "approve_sp", label: "Supply Planning approval" },
+    ],
   },
   {
     id: "sales",
@@ -542,6 +581,14 @@ export function parsePermissionSlug(slug: string): {
   }
 
   return { module: null, action: null };
+}
+
+/** Kept for existing grants but not offered in the role editor or permission picker. */
+export function isHiddenPermissionSlug(slug: string): boolean {
+  const { module, action } = parsePermissionSlug(slug);
+  if (!module) return false;
+  if (module.hidden || roleSectionModule(module).hidden) return true;
+  return action !== null && (module.hiddenActions?.includes(action) ?? false);
 }
 
 export function getModuleNavPermission(moduleId: string): string | undefined {

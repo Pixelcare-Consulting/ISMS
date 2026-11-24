@@ -2,7 +2,7 @@ import type { BranchOrderStatus, BranchOrderType, Prisma } from "@prisma/client"
 
 import { aorRepository } from "@/features/aors/repositories/aor.repository";
 import { auditService } from "@/features/audit/services/audit.service";
-import { hasOrdersForceCancelPermission } from "@/features/orders/constants/order-permissions";
+import { canForceCancelOrderType } from "@/features/orders/constants/order-permissions";
 import type { OrderSapDocType } from "@/features/orders/constants/order-sap-doc-type";
 import {
   BRANCH_ORDER_STATUS_LABELS,
@@ -19,13 +19,13 @@ import {
   getApprovalLevelForStatus,
   getInitialOrderStatus,
   getOrderApprovalChain,
+  canPersistSpRemarks,
   getRoleSlugForApproval,
   isOrderEditable,
-  isSuperAdminOrderOverride,
   isSupplyPlanningApprovalStep,
   nextStatusAfterApprove,
-  SUPPLY_PLANNING_APPROVER_SLUGS,
 } from "@/features/orders/constants/order-workflow";
+import { listUserIdsWithPermission } from "@/lib/auth/permission-holders";
 import { SapOrderPostRejectedError } from "@/features/orders/lib/sap-order-rejection";
 import { notificationService } from "@/features/notifications/services/notification.service";
 import {
@@ -95,13 +95,6 @@ interface IndexedApprovalLines {
 
 /** Guards a typo (an extra digit) without limiting real orders. */
 const MAX_APPROVED_QTY = 100_000;
-
-function canPersistSpRemarks(status: BranchOrderStatus, roleSlugs: string[]): boolean {
-  return (
-    status === "pending_sp" &&
-    SUPPLY_PLANNING_APPROVER_SLUGS.some((slug) => roleSlugs.includes(slug))
-  );
-}
 
 function isWholeApprovedQuantity(qty: unknown): qty is number {
   return typeof qty === "number" && Number.isInteger(qty) && qty >= 0 && qty <= MAX_APPROVED_QTY;
@@ -241,37 +234,46 @@ function orderBellTitle(order: Pick<OrderBellOrder, "orderNumber" | "branch">): 
   return `${order.orderNumber} · ${order.branch.name}`;
 }
 
-/** In-app bell for the next person. Skips the actor when they are the only recipient. */
+/**
+ * In-app bell for the next person: the order's creator (`USER`), or everyone holding the
+ * next step's checkbox (`STEP`). Never notifies the actor.
+ */
 async function notifyOrderStep(input: {
   tenantId: string;
   actorUserId: string;
   order: OrderBellOrder;
-  audience: "ROLE" | "USER";
-  roleSlug?: string | null;
+  audience: "STEP" | "USER";
+  /** Checkbox of the step that acts next. Required for `STEP`. */
+  stepPermission?: string | null;
   body: string;
 }) {
-  if (input.audience === "USER") {
-    if (!input.order.createdById || input.order.createdById === input.actorUserId) {
-      return;
-    }
-  } else if (!input.roleSlug) {
-    return;
-  }
+  const recipients =
+    input.audience === "USER"
+      ? [input.order.createdById].filter((id): id is string => Boolean(id))
+      : input.stepPermission
+        ? await listUserIdsWithPermission(input.tenantId, input.stepPermission)
+        : [];
 
-  await notificationService.createNotification({
-    tenantId: input.tenantId,
-    actorUserId: input.actorUserId,
-    data: {
-      audience: input.audience,
-      roleSlug: input.audience === "ROLE" ? input.roleSlug : null,
-      userId: input.audience === "USER" ? input.order.createdById : null,
-      type: "order",
-      title: orderBellTitle(input.order),
-      body: input.body,
-      href: ORDER_LIST_HREF[input.order.orderType],
-      metadata: { orderId: input.order.id },
-    },
-  });
+  await Promise.all(
+    recipients
+      .filter((userId) => userId !== input.actorUserId)
+      .map((userId) =>
+        notificationService.createNotification({
+          tenantId: input.tenantId,
+          actorUserId: input.actorUserId,
+          data: {
+            audience: "USER",
+            roleSlug: null,
+            userId,
+            type: "order",
+            title: orderBellTitle(input.order),
+            body: input.body,
+            href: ORDER_LIST_HREF[input.order.orderType],
+            metadata: { orderId: input.order.id },
+          },
+        }),
+      ),
+  );
 }
 
 function pendingApprovalEmail(status: BranchOrderStatus, orderType: BranchOrderType) {
@@ -769,7 +771,7 @@ export const orderService = {
       body: pendingApprovalEmail(nextStatus, order.orderType),
     });
 
-    const firstApprover = getOrderApprovalChain(order.orderType)[0]?.roleSlug ?? null;
+    const firstStepPermission = getOrderApprovalChain(order.orderType)[0]?.permission ?? null;
     await notifyOrderStep({
       tenantId,
       actorUserId: userId,
@@ -780,8 +782,8 @@ export const orderService = {
         createdById: updated.createdById,
         branch: { name: updated.branch.name },
       },
-      audience: "ROLE",
-      roleSlug: firstApprover,
+      audience: "STEP",
+      stepPermission: firstStepPermission,
       body: "Submitted for review.",
     });
 
@@ -836,14 +838,8 @@ export const orderService = {
     tenantId: string,
     userId: string,
     orderIds: string[],
-    opts: { roleSlugs: string[]; permissions: string[] | undefined },
+    opts: { permissions: string[] | undefined },
   ) {
-    if (!isSuperAdminOrderOverride(opts.roleSlugs)) {
-      throw new Error("Only Super Admin can bulk cancel or discard orders.");
-    }
-    if (!hasOrdersForceCancelPermission(opts.permissions)) {
-      throw new Error("An orders permission is required to cancel or discard orders.");
-    }
 
     const uniqueIds = [...new Set(orderIds.filter(Boolean))];
     if (uniqueIds.length === 0) {
@@ -857,12 +853,20 @@ export const orderService = {
     let cancelled = 0;
     const skipped: { id: string; orderNumber: string; reason: string }[] = [];
 
-    const adminCancelComment = "Cancelled by Super Admin";
+    const adminCancelComment = "Cancelled from the Orders list";
 
     for (const id of uniqueIds) {
       const order = byId.get(id);
       if (!order) {
         skipped.push({ id, orderNumber: id, reason: "Order not found" });
+        continue;
+      }
+      if (!canForceCancelOrderType(opts.permissions, order.orderType)) {
+        skipped.push({
+          id: order.id,
+          orderNumber: order.orderNumber,
+          reason: "You cannot cancel this order type",
+        });
         continue;
       }
 
@@ -971,7 +975,7 @@ export const orderService = {
     tenantId: string,
     userId: string,
     orderId: string,
-    roleSlugs: string[],
+    permissions: string[] | undefined,
     input?: {
       comment?: string;
       lineAdjustments?: OrderApprovalLineAdjustment[];
@@ -982,7 +986,7 @@ export const orderService = {
   ) {
     const order = await orderRepository.findById(tenantId, orderId);
     if (!order) throw new Error("Order not found");
-    if (!canApproveOrder(order.status, order.orderType, roleSlugs)) {
+    if (!canApproveOrder(order.status, order.orderType, permissions)) {
       throw new Error("Not authorized for this approval step");
     }
 
@@ -1003,7 +1007,7 @@ export const orderService = {
     const isFinal = nextStatus === "approved";
     const approvalLines = indexApprovalLines(order.details, input?.lineAdjustments ?? [], {
       validateApprovedQty: isFinal,
-      mayWriteSpRemarks: canPersistSpRemarks(order.status, roleSlugs),
+      mayWriteSpRemarks: canPersistSpRemarks(order.status, order.orderType, permissions),
     });
     const expectedUpdatedAt = parseExpectedUpdatedAt(input?.expectedUpdatedAt);
     if (expectedUpdatedAt && order.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
@@ -1222,8 +1226,9 @@ export const orderService = {
         tenantId,
         actorUserId: userId,
         order: bellOrder,
-        audience: "ROLE",
-        roleSlug: "sp",
+        audience: "STEP",
+        stepPermission: getOrderApprovalChain(order.orderType).find((s) => s.roleSlug === "sp")
+          ?.permission,
         body: "Approved by the team leader. Waiting for supply planning.",
       });
     }
@@ -1234,12 +1239,12 @@ export const orderService = {
     tenantId: string,
     userId: string,
     orderId: string,
-    roleSlugs: string[],
+    permissions: string[] | undefined,
     comment?: string,
   ) {
     const order = await orderRepository.findById(tenantId, orderId);
     if (!order) throw new Error("Order not found");
-    if (!canApproveOrder(order.status, order.orderType, roleSlugs)) {
+    if (!canApproveOrder(order.status, order.orderType, permissions)) {
       throw new Error("Not authorized to reject at this approval step");
     }
 
@@ -1290,10 +1295,15 @@ export const orderService = {
    * delivery, which must still be empty, Rejected. A retry after a failed save is safe:
    * SAP reports the document as already closed and only the ISMS side is written.
    */
-  async cancelApproved(tenantId: string, userId: string, orderId: string, roleSlugs: string[]) {
+  async cancelApproved(
+    tenantId: string,
+    userId: string,
+    orderId: string,
+    permissions: string[] | undefined,
+  ) {
     const order = await orderRepository.findApprovedCancelContext(tenantId, orderId);
     if (!order) throw new Error("Order not found");
-    if (!canCancelApprovedOrder(order, roleSlugs)) {
+    if (!canCancelApprovedOrder(order, permissions)) {
       throw new Error("Only Supply Planning can cancel an approved order that ISMS posted to SAP.");
     }
     if (order.sapDocType == null || order.sapDocEntry == null) {

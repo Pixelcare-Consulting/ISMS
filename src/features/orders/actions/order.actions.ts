@@ -28,10 +28,10 @@ import { SapOrderPostRejectedError } from "@/features/orders/lib/sap-order-rejec
 import { checkOrderingAllowed } from "@/features/orders/utils/order-window";
 import {
   anyOrderTypePermissions,
-  canAccessOrderType,
   hasAnyOrderPermission,
+  BRANCH_ORDER_TYPES,
+  canForceCancelOrderType,
   hasOrderPermission,
-  hasOrdersForceCancelPermission,
   ORDER_TYPE_ROUTE,
   orderPermissionCandidates,
   orderTypeAccessPermissions,
@@ -46,7 +46,6 @@ import {
   canCancelApprovedOrder,
   canEditOrderLines,
   getOrderQueueStatuses,
-  isSuperAdminOrderOverride,
 } from "@/features/orders/constants/order-workflow";
 import {
   hasPermission,
@@ -129,11 +128,10 @@ function parseOrderSortDir(value?: string): OrderListSortDir | undefined {
 
 function resolveOrderQueueStatuses(
   orderType: BranchOrderType | undefined,
-  roleSlugs: string[],
   permissions: string[] | undefined,
 ) {
   if (!orderType) return undefined;
-  return getOrderQueueStatuses(orderType, roleSlugs, {
+  return getOrderQueueStatuses(orderType, permissions, {
     includeDraft: hasOrderPermission(permissions, orderType, "create"),
   });
 }
@@ -163,18 +161,13 @@ export async function listOrdersAction(input?: {
   const typeScopes = input?.listFilter
     ? manualSpecialQueueScopes(
         session.user.permissions,
-        session.user.roleSlugs ?? [],
         input.listFilter,
         session.user.id,
       )
     : undefined;
   const queueStatuses = typeScopes
     ? undefined
-    : resolveOrderQueueStatuses(
-        input?.orderType,
-        session.user.roleSlugs ?? [],
-        session.user.permissions,
-      );
+    : resolveOrderQueueStatuses(input?.orderType, session.user.permissions);
   const result = await orderService.list(
     session.user.tenantId,
     session.user.id,
@@ -225,7 +218,6 @@ export async function getOrdersKpisAction(
   if (listFilter) {
     const typeScopes = manualSpecialQueueScopes(
       session.user.permissions,
-      session.user.roleSlugs ?? [],
       listFilter,
       session.user.id,
     );
@@ -238,11 +230,7 @@ export async function getOrdersKpisAction(
       typeScopes,
     );
   }
-  const queueStatuses = resolveOrderQueueStatuses(
-    orderType,
-    session.user.roleSlugs ?? [],
-    session.user.permissions,
-  );
+  const queueStatuses = resolveOrderQueueStatuses(orderType, session.user.permissions);
   return orderService.getKpis(
     session.user.tenantId,
     session.user.id,
@@ -510,7 +498,6 @@ export async function updateOrderAction(
   if (!existing) {
     return { error: "Order not found" };
   }
-  const roleSlugs = session.user.roleSlugs ?? [];
   const hasCreatePermission = hasOrderPermission(
     session.user.permissions,
     existing.orderType,
@@ -520,7 +507,7 @@ export async function updateOrderAction(
     !canEditOrderLines({
       status: existing.status,
       orderType: existing.orderType,
-      roleSlugs,
+      permissions: session.user.permissions,
       hasCreatePermission,
     })
   ) {
@@ -580,12 +567,8 @@ export async function deleteDraftOrderAction(orderId: string) {
 
 export async function adminBulkCancelOrdersAction(orderIds: string[]) {
   const session = await requireAuth();
-  const roleSlugs = session.user.roleSlugs ?? [];
-  if (!isSuperAdminOrderOverride(roleSlugs)) {
-    return { error: "Only Super Admin can cancel selected orders in bulk." };
-  }
-  if (!hasOrdersForceCancelPermission(session.user.permissions)) {
-    return { error: "An orders permission is required to cancel selected orders." };
+  if (!BRANCH_ORDER_TYPES.some((type) => canForceCancelOrderType(session.user.permissions, type))) {
+    return { error: "You are not allowed to cancel selected orders." };
   }
 
   const uniqueIds = [...new Set(orderIds.filter(Boolean))];
@@ -598,7 +581,7 @@ export async function adminBulkCancelOrdersAction(orderIds: string[]) {
       session.user.tenantId,
       session.user.id,
       uniqueIds,
-      { roleSlugs, permissions: session.user.permissions },
+      { permissions: session.user.permissions },
     );
     revalidateOrderPaths();
     return { success: true as const, ...result };
@@ -625,8 +608,7 @@ export async function approveOrderAction(
     return { error: "Order not found" };
   }
   if (
-    !canAccessOrderType(session.user.permissions, existing.orderType) ||
-    !canApproveOrder(existing.status, existing.orderType, session.user.roleSlugs ?? [])
+    !canApproveOrder(existing.status, existing.orderType, session.user.permissions)
   ) {
     return { error: "You are not allowed to approve this order at its current step." };
   }
@@ -635,7 +617,7 @@ export async function approveOrderAction(
       session.user.tenantId,
       session.user.id,
       orderId,
-      session.user.roleSlugs ?? [],
+      session.user.permissions,
       input
         ? {
             comment: input.comment,
@@ -673,8 +655,7 @@ export async function rejectOrderAction(orderId: string, comment?: string) {
     return { error: "Order not found" };
   }
   if (
-    !canAccessOrderType(session.user.permissions, existing.orderType) ||
-    !canApproveOrder(existing.status, existing.orderType, session.user.roleSlugs ?? [])
+    !canApproveOrder(existing.status, existing.orderType, session.user.permissions)
   ) {
     return { error: "You are not allowed to reject this order at its current step." };
   }
@@ -683,7 +664,7 @@ export async function rejectOrderAction(orderId: string, comment?: string) {
       session.user.tenantId,
       session.user.id,
       orderId,
-      session.user.roleSlugs ?? [],
+      session.user.permissions,
       comment,
     );
     revalidateOrderPaths(existing.orderType);
@@ -701,10 +682,7 @@ export async function cancelApprovedOrderAction(orderId: string) {
   if (!existing) {
     return { error: "Order not found" };
   }
-  if (
-    !hasOrderPermission(session.user.permissions, existing.orderType, "approve") ||
-    !canCancelApprovedOrder(existing, session.user.roleSlugs ?? [])
-  ) {
+  if (!canCancelApprovedOrder(existing, session.user.permissions)) {
     return { error: "You are not allowed to cancel this order." };
   }
   try {
@@ -712,7 +690,7 @@ export async function cancelApprovedOrderAction(orderId: string) {
       session.user.tenantId,
       session.user.id,
       orderId,
-      session.user.roleSlugs ?? [],
+      session.user.permissions,
     );
     revalidateOrderPaths(existing.orderType);
     revalidatePath("/logistics/deliveries");
@@ -764,7 +742,6 @@ export async function listOrderHistoryAction(input?: {
     ? manualSpecialHistoryScopes(
         session.user.permissions,
         input.listFilter,
-        session.user.roleSlugs ?? [],
         session.user.id,
       )
     : undefined;
