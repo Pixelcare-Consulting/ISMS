@@ -15,22 +15,26 @@ function manilaNoon(year: number, month: number, day: number): Date {
 describe("resolvePcountAllowanceRole", () => {
   it("gives unlimited to inventory.manage and unrestricted admins", () => {
     expect(
-      resolvePcountAllowanceRole(["inventory.manage"], ["ps"]),
+      resolvePcountAllowanceRole(["inventory.manage", "inventory.monthly_sir.upload_scheduled"]),
     ).toBe("unlimited");
     expect(
-      resolvePcountAllowanceRole(["inventory.view"], ["tl"], {
+      resolvePcountAllowanceRole(["inventory.view", "inventory.monthly_sir.upload_slots"], {
         unrestricted: true,
       }),
     ).toBe("unlimited");
   });
 
-  it("maps ps and tl role slugs when not unlimited", () => {
-    expect(resolvePcountAllowanceRole(["inventory.view"], ["ps"])).toBe("ps");
-    expect(resolvePcountAllowanceRole(["inventory.view"], ["tl"])).toBe("tl");
-    expect(resolvePcountAllowanceRole(["inventory.view"], ["ps", "tl"])).toBe(
-      "ps",
-    );
-    expect(resolvePcountAllowanceRole(["inventory.view"], ["ae"])).toBe("none");
+  it("maps the upload budget checkboxes when not unlimited", () => {
+    const scheduled = "inventory.monthly_sir.upload_scheduled";
+    const slots = "inventory.monthly_sir.upload_slots";
+    expect(resolvePcountAllowanceRole(["inventory.view", scheduled])).toBe("ps");
+    expect(resolvePcountAllowanceRole(["inventory.view", slots])).toBe("tl");
+    expect(resolvePcountAllowanceRole(["inventory.view", scheduled, slots])).toBe("ps");
+    expect(resolvePcountAllowanceRole(["inventory.view"])).toBe("none");
+  });
+
+  it("ignores role slugs", () => {
+    expect(resolvePcountAllowanceRole(["inventory.view", "ps", "tl"])).toBe("none");
   });
 });
 

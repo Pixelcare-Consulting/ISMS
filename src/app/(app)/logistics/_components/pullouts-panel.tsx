@@ -3,7 +3,7 @@
 import { createColumnHelper } from "@tanstack/react-table";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { PulloutRequestDialog } from "@/app/(app)/logistics/_components/pullout-request-dialog";
 import { usePulloutSource } from "@/app/(app)/logistics/_components/pullout-source";
@@ -29,7 +29,6 @@ import {
   LogisticsListViewSwitch,
   useLogisticsListProgressView,
 } from "@/app/(app)/logistics/_components/logistics-list-view-switch";
-import { matchesTableSearch } from "@/utils/match-table-search";
 
 interface StatusCodeRef {
   id: string;
@@ -64,7 +63,11 @@ interface PulloutsPanelProps {
   currentUserName?: string;
   initialSort?: string;
   initialSortDir?: string;
+  /** Search term from the URL. The server filters on it, serial numbers included. */
+  initialQuery?: string;
 }
+
+const SEARCH_DEBOUNCE_MS = 350;
 
 const pulloutColumn = createColumnHelper<DataTableFeatures, PulloutRow>();
 
@@ -77,12 +80,14 @@ export function PulloutsPanel({
   currentUserName = "",
   initialSort = "",
   initialSortDir = "desc",
+  initialQuery = "",
 }: PulloutsPanelProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { listHref, detailHref, copy } = usePulloutSource();
   const [progressView] = useLogisticsListProgressView();
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const pageSize = parseTablePageSize(pullouts.limit);
   const sort = (searchParams.get("sort") ?? initialSort) || "";
@@ -90,31 +95,34 @@ export function PulloutsPanel({
     (searchParams.get("dir") ?? initialSortDir) === "asc" ? "asc" : "desc"
   ) as PulloutSortDir;
 
+  useEffect(
+    () => () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+    },
+    [],
+  );
+
   function handlePageSizeChange(limit: TablePageSize) {
     router.push(
-      buildLogisticsPageHref(listHref, 1, limit, sort, sort ? sortDir : undefined),
+      buildLogisticsPageHref(listHref, 1, limit, sort, sort ? sortDir : undefined, query),
     );
   }
 
   function toggleSort(field: string) {
     const next = nextTableSort(field, sort, sortDir);
-    router.push(buildLogisticsPageHref(listHref, 1, pageSize, next.sort, next.dir));
+    router.push(buildLogisticsPageHref(listHref, 1, pageSize, next.sort, next.dir, query));
   }
 
-  const filtered = useMemo(
-    () =>
-      pullouts.items.filter((p) =>
-        matchesTableSearch(query, [
-          p.pulloutNo,
-          p.place.name,
-          p.reasonStatusCode?.name,
-          p.reasonStatusCode?.code,
-          p.statusCode.name,
-          p.statusCode.code,
-        ]),
-      ),
-    [pullouts.items, query],
-  );
+  /** Searches every page on the server, so a serial number finds the pull-out it is on. */
+  function handleSearch(value: string) {
+    setQuery(value);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => {
+      router.replace(
+        buildLogisticsPageHref(listHref, 1, pageSize, sort, sort ? sortDir : undefined, value),
+      );
+    }, SEARCH_DEBOUNCE_MS);
+  }
 
   const suggestions = useMemo(
     () =>
@@ -234,7 +242,7 @@ export function PulloutsPanel({
   return (
     <>
     <DataTable
-      data={filtered}
+      data={pullouts.items}
       columns={columns}
       getRowId={(row) => row.id}
       manualSorting
@@ -246,7 +254,12 @@ export function PulloutsPanel({
         onSort: (columnId) => toggleSort(columnId),
       }}
       stickyHeader
-      search={{ value: query, onChange: setQuery, placeholder: "Search pull-outs…", suggestions }}
+      search={{
+        value: query,
+        onChange: handleSearch,
+        placeholder: "Search pull-out, serial no., status…",
+        suggestions,
+      }}
       toolbarActions={
         <>
         <LogisticsListViewSwitch />
@@ -273,10 +286,11 @@ export function PulloutsPanel({
             pageSize,
             sort,
             sort ? sortDir : undefined,
+            query,
           ),
       }}
       pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
-      empty={filtered.length === 0}
+      empty={pullouts.items.length === 0}
       emptyMessage={query.trim() ? "No results match your search." : "No pull-outs."}
     />
     <PulloutRequestDialog

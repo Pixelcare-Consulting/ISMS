@@ -346,7 +346,6 @@ export function buildWorkflowOpsTools(
               userId,
               branchId: resolvedBranchId,
               permissions,
-              roleSlugs: session.user.roleSlugs,
               unrestricted,
             });
             allowance = {

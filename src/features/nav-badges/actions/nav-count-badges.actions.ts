@@ -79,11 +79,10 @@ async function countOrderQueue(
   tenantId: string,
   userId: string,
   permissions: string[] | undefined,
-  roleSlugs: string[],
   orderType: BranchOrderType,
 ): Promise<number> {
   if (!canAccessOrderType(permissions, orderType)) return 0;
-  const statuses = getOrderActionableQueueStatuses(orderType, roleSlugs);
+  const statuses = getOrderActionableQueueStatuses(orderType, permissions);
   if (statuses.length === 0) return 0;
   return orderService.countActionableQueue(
     tenantId,
@@ -104,7 +103,6 @@ export async function getWorkflowNavCountBadgesAction(): Promise<WorkflowNavCoun
     const tenantId = session.user.tenantId;
     const userId = session.user.id;
     const permissions = session.user.permissions;
-    const roleSlugs = session.user.roleSlugs ?? [];
 
     const [
       monthlySirPending,
@@ -125,15 +123,9 @@ export async function getWorkflowNavCountBadgesAction(): Promise<WorkflowNavCoun
           isInventoryUnrestricted(permissions),
         );
       })(),
-      countOrderQueue(tenantId, userId, permissions, roleSlugs, "manual"),
-      countOrderQueue(tenantId, userId, permissions, roleSlugs, "special"),
-      countOrderQueue(
-        tenantId,
-        userId,
-        permissions,
-        roleSlugs,
-        "auto_replenish",
-      ),
+      countOrderQueue(tenantId, userId, permissions, "manual"),
+      countOrderQueue(tenantId, userId, permissions, "special"),
+      countOrderQueue(tenantId, userId, permissions, "auto_replenish"),
       (async () => {
         if (!canViewApprovalsTab(permissions)) return 0;
         const capabilities = resolveReturnsCapabilities(permissions);
@@ -171,7 +163,7 @@ export async function getWorkflowNavCountBadgesAction(): Promise<WorkflowNavCoun
         const where = transferActionableWhere(
           scope,
           caps,
-          transferApprovalBranchIds(roleSlugs, assignedBranchIds),
+          transferApprovalBranchIds(permissions, assignedBranchIds),
         );
         if (!where) return 0;
         return logisticsRepository.countAllTransfers(tenantId, where);

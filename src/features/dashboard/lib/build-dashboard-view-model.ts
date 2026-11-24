@@ -112,13 +112,12 @@ function resolveOpsAlertKeys(
 
 export function buildDashboardViewModel(input: {
   permissions: string[] | undefined;
-  roleSlugs: string[] | undefined;
   kpis: DashboardKpis | null;
   analytics: DashboardAnalytics | null;
   salesAnalytics?: DashboardSalesAnalytics | null;
 }): DashboardViewModel {
   const caps = resolveDashboardCapabilities(input.permissions);
-  const { persona, label } = resolveDashboardPersona(input.roleSlugs, caps);
+  const { persona, label } = resolveDashboardPersona(caps, input.permissions);
 
   const kpiKeys =
     input.kpis && caps.hasOps

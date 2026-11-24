@@ -97,7 +97,7 @@ function renderOrders(props: Partial<ComponentProps<typeof OrdersTable>> = {}) {
   return render(
     <OrdersTable
       result={page}
-      viewerRoleSlugs={[]}
+      viewerPermissions={[]}
       teamLeaders={leaders}
       brands={brands}
       basePath="/orders/manual"

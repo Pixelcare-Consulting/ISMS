@@ -17,6 +17,8 @@ describe("Monthly SIR permission card", () => {
       "Download template",
       "Scan serials",
       "Upload P-COUNT",
+      "Upload on scheduled days",
+      "Upload with free slots",
       "Generate variance",
       "Open P-Count",
       "Approve",

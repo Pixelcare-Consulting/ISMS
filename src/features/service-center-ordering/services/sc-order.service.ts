@@ -1,6 +1,7 @@
 import type { BranchOrderStatus } from "@prisma/client";
 
 import { auditService } from "@/features/audit/services/audit.service";
+import { closeOrderSapDocument } from "@/features/orders/services/order-sap-close";
 import { SAP_REFERENCE_TYPES } from "@/features/sap/constants/sap-job-types";
 import { readSapPostResult } from "@/features/sap/services/sap-post-result";
 import { sapService } from "@/features/sap/services/sap.service";
@@ -12,6 +13,7 @@ import { isSapProject } from "@/features/service-center-ordering/services/sc-ord
 import { scOrderingSettingsService } from "@/features/service-center-ordering/services/sc-ordering-settings.service";
 import { SC_ORDER_APPROVABLE_STATUSES } from "@/features/service-center-ordering/constants";
 import { prisma } from "@/lib/database/client";
+import type { Prisma } from "@/lib/database/generated/prisma/client";
 
 const APPROVABLE: BranchOrderStatus[] = [...SC_ORDER_APPROVABLE_STATUSES];
 
@@ -180,5 +182,71 @@ export const scOrderService = {
       entityId: order.id,
       metadata: { orderNumber: order.orderNumber },
     });
+  },
+
+  /**
+   * Supply Planning cancels an approved order: SAP's SO is closed first (refused once a DR
+   * was copied from it), then the order becomes Cancelled. `onCancelled` runs in the same
+   * transaction (the caller puts a special order's Service Replacement back, as on Reject).
+   * Retrying is safe: SAP then reports the SO as closed and only ISMS is written.
+   */
+  async cancelApproved<T>(
+    tenantId: string,
+    userId: string,
+    orderId: string,
+    onCancelled: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<{ orderNumber: string; sapSoNum: number; after: T }> {
+    const order = await prisma.serviceCenterOrder.findFirst({
+      where: { id: orderId, tenantId },
+      select: {
+        id: true,
+        orderNumber: true,
+        status: true,
+        sapDocEntry: true,
+        sapClosedAt: true,
+        _count: { select: { deliveries: true } },
+      },
+    });
+    if (!order) throw new Error("Order not found");
+    if (order.status !== "approved" || order.sapDocEntry == null) {
+      throw new Error("Only an approved order with a SAP Sales Order can be cancelled.");
+    }
+    if (order._count.deliveries > 0 || order.sapClosedAt) {
+      throw new Error("A DR from this order's SO is already in ISMS, so the order cannot be cancelled.");
+    }
+
+    const sap = await closeOrderSapDocument(tenantId, {
+      type: "SO",
+      docEntry: order.sapDocEntry,
+      orderNumber: order.orderNumber,
+    });
+    let after: T;
+    try {
+      after = await prisma.$transaction(async (tx) => {
+        const cancelled = await tx.serviceCenterOrder.updateMany({
+          where: { id: order.id, tenantId, status: "approved", sapClosedAt: null },
+          data: { status: "cancelled" },
+        });
+        if (cancelled.count !== 1) throw new Error("This order changed. Reload and try again.");
+        // A DR applied between the check above and now would leave units with no order.
+        const delivered = await tx.serviceCenterDelivery.count({ where: { tenantId, orderId: order.id } });
+        if (delivered > 0) throw new Error("A DR from this order's SO just arrived in ISMS.");
+        await tx.auditLog.create({
+          data: {
+            tenantId,
+            userId,
+            action: "sc_order.cancelled_after_approval",
+            entityType: "ServiceCenterOrder",
+            entityId: order.id,
+            metadata: { orderNumber: order.orderNumber, sapSoNum: sap.docNum, sapClosedNow: sap.closedNow },
+          },
+        });
+        return onCancelled(tx);
+      });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "unknown error";
+      throw new Error(`SO ${sap.docNum} is closed in SAP, but the order could not be cancelled in ISMS (${reason}). Try again.`);
+    }
+    return { orderNumber: order.orderNumber, sapSoNum: sap.docNum, after };
   },
 };

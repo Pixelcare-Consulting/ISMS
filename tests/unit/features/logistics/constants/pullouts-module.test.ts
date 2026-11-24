@@ -137,9 +137,11 @@ describe("pull-outs permission module", () => {
       "inventory.monthly_sir.generate_variance",
       "inventory.monthly_sir.open_pcount",
       "inventory.monthly_sir.approve",
+      "inventory.monthly_sir.upload_scheduled",
+      "inventory.monthly_sir.upload_slots",
     ]);
     expect(groups.find((group) => group.moduleName === "Branch inventory")?.description).toBe(
-      "Opens branch Inventory.",
+      "Opens branch Inventory. Approve defect reports decides defects for branches in the person's area of responsibility.",
     );
 
     const monthlySir = flattenNavLinks(

@@ -138,25 +138,25 @@ export function pcountMonthWindows(at: Date = new Date()): PcountMonthWindows {
   };
 }
 
+/** "Upload on scheduled days": the Manila calendar upload days (the old PS budget). */
+export const PCOUNT_UPLOAD_SCHEDULED = "inventory.monthly_sir.upload_scheduled";
+/** "Upload with free slots": the monthly free-slot budget (the old TL budget). */
+export const PCOUNT_UPLOAD_SLOTS = "inventory.monthly_sir.upload_slots";
+
 /**
- * Map session permissions + role slugs to a P-Count allowance role.
- * `inventory.manage` (and unrestricted admins) win over TL/PS slot budgets.
+ * Map session permissions to a P-Count upload budget. `inventory.manage` (and unrestricted
+ * admins) upload without a budget. Scheduled days win over free slots when both are held.
+ * The budget kinds keep their old names (`ps` / `tl`); no role name decides them.
  */
 export function resolvePcountAllowanceRole(
-  permissions: string[] | undefined,
-  roleSlugs: string[] | undefined,
+  permissions: readonly string[] | undefined,
   options?: { unrestricted?: boolean },
 ): PcountAllowanceRole {
-  if (
-    options?.unrestricted ||
-    (permissions?.includes("inventory.manage") ?? false)
-  ) {
+  if (options?.unrestricted || (permissions?.includes("inventory.manage") ?? false)) {
     return "unlimited";
   }
-  const slugs = roleSlugs ?? [];
-  // Prefer PS when dual-roled (matches dashboard persona ordering).
-  if (slugs.includes("ps")) return "ps";
-  if (slugs.includes("tl")) return "tl";
+  if (permissions?.includes(PCOUNT_UPLOAD_SCHEDULED)) return "ps";
+  if (permissions?.includes(PCOUNT_UPLOAD_SLOTS)) return "tl";
   return "none";
 }
 

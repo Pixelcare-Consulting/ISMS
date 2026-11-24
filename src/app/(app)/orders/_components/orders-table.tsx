@@ -20,9 +20,8 @@ import type { BranchOrderSource, BranchOrderStatus, BranchOrderType } from "@pri
 import {
   canApproveOrder,
   isOrderPendingApproval,
-  isSuperAdminOrderOverride,
-  PRODUCT_SPECIALIST_ROLE_SLUG,
 } from "@/features/orders/constants/order-workflow";
+import { holdsOrderStepForAnyType } from "@/features/orders/constants/order-step-permissions";
 import { CheckSapNowButton } from "@/app/(app)/logistics/_components/check-sap-now-button";
 import { OrderDetailsDialog } from "@/app/(app)/orders/_components/order-details-dialog";
 import { SuggestedOrdersDialog } from "@/app/(app)/orders/_components/suggested-orders-dialog";
@@ -139,7 +138,7 @@ interface OrdersTableProps {
     limit: number;
     totalPages: number;
   };
-  viewerRoleSlugs: string[];
+  viewerPermissions: string[];
   canEdit?: boolean;
   /** When set, list is type-scoped and create dialog locks this type. */
   fixedOrderType?: BranchOrderType;
@@ -305,7 +304,7 @@ function rowCreatePermission(
 
 export function OrdersTable({
   result: serverResult,
-  viewerRoleSlugs,
+  viewerPermissions,
   canEdit = false,
   canCheckSap = false,
   fixedOrderType,
@@ -490,7 +489,7 @@ export function OrdersTable({
     () => result.items.find((item) => item.id === detailsOrderId) ?? null,
     [detailsOrderId, result.items],
   );
-  const canSuperAdminBulkCancel = isSuperAdminOrderOverride(viewerRoleSlugs);
+  const canBulkCancel = holdsOrderStepForAnyType(viewerPermissions, "force_cancel");
   const selectedOrderIds = useMemo(
     () => filtered.map((order) => order.id).filter((id) => rowSelection[id]),
     [filtered, rowSelection],
@@ -654,7 +653,7 @@ export function OrdersTable({
               {isOrderPendingApproval(order.status as BranchOrderStatus) ? (
                 <OrderReviewButton
                   order={order}
-                  viewerRoleSlugs={viewerRoleSlugs}
+                  viewerPermissions={viewerPermissions}
                   onReview={() => setWorkflowOrder(order)}
                 />
               ) : null}
@@ -693,7 +692,7 @@ export function OrdersTable({
                   Delete
                 </Button>
               ) : null}
-              {showOrderViewDetails(order, viewerRoleSlugs) ? (
+              {showOrderViewDetails(order, viewerPermissions) ? (
                 <Button
                   size="sm"
                   variant="outline"
@@ -710,7 +709,7 @@ export function OrdersTable({
       }),
     ];
     return cols;
-  }, [canEdit, createByType, pending, router, viewerRoleSlugs]);
+  }, [canEdit, createByType, pending, router, viewerPermissions]);
 
   const sapRejectionCopy = sapRejection
     ? describeSapOrderRejection(sapRejection.sapMessage)
@@ -733,7 +732,7 @@ export function OrdersTable({
           onSort: (columnId) => toggleSort(columnId as OrderSortField),
         }}
         // Selection only feeds Super Admin bulk cancel; other roles have nothing to do with it.
-        enableRowSelection={canSuperAdminBulkCancel}
+        enableRowSelection={canBulkCancel}
         rowSelection={rowSelection}
         onRowSelectionChange={setRowSelection}
         selectAllLabel="Select all orders"
@@ -799,7 +798,7 @@ export function OrdersTable({
                 <Button variant="secondary" onClick={() => setRowSelection({})}>
                   {selectedCount} selected
                 </Button>
-                {canSuperAdminBulkCancel ? (
+                {canBulkCancel ? (
                   <Button
                     type="button"
                     variant="destructive"
@@ -882,7 +881,7 @@ export function OrdersTable({
             spRemarks: d.spRemarks,
           }))}
           approvalLevels={detailsOrder.approvalLevels}
-          roleSlugs={viewerRoleSlugs}
+          permissions={viewerPermissions}
           hasCreatePermission={
             detailsOrder
               ? rowCreatePermission(detailsOrder.orderType, canEdit, createByType)
@@ -1081,7 +1080,7 @@ export function OrdersTable({
 
 interface OrderReviewButtonProps {
   order: OrderRow;
-  viewerRoleSlugs: string[];
+  viewerPermissions: string[];
   onReview: () => void;
 }
 
@@ -1095,21 +1094,19 @@ function draftSubmitDescription(orderType: string): string {
 /**
  * View details shows once this viewer no longer has Review on the row
  * (approved, rejected, cancelled, or any step past their review), including Order History.
- * Product Specialists always keep View details. Review itself is unchanged.
  */
-function showOrderViewDetails(order: OrderRow, viewerRoleSlugs: string[]): boolean {
-  if (viewerRoleSlugs.includes(PRODUCT_SPECIALIST_ROLE_SLUG)) return true;
+function showOrderViewDetails(order: OrderRow, viewerPermissions: string[]): boolean {
   const status = order.status as BranchOrderStatus;
   const orderType = order.orderType as BranchOrderType;
   const reviewShown =
-    isOrderPendingApproval(status) && canApproveOrder(status, orderType, viewerRoleSlugs);
+    isOrderPendingApproval(status) && canApproveOrder(status, orderType, viewerPermissions);
   return !reviewShown;
 }
 
-function OrderReviewButton({ order, viewerRoleSlugs, onReview }: OrderReviewButtonProps) {
+function OrderReviewButton({ order, viewerPermissions, onReview }: OrderReviewButtonProps) {
   const status = order.status as BranchOrderStatus;
   const orderType = order.orderType as BranchOrderType;
-  if (!canApproveOrder(status, orderType, viewerRoleSlugs)) {
+  if (!canApproveOrder(status, orderType, viewerPermissions)) {
     return null;
   }
 

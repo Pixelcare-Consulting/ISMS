@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import {
+  SC_ORDERS_APPROVE_SP,
   canApproveScOrders,
   SC_ORDER_APPROVER_ONLY,
   SC_ORDERS_APPROVE,
@@ -43,6 +44,7 @@ export async function listScOrdersAction(input?: {
     SC_ORDERS_VIEW,
     SC_ORDERS_CREATE,
     SC_ORDERS_APPROVE,
+    SC_ORDERS_APPROVE_SP,
   ]);
   const scopedIds = await resolveScIdsForUser(
     session.user.tenantId,
@@ -95,8 +97,8 @@ export async function createScOrderAction(input: unknown) {
 }
 
 export async function approveScOrderAction(orderId: string) {
-  const session = await requirePermission(SC_ORDERS_APPROVE);
-  if (!canApproveScOrders(session.user.permissions, session.user.roleSlugs)) {
+  const session = await requirePermission(SC_ORDERS_APPROVE_SP);
+  if (!canApproveScOrders(session.user.permissions)) {
     return { error: SC_ORDER_APPROVER_ONLY };
   }
   const order = await prisma.serviceCenterOrder.findFirst({
@@ -130,8 +132,8 @@ export async function approveScOrderAction(orderId: string) {
 }
 
 export async function rejectScOrderAction(orderId: string, comment?: string) {
-  const session = await requirePermission(SC_ORDERS_APPROVE);
-  if (!canApproveScOrders(session.user.permissions, session.user.roleSlugs)) {
+  const session = await requirePermission(SC_ORDERS_APPROVE_SP);
+  if (!canApproveScOrders(session.user.permissions)) {
     return { error: SC_ORDER_APPROVER_ONLY };
   }
   const order = await prisma.serviceCenterOrder.findFirst({
@@ -174,6 +176,51 @@ export async function rejectScOrderAction(orderId: string, comment?: string) {
 
   revalidateScOrders();
   return { success: true as const };
+}
+
+/** Supply Planning cancels an approved SC order: its SO is closed in SAP, the order becomes Cancelled. */
+export async function cancelApprovedScOrderAction(orderId: string) {
+  const session = await requirePermission(SC_ORDERS_APPROVE_SP);
+  if (!canApproveScOrders(session.user.permissions)) {
+    return { error: SC_ORDER_APPROVER_ONLY };
+  }
+  const order = await prisma.serviceCenterOrder.findFirst({
+    where: { id: orderId, tenantId: session.user.tenantId },
+    select: { id: true, serviceCenterId: true },
+  });
+  if (!order) return { error: "Order not found" as const };
+
+  const scopedIds = await resolveScIdsForUser(
+    session.user.tenantId,
+    session.user.id,
+    session.user.permissions,
+  );
+  let result;
+  try {
+    assertScInScope(order.serviceCenterId, scopedIds);
+    result = await scOrderService.cancelApproved(session.user.tenantId, session.user.id, order.id, (tx) =>
+      // A special order for a Service Replacement: the request goes back to the service center.
+      releaseReturnFromRejectedOrder(tx, { tenantId: session.user.tenantId, orderId: order.id }),
+    );
+  } catch (e) {
+    revalidateScOrders();
+    return { error: e instanceof Error ? e.message : "Failed to cancel the order" };
+  }
+
+  if (result.after) {
+    await notifyScSpecialOrderOutcome({
+      tenantId: session.user.tenantId,
+      actorUserId: session.user.id,
+      returnRequestId: result.after.returnRequestId,
+      serviceCenterId: result.after.serviceCenterId,
+      transactionNo: result.after.transactionNo,
+      orderNumber: result.orderNumber,
+      outcome: "CANCELLED",
+    });
+    revalidatePath("/service-centers/returns");
+  }
+  revalidateScOrders();
+  return { success: true as const, sapSoNum: result.sapSoNum };
 }
 
 export async function listModelsForScOrderAction(query?: string) {

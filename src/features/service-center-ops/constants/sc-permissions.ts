@@ -3,10 +3,6 @@ import {
   type ResolvedCapabilities,
 } from "@/lib/auth/action-capabilities";
 import { hasPermission } from "@/lib/auth/permissions";
-import {
-  isSuperAdminOrderOverride,
-  isSupplyPlanningApproverRole,
-} from "@/features/orders/constants/order-workflow";
 import type { SalesActionCapabilities } from "@/features/sales/constants/sales-permissions";
 import type { PulloutActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 
@@ -22,6 +18,8 @@ export const SC_RETURN_COMPLETE = "service_centers.return.complete";
 export const SC_ORDERS_VIEW = "service_centers.orders.view";
 export const SC_ORDERS_CREATE = "service_centers.orders.create";
 export const SC_ORDERS_APPROVE = "service_centers.orders.approve";
+/** Supply Planning approval of SC orders. The older SC orders Approve does not approve orders. */
+export const SC_ORDERS_APPROVE_SP = "service_centers.orders.approve_sp";
 export const SC_LOGISTICS_VIEW = "service_centers.logistics.view";
 export const SC_LOGISTICS_CREATE = "service_centers.logistics.create";
 export const SC_LOGISTICS_MANAGE = "service_centers.logistics.manage";
@@ -48,6 +46,7 @@ export const SC_ORDERS_ACCESS = [
   SC_ORDERS_VIEW,
   SC_ORDERS_CREATE,
   SC_ORDERS_APPROVE,
+  SC_ORDERS_APPROVE_SP,
 ] as const;
 
 export const SC_LOGISTICS_ACCESS = [
@@ -117,19 +116,9 @@ export function canAccessScSales(permissions: string[] | undefined): boolean {
   return SC_SALES_ACCESS.some((slug) => hasPermission(permissions, slug));
 }
 
-/**
- * SC orders have one approval step, Supply Planning, like branch orders. The permission alone
- * is not enough: Team Leaders hold it for SC pull-out approval.
- */
-export function canApproveScOrders(
-  permissions: string[] | undefined,
-  roleSlugs: string[] | undefined,
-): boolean {
-  const roles = roleSlugs ?? [];
-  return (
-    hasPermission(permissions, SC_ORDERS_APPROVE) &&
-    (isSupplyPlanningApproverRole(roles) || isSuperAdminOrderOverride(roles))
-  );
+/** SC orders have one approval step, Supply Planning, on its own checkbox. */
+export function canApproveScOrders(permissions: string[] | undefined): boolean {
+  return hasPermission(permissions, SC_ORDERS_APPROVE_SP);
 }
 
 export const SC_ORDER_APPROVER_ONLY = "Only Supply Planning can approve or reject service center orders";

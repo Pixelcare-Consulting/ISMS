@@ -53,7 +53,7 @@ export default async function ScOrdersPage({ searchParams }: PageProps) {
         items={result.items}
         centers={centers}
         canCreate={hasPermission(session.user.permissions, SC_ORDERS_CREATE)}
-        canApprove={canApproveScOrders(session.user.permissions, session.user.roleSlugs)}
+        canApprove={canApproveScOrders(session.user.permissions)}
       />
     </div>
   );

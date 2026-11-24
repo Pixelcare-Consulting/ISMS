@@ -78,6 +78,7 @@ import { reasonStatusService } from "@/features/reason-status/services/reason-st
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
+import { parseListSearch } from "@/lib/shared/pagination";
 
 const DISPATCH_PERMISSIONS = [
   LOGISTICS_DELIVERY_DISPATCH,
@@ -191,13 +192,12 @@ function revalidateDelivery(id: string) {
 }
 
 function postingActor(session: {
-  user: { tenantId: string; id: string; permissions?: string[]; roleSlugs?: string[] };
+  user: { tenantId: string; id: string; permissions?: string[] };
 }): PostingActor {
   return {
     tenantId: session.user.tenantId,
     userId: session.user.id,
     permissions: session.user.permissions,
-    roleSlugs: session.user.roleSlugs,
   };
 }
 
@@ -592,6 +592,7 @@ export async function listPulloutsAction(input?: {
   limit?: number;
   sort?: string;
   sortDir?: string;
+  q?: string;
 }) {
   const session = await requirePermission(PULLOUTS_VIEW);
   return logisticsRepository.listPullouts(
@@ -601,6 +602,7 @@ export async function listPulloutsAction(input?: {
       limit: parseTablePageSize(input?.limit),
     },
     { field: parsePulloutSort(input?.sort), dir: parseSortDir(input?.sortDir) },
+    parseListSearch(input?.q),
   );
 }
 
@@ -776,6 +778,22 @@ export async function checkPulloutSapAction(id: string) {
     return { success: true as const, result };
   } catch (error) {
     return actionError(error, "Failed to check SAP");
+  }
+}
+
+/**
+ * Cancels a pull-out after Team Lead approval. When sent, its linked Returns are closed and
+ * ITs cancelled in SAP first; units go back to STK/DEF except those on a Return.
+ */
+export async function cancelPulloutAction(id: string) {
+  const session = await requireAnyPermission([...PULLOUT_MANAGE_GATES]);
+  if (!id) return { error: "Choose a pull-out" };
+  try {
+    const result = await pulloutPostingService.cancel(postingActor(session), id);
+    revalidatePullout(id);
+    return { success: true as const, sapDone: result.sapDone };
+  } catch (error) {
+    return actionError(error, "Failed to cancel the pull-out");
   }
 }
 

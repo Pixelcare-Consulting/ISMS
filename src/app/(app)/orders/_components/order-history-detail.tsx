@@ -1,4 +1,5 @@
 import type { LogisticsActivity } from "@/app/(app)/logistics/_components/logistics-detail-ui";
+import { CancelApprovedOrderButton } from "@/app/(app)/orders/_components/cancel-approved-order-button";
 import {
   OrderRecordPage,
   type OrderRecordLine,
@@ -111,6 +112,15 @@ export function OrderHistoryDetailView({ order }: { order: OrderHistoryDetail })
       steps={steps}
       lines={orderLines(order)}
       history={historyItems(order)}
+      actions={
+        order.canCancel && order.sapDocType ? (
+          <CancelApprovedOrderButton
+            orderId={order.id}
+            orderNumber={order.orderNumber}
+            sapDocLabel={`${order.sapDocType} ${order.sapDocNum ?? ""}`.trim()}
+          />
+        ) : null
+      }
       delivery={
         order.delivery
           ? {

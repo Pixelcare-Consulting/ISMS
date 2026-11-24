@@ -1,3 +1,9 @@
+jest.mock("@/lib/auth/permission-holders", () => ({
+  listUserIdsWithPermission: jest.fn().mockResolvedValue([]),
+}));
+jest.mock("@/features/orders/services/order-sap-close", () => ({
+  closeOrderSapDocument: jest.fn(),
+}));
 jest.mock("@/features/orders/services/suggestion-apply.service", () => ({
   suggestionApplyService: {
     assertSubmittable: jest.fn(),

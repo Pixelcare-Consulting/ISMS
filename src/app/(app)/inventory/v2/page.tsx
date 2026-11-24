@@ -182,7 +182,7 @@ export default async function BranchInventoryV2Page({
       defectApprovalBranchIds(
         session.user.tenantId,
         session.user.id,
-        session.user.roleSlugs,
+        session.user.permissions,
       ),
       getBranchInventoryUnreadAction(
         screen.kind === "branch"
@@ -202,7 +202,7 @@ export default async function BranchInventoryV2Page({
 
   const branches = withoutSoldBranchRows(branchGroups(groupResult));
   const offPlanogramBranches = withoutSoldBranchRows(branchGroups(offPlanogramResult));
-  const singleBranch = branches.length === 1 || session.user.roleSlugs.includes("ps");
+  const singleBranch = branches.length === 1;
   const seriesPanel = <InventorySeriesSummaryPanel summary={seriesSummary} />;
 
   return (

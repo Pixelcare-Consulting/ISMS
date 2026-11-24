@@ -49,6 +49,8 @@ export interface PulloutSapDocument {
   /** YYYY-MM-DD, or null when SAP sent none. */
   docDate: string | null;
   cancelled: boolean;
+  /** DocumentStatus is closed (copied on, or closed by hand). Cancel uses it for Returns only. */
+  closed: boolean;
   lines: SapDocLine[];
 }
 
@@ -136,6 +138,7 @@ export function parsePulloutSapDocument(
     docNum,
     docDate: docDateOf(raw),
     cancelled: isCancelled(raw),
+    closed: raw.DocumentStatus === "bost_Close",
     lines: parseLines(raw[PULLOUT_SAP_LINES_FIELD[type]]),
   };
 }

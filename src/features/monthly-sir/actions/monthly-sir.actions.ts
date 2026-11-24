@@ -104,7 +104,6 @@ export async function getPcountUploadAllowanceAction(input: unknown) {
       userId: session.user.id,
       branchId: parsed.data.branchId,
       permissions: session.user.permissions,
-      roleSlugs: session.user.roleSlugs,
       unrestricted: isUnrestricted(session.user.permissions),
     });
     return { success: true as const, allowance };
@@ -125,7 +124,6 @@ export async function createMonthlySirRequestAction(input: unknown) {
       userId: session.user.id,
       unrestricted: isUnrestricted(session.user.permissions),
       permissions: session.user.permissions,
-      roleSlugs: session.user.roleSlugs,
       ...parsed.data,
     });
     revalidateMonthlySir(request.stockCountSessionId ?? undefined);
@@ -236,7 +234,6 @@ export async function previewMonthlySirUploadAction(formData: FormData) {
       requestId: parsed.data.requestId,
       unrestricted: isUnrestricted(session.user.permissions),
       permissions: session.user.permissions,
-      roleSlugs: session.user.roleSlugs,
       file,
     });
   } catch (error) {
@@ -258,7 +255,6 @@ export async function applyMonthlySirUploadAction(formData: FormData) {
       requestId: parsed.data.requestId,
       unrestricted: isUnrestricted(session.user.permissions),
       permissions: session.user.permissions,
-      roleSlugs: session.user.roleSlugs,
       file,
     });
     revalidateMonthlySir();

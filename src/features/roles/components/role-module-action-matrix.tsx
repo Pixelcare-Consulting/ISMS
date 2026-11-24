@@ -7,6 +7,7 @@ import { Search } from "lucide-react";
 import { toast } from "sonner";
 import {
   appModules,
+  isHiddenPermissionSlug,
   parsePermissionSlug,
   permissionActionLabel,
   roleSectionKey,
@@ -145,7 +146,7 @@ function buildModuleRows(
     if (knownSlugs.has(permission.slug)) continue;
     const { module } = parsePermissionSlug(permission.slug);
     if (!module) continue;
-    if (module.hidden || roleSectionModule(module).hidden) {
+    if (isHiddenPermissionSlug(permission.slug)) {
       knownSlugs.add(permission.slug);
       continue;
     }

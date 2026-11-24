@@ -26,7 +26,13 @@ export const metadata = pageMetadata(
 );
 
 interface PageProps {
-  searchParams: Promise<{ page?: string; limit?: string; sort?: string; dir?: string }>;
+  searchParams: Promise<{
+    page?: string;
+    limit?: string;
+    sort?: string;
+    dir?: string;
+    q?: string;
+  }>;
 }
 
 export default async function ScPulloutsPage({ searchParams }: PageProps) {
@@ -42,6 +48,7 @@ export default async function ScPulloutsPage({ searchParams }: PageProps) {
       limit: parseTablePageSize(params.limit),
       sort: params.sort,
       sortDir: params.dir,
+      q: params.q,
     }),
     getScPulloutKpisAction(),
     loadWorkflowCatalog(session.user.tenantId, "pullout_workflow"),
@@ -66,6 +73,7 @@ export default async function ScPulloutsPage({ searchParams }: PageProps) {
           currentUserName={currentUserName}
           initialSort={params.sort ?? ""}
           initialSortDir={params.dir ?? "desc"}
+          initialQuery={params.q ?? ""}
         />
       </ScPulloutSourceProvider>
     </div>

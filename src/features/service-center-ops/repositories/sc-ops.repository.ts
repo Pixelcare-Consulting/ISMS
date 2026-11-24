@@ -40,6 +40,20 @@ function scPulloutWhere(
   };
 }
 
+/** Matches an SC pull-out by its number, service center, reason, status, or the serial of any of its units. */
+function scPulloutSearchWhere(q: string): Prisma.ServiceCenterPulloutWhereInput {
+  const contains = { contains: q, mode: "insensitive" as const };
+  return {
+    OR: [
+      { pulloutNo: contains },
+      { serviceCenter: { name: contains } },
+      { reasonStatusCode: { OR: [{ name: contains }, { code: contains }] } },
+      { statusCode: { OR: [{ name: contains }, { code: contains }] } },
+      { details: { some: { serialNumber: { serialNo: contains } } } },
+    ],
+  };
+}
+
 function scPulloutOrderBy(
   field: ScPulloutListSort,
   dir: "asc" | "desc",
@@ -248,9 +262,11 @@ export const scOpsRepository = {
     serviceCenterIds: string[] | null,
     pagination: PaginationInput,
     sort?: { field?: ScPulloutListSort; dir?: "asc" | "desc" },
+    q?: string,
   ) {
     const { page, limit, skip, take } = resolvePagination(pagination);
-    const where = scPulloutWhere(tenantId, serviceCenterIds);
+    const scopeWhere = scPulloutWhere(tenantId, serviceCenterIds);
+    const where = q ? { AND: [scopeWhere, scPulloutSearchWhere(q)] } : scopeWhere;
     const dir = sort?.dir ?? "desc";
 
     const [total, items] = await Promise.all([

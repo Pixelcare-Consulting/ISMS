@@ -1,3 +1,9 @@
+jest.mock("@/lib/auth/permission-holders", () => ({
+  listUserIdsWithPermission: jest.fn().mockResolvedValue([]),
+}));
+jest.mock("@/features/orders/services/order-sap-close", () => ({
+  closeOrderSapDocument: jest.fn(),
+}));
 jest.mock("@/features/orders/services/suggestion-apply.service", () => ({
   suggestionApplyService: {
     assertSubmittable: jest.fn(),
@@ -85,6 +91,7 @@ import { orderService } from "@/features/orders/services/order.service";
 import { suggestionApplyService } from "@/features/orders/services/suggestion-apply.service";
 import { orderingPolicyService } from "@/features/ordering/services/ordering-policy.service";
 import { planogramRepository } from "@/features/planogram/repositories/planogram.repository";
+import { listUserIdsWithPermission } from "@/lib/auth/permission-holders";
 import { sapService } from "@/features/sap/services/sap.service";
 
 const createNotification = notificationService.createNotification as jest.Mock;
@@ -168,12 +175,13 @@ beforeEach(() => {
 
 describe("order step notifications", () => {
   it.each([
-    ["auto_replenish", "tl", "/orders/auto-replenish"],
-    ["manual", "sp", "/orders/manual"],
-    ["special", "sp", "/orders/special"],
+    ["auto_replenish", "orders.auto_replenish.approve_tl", "/orders/auto-replenish"],
+    ["manual", "orders.manual.approve_sp", "/orders/manual"],
+    ["special", "orders.special.approve_sp", "/orders/special"],
   ] as const)(
-    "notifies the first approver when a %s draft is submitted",
-    async (orderType, roleSlug, href) => {
+    "notifies holders of the first step's checkbox when a %s draft is submitted",
+    async (orderType, stepPermission, href) => {
+      (listUserIdsWithPermission as jest.Mock).mockResolvedValueOnce(["approver-1", "user-1"]);
       const draft = orderFixture({ status: "draft", orderType });
       findById.mockResolvedValue(draft);
       (orderRepository.submitDraft as jest.Mock).mockResolvedValue({
@@ -183,13 +191,14 @@ describe("order step notifications", () => {
 
       await orderService.submitDraft("tenant-1", "user-1", "order-1", { hasFullAccess: true });
 
+      expect(listUserIdsWithPermission).toHaveBeenCalledWith("tenant-1", stepPermission);
+      expect(createNotification).toHaveBeenCalledTimes(1);
       expect(createNotification).toHaveBeenCalledWith({
         tenantId: "tenant-1",
         actorUserId: "user-1",
         data: expect.objectContaining({
-          audience: "ROLE",
-          roleSlug,
-          userId: null,
+          audience: "USER",
+          userId: "approver-1",
           type: "order",
           href,
           title: "SO#2026-10-00001 · North Branch",
@@ -199,22 +208,26 @@ describe("order step notifications", () => {
     },
   );
 
-  it("notifies supply planning when auto replenish leaves the team leader", async () => {
+  it("notifies Supply Planning approval holders when auto replenish leaves the team leader", async () => {
+    (listUserIdsWithPermission as jest.Mock).mockResolvedValueOnce(["planner-1"]);
     findById.mockResolvedValue(
       orderFixture({ status: "pending_tl", orderType: "auto_replenish" }),
     );
 
-    await orderService.approve("tenant-1", "user-1", "order-1", ["tl"], {
+    await orderService.approve("tenant-1", "user-1", "order-1", ["orders.auto_replenish.approve_tl"], {
       comment: "Looks good",
     });
 
+    expect(listUserIdsWithPermission).toHaveBeenCalledWith(
+      "tenant-1",
+      "orders.auto_replenish.approve_sp",
+    );
     expect(createNotification).toHaveBeenCalledWith({
       tenantId: "tenant-1",
       actorUserId: "user-1",
       data: expect.objectContaining({
-        audience: "ROLE",
-        roleSlug: "sp",
-        userId: null,
+        audience: "USER",
+        userId: "planner-1",
         href: "/orders/auto-replenish",
         title: "SO#2026-10-00001 · North Branch",
       }),
@@ -229,7 +242,7 @@ describe("order step notifications", () => {
       processedAt: new Date("2026-10-19T03:00:00.000Z"),
     });
 
-    await orderService.approve("tenant-1", "user-1", "order-1", ["sp"]);
+    await orderService.approve("tenant-1", "user-1", "order-1", ["orders.manual.approve_sp"]);
 
     expect(createNotification).toHaveBeenCalledWith({
       tenantId: "tenant-1",
@@ -256,7 +269,7 @@ describe("order step notifications", () => {
       processedAt: new Date("2026-10-19T03:00:00.000Z"),
     });
 
-    await orderService.approve("tenant-1", "user-1", "order-1", ["sp"]);
+    await orderService.approve("tenant-1", "user-1", "order-1", ["orders.manual.approve_sp"]);
 
     expect(createNotification).not.toHaveBeenCalled();
   });
@@ -266,7 +279,13 @@ describe("order step notifications", () => {
       orderFixture({ status: "pending_tl", orderType: "auto_replenish" }),
     );
 
-    await orderService.reject("tenant-1", "user-1", "order-1", ["tl"], "Not this week");
+    await orderService.reject(
+      "tenant-1",
+      "user-1",
+      "order-1",
+      ["orders.auto_replenish.approve_tl"],
+      "Not this week",
+    );
 
     expect(createNotification).toHaveBeenCalledWith({
       tenantId: "tenant-1",
@@ -283,7 +302,13 @@ describe("order step notifications", () => {
   it("notifies the creator when supply planning cancels the order", async () => {
     findById.mockResolvedValue(orderFixture({ status: "pending_sp", orderType: "special" }));
 
-    await orderService.reject("tenant-1", "user-1", "order-1", ["sp"], "Cancel request");
+    await orderService.reject(
+      "tenant-1",
+      "user-1",
+      "order-1",
+      ["orders.special.approve_sp"],
+      "Cancel request",
+    );
 
     expect(createNotification).toHaveBeenCalledWith({
       tenantId: "tenant-1",
@@ -297,14 +322,13 @@ describe("order step notifications", () => {
     });
   });
 
-  it("notifies the creator when a super admin cancels the order", async () => {
+  it("notifies the creator when Cancel any pending order cancels it", async () => {
     const order = orderFixture({ status: "pending_sp", orderType: "manual" });
     (orderRepository.findManyByIds as jest.Mock).mockResolvedValue([order]);
     (orderRepository.forceCancelFromPending as jest.Mock).mockResolvedValue({ count: 1 });
 
     await orderService.adminBulkCancelOrDiscard("tenant-1", "admin-1", ["order-1"], {
-      roleSlugs: ["super_admin"],
-      permissions: ["orders.view"],
+      permissions: ["orders.manual.force_cancel"],
     });
 
     expect(createNotification).toHaveBeenCalledWith({

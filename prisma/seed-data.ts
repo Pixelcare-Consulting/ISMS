@@ -4,6 +4,10 @@ import {
   MONTHLY_SIR_USE_SLUGS,
   MONTHLY_SIR_VIEW_SLUG,
 } from "@/features/monthly-sir/constants/monthly-sir-permissions";
+import {
+  WORKFLOW_STEP_PERMISSION_CATALOG,
+  WORKFLOW_STEP_SEED_GRANTS,
+} from "@/features/roles/constants/workflow-step-permissions";
 
 /** Shared seed constants — no DB access. */
 
@@ -153,6 +157,7 @@ export const PERMISSIONS = [
   { slug: "announcements.manage", name: "Manage announcements" },
   { slug: "competitors.view", name: "View competitor observations" },
   { slug: "competitors.manage", name: "Manage competitor observations" },
+  ...WORKFLOW_STEP_PERMISSION_CATALOG,
 ] as const;
 
 /** Settings-style view grants that pair with *.manage (additive, equivalent until retuned). */
@@ -230,7 +235,7 @@ const ORDERS_APPROVE_ALL = [
   "orders.auto_replenish.approve",
 ] as const;
 
-export const ROLES = [
+const BASE_ROLES = [
   {
     slug: "super_admin",
     name: "Super Admin",
@@ -692,6 +697,12 @@ export const ROLES = [
     ],
   },
 ] as const;
+
+/** Seeded roles plus their workflow-step checkboxes (Super Admin already has the catalog). */
+export const ROLES = BASE_ROLES.map((role) => ({
+  ...role,
+  permissions: [...role.permissions, ...(WORKFLOW_STEP_SEED_GRANTS[role.slug] ?? [])],
+}));
 
 export const DEPARTMENTS = ["Compliance", "Engineering", "Human Resources", "Operations"] as const;
 
