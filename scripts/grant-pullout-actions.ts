@@ -11,7 +11,7 @@
  * Usage (once on the client server after deploy):
  *   pnpm run db:grant:pullout-actions
  *
- * Do not run `pnpm run db:seed` or `pnpm run db:seed:full` on that server.
+ * Do not run `pnpm run db:seed` or `pnpm run db:seed:full` on that server
  */
 import { createPrismaClient } from "../src/lib/database/create-prisma-client";
 import {
