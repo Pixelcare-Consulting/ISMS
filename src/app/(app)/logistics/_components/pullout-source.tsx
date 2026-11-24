@@ -6,6 +6,7 @@ import { LOGISTICS_PICKUPS_PATH } from "@/app/(app)/logistics/_components/logist
 import {
   approvePulloutLineAction,
   approvePulloutTlAction,
+  cancelPulloutAction,
   checkPulloutSapAction,
   createPulloutAction,
   deletePulloutLineAction,
@@ -83,6 +84,8 @@ export interface PulloutSource {
     release: (pulloutId: string) => Promise<ActionResult>;
     /** Null where the pull-out ends at Send with no SAP follow-up. */
     checkSap: ((pulloutId: string) => ReturnType<typeof checkPulloutSapAction>) | null;
+    /** After Team Lead approval. When sent: closes linked Returns and cancels linked ITs in SAP. */
+    cancel: (pulloutId: string) => ReturnType<typeof cancelPulloutAction>;
   };
 }
 
@@ -121,6 +124,7 @@ export const BRANCH_PULLOUT_SOURCE: PulloutSource = {
     updateList: (pulloutId, input) => updatePulloutListAction(pulloutId, input),
     release: (pulloutId) => releasePulloutAction(pulloutId),
     checkSap: checkPulloutSapAction,
+    cancel: cancelPulloutAction,
   },
 };
 

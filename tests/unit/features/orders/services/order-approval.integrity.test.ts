@@ -1,3 +1,6 @@
+jest.mock("@/features/orders/services/order-sap-close", () => ({
+  closeOrderSapDocument: jest.fn(),
+}));
 jest.mock("@/features/orders/services/suggestion-apply.service", () => ({
   suggestionApplyService: {
     assertSubmittable: jest.fn(),
@@ -17,6 +20,8 @@ jest.mock("@/features/orders/repositories/order.repository", () => ({
     revertSupplyPlanningApproval: jest.fn(),
     findSapRoutingContext: jest.fn(),
     findOrderableModels: jest.fn(),
+    findApprovedCancelContext: jest.fn(),
+    cancelApproved: jest.fn(),
   },
 }));
 
@@ -76,6 +81,7 @@ import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
 import { auditService } from "@/features/audit/services/audit.service";
 import { notificationService } from "@/features/notifications/services/notification.service";
 import { orderRepository } from "@/features/orders/repositories/order.repository";
+import { closeOrderSapDocument } from "@/features/orders/services/order-sap-close";
 import { orderService } from "@/features/orders/services/order.service";
 import { orderingPolicyService } from "@/features/ordering/services/ordering-policy.service";
 import { sapService } from "@/features/sap/services/sap.service";
@@ -422,5 +428,90 @@ describe("order approval integrity", () => {
     expect(finalizeApproved).toHaveBeenCalledTimes(1);
     expect(revertSupplyPlanningApproval).toHaveBeenCalledWith("tenant-1", "order-1", 1);
     expect(sendWorkflowEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe("orderService.cancelApproved", () => {
+  const findApprovedCancelContext = orderRepository.findApprovedCancelContext as jest.Mock;
+  const cancelApproved = orderRepository.cancelApproved as jest.Mock;
+  const closeSap = closeOrderSapDocument as jest.Mock;
+
+  function approvedOrder(delivery?: { lines?: number; sapDocuments?: number; code?: string } | null) {
+    return {
+      id: "order-1",
+      orderNumber: "SO#2026-11-00001",
+      orderType: "manual",
+      status: "approved",
+      source: "ISMS",
+      sapDocType: "ITR",
+      sapDocEntry: 9001,
+      sapDocNum: 372656,
+      branchId: "branch-1",
+      createdById: "creator-1",
+      branch: { name: "North Branch" },
+      deliveries:
+        delivery === null
+          ? []
+          : [
+              {
+                id: "delivery-1",
+                deliveryNo: "DLV-1",
+                statusCode: { code: delivery?.code ?? "approved" },
+                _count: { lines: delivery?.lines ?? 0, sapDocuments: delivery?.sapDocuments ?? 0 },
+              },
+            ],
+    };
+  }
+
+  beforeEach(() => {
+    closeSap.mockResolvedValue({ docNum: 372656, closedNow: true });
+    cancelApproved.mockResolvedValue(undefined);
+  });
+
+  it("closes the ITR in SAP, then cancels the order and its empty delivery", async () => {
+    findApprovedCancelContext.mockResolvedValue(approvedOrder());
+
+    const result = await orderService.cancelApproved("tenant-1", "sp-1", "order-1", ["sp"]);
+
+    expect(closeSap).toHaveBeenCalledWith("tenant-1", {
+      type: "ITR",
+      docEntry: 9001,
+      orderNumber: "SO#2026-11-00001",
+    });
+    expect(cancelApproved).toHaveBeenCalledWith(
+      "tenant-1",
+      "order-1",
+      expect.objectContaining({ deliveryId: "delivery-1", userId: "sp-1" }),
+    );
+    expect(closeSap.mock.invocationCallOrder[0]).toBeLessThan(cancelApproved.mock.invocationCallOrder[0]);
+    expect(result).toEqual({ sapDocument: { type: "ITR", docNum: 372656 } });
+    expect(notificationService.createNotification).toHaveBeenCalled();
+  });
+
+  it("refuses a role that is not Supply Planning, before touching SAP", async () => {
+    findApprovedCancelContext.mockResolvedValue(approvedOrder());
+
+    await expect(orderService.cancelApproved("tenant-1", "tl-1", "order-1", ["tl"])).rejects.toThrow(
+      "Only Supply Planning",
+    );
+    expect(closeSap).not.toHaveBeenCalled();
+  });
+
+  it("refuses once the delivery has units or followed SAP documents", async () => {
+    findApprovedCancelContext.mockResolvedValue(approvedOrder({ sapDocuments: 1 }));
+
+    await expect(orderService.cancelApproved("tenant-1", "sp-1", "order-1", ["sp"])).rejects.toThrow(
+      "already received SAP documents or units",
+    );
+    expect(closeSap).not.toHaveBeenCalled();
+  });
+
+  it("says SAP is closed when ISMS could not save, so the user retries", async () => {
+    findApprovedCancelContext.mockResolvedValue(approvedOrder(null));
+    cancelApproved.mockRejectedValue(new Error("This order changed. Refresh and review again."));
+
+    await expect(orderService.cancelApproved("tenant-1", "sp-1", "order-1", ["sp"])).rejects.toThrow(
+      "ITR 372656 is closed in SAP, but the order could not be cancelled in ISMS",
+    );
   });
 });

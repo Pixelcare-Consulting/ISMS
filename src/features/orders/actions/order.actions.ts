@@ -43,6 +43,7 @@ import {
 } from "@/features/orders/lib/manual-special-order-scope";
 import {
   canApproveOrder,
+  canCancelApprovedOrder,
   canEditOrderLines,
   getOrderQueueStatuses,
   isSuperAdminOrderOverride,
@@ -689,6 +690,35 @@ export async function rejectOrderAction(orderId: string, comment?: string) {
     return { success: true as const };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to reject order" };
+  }
+}
+
+/** Supply Planning cancels an approved order: SAP's ITR/SO is closed, the order becomes Cancelled. */
+export async function cancelApprovedOrderAction(orderId: string) {
+  const session = await requireAuth();
+  if (!orderId) return { error: "Choose an order" };
+  const existing = await orderRepository.findById(session.user.tenantId, orderId);
+  if (!existing) {
+    return { error: "Order not found" };
+  }
+  if (
+    !hasOrderPermission(session.user.permissions, existing.orderType, "approve") ||
+    !canCancelApprovedOrder(existing, session.user.roleSlugs ?? [])
+  ) {
+    return { error: "You are not allowed to cancel this order." };
+  }
+  try {
+    const { sapDocument } = await orderService.cancelApproved(
+      session.user.tenantId,
+      session.user.id,
+      orderId,
+      session.user.roleSlugs ?? [],
+    );
+    revalidateOrderPaths(existing.orderType);
+    revalidatePath("/logistics/deliveries");
+    return { success: true as const, sapDocument };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to cancel the order" };
   }
 }
 

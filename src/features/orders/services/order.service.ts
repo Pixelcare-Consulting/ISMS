@@ -8,9 +8,12 @@ import {
   BRANCH_ORDER_STATUS_LABELS,
   BRANCH_ORDER_TYPE_LABELS,
 } from "@/features/orders/constants/order-status";
+import { DELIVERY_WORKFLOW_CODE } from "@/features/logistics/constants/workflow-codes";
+import { closeOrderSapDocument } from "@/features/orders/services/order-sap-close";
 import {
   canAdminForceCancelOrder,
   canApproveOrder,
+  canCancelApprovedOrder,
   canDeleteDraftOrder,
   declineOrderStatus,
   getApprovalLevelForStatus,
@@ -1279,6 +1282,76 @@ export const orderService = {
       audience: "USER",
       body: nextStatus === "cancelled" ? "Cancelled." : "Rejected.",
     });
+  },
+
+  /**
+   * Supply Planning cancels an order it already approved. SAP's ITR/SO is closed first
+   * (refused once anything was copied from it); then the order becomes Cancelled and its
+   * delivery, which must still be empty, Rejected. A retry after a failed save is safe:
+   * SAP reports the document as already closed and only the ISMS side is written.
+   */
+  async cancelApproved(tenantId: string, userId: string, orderId: string, roleSlugs: string[]) {
+    const order = await orderRepository.findApprovedCancelContext(tenantId, orderId);
+    if (!order) throw new Error("Order not found");
+    if (!canCancelApprovedOrder(order, roleSlugs)) {
+      throw new Error("Only Supply Planning can cancel an approved order that ISMS posted to SAP.");
+    }
+    if (order.sapDocType == null || order.sapDocEntry == null) {
+      throw new Error("This order has no SAP document to close.");
+    }
+    const delivery = order.deliveries[0] ?? null;
+    if (delivery && (delivery._count.lines > 0 || delivery._count.sapDocuments > 0)) {
+      throw new Error(
+        `Delivery ${delivery.deliveryNo} already received SAP documents or units, so the order cannot be cancelled.`,
+      );
+    }
+    if (delivery && delivery.statusCode.code !== DELIVERY_WORKFLOW_CODE.approved) {
+      throw new Error(`Delivery ${delivery.deliveryNo} has already started, so the order cannot be cancelled.`);
+    }
+
+    const sap = await closeOrderSapDocument(tenantId, {
+      type: order.sapDocType,
+      docEntry: order.sapDocEntry,
+      orderNumber: order.orderNumber,
+    });
+    const sapLabel = `${order.sapDocType} ${sap.docNum}`;
+    try {
+      await orderRepository.cancelApproved(tenantId, orderId, {
+        deliveryId: delivery?.id ?? null,
+        userId,
+        audit: {
+          orderNumber: order.orderNumber,
+          orderType: order.orderType,
+          orderTypeLabel: BRANCH_ORDER_TYPE_LABELS[order.orderType],
+          branchName: order.branch.name,
+          from: "approved",
+          to: "cancelled",
+          sapDocType: order.sapDocType,
+          sapDocNum: sap.docNum,
+          sapClosedNow: sap.closedNow,
+          deliveryNo: delivery?.deliveryNo ?? null,
+        },
+      });
+    } catch (error) {
+      // SAP is closed but ISMS is not: say so, so the user retries instead of re-approving.
+      const reason = error instanceof Error ? error.message : "unknown error";
+      throw new Error(`${sapLabel} is closed in SAP, but the order could not be cancelled in ISMS (${reason}). Try again.`);
+    }
+
+    await notifyOrderStep({
+      tenantId,
+      actorUserId: userId,
+      order: {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        orderType: order.orderType,
+        createdById: order.createdById,
+        branch: { name: order.branch.name },
+      },
+      audience: "USER",
+      body: `Cancelled by Supply Planning after approval. ${sapLabel} is closed in SAP.`,
+    });
+    return { sapDocument: { type: order.sapDocType, docNum: sap.docNum } satisfies ApprovedOrderSapDocument };
   },
 
   countPendingApprovals(tenantId: string) {

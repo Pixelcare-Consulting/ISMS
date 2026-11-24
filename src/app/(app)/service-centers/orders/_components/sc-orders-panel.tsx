@@ -13,6 +13,7 @@ import {
 import { listScCentersForOpsAction } from "@/features/service-center-ops/actions/sc-inventory.actions";
 import {
   approveScOrderAction,
+  cancelApprovedScOrderAction,
   listScOrdersAction,
   rejectScOrderAction,
 } from "@/features/service-center-ops/actions/sc-orders.actions";
@@ -57,6 +58,47 @@ const SC_ORDER_REJECT_FEED = [
   { atSecond: 1, label: "Refreshing orders list" },
 ];
 
+const SC_ORDER_CANCEL_FEED = [
+  { atSecond: 0, label: "Checking the SO in SAP", hint: "ISMS refuses if a DR was already copied from it." },
+  { atSecond: 2, label: "Closing the SO in SAP", hint: "SAP can take a few seconds." },
+  { atSecond: 4, label: "Refreshing orders list" },
+];
+
+type OrderDecision = "approve" | "reject" | "cancel";
+
+const DECISION_COPY: Record<
+  OrderDecision,
+  { question: string; description: string; destructive: boolean; title: string; feed: typeof SC_ORDER_APPROVE_FEED }
+> = {
+  approve: {
+    question: "Approve this order?",
+    description: "Are you sure you want to approve this order?",
+    destructive: false,
+    title: "Processing approval",
+    feed: SC_ORDER_APPROVE_FEED,
+  },
+  reject: {
+    question: "Reject this order?",
+    description: "Are you sure you want to reject this order?",
+    destructive: true,
+    title: "Rejecting order",
+    feed: SC_ORDER_REJECT_FEED,
+  },
+  cancel: {
+    question: "Cancel this approved order?",
+    description:
+      "Its Sales Order will be closed in SAP and the order becomes Cancelled. ISMS refuses if SAP already copied any of it to a DR.",
+    destructive: true,
+    title: "Cancelling order",
+    feed: SC_ORDER_CANCEL_FEED,
+  },
+};
+
+/** Approved with an SO in SAP and no DR in ISMS yet. Cancel re-checks SAP itself. */
+function isCancellableScOrder(order: OrderRow): boolean {
+  return order.status === "approved" && order.sapDocNum != null && order.deliveries.length === 0;
+}
+
 
 export function ScOrdersPanel({
   items,
@@ -76,10 +118,10 @@ export function ScOrdersPanel({
   // Like branch orders: the setup popup opens over this list, and only Continue opens the
   // create page.
   const [setupOpen, setSetupOpen] = useState(false);
-  const [processingAction, setProcessingAction] = useState<"approve" | "reject" | null>(null);
+  const [processingAction, setProcessingAction] = useState<OrderDecision | null>(null);
   const [orderConfirm, setOrderConfirm] = useState<{
     orderId: string;
-    action: "approve" | "reject";
+    action: OrderDecision;
   } | null>(null);
   const [detailsOrderId, setDetailsOrderId] = useState<string | null>(null);
   const scSetup = useScOrderSetup(setupOpen);
@@ -135,6 +177,13 @@ export function ScOrdersPanel({
               ? `Approved. SO ${result.sapDocNum} created in SAP`
               : "Order approved and posted to SAP",
           );
+        } else if (decision.action === "cancel") {
+          const result = await cancelApprovedScOrderAction(decision.orderId);
+          if ("error" in result) {
+            toast.error(result.error);
+            return;
+          }
+          toast.success(`Order cancelled. SO ${result.sapSoNum} is closed in SAP`);
         } else {
           const result = await rejectScOrderAction(decision.orderId);
           if ("error" in result) {
@@ -255,6 +304,16 @@ export function ScOrdersPanel({
                   </Button>
                 </>
               ) : null}
+              {canApprove && isCancellableScOrder(order) ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={pending}
+                  onClick={() => setOrderConfirm({ orderId: order.id, action: "cancel" })}
+                >
+                  Cancel order
+                </Button>
+              ) : null}
             </div>
           );
         },
@@ -323,15 +382,9 @@ export function ScOrdersPanel({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {orderConfirm?.action === "reject"
-                ? "Reject this order?"
-                : "Approve this order?"}
-            </AlertDialogTitle>
+            <AlertDialogTitle>{DECISION_COPY[orderConfirm?.action ?? "approve"].question}</AlertDialogTitle>
             <AlertDialogDescription>
-              {orderConfirm?.action === "reject"
-                ? "Are you sure you want to reject this order?"
-                : "Are you sure you want to approve this order?"}
+              {DECISION_COPY[orderConfirm?.action ?? "approve"].description}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -339,7 +392,7 @@ export function ScOrdersPanel({
             <AlertDialogAction
               onClick={confirmOrderDecision}
               className={
-                orderConfirm?.action === "reject"
+                orderConfirm && DECISION_COPY[orderConfirm.action].destructive
                   ? "bg-destructive text-white hover:bg-destructive/90"
                   : undefined
               }
@@ -357,9 +410,9 @@ export function ScOrdersPanel({
       />
       <LoadingModal
         open={pending && processingAction !== null}
-        title={processingAction === "reject" ? "Rejecting order" : "Processing approval"}
+        title={DECISION_COPY[processingAction ?? "approve"].title}
         description="Please wait while the order is saved."
-        feedItems={processingAction === "reject" ? SC_ORDER_REJECT_FEED : SC_ORDER_APPROVE_FEED}
+        feedItems={DECISION_COPY[processingAction ?? "approve"].feed}
       />
     </div>
   );

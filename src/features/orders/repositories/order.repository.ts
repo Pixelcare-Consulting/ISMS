@@ -1,3 +1,5 @@
+import { DELIVERY_WORKFLOW_CODE } from "@/features/logistics/constants/workflow-codes";
+import { lockDeliveryRow, txWorkflowCodeId } from "@/features/logistics/services/delivery-settle";
 import { prisma } from "@/lib/database/client";
 import { resolvePagination, toPaginatedResult } from "@/lib/shared/pagination";
 import {
@@ -826,6 +828,76 @@ export const orderRepository = {
     return prisma.productModel.findMany({
       where: { tenantId, deletedAt: null, id: { in: [...modelIds] } },
       select: { id: true, brandId: true },
+    });
+  },
+
+  /** What cancelling an approved order checks: its SAP document and whether its delivery started. */
+  findApprovedCancelContext(tenantId: string, orderId: string) {
+    return prisma.branchOrder.findFirst({
+      where: { id: orderId, tenantId },
+      select: {
+        id: true,
+        orderNumber: true,
+        orderType: true,
+        status: true,
+        source: true,
+        sapDocType: true,
+        sapDocEntry: true,
+        sapDocNum: true,
+        branchId: true,
+        createdById: true,
+        branch: { select: { name: true } },
+        deliveries: {
+          select: {
+            id: true,
+            deliveryNo: true,
+            statusCode: { select: { code: true } },
+            _count: { select: { lines: true, sapDocuments: true } },
+          },
+        },
+      },
+    });
+  },
+
+  /**
+   * Approved → Cancelled after SAP closed the order's ITR/SO, and its delivery (still empty)
+   * Approved → Rejected, in one transaction. Throws when either changed in the meantime.
+   */
+  async cancelApproved(
+    tenantId: string,
+    orderId: string,
+    input: { deliveryId: string | null; userId: string; audit: Prisma.InputJsonValue },
+  ): Promise<void> {
+    await prisma.$transaction(async (tx) => {
+      if (input.deliveryId) {
+        await lockDeliveryRow(tx, tenantId, input.deliveryId);
+        const units = await tx.branchDeliveryLine.count({ where: { deliveryId: input.deliveryId } });
+        if (units > 0) throw new Error("This order's delivery already has units, so it cannot be cancelled.");
+        const [approvedId, rejectedId] = await Promise.all([
+          txWorkflowCodeId(tx, tenantId, DELIVERY_WORKFLOW_CODE.approved),
+          txWorkflowCodeId(tx, tenantId, DELIVERY_WORKFLOW_CODE.rejected),
+        ]);
+        const closed = await tx.branchDelivery.updateMany({
+          where: { id: input.deliveryId, tenantId, statusCodeId: approvedId },
+          data: { statusCodeId: rejectedId },
+        });
+        if (closed.count !== 1) throw new Error(ORDER_CHANGED_MESSAGE);
+      }
+      const cancelled = await tx.branchOrder.updateMany({
+        where: { id: orderId, tenantId, status: "approved" },
+        data: { status: "cancelled" },
+      });
+      if (cancelled.count !== 1) throw new Error(ORDER_CHANGED_MESSAGE);
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          userId: input.userId,
+          action: "order.cancelled_after_approval",
+          entityType: "BranchOrder",
+          entityId: orderId,
+          metadata: input.audit,
+        },
+      });
     });
   },
 

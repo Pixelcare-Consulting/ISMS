@@ -12,9 +12,14 @@ import {
 import {
   canAccessOrderType,
   hasAnyOrderPermission,
+  hasOrderPermission,
   orderTypeAccessPermissions,
 } from "@/features/orders/constants/order-permissions";
-import { mayViewOrderAsProductSpecialist } from "@/features/orders/constants/order-workflow";
+import {
+  canCancelApprovedOrder,
+  mayViewOrderAsProductSpecialist,
+} from "@/features/orders/constants/order-workflow";
+import { DELIVERY_WORKFLOW_CODE } from "@/features/logistics/constants/workflow-codes";
 import { orderRepository } from "@/features/orders/repositories/order.repository";
 import { orderAttachmentStoragePrefix } from "@/features/orders/utils/order-attachment-paths";
 import {
@@ -209,6 +214,11 @@ export async function getOrderHistoryDetail(
         : null,
     })),
     delivery,
+    // The delivery check here only hides the button; cancel re-checks it and asks SAP.
+    canCancel:
+      hasOrderPermission(session.user.permissions, order.orderType, "approve") &&
+      canCancelApprovedOrder(order, session.user.roleSlugs ?? []) &&
+      (delivery === null || delivery.status.code === DELIVERY_WORKFLOW_CODE.approved),
   };
 }
 

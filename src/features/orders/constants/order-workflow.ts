@@ -1,4 +1,4 @@
-import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
+import type { BranchOrderSource, BranchOrderStatus, BranchOrderType } from "@prisma/client";
 
 import { BRANCH_ORDER_STATUS_LABELS } from "@/features/orders/constants/order-status";
 
@@ -102,6 +102,22 @@ export function canApproveOrder(
     return isSupplyPlanningApproverRole(roleSlugs);
   }
   return roleSlugs.includes(step.roleSlug);
+}
+
+/**
+ * Supply Planning may cancel an order it approved while its ITR/SO is in SAP. Whether
+ * anything was copied from that document yet is checked against SAP on cancel.
+ */
+export function canCancelApprovedOrder(
+  order: { status: BranchOrderStatus; source: BranchOrderSource; sapDocEntry: number | null },
+  roleSlugs: string[],
+): boolean {
+  return (
+    order.status === "approved" &&
+    order.source === "ISMS" &&
+    order.sapDocEntry != null &&
+    isSupplyPlanningApproverRole(roleSlugs)
+  );
 }
 
 /** PS / TL may optionally edit Manual orders while they await Supply Planning. */

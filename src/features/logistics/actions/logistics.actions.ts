@@ -782,6 +782,22 @@ export async function checkPulloutSapAction(id: string) {
   }
 }
 
+/**
+ * Cancels a pull-out after Team Lead approval. When sent, its linked Returns are closed and
+ * ITs cancelled in SAP first; units go back to STK/DEF except those on a Return.
+ */
+export async function cancelPulloutAction(id: string) {
+  const session = await requireAnyPermission([...PULLOUT_MANAGE_GATES]);
+  if (!id) return { error: "Choose a pull-out" };
+  try {
+    const result = await pulloutPostingService.cancel(postingActor(session), id);
+    revalidatePullout(id);
+    return { success: true as const, sapDone: result.sapDone };
+  } catch (error) {
+    return actionError(error, "Failed to cancel the pull-out");
+  }
+}
+
 /** Branches for the create forms: only the person's area-of-responsibility branches, all when they have none. */
 export async function listBranchesForLogisticsAction() {
   const session = await requireAnyPermission([

@@ -301,3 +301,16 @@ export async function checkScPulloutSapAction(id: string) {
     return actionError(error, "Failed to check SAP");
   }
 }
+
+/** Cancels an SC pull-out after Team Lead approval: SAP first (Returns closed, ITs cancelled). */
+export async function cancelScPulloutAction(id: string) {
+  const session = await requirePermission(SC_LOGISTICS_MANAGE);
+  if (!id) return { error: "Choose a pull-out" };
+  try {
+    const result = await scPulloutPostingService.cancel(actor(session), id);
+    revalidateScPullout(id);
+    return { success: true as const, sapDone: result.sapDone };
+  } catch (error) {
+    return actionError(error, "Failed to cancel the pull-out");
+  }
+}
