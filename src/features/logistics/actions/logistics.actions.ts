@@ -15,6 +15,7 @@ import {
   LOGISTICS_DELIVERY_TRANSFER_RECEIVE,
   LOGISTICS_MANAGE,
   LOGISTICS_PAGE_PERMISSIONS,
+  TRANSFERS_PAGE_PERMISSIONS,
   PULLOUT_APPROVE_PERMISSIONS,
   PULLOUT_CREATE_PERMISSIONS,
   PULLOUT_MANAGE_PERMISSIONS,
@@ -249,7 +250,7 @@ export async function getDeliveryKpisAction(): Promise<LogisticsKpis> {
 }
 
 export async function getTransferKpisAction(): Promise<LogisticsKpis> {
-  const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
+  const session = await requireAnyPermission([...TRANSFERS_PAGE_PERMISSIONS]);
   const tid = session.user.tenantId;
   const where = transferListWhere(
     await resolveLogisticsBranchScope({
@@ -428,7 +429,7 @@ export async function listTransfersAction(input?: {
   sort?: string;
   sortDir?: string;
 }) {
-  const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
+  const session = await requireAnyPermission([...TRANSFERS_PAGE_PERMISSIONS]);
   const where = transferListWhere(
     await resolveLogisticsBranchScope({
       tenantId: session.user.tenantId,
@@ -467,7 +468,7 @@ function revalidatePullout(id: string) {
 }
 
 export async function getTransferDetailAction(id: string) {
-  const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
+  const session = await requireAnyPermission([...TRANSFERS_PAGE_PERMISSIONS]);
   try {
     const detail = await transferPostingService.getDetail(postingActor(session), id);
     return { success: true as const, detail };

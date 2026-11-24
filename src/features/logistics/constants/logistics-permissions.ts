@@ -19,6 +19,8 @@ export const LOGISTICS_DELIVERY_DISPATCH = "logistics.delivery.dispatch";
 export const LOGISTICS_DELIVERY_RECEIVE = "logistics.delivery.receive";
 export const LOGISTICS_DELIVERY_RETURN_REQUEST = "logistics.delivery_return.request";
 export const LOGISTICS_DELIVERY_RETURN_APPROVE = "logistics.delivery_return.approve";
+/** Opens Transfers read only. Each button keeps its own checkbox. */
+export const LOGISTICS_DELIVERY_TRANSFER_VIEW = "logistics.delivery_transfer.view";
 export const LOGISTICS_DELIVERY_TRANSFER_CREATE = "logistics.delivery_transfer.create";
 export const LOGISTICS_DELIVERY_TRANSFER_APPROVE = "logistics.delivery_transfer.approve";
 export const LOGISTICS_DELIVERY_TRANSFER_RECEIVE = "logistics.delivery_transfer.receive";
@@ -39,12 +41,11 @@ export const PULLOUT_CREATE_PERMISSIONS = [
   "orders.create",
 ] as const;
 
-/** Pull-out Approve and Reject. Transfer Approve uses the Branch transfers checkbox. */
-export const PULLOUT_APPROVE_PERMISSIONS = [
-  PULLOUTS_APPROVE,
-  "orders.approve",
-  LOGISTICS_MANAGE,
-] as const;
+/**
+ * Pull-out Approve and Reject: only the Pull-outs Approve checkbox. The hidden `orders.approve`
+ * and Branch deliveries Manage no longer count, so unticking Approve hides the buttons.
+ */
+export const PULLOUT_APPROVE_PERMISSIONS = [PULLOUTS_APPROVE] as const;
 
 /** Pull-out list edit, Send, and Check SAP. Delivery and transfer Manage stay on logistics.manage. */
 export const PULLOUT_MANAGE_PERMISSIONS = [PULLOUTS_MANAGE, LOGISTICS_MANAGE] as const;
@@ -100,6 +101,18 @@ export const LOGISTICS_READ_ALIASES = [
 export const LOGISTICS_PAGE_PERMISSIONS = [
   ...LOGISTICS_ACCESS_PERMISSIONS,
   ...LOGISTICS_READ_ALIASES,
+] as const;
+
+/**
+ * Opens Transfers (list, detail, KPIs): any Branch transfers checkbox, or what opened it
+ * before. Branch transfers View alone is read only (e.g. Accounting).
+ */
+export const TRANSFERS_PAGE_PERMISSIONS = [
+  LOGISTICS_DELIVERY_TRANSFER_VIEW,
+  LOGISTICS_DELIVERY_TRANSFER_CREATE,
+  LOGISTICS_DELIVERY_TRANSFER_APPROVE,
+  LOGISTICS_DELIVERY_TRANSFER_RECEIVE,
+  ...LOGISTICS_PAGE_PERMISSIONS,
 ] as const;
 
 /**

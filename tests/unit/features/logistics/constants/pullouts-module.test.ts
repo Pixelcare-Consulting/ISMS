@@ -16,6 +16,7 @@ import {
   canViewPullouts,
   resolveLogisticsCapabilities,
   resolvePulloutCapabilities,
+  TRANSFERS_PAGE_PERMISSIONS,
 } from "@/features/logistics/constants/logistics-permissions";
 import { postingPermissionError } from "@/features/logistics/services/logistics-posting-access";
 import { resolveScPulloutCapabilities } from "@/features/service-center-ops/constants/sc-permissions";
@@ -262,14 +263,28 @@ describe("pull-outs permission module", () => {
     expect(caps.canManage).toBe(false);
   });
 
+  it("shows pull-out Approve and Reject only with Pull-outs Approve", () => {
+    for (const permissions of [["orders.approve"], ["logistics.manage"], ["tl", "sp"]]) {
+      const capabilities = resolvePulloutCapabilities(permissions);
+      expect(capabilities.canApproveTl).toBe(false);
+      expect(capabilities.canRejectTransfer).toBe(false);
+    }
+    const approver = resolvePulloutCapabilities(["pullouts.approve"]);
+    expect(approver.canApproveTl).toBe(true);
+    expect(approver.canRejectTransfer).toBe(true);
+  });
+
+  it("opens Transfers read only with Branch transfers View", () => {
+    expect(TRANSFERS_PAGE_PERMISSIONS).toContain("logistics.delivery_transfer.view");
+    const viewer = resolveLogisticsCapabilities(["logistics.delivery_transfer.view"]);
+    expect(Object.values(viewer).some(Boolean)).toBe(false);
+  });
+
   it("keeps the older slugs working for the same buttons", () => {
     expect(resolvePulloutCapabilities(["logistics.create"]).canCreate).toBe(true);
     expect(resolvePulloutCapabilities(["orders.create"]).canCreate).toBe(true);
     expect(resolvePulloutCapabilities(["logistics.manage"]).canCreate).toBe(true);
-    expect(resolvePulloutCapabilities(["logistics.manage"]).canApproveTl).toBe(true);
     expect(resolvePulloutCapabilities(["logistics.manage"]).canManage).toBe(true);
-    expect(resolvePulloutCapabilities(["orders.approve"]).canApproveTl).toBe(true);
-    expect(resolvePulloutCapabilities(["orders.approve"]).canRejectTransfer).toBe(true);
 
     const fromManage = resolveLogisticsCapabilities(["logistics.manage"]);
     expect(fromManage.canCreate).toBe(true);
@@ -299,7 +314,8 @@ describe("pull-outs permission module", () => {
     expect(postingPermissionError(["pullouts.manage"], "pullout.checkSap")).toBeNull();
     expect(postingPermissionError(["pullouts.manage"], "transfer.release")).toMatch(/permission/i);
     expect(postingPermissionError(["logistics.manage"], "pullout.updateList")).toBeNull();
-    expect(postingPermissionError(["orders.approve"], "pullout.approve")).toBeNull();
+    expect(postingPermissionError(["orders.approve"], "pullout.approve")).toMatch(/permission/i);
+    expect(postingPermissionError(["pullouts.approve"], "pullout.approve")).toBeNull();
     expect(postingPermissionError(["orders.approve"], "transfer.approve")).toBeNull();
 
     expect(resolveScPulloutCapabilities(["service_centers.orders.approve"]).canApproveTl).toBe(true);

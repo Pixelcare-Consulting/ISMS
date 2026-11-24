@@ -17,6 +17,7 @@ import {
   LOGISTICS_DELIVERY_TRANSFER_CREATE,
   LOGISTICS_DELIVERY_TRANSFER_RECEIVE,
   LOGISTICS_PAGE_PERMISSIONS,
+  TRANSFERS_PAGE_PERMISSIONS,
   resolveLogisticsCapabilities,
 } from "@/features/logistics/constants/logistics-permissions";
 import {
@@ -48,7 +49,7 @@ interface TransfersPageProps {
 }
 
 function canViewBranchTransfers(permissions: string[] | undefined): boolean {
-  return LOGISTICS_PAGE_PERMISSIONS.some((slug) => hasPermission(permissions, slug));
+  return TRANSFERS_PAGE_PERMISSIONS.some((slug) => hasPermission(permissions, slug));
 }
 
 function visibleTabs(permissions: string[] | undefined): readonly TransfersPageTab[] {

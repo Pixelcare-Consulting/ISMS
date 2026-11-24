@@ -4,7 +4,7 @@ import { TransferDetailView } from "@/app/(app)/logistics/_components/transfer-d
 import { getTransferDetailAction } from "@/features/logistics/actions/logistics.actions";
 import { loadWorkflowCatalog } from "@/features/logistics/constants/workflow-catalog";
 import {
-  LOGISTICS_PAGE_PERMISSIONS,
+  TRANSFERS_PAGE_PERMISSIONS,
   resolveLogisticsCapabilities,
 } from "@/features/logistics/constants/logistics-permissions";
 import { transferApprovalBranchIds } from "@/features/logistics/lib/transfer-approver";
@@ -17,7 +17,7 @@ export default async function TransferDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
+  const session = await requireAnyPermission([...TRANSFERS_PAGE_PERMISSIONS]);
   const { id } = await params;
   const [result, workflowStatuses, assignedBranchIds] = await Promise.all([
     getTransferDetailAction(id),

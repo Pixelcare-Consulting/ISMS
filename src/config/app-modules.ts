@@ -313,8 +313,9 @@ export const appModules: AppModule[] = [
     slugPrefix: "logistics.delivery_transfer",
     area: "Inventory",
     description:
-      "Opens Transfers in Inventory. Create, Approve, and Receive control this page and also cover units not accepted on a delivery. Approve applies to branches in the person's area of responsibility (all branches with Manage branches). Opening Transfers uses Branch deliveries View, Create, or Manage.",
+      "Opens Transfers in Inventory. View alone is read only. Create, Approve, and Receive control this page and also cover units not accepted on a delivery. Approve applies to branches in the person's area of responsibility (all branches with Manage branches). Branch deliveries View, Create, or Manage also open Transfers.",
     actions: [
+      { value: "view", label: "View" },
       { value: "create", label: "Create" },
       { value: "approve", label: "Approve" },
       { value: "receive", label: "Receive" },

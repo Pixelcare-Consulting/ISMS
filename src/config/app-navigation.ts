@@ -404,10 +404,18 @@ export const appNavigation: NavEntry[] = [
             href: "/logistics/transfers",
             label: "Transfers",
             icon: ArrowLeftRight,
-            // The unit-transfer permissions no longer open this page: its Unit transfers tab is
-            // hidden (see HIDDEN_TRANSFERS_PAGE_TABS). orders.create is how a PS reaches the
-            // transfers they accept.
-            anyPermissions: ["logistics.view", "logistics.create", "logistics.manage", "orders.create"],
+            // Any Branch transfers checkbox opens it (View alone is read only), plus what opened
+            // it before. orders.create is how a PS reaches the transfers they accept.
+            anyPermissions: [
+              "logistics.delivery_transfer.view",
+              "logistics.delivery_transfer.create",
+              "logistics.delivery_transfer.approve",
+              "logistics.delivery_transfer.receive",
+              "logistics.view",
+              "logistics.create",
+              "logistics.manage",
+              "orders.create",
+            ],
             countBadgeKey: "logisticsTransfers",
             activePathPrefixes: ["/logistics/delivery-transfers"],
           },
