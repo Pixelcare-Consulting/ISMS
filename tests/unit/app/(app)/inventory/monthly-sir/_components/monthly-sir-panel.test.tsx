@@ -1,12 +1,46 @@
 /** @jest-environment jsdom */
 import { render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 
 import { MonthlySirPanel } from "@/app/(app)/inventory/monthly-sir/_components/monthly-sir-panel";
 import type { MonthlySirCapabilities } from "@/features/monthly-sir/constants/monthly-sir-permissions";
 import type { PcountUploadAllowance } from "@/features/monthly-sir/lib/pcount-upload-allowance";
 
+type MockCell = (context: { row: { original: unknown; index: number } }) => ReactNode;
+
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn(), refresh: jest.fn(), replace: jest.fn() }),
+}));
+
+// @tanstack/react-table ships ESM that Jest cannot load. The stand-in still
+// renders the action cells this panel builds, which is where the buttons live.
+jest.mock("@tanstack/react-table", () => ({
+  createColumnHelper: () => ({
+    accessor: (_accessor: unknown, column: unknown) => column,
+    display: (column: unknown) => column,
+  }),
+}));
+
+jest.mock("@/lib/data-table", () => ({
+  DataTable: ({
+    data,
+    columns,
+  }: {
+    data: unknown[];
+    columns: Array<{ id?: string; cell?: MockCell }>;
+  }) => (
+    <div>
+      {data.map((original, index) =>
+        columns.map((column, columnIndex) =>
+          typeof column.cell === "function" ? (
+            <div key={`${column.id ?? columnIndex}-${index}`}>
+              {column.cell({ row: { original, index } })}
+            </div>
+          ) : null,
+        ),
+      )}
+    </div>
+  ),
 }));
 
 jest.mock("@/features/monthly-sir/actions/monthly-sir.actions", () => ({

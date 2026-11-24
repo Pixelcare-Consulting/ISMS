@@ -68,7 +68,7 @@ export const setupNavigation: NavEntry[] = [
             href: "/dashboard/pcount",
             label: "P-Count Dashboard",
             icon: ClipboardList,
-            badge: "new",
+           // badge: "new",
           },
           {
             href: "/dashboard/site-traffic",
