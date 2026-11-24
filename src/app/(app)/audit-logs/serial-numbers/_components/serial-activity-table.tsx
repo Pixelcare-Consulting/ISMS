@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { SerialActivityDetailsDialog } from "@/app/(app)/audit-logs/serial-numbers/_components/serial-activity-details-dialog";
+import { SerialActivityStatusBadge } from "@/features/serial-activity/components/serial-activity-status-badge";
 import {
   SERIAL_ACTIVITY_LABELS,
   SERIAL_ACTIVITY_TYPES,
@@ -304,7 +305,12 @@ export function SerialActivityTable({
         id: "status",
         header: "Status",
         enableSorting: false,
-        cell: ({ row }) => row.original.status ?? "—",
+        cell: ({ row }) =>
+          row.original.status?.trim() ? (
+            <SerialActivityStatusBadge status={row.original.status} />
+          ) : (
+            "—"
+          ),
         meta: { className: "text-muted-foreground" },
       }),
       activityColumn.display({

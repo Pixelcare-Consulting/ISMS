@@ -88,6 +88,7 @@ import {
   completeReplacementSameInvoiceAction,
   createSaleAction,
   listSaleableSerialsAction,
+  updateSaleHeaderAction,
   updateSaleSerialAction,
 } from "@/features/sales/actions/sales.actions";
 import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
@@ -129,6 +130,8 @@ function saleInput(
     branchId: extra?.branchId ?? "branch-1",
     alternateBranchId: extra?.alternateBranchId ?? "branch-1",
     customerName: "Ada",
+    contactNo: "09171234567",
+    transactionDate: "2026-11-24",
     paymentTypeId: "pay-1",
     saleTypeId: "type-1",
     customerDeliveryMethodId: "cdm-1",
@@ -302,6 +305,43 @@ describe("listSaleableSerialsAction", () => {
     expect(result.items).toEqual([
       expect.objectContaining({ id: "sn-late", serialNo: "ZZZ-99999" }),
     ]);
+  });
+});
+
+describe("createSaleAction required header", () => {
+  it("rejects a new sale that has no transaction date", async () => {
+    const result = await createSaleAction({
+      ...saleInput([line("sn-1")]),
+      transactionDate: "  ",
+    });
+
+    expect(result).toEqual({ error: "Transaction date is required" });
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects a new sale that has no contact number", async () => {
+    const result = await createSaleAction({
+      ...saleInput([line("sn-1")]),
+      contactNo: "",
+    });
+
+    expect(result).toEqual({ error: "Contact number is required" });
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it("still accepts a header edit when an older sale has no contact number", async () => {
+    const result = await updateSaleHeaderAction({
+      saleId: "sale-1",
+      transactionNo: "TRN-1001",
+      branchId: "branch-1",
+      alternateBranchId: "branch-1",
+      customerName: "Ada",
+      paymentTypeId: "pay-1",
+      saleTypeId: "type-1",
+      customerDeliveryMethodId: "cdm-1",
+    });
+
+    expect(result).toEqual({ error: "Sale not found" });
   });
 });
 

@@ -121,7 +121,8 @@ export function transactionSnapshotFromMetadata(
     transactionDate: dateToIsoDay(readString(metadata, "transactionDate")),
     transactionAmount: amountToString(metadata.transactionAmount),
     customerName: readString(metadata, "customerName"),
-    customerNumber: readString(metadata, "customerNumber"),
+    customerNumber:
+      readString(metadata, "customerNumber") ?? readString(metadata, "contactNo"),
   };
 }
 

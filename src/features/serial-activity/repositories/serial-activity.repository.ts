@@ -36,6 +36,7 @@ import {
   type AuditTrailEntry,
 } from "@/features/serial-activity/lib/approval-reference";
 import {
+  historyReplacementLocation,
   historyReplacementSerials,
   replacementSerialReferenceLines,
   saleLineReplacementReference,
@@ -1630,20 +1631,44 @@ const DELIVERY_RETURN_LEDGER_ROWS: Prisma.SerialNumberHistoryWhereInput = {
  * then older service center ones). The invoice is the one already parsed from `details`;
  * either serial side can match.
  */
-async function loadReplacementSerialPairs(
-  tenantId: string,
-  rows: readonly { txnType: string; serialNumberId: string; details: string | null }[],
-) {
-  const replacementRows = rows.filter((row) => row.txnType === "replacement");
-  const serialIds = [...new Set(replacementRows.map((row) => row.serialNumberId))];
-  const invoices = [
+function replacementInvoice(row: {
+  details: string | null;
+  context?: unknown;
+}): string | null {
+  return (
+    documentReferenceFromHistoryDetails(row.details) ??
+    replacementContextFromJson(row.context)?.transactionNo ??
+    null
+  );
+}
+
+/** Invoice numbers from the ledger text and from sale facts copied onto the row. */
+function replacementLookupInvoices(
+  rows: readonly { details: string | null; context?: unknown }[],
+): string[] {
+  return [
     ...new Set(
-      replacementRows.flatMap((row) => {
-        const invoice = documentReferenceFromHistoryDetails(row.details);
-        return invoice ? [invoice] : [];
+      rows.flatMap((row) => {
+        const fromDetails = documentReferenceFromHistoryDetails(row.details);
+        const fromContext = replacementContextFromJson(row.context)?.transactionNo ?? null;
+        return [fromDetails, fromContext].filter((value): value is string => Boolean(value));
       }),
     ),
   ];
+}
+
+async function loadReplacementSerialPairs(
+  tenantId: string,
+  rows: readonly {
+    txnType: string;
+    serialNumberId: string;
+    details: string | null;
+    context?: unknown;
+  }[],
+) {
+  const replacementRows = rows.filter((row) => row.txnType === "replacement");
+  const serialIds = [...new Set(replacementRows.map((row) => row.serialNumberId))];
+  const invoices = replacementLookupInvoices(replacementRows);
   if (serialIds.length === 0 || invoices.length === 0) return [];
 
   const found = await prisma.salesReplacement.findMany({
@@ -1672,6 +1697,8 @@ async function loadReplacementSerialPairs(
       replacementInvoiceNo: true,
       originalSerialNumber: { select: { serialNo: true } },
       replacementSerialNumber: { select: { serialNo: true } },
+      replacementBranch: { select: { name: true } },
+      sale: { select: { branch: { select: { name: true } } } },
     },
   });
 
@@ -1706,6 +1733,8 @@ async function loadReplacementSerialPairs(
       replacementInvoiceNo: row.replacementInvoiceNo,
       originalSerialNo: row.originalSerialNumber?.serialNo ?? null,
       replacementSerialNo: row.replacementSerialNumber?.serialNo ?? null,
+      saleBranchName: row.sale.branch.name,
+      replacementBranchName: row.replacementBranch?.name ?? null,
     })),
     ...scFound.map((row) => ({
       originalSerialNumberId: row.saleDetail?.serialNumberId ?? null,
@@ -1728,6 +1757,11 @@ const liveSaleSelect = {
   },
 } as const;
 
+const branchLiveSaleSelect = {
+  ...liveSaleSelect,
+  branch: { select: { name: true } },
+} as const;
+
 type LiveSaleHeader = {
   transactionNo: string;
   transactionDate: Date | null;
@@ -1740,11 +1774,17 @@ type LiveSaleHeader = {
   }[];
 };
 
-function pickLiveSale(
-  sales: readonly LiveSaleHeader[],
+interface ReplacementLiveFacts {
+  context: ReplacementContext;
+  /** Sale branch, or the branch on the replacement when the sale branch is unknown. */
+  location: string | null;
+}
+
+function pickLiveSale<T extends LiveSaleHeader>(
+  sales: readonly T[],
   transactionNo: string,
   serialNumberId: string,
-): LiveSaleHeader | null {
+): T | null {
   const matches = sales.filter((sale) => sale.transactionNo === transactionNo);
   return (
     matches.find((sale) =>
@@ -1769,23 +1809,16 @@ async function loadReplacementLiveContexts(
     context: unknown;
   }[],
   pairs: Parameters<typeof historyReplacementSerials>[0],
-): Promise<Map<string, ReplacementContext>> {
-  const contexts = new Map<string, ReplacementContext>();
+): Promise<Map<string, ReplacementLiveFacts>> {
+  const contexts = new Map<string, ReplacementLiveFacts>();
   const replacementRows = rows.filter((row) => row.txnType === "replacement");
-  const invoices = [
-    ...new Set(
-      replacementRows.flatMap((row) => {
-        const invoice = documentReferenceFromHistoryDetails(row.details);
-        return invoice ? [invoice] : [];
-      }),
-    ),
-  ];
+  const invoices = replacementLookupInvoices(replacementRows);
   if (replacementRows.length === 0 || invoices.length === 0) return contexts;
 
   const [branchSales, serviceSales] = await Promise.all([
     prisma.branchSalesTransaction.findMany({
       where: { tenantId, transactionNo: { in: invoices } },
-      select: liveSaleSelect,
+      select: branchLiveSaleSelect,
     }),
     prisma.serviceCenterSalesTransaction.findMany({
       where: { tenantId, transactionNo: { in: invoices } },
@@ -1794,13 +1827,15 @@ async function loadReplacementLiveContexts(
   ]);
 
   for (const row of replacementRows) {
-    const invoice = documentReferenceFromHistoryDetails(row.details);
+    const invoice = replacementInvoice(row);
     if (!invoice) continue;
-    const sale =
-      pickLiveSale(branchSales, invoice, row.serialNumberId) ??
-      pickLiveSale(serviceSales, invoice, row.serialNumberId);
+    const branchSale = pickLiveSale(branchSales, invoice, row.serialNumberId);
+    const sale = branchSale ?? pickLiveSale(serviceSales, invoice, row.serialNumberId);
     const pair = historyReplacementSerials(pairs, row.serialNumberId, invoice);
-    if (!sale && !pair) continue;
+    const location =
+      branchSale?.branch.name.trim() ||
+      historyReplacementLocation(pairs, row.serialNumberId, invoice);
+    if (!sale && !pair && !location) continue;
     const line = sale?.details.find((detail) => detail.serialNumberId === row.serialNumberId);
     const snapshot = transactionSnapshotFromSale({
       transactionNo: sale?.transactionNo ?? invoice,
@@ -1810,9 +1845,12 @@ async function loadReplacementLiveContexts(
       customerNumber: sale?.contactNo,
     });
     contexts.set(row.id, {
-      ...snapshot,
-      returnedSerialNo: pair?.returnedSerialNo ?? null,
-      replacedSerialNo: pair?.replacedSerialNo ?? null,
+      context: {
+        ...snapshot,
+        returnedSerialNo: pair?.returnedSerialNo ?? null,
+        replacedSerialNo: pair?.replacedSerialNo ?? null,
+      },
+      location: location || null,
     });
   }
   return contexts;
@@ -1913,11 +1951,13 @@ async function historyLedgerSource(
           : approvalRecords.length > 0
             ? approvalRecords.map((approval) => formatSerialActivityApproval(approval))
             : defect?.lines ?? [];
+      const liveReplacement =
+        row.txnType === "replacement" ? liveReplacements.get(row.id) : undefined;
       const replacement =
         row.txnType === "replacement"
           ? resolveReplacementContext(
               replacementContextFromJson(row.context),
-              liveReplacements.get(row.id) ?? null,
+              liveReplacement?.context ?? null,
             )
           : null;
       const transaction = replacement ? presentTransaction(replacement) : null;
@@ -1941,7 +1981,7 @@ async function historyLedgerSource(
           timestamp: row.createdAt,
           serialNo: serial.serialNo,
           modelLabel: serial.modelLabel,
-          location: defect?.branchName ?? null,
+          location: defect?.branchName ?? liveReplacement?.location ?? null,
           reference,
           referenceDetails: referenceDetails(...replacementLines, details, ...approvalLines),
           status: row.status?.trim() || null,

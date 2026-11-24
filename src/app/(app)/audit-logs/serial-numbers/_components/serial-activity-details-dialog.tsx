@@ -1,5 +1,15 @@
 "use client";
 
+import type { ReactNode } from "react";
+
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { SerialActivityStatusBadge } from "@/features/serial-activity/components/serial-activity-status-badge";
 import {
   formatSerialActivityApproval,
   formatSerialActivityPerformedBy,
@@ -9,13 +19,6 @@ import {
 } from "@/features/serial-activity/constants/serial-activity-display";
 import { replacementSerialReferenceLines } from "@/features/serial-activity/lib/replacement-reference";
 import { transactionReferenceLines } from "@/features/serial-activity/lib/transaction-snapshot";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 
 function coveredReferenceLines(event: SerialActivityEvent): Set<string> {
   return new Set([
@@ -28,11 +31,20 @@ function coveredReferenceLines(event: SerialActivityEvent): Set<string> {
   ]);
 }
 
-function Detail({ label, value }: { label: string; value: string | null | undefined }) {
+function Detail({
+  label,
+  value,
+  children,
+}: {
+  label: string;
+  value?: string | null;
+  children?: ReactNode;
+}) {
+  const text = value?.trim() ? value : null;
   return (
     <div className="grid grid-cols-[9.5rem_1fr] gap-x-3 gap-y-1 text-sm">
       <dt className="text-muted-foreground">{label}</dt>
-      <dd>{value?.trim() ? value : "—"}</dd>
+      <dd>{children ?? text ?? "—"}</dd>
     </div>
   );
 }
@@ -70,7 +82,9 @@ export function SerialActivityDetailsDialog({
           <Detail label="Date and time" value={formatSerialActivityTimestamp(event.timestamp)} />
           <Detail label="Serial" value={event.serialNo} />
           <Detail label="Model" value={event.modelLabel} />
-          <Detail label="Status" value={event.status} />
+          <Detail label="Status">
+            {event.status?.trim() ? <SerialActivityStatusBadge status={event.status} /> : "—"}
+          </Detail>
           <Detail label="Location" value={event.location} />
           <Detail label="Performed by" value={formatSerialActivityPerformedBy(event.performedBy)} />
         </dl>

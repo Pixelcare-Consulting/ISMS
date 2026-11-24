@@ -1,6 +1,8 @@
 import {
   formatTransactionDate,
   officialSalesTransactionView,
+  replacementContextFromJson,
+  resolveReplacementContext,
   snapshotToMetadata,
   transactionSnapshotFromMetadata,
   transactionSnapshotFromSale,
@@ -46,6 +48,60 @@ describe("transaction snapshot", () => {
     expect(snapshot.customerNumber).toBeNull();
     expect(snapshot.transactionAmount).toBe("0");
     expect(snapshotToMetadata(snapshot)).not.toHaveProperty("customerName");
+  });
+
+  it("reads a contact number that was stored under the sale field name", () => {
+    const snapshot = transactionSnapshotFromMetadata({
+      transactionNo: "1911",
+      contactNo: "09170001111",
+    });
+
+    expect(snapshot.customerNumber).toBe("09170001111");
+    expect(snapshot.transactionDate).toBeNull();
+  });
+});
+
+describe("replacement history mapping", () => {
+  it("keeps the date and contact empty when the sale never had them", () => {
+    const stored = replacementContextFromJson({
+      transactionNo: "1911",
+      transactionAmount: "9999",
+      customerName: "pxc justine",
+      returnedSerialNo: "32STV105A012600007",
+      replacedSerialNo: "32STV105A012604338",
+    });
+
+    const resolved = resolveReplacementContext(stored, null);
+
+    expect(resolved.transactionNo).toBe("1911");
+    expect(resolved.customerName).toBe("pxc justine");
+    expect(resolved.transactionDate).toBeNull();
+    expect(resolved.customerNumber).toBeNull();
+  });
+
+  it("fills a missing date and contact from the live sale", () => {
+    const stored = replacementContextFromJson({
+      transactionNo: "1911",
+      transactionAmount: "9999",
+      customerName: "pxc justine",
+    });
+    const live = {
+      ...transactionSnapshotFromSale({
+        transactionNo: "1911",
+        transactionDate: new Date("2026-11-01T00:00:00.000Z"),
+        transactionAmount: 9999,
+        customerName: "pxc justine",
+        customerNumber: "09181234567",
+      }),
+      returnedSerialNo: "OLD-SN",
+      replacedSerialNo: "NEW-SN",
+    };
+
+    const resolved = resolveReplacementContext(stored, live);
+
+    expect(resolved.transactionDate).toBe("2026-11-01");
+    expect(resolved.customerNumber).toBe("09181234567");
+    expect(resolved.customerName).toBe("pxc justine");
   });
 });
 

@@ -10,6 +10,10 @@ export interface ReplacementSerialPair {
 export interface HistoryReplacementPair extends ReplacementSerialPair {
   originalSerialNumberId: string | null;
   replacementSerialNumberId: string | null;
+  /** Branch on the original sale, when that sale is still on file. */
+  saleBranchName?: string | null;
+  /** Branch saved on the replacement itself. */
+  replacementBranchName?: string | null;
 }
 
 function trimmed(value: string | null | undefined): string {
@@ -145,6 +149,28 @@ export function historyReplacementSerials(
   const replacedSerialNo = trimmed(match.row.replacementSerialNo);
   if (!returnedSerialNo || !replacedSerialNo || returnedSerialNo === replacedSerialNo) return null;
   return { returnedSerialNo, replacedSerialNo };
+}
+
+/** Sale branch when it is known, otherwise the branch stored on the replacement. */
+export function knownReplacementLocation(
+  saleBranchName: string | null | undefined,
+  replacementBranchName: string | null | undefined,
+): string | null {
+  const sale = trimmed(saleBranchName);
+  if (sale) return sale;
+  const branch = trimmed(replacementBranchName);
+  return branch || null;
+}
+
+/** Branch for the replacement pair this ledger row belongs to. */
+export function historyReplacementLocation(
+  pairs: readonly HistoryReplacementPair[],
+  serialNumberId: string,
+  invoice: string | null | undefined,
+): string | null {
+  const match = matchingHistoryPair(pairs, serialNumberId, invoice);
+  if (!match) return null;
+  return knownReplacementLocation(match.row.saleBranchName, match.row.replacementBranchName);
 }
 
 /**

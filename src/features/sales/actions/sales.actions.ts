@@ -173,10 +173,38 @@ const updateSaleHeaderSchema = saleHeaderFieldsSchema.extend({
   saleId: z.string().min(1),
 });
 
+const createSaleContactNo = z
+  .string()
+  .trim()
+  .min(1, "Contact number is required")
+  .max(50);
+
+const createSaleTransactionDate = z
+  .string()
+  .trim()
+  .min(1, "Transaction date is required");
+
+/**
+ * Create only. Header edits keep contact and date optional so an older sale
+ * with a blank contact or date can still be saved.
+ */
 const saleSchema = saleHeaderFieldsSchema.extend({
   ...branchStockSourceSchema.shape,
+  contactNo: createSaleContactNo,
+  transactionDate: createSaleTransactionDate,
   details: z.array(saleDetailSchema).min(1),
 });
+
+function requiredCreateSaleMessage(error: z.ZodError): string | null {
+  for (const issue of error.issues) {
+    const field = issue.path[0];
+    if (field !== "transactionDate" && field !== "contactNo") continue;
+    if (issue.code === "too_big") continue;
+    if (field === "transactionDate") return "Transaction date is required";
+    return "Contact number is required";
+  }
+  return null;
+}
 
 const SALES_PROOF_PREFIX = "sales-proofs";
 
@@ -890,7 +918,9 @@ export async function uploadSaleProofAction(formData: FormData) {
 export async function createSaleAction(input: unknown) {
   const session = await requirePermission("sales.create");
   const parsed = saleSchema.safeParse(input);
-  if (!parsed.success) return { error: "Invalid sale" };
+  if (!parsed.success) {
+    return { error: requiredCreateSaleMessage(parsed.error) ?? "Invalid sale" };
+  }
   const tenantId = session.user.tenantId;
 
   try {

@@ -92,9 +92,13 @@ describe("SerialActivityTable view details", () => {
     );
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByText("Replaced")).toHaveAttribute("data-slot", "badge");
     fireEvent.click(screen.getByRole("button", { name: "View details" }));
 
     const dialog = screen.getByRole("dialog", { name: "View details" });
+    const status = within(dialog).getByText("Replaced");
+    expect(status).toHaveAttribute("data-slot", "badge");
+    expect(status.className).toMatch(/violet/);
     expect(within(dialog).getByText("Mar 15, 2026")).toBeInTheDocument();
     expect(within(dialog).getByText("Ana Reyes")).toBeInTheDocument();
     expect(within(dialog).getByText("Requested")).toBeInTheDocument();

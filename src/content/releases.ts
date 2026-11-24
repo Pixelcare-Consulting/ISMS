@@ -68,6 +68,31 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.95.25",
+    date: "2026-11-24",
+    releasedAt: "2026-11-24T17:50:00+08:00",
+    title: "Clearer serial logs and required sale details",
+    highlights: [
+      "Serial number statuses show as badges.",
+      "A new sale needs a transaction date and a contact number.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description: "Statuses on a serial number log, including Replaced, show as badges.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Creating a sale now requires the transaction date and the contact number.",
+      },
+      {
+        type: "fix",
+        description: "A replacement shows its branch when that branch is already known.",
+      },
+    ],
+  },
+  {
     version: "0.95.24",
     date: "2026-11-24",
     releasedAt: "2026-11-24T15:50:00+08:00",
