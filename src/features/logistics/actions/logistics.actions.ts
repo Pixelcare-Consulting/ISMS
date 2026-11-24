@@ -78,6 +78,7 @@ import { reasonStatusService } from "@/features/reason-status/services/reason-st
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
+import { parseListSearch } from "@/lib/shared/pagination";
 
 const DISPATCH_PERMISSIONS = [
   LOGISTICS_DELIVERY_DISPATCH,
@@ -592,6 +593,7 @@ export async function listPulloutsAction(input?: {
   limit?: number;
   sort?: string;
   sortDir?: string;
+  q?: string;
 }) {
   const session = await requirePermission(PULLOUTS_VIEW);
   return logisticsRepository.listPullouts(
@@ -601,6 +603,7 @@ export async function listPulloutsAction(input?: {
       limit: parseTablePageSize(input?.limit),
     },
     { field: parsePulloutSort(input?.sort), dir: parseSortDir(input?.sortDir) },
+    parseListSearch(input?.q),
   );
 }
 

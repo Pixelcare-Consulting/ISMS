@@ -14,7 +14,13 @@ import { SectionPageLead } from "@/components/navigation/section-page-lead";
 import { PulloutsPanel } from "@/app/(app)/logistics/_components/pullouts-panel";
 
 interface PickupsPageProps {
-  searchParams: Promise<{ page?: string; limit?: string; sort?: string; dir?: string }>;
+  searchParams: Promise<{
+    page?: string;
+    limit?: string;
+    sort?: string;
+    dir?: string;
+    q?: string;
+  }>;
 }
 
 export default async function PickupsPage({ searchParams }: PickupsPageProps) {
@@ -24,7 +30,7 @@ export default async function PickupsPage({ searchParams }: PickupsPageProps) {
   const page = Number(params.page) || 1;
   const limit = parseTablePageSize(params.limit);
   const [pullouts, kpis, workflowStatuses] = await Promise.all([
-    listPulloutsAction({ page, limit, sort: params.sort, sortDir: params.dir }),
+    listPulloutsAction({ page, limit, sort: params.sort, sortDir: params.dir, q: params.q }),
     getPulloutKpisAction(),
     loadWorkflowCatalog(session.user.tenantId, "pullout_workflow"),
   ]);
@@ -46,6 +52,7 @@ export default async function PickupsPage({ searchParams }: PickupsPageProps) {
         currentUserName={currentUserName}
         initialSort={params.sort ?? ""}
         initialSortDir={params.dir ?? "desc"}
+        initialQuery={params.q ?? ""}
       />
     </div>
   );

@@ -34,6 +34,7 @@ import { resolveScIdsForUser } from "@/features/service-center-ops/services/sc-s
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
+import { parseListSearch } from "@/lib/shared/pagination";
 
 /**
  * Service center pull-outs. Same actions as branch pull-outs (`logistics.actions`), gated by
@@ -87,6 +88,7 @@ export async function listScPulloutsAction(input?: {
   limit?: number;
   sort?: string;
   sortDir?: string;
+  q?: string;
 }) {
   const session = await requireAnyPermission([...SC_LOGISTICS_ACCESS]);
   return scOpsRepository.listPullouts(
@@ -97,6 +99,7 @@ export async function listScPulloutsAction(input?: {
       field: parseSort(input?.sort),
       dir: input?.sortDir === "asc" || input?.sortDir === "desc" ? input.sortDir : undefined,
     },
+    parseListSearch(input?.q),
   );
 }
 

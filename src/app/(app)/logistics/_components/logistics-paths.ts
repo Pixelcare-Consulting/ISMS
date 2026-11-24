@@ -11,8 +11,10 @@ export function buildLogisticsPageHref(
   limit: number = DEFAULT_TABLE_PAGE_SIZE,
   sort?: string,
   sortDir?: string,
+  q?: string,
 ): string {
   const params = new URLSearchParams();
+  if (q?.trim()) params.set("q", q.trim());
   if (page > 1) params.set("page", String(page));
   if (limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(limit));
   if (sort) params.set("sort", sort);

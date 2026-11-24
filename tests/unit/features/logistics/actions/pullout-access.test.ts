@@ -62,3 +62,29 @@ describe("pull-out view access", () => {
     await expect(action()).rejects.toThrow("FORBIDDEN");
   });
 });
+
+describe("pull-out list search", () => {
+  const { logisticsRepository } = jest.requireMock(
+    "@/features/logistics/repositories/logistics.repository",
+  ) as { logisticsRepository: { listPullouts: jest.Mock } };
+
+  beforeEach(() => {
+    mockPermissions = ["pullouts.view"];
+    logisticsRepository.listPullouts.mockClear();
+  });
+
+  it("passes a trimmed search term, such as a serial number, to the list query", async () => {
+    await listPulloutsAction({ q: "  SN-12345  " });
+    expect(logisticsRepository.listPullouts.mock.calls[0][3]).toBe("SN-12345");
+  });
+
+  it("drops a blank search term", async () => {
+    await listPulloutsAction({ q: "   " });
+    expect(logisticsRepository.listPullouts.mock.calls[0][3]).toBeUndefined();
+  });
+
+  it("caps a long search term", async () => {
+    await listPulloutsAction({ q: "x".repeat(250) });
+    expect(logisticsRepository.listPullouts.mock.calls[0][3]).toHaveLength(100);
+  });
+});
