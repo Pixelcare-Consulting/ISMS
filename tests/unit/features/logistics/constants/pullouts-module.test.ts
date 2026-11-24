@@ -280,29 +280,51 @@ describe("pull-outs permission module", () => {
     expect(Object.values(viewer).some(Boolean)).toBe(false);
   });
 
-  it("keeps the older slugs working for the same buttons", () => {
-    expect(resolvePulloutCapabilities(["logistics.create"]).canCreate).toBe(true);
-    expect(resolvePulloutCapabilities(["orders.create"]).canCreate).toBe(true);
-    expect(resolvePulloutCapabilities(["logistics.manage"]).canCreate).toBe(true);
-    expect(resolvePulloutCapabilities(["logistics.manage"]).canManage).toBe(true);
+  it.each([
+    ["logistics.create"],
+    ["logistics.manage"],
+    ["orders.create"],
+    ["orders.approve"],
+  ])("does not let %s unlock a pull-out or transfer button", (slug) => {
+    const pullout = resolvePulloutCapabilities([slug]);
+    expect(pullout).toEqual({
+      canCreate: false,
+      canManage: false,
+      canApproveTl: false,
+      canRejectTransfer: false,
+    });
 
+    const transfer = resolveLogisticsCapabilities([slug]);
+    expect(transfer.canCreate).toBe(false);
+    expect(transfer.canApproveTl).toBe(false);
+    expect(transfer.canRejectTransfer).toBe(false);
+    expect(transfer.canReceiveTransfer).toBe(false);
+    expect(transfer.canAcceptDelivery).toBe(false);
+
+    expect(postingPermissionError([slug], "pullout.create")).toMatch(/permission/i);
+    expect(postingPermissionError([slug], "pullout.approve")).toMatch(/permission/i);
+    expect(postingPermissionError([slug], "pullout.updateList")).toMatch(/permission/i);
+    expect(postingPermissionError([slug], "transfer.approve")).toMatch(/permission/i);
+  });
+
+  it("keeps Branch deliveries Manage on the transfer release step only", () => {
     const fromManage = resolveLogisticsCapabilities(["logistics.manage"]);
-    expect(fromManage.canCreate).toBe(true);
-    expect(fromManage.canApproveTl).toBe(true);
-    expect(fromManage.canRejectTransfer).toBe(true);
-    expect(fromManage.canReceiveTransfer).toBe(true);
     expect(fromManage.canManage).toBe(true);
+    expect(fromManage.canExecuteTransfer).toBe(true);
+    expect(fromManage.canDispatch).toBe(false);
+    expect(postingPermissionError(["logistics.manage"], "transfer.release")).toBeNull();
+  });
 
-    expect(resolveLogisticsCapabilities(["logistics.create"]).canCreate).toBe(true);
-    expect(resolveLogisticsCapabilities(["logistics.create"]).canReceiveTransfer).toBe(true);
-    expect(resolveLogisticsCapabilities(["orders.create"]).canCreate).toBe(true);
-    expect(resolveLogisticsCapabilities(["orders.approve"]).canApproveTl).toBe(true);
+  it("gates each transfer button on its own Branch transfers checkbox", () => {
     expect(resolveLogisticsCapabilities(["logistics.delivery_transfer.approve"]).canApproveTl).toBe(
       true,
     );
     expect(
       resolveLogisticsCapabilities(["logistics.delivery_transfer.approve"]).canRejectTransfer,
     ).toBe(true);
+    expect(
+      resolveLogisticsCapabilities(["logistics.delivery_transfer.approve"]).canReceiveTransfer,
+    ).toBe(false);
     expect(
       resolveLogisticsCapabilities(["logistics.delivery_transfer.receive"]).canReceiveTransfer,
     ).toBe(true);
@@ -313,16 +335,17 @@ describe("pull-outs permission module", () => {
     expect(postingPermissionError(["pullouts.manage"], "pullout.finalize")).toBeNull();
     expect(postingPermissionError(["pullouts.manage"], "pullout.checkSap")).toBeNull();
     expect(postingPermissionError(["pullouts.manage"], "transfer.release")).toMatch(/permission/i);
-    expect(postingPermissionError(["logistics.manage"], "pullout.updateList")).toBeNull();
-    expect(postingPermissionError(["orders.approve"], "pullout.approve")).toMatch(/permission/i);
     expect(postingPermissionError(["pullouts.approve"], "pullout.approve")).toBeNull();
-    expect(postingPermissionError(["orders.approve"], "transfer.approve")).toBeNull();
+  });
 
-    expect(resolveScPulloutCapabilities(["service_centers.orders.approve"]).canApproveTl).toBe(true);
+  it("gates service center pull-out Approve and Create on their own checkboxes", () => {
+    expect(resolveScPulloutCapabilities(["service_centers.orders.approve"]).canApproveTl).toBe(false);
     expect(resolveScPulloutCapabilities(["service_centers.logistics.manage"]).canApproveTl).toBe(
-      true,
+      false,
     );
+    expect(resolveScPulloutCapabilities(["service_centers.logistics.manage"]).canCreate).toBe(false);
     expect(resolveScPulloutCapabilities(["service_centers.logistics.manage"]).canManage).toBe(true);
+    expect(resolveScPulloutCapabilities(["service_centers.logistics.create"]).canCreate).toBe(true);
   });
 
   it("grants the new checkboxes on seeded roles and templates that already had the fallback", () => {

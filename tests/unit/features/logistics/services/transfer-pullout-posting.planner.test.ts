@@ -609,9 +609,16 @@ describe("logistics posting permissions", () => {
     expect(postingPermissionError(["orders.approve"], "transfer.release")).toMatch(/permission/i);
     expect(postingPermissionError(["orders.approve"], "pullout.finalize")).toMatch(/permission/i);
     expect(postingPermissionError(["orders.approve"], "pullout.updateList")).toMatch(/permission/i);
-    expect(postingPermissionError(["orders.create"], "transfer.receive")).toBeNull();
     expect(postingPermissionError(["logistics.manage"], "transfer.release")).toBeNull();
-    expect(postingPermissionError(["orders.approve"], "transfer.approve")).toBeNull();
+    // Hidden legacy order slugs no longer post a transfer; each step needs its own checkbox.
+    expect(postingPermissionError(["orders.create"], "transfer.receive")).toMatch(/permission/i);
+    expect(postingPermissionError(["orders.approve"], "transfer.approve")).toMatch(/permission/i);
+    expect(
+      postingPermissionError(["logistics.delivery_transfer.receive"], "transfer.receive"),
+    ).toBeNull();
+    expect(
+      postingPermissionError(["logistics.delivery_transfer.approve"], "transfer.approve"),
+    ).toBeNull();
   });
 });
 

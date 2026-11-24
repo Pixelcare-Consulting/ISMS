@@ -115,7 +115,6 @@ export function isNavSubGroup(child: NavGroupChild): child is NavSubGroupItem {
 
 const OPERATIONS_DASHBOARD_PERMISSIONS = [
   "inventory.view",
-  "orders.view",
   "orders.manual.view",
   "orders.special.view",
   "orders.auto_replenish.view",
@@ -163,7 +162,6 @@ const SC_SALES_ACCESS = [
 const SC_ORDERS_ACCESS = [
   "service_centers.orders.view",
   "service_centers.orders.create",
-  "service_centers.orders.approve",
   "service_centers.orders.approve_sp",
 ] as const;
 
@@ -404,8 +402,8 @@ export const appNavigation: NavEntry[] = [
             href: "/logistics/transfers",
             label: "Transfers",
             icon: ArrowLeftRight,
-            // Any Branch transfers checkbox opens it (View alone is read only), plus what opened
-            // it before. orders.create is how a PS reaches the transfers they accept.
+            // Same list as TRANSFERS_PAGE_PERMISSIONS: any Branch transfers checkbox opens it
+            // (View alone is read only), or Branch deliveries View, Create, Manage, or Receive.
             anyPermissions: [
               "logistics.delivery_transfer.view",
               "logistics.delivery_transfer.create",
@@ -414,7 +412,7 @@ export const appNavigation: NavEntry[] = [
               "logistics.view",
               "logistics.create",
               "logistics.manage",
-              "orders.create",
+              "logistics.delivery.receive",
             ],
             countBadgeKey: "logisticsTransfers",
             activePathPrefixes: ["/logistics/delivery-transfers"],
@@ -475,7 +473,6 @@ export const appNavigation: NavEntry[] = [
             icon: ClipboardList,
             anyPermissions: [
               "reports.view",
-              "orders.view",
               "orders.manual.view",
               "orders.special.view",
               "orders.auto_replenish.view",
@@ -487,7 +484,6 @@ export const appNavigation: NavEntry[] = [
             icon: ClipboardList,
             anyPermissions: [
               "reports.view",
-              "orders.view",
               "orders.manual.view",
               "orders.special.view",
               "orders.auto_replenish.view",
@@ -499,7 +495,6 @@ export const appNavigation: NavEntry[] = [
             icon: Package,
             anyPermissions: [
               "reports.view",
-              "orders.view",
               "orders.manual.view",
               "orders.special.view",
               "orders.auto_replenish.view",

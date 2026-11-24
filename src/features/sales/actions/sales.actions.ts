@@ -111,17 +111,11 @@ import {
 } from "@/features/sales/services/sale-encode";
 import {
   SALES_ACCESS_PERMISSIONS,
-  SALES_CREATE,
   SALES_LIST_PERMISSIONS,
   SALES_LOOKUP_PERMISSIONS,
   SALE_ENCODE_PERMISSIONS,
   SALE_MASTER_LOOKUP_PERMISSIONS,
-  SALES_RETURN_APPROVE,
-  SALES_RETURN_COMPLETE,
-  SALES_RETURN_EVALUATE,
-  SALES_RETURN_REQUEST,
   SALES_UPDATE,
-  salesReturnRejectPermissions,
 } from "@/features/sales/constants/sales-permissions";
 import {
   RETURNS_APPROVE,
@@ -490,13 +484,8 @@ export async function listSalesReturnsAction(input?: {
   };
 }
 
-/** Who may finish an approved replacement (Same Invoice or New Invoice). */
-const REPLACEMENT_COMPLETE_PERMISSIONS = [
-  RETURNS_COMPLETE,
-  SALES_RETURN_COMPLETE,
-  "logistics.manage",
-  SALES_CREATE,
-] as const;
+/** Who may finish an approved replacement (Same Invoice or New Invoice): Returns Complete. */
+const REPLACEMENT_COMPLETE_PERMISSIONS = [RETURNS_COMPLETE] as const;
 
 export async function getSaleDetailsAction(saleId: string) {
   const session = await requireAnyPermission([
@@ -1112,11 +1101,7 @@ export async function createSaleAction(input: unknown) {
 }
 
 export async function listProcessReturnLookupsAction(): Promise<ProcessReturnLookups> {
-  const session = await requireAnyPermission([
-    RETURNS_REQUEST,
-    SALES_RETURN_REQUEST,
-    SALES_CREATE,
-  ]);
+  const session = await requirePermission(RETURNS_REQUEST);
   return loadProcessReturnLookups(session.user.tenantId);
 }
 
@@ -1135,11 +1120,7 @@ export async function requestReturnAction(
   saleId: string,
   payload: ProcessReturnPayload | string,
 ) {
-  const session = await requireAnyPermission([
-    RETURNS_REQUEST,
-    SALES_RETURN_REQUEST,
-    SALES_CREATE,
-  ]);
+  const session = await requirePermission(RETURNS_REQUEST);
 
   // Legacy callers may still pass a free-text reason string — reject with guidance.
   if (typeof payload === "string") {
@@ -1634,10 +1615,7 @@ async function salesReturnApproval(
 }
 
 export async function evaluateReturnAction(returnRequestId: string, notes?: string) {
-  const session = await requireAnyPermission([
-    RETURNS_EVALUATE,
-    SALES_RETURN_EVALUATE,
-  ]);
+  const session = await requirePermission(RETURNS_EVALUATE);
   const row = await prisma.branchReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
     select: {
@@ -1702,11 +1680,7 @@ export async function evaluateReturnAction(returnRequestId: string, notes?: stri
 }
 
 export async function approveReturnAction(returnRequestId: string) {
-  const session = await requireAnyPermission([
-    RETURNS_APPROVE,
-    SALES_RETURN_APPROVE,
-    "orders.approve",
-  ]);
+  const session = await requirePermission(RETURNS_APPROVE);
   const row = await prisma.branchReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
     include: { sale: { select: { transactionNo: true } } },
@@ -1742,14 +1716,7 @@ export async function approveReturnAction(returnRequestId: string) {
 }
 
 export async function rejectReturnAction(returnRequestId: string, notes?: string) {
-  const session = await requireAnyPermission([
-    RETURNS_EVALUATE,
-    RETURNS_APPROVE,
-    SALES_RETURN_EVALUATE,
-    SALES_RETURN_APPROVE,
-    SALES_CREATE,
-    "orders.approve",
-  ]);
+  const session = await requireAnyPermission([RETURNS_EVALUATE, RETURNS_APPROVE]);
   const row = await prisma.branchReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
     include: { sale: true },
@@ -1758,10 +1725,7 @@ export async function rejectReturnAction(returnRequestId: string, notes?: string
     return { error: "Return request cannot be rejected" };
   }
 
-  const allowed = [
-    ...salesReturnRejectPermissions(row.status),
-    ...returnsRejectPermissions(row.status),
-  ];
+  const allowed = returnsRejectPermissions(row.status);
   if (!allowed.some((slug) => hasPermission(session.user.permissions, slug))) {
     return { error: "You do not have permission to reject this return" };
   }
@@ -1809,12 +1773,7 @@ export async function rejectReturnAction(returnRequestId: string, notes?: string
 }
 
 export async function completeReturnRestoreAction(returnRequestId: string) {
-  const session = await requireAnyPermission([
-    RETURNS_COMPLETE,
-    SALES_RETURN_COMPLETE,
-    "logistics.manage",
-    SALES_CREATE,
-  ]);
+  const session = await requirePermission(RETURNS_COMPLETE);
   const row = await prisma.branchReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
     select: {
@@ -2924,7 +2883,7 @@ export async function updateSaleSerialAction(input: unknown) {
 }
 
 export async function listStkSerialsForBranchAction(branchId: string) {
-  const session = await requireAnyPermission(["logistics.manage", "orders.create", "sales.create"]);
+  const session = await requireAnyPermission(["logistics.manage", "sales.create"]);
 
   const stkCodeId = await reasonStatusService.requireCodeId(
     session.user.tenantId,

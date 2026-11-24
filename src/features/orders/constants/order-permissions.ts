@@ -38,19 +38,18 @@ export function orderTypePermission(
 }
 
 /**
- * Type-specific slug plus legacy `orders.<action>` for pre-reseed tenants.
- * For `approve` this also lists the type's approval-step checkboxes, so a role that only
- * holds a step (e.g. Supply Planning approval) still opens the pages. Who may act at a
- * step is decided by `canApproveOrder`, not by this list.
+ * The order type's own checkbox. The hidden legacy `orders.<action>` slug no longer counts:
+ * it is not in the role editor, so it could not be unticked. For `approve` the old per-type
+ * Approve is hidden too, so only the type's approval-step checkboxes count (Supply Planning
+ * approval, Team Leader review). Who may act at a step is decided by `canApproveOrder`.
  */
 export function orderPermissionCandidates(
   orderType: BranchOrderType,
   action: OrderPermissionAction,
 ): string[] {
-  const candidates = [orderTypePermission(orderType, action), `orders.${action}`];
   return action === "approve"
-    ? [...candidates, ...orderApprovalStepPermissions(orderType)]
-    : candidates;
+    ? orderApprovalStepPermissions(orderType)
+    : [orderTypePermission(orderType, action)];
 }
 
 export function anyOrderTypePermissions(action: OrderPermissionAction): string[] {
@@ -59,7 +58,7 @@ export function anyOrderTypePermissions(action: OrderPermissionAction): string[]
   ];
 }
 
-/** Nav / page access: view, create, or approve for the type (or legacy). */
+/** Nav / page access: view, create, or approve for the type. */
 export function orderTypeAccessPermissions(orderType: BranchOrderType): string[] {
   return [
     ...orderPermissionCandidates(orderType, "view"),

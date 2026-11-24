@@ -45,7 +45,8 @@ describe("workflow step permission catalog", () => {
     expect(isHiddenPermissionSlug("orders.special.approve")).toBe(true);
     expect(isHiddenPermissionSlug("orders.auto_replenish.approve")).toBe(true);
     expect(isHiddenPermissionSlug("orders.manual.view")).toBe(false);
-    expect(isHiddenPermissionSlug("service_centers.orders.approve")).toBe(false);
+    expect(isHiddenPermissionSlug("service_centers.orders.approve")).toBe(true);
+    expect(isHiddenPermissionSlug("service_centers.orders.view")).toBe(false);
   });
 
   it("seeds Team Leader and Supply Planning with their steps", () => {

@@ -11,10 +11,10 @@ import { opsService } from "@/features/ops/services/ops.service";
 import { aorService } from "@/features/aors/services/aor.service";
 import { branchService } from "@/features/branches/services/branch.service";
 import {
-  LOGISTICS_CREATE,
   LOGISTICS_DELIVERY_RETURN_APPROVE,
   LOGISTICS_DELIVERY_RETURN_REQUEST,
-  LOGISTICS_MANAGE,
+  PULLOUT_CREATE_PERMISSIONS,
+  TRANSFER_PAGE_CREATE_PERMISSIONS,
 } from "@/features/logistics/constants/logistics-permissions";
 import {
   resolveLogisticsBranchScope,
@@ -30,7 +30,6 @@ import {
 import { transferLineRemarksSchema } from "@/features/logistics/lib/transfer-line-remarks";
 import { hasPermission, requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
 
-const OPS_CREATE_PERMISSIONS = [LOGISTICS_CREATE, LOGISTICS_MANAGE, "orders.create"] as const;
 
 const transferSchema = z.object({
   fromBranchId: z.string().min(1),
@@ -221,7 +220,7 @@ export async function retryDeliveryReturnSapAction(returnId: string) {
 }
 
 export async function createTransferAction(input: unknown) {
-  const session = await requireAnyPermission([...OPS_CREATE_PERMISSIONS]);
+  const session = await requireAnyPermission([...TRANSFER_PAGE_CREATE_PERMISSIONS]);
   const parsed = transferSchema.safeParse(input);
   if (!parsed.success) return { error: "Choose branches, a model, and the serials to transfer" };
   try {
@@ -243,7 +242,7 @@ export async function createTransferAction(input: unknown) {
 }
 
 export async function createPulloutAction(input: unknown) {
-  const session = await requireAnyPermission([...OPS_CREATE_PERMISSIONS]);
+  const session = await requireAnyPermission([...PULLOUT_CREATE_PERMISSIONS]);
   const parsed = pulloutSchema.safeParse(input);
   if (!parsed.success) return { error: PULLOUT_CREATE_INPUT_ERROR };
   try {

@@ -79,7 +79,7 @@ describe("combined manual and special order scope", () => {
 
   it("limits history by type and does not add a status filter", () => {
     const scopes = manualSpecialHistoryScopes(
-      ["orders.manual.view", "orders.special.approve"],
+      ["orders.manual.view", "orders.special.approve_sp"],
       "all",
     );
     expect(scopes).toEqual([{ orderType: "manual" }, { orderType: "special" }]);

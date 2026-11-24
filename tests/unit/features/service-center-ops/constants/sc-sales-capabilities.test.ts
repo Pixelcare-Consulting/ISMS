@@ -5,7 +5,6 @@ jest.mock("@/lib/auth/permissions", () => ({
 
 import {
   resolveScSalesCapabilities,
-  SC_RETURN_REQUEST,
   SC_SALES_CREATE,
   SC_SALES_UPDATE,
   SC_SALES_VIEW,
@@ -17,7 +16,7 @@ describe("resolveScSalesCapabilities", () => {
   });
 
   it("keeps users without SC sales access out of the tab", () => {
-    expect(resolveScSalesCapabilities([SC_RETURN_REQUEST]).canViewSalesList).toBe(false);
+    expect(resolveScSalesCapabilities(["returns.request"]).canViewSalesList).toBe(false);
   });
 
   it("is read only: SC copies are never encoded, edited, or returned from the tab", () => {
@@ -25,7 +24,7 @@ describe("resolveScSalesCapabilities", () => {
       SC_SALES_VIEW,
       SC_SALES_CREATE,
       SC_SALES_UPDATE,
-      SC_RETURN_REQUEST,
+      "returns.request",
       "returns.approve",
     ]);
     expect(caps).toEqual({

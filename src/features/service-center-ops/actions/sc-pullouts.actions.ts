@@ -22,7 +22,6 @@ import {
   SC_LOGISTICS_APPROVE,
   SC_LOGISTICS_CREATE,
   SC_LOGISTICS_MANAGE,
-  SC_ORDERS_APPROVE,
 } from "@/features/service-center-ops/constants/sc-permissions";
 import {
   scOpsRepository,
@@ -42,8 +41,10 @@ import { parseListSearch } from "@/lib/shared/pagination";
  * then follows the IT/Return and any redelivery DR, as on branch pull-outs.
  */
 
-const CREATE_PERMISSIONS = [SC_LOGISTICS_CREATE, SC_LOGISTICS_MANAGE] as const;
-const TL_PERMISSIONS = [SC_LOGISTICS_APPROVE, SC_ORDERS_APPROVE, SC_LOGISTICS_MANAGE] as const;
+const CREATE_PERMISSIONS = [SC_LOGISTICS_CREATE] as const;
+/** Reads the create and list-edit forms both need (centers, serials, checklist options). */
+const FORM_PERMISSIONS = [SC_LOGISTICS_CREATE, SC_LOGISTICS_MANAGE] as const;
+const TL_PERMISSIONS = [SC_LOGISTICS_APPROVE] as const;
 const SORT_FIELDS = new Set<ScPulloutListSort>(["pulloutNo", "serviceCenter", "reason", "status"]);
 
 const scPulloutSchema = z.object({
@@ -136,7 +137,7 @@ export async function getScPulloutDetailAction(id: string) {
 
 /** Service centers for the create form: the person's area of responsibility. */
 export async function listScCentersForPulloutsAction() {
-  const session = await requireAnyPermission([...CREATE_PERMISSIONS]);
+  const session = await requireAnyPermission([...FORM_PERMISSIONS]);
   const scope = await scopeOf(session);
   return prisma.serviceCenter.findMany({
     where: {
@@ -151,7 +152,7 @@ export async function listScCentersForPulloutsAction() {
 }
 
 export async function listScPulloutSerialsAction(serviceCenterId: string) {
-  const session = await requireAnyPermission([...CREATE_PERMISSIONS]);
+  const session = await requireAnyPermission([...FORM_PERMISSIONS]);
   try {
     const serials = await scPulloutPostingService.listSerials(actor(session), serviceCenterId);
     return { success: true as const, serials };
@@ -163,7 +164,7 @@ export async function listScPulloutSerialsAction(serviceCenterId: string) {
 export async function listScPulloutChecklistOptionsAction(): Promise<
   PulloutChecklistOptions & { error?: string }
 > {
-  const session = await requireAnyPermission([...CREATE_PERMISSIONS]);
+  const session = await requireAnyPermission([...FORM_PERMISSIONS]);
   try {
     return await loadPulloutChecklistOptions(session.user.tenantId);
   } catch (error) {

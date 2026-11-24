@@ -59,8 +59,7 @@ export function buildWorkflowOpsTools(
   const canReturns =
     hasPermission(permissions, "returns.view") ||
     hasPermission(permissions, "returns.branch.view") ||
-    hasPermission(permissions, "returns.service.view") ||
-    hasPermission(permissions, "sales.return.view");
+    hasPermission(permissions, "returns.service.view");
   const canLogistics = canAccessLogistics(permissions);
   const canSap = hasPermission(permissions, SAP_MANAGE);
 

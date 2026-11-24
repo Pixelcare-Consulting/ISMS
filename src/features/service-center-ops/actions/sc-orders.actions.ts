@@ -4,12 +4,11 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import {
+  SC_ORDERS_ACCESS,
   SC_ORDERS_APPROVE_SP,
   canApproveScOrders,
   SC_ORDER_APPROVER_ONLY,
-  SC_ORDERS_APPROVE,
   SC_ORDERS_CREATE,
-  SC_ORDERS_VIEW,
 } from "@/features/service-center-ops/constants/sc-permissions";
 import { scOpsRepository } from "@/features/service-center-ops/repositories/sc-ops.repository";
 import {
@@ -40,12 +39,7 @@ export async function listScOrdersAction(input?: {
   page?: number;
   limit?: number;
 }) {
-  const session = await requireAnyPermission([
-    SC_ORDERS_VIEW,
-    SC_ORDERS_CREATE,
-    SC_ORDERS_APPROVE,
-    SC_ORDERS_APPROVE_SP,
-  ]);
+  const session = await requireAnyPermission([...SC_ORDERS_ACCESS]);
   const scopedIds = await resolveScIdsForUser(
     session.user.tenantId,
     session.user.id,

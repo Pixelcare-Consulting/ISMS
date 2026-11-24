@@ -51,6 +51,9 @@ yarn-error.log*
 !/scripts/monthly-sir-actions-grant.ts
 !/scripts/grant-pullout-actions.ts
 !/scripts/pullout-actions-grant.ts
+!/scripts/permission-fallbacks.ts
+!/scripts/report-permission-fallbacks.ts
+!/scripts/report-step-permissions.ts
 .scripts/
 .scripts/*
 !/scripts/check-migrations.mjs

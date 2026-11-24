@@ -425,7 +425,8 @@ export const appModules: AppModule[] = [
     navPermission: "service_centers.orders.view",
     area: "Orders",
     description:
-      "Opens Service Center Orders. Supply Planning approval approves or rejects SC orders. Approve is used by SC pull-out and return approval.",
+      "Opens Service Center Orders. Supply Planning approval approves or rejects SC orders.",
+    hiddenActions: ["approve"],
     actions: [
       ...permissionActions("view", "create", "approve"),
       { value: "approve_sp", label: "Supply Planning approval" },

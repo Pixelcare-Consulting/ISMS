@@ -52,6 +52,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
       "orders.manual.edit_pending",
       "inventory.monthly_sir.upload_scheduled",
       "sales.create",
+      "returns.request",
       "planogram.view",
     ],
   },

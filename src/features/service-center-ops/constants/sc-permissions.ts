@@ -11,10 +11,6 @@ export const SC_SALES_VIEW = "service_centers.sales.view";
 export const SC_SALES_CREATE = "service_centers.sales.create";
 /** Edit SC sale headers (Accounting), like `sales.update` on branch sales. */
 export const SC_SALES_UPDATE = "service_centers.sales.update";
-export const SC_RETURN_REQUEST = "service_centers.return.request";
-export const SC_RETURN_EVALUATE = "service_centers.return.evaluate";
-export const SC_RETURN_APPROVE = "service_centers.return.approve";
-export const SC_RETURN_COMPLETE = "service_centers.return.complete";
 export const SC_ORDERS_VIEW = "service_centers.orders.view";
 export const SC_ORDERS_CREATE = "service_centers.orders.create";
 export const SC_ORDERS_APPROVE = "service_centers.orders.approve";
@@ -42,12 +38,8 @@ export const SC_SALES_ACCESS = [
   SC_SALES_UPDATE,
 ] as const;
 
-export const SC_ORDERS_ACCESS = [
-  SC_ORDERS_VIEW,
-  SC_ORDERS_CREATE,
-  SC_ORDERS_APPROVE,
-  SC_ORDERS_APPROVE_SP,
-] as const;
+/** The old SC orders Approve is hidden and no longer opens the page. */
+export const SC_ORDERS_ACCESS = [SC_ORDERS_VIEW, SC_ORDERS_CREATE, SC_ORDERS_APPROVE_SP] as const;
 
 export const SC_LOGISTICS_ACCESS = [
   SC_LOGISTICS_VIEW,
@@ -55,15 +47,19 @@ export const SC_LOGISTICS_ACCESS = [
   SC_LOGISTICS_MANAGE,
 ] as const;
 
+/**
+ * Create, Manage, and Approve each check only their own checkbox. Accepting, rejecting at
+ * receipt, and Check SAP have no checkbox of their own and follow Create or Manage.
+ */
 export const SC_LOGISTICS_ACTION_CAPABILITIES = {
-  canCreate: [SC_LOGISTICS_CREATE, SC_LOGISTICS_MANAGE],
+  canCreate: SC_LOGISTICS_CREATE,
   canManage: SC_LOGISTICS_MANAGE,
   canAcceptDelivery: [SC_LOGISTICS_CREATE, SC_LOGISTICS_MANAGE],
   /** Reject DR units at receipt: ISMS posts the SAP Return and the units go back to SAP. */
   canRejectDelivery: [SC_LOGISTICS_CREATE, SC_LOGISTICS_MANAGE],
   /** Check SAP now on Deliveries: DRs copied from SC Sales Orders become SC deliveries. */
   canCheckSap: [SC_LOGISTICS_CREATE, SC_LOGISTICS_MANAGE],
-  canApprovePullout: [SC_LOGISTICS_APPROVE, SC_ORDERS_APPROVE, SC_LOGISTICS_MANAGE],
+  canApprovePullout: SC_LOGISTICS_APPROVE,
 } as const;
 
 export type ScLogisticsActionCapabilities = ResolvedCapabilities<
@@ -129,23 +125,6 @@ export function canAccessScOrders(permissions: string[] | undefined): boolean {
 
 export function canAccessScLogistics(permissions: string[] | undefined): boolean {
   return SC_LOGISTICS_ACCESS.some((slug) => hasPermission(permissions, slug));
-}
-
-export function scReturnRejectPermissions(status: string): string[] {
-  if (status === "pending_cs") {
-    return ["returns.evaluate", SC_RETURN_EVALUATE, SC_SALES_CREATE];
-  }
-  if (status === "pending_tl") {
-    return ["returns.approve", SC_RETURN_APPROVE, SC_ORDERS_APPROVE];
-  }
-  return [
-    "returns.evaluate",
-    "returns.approve",
-    SC_RETURN_EVALUATE,
-    SC_RETURN_APPROVE,
-    SC_SALES_CREATE,
-    SC_ORDERS_APPROVE,
-  ];
 }
 
 export function canProcessScServiceReturns(permissions: string[] | undefined): boolean {

@@ -7,7 +7,7 @@ import { auditService } from "@/features/audit/services/audit.service";
 import {
   LOGISTICS_CREATE,
   LOGISTICS_DELIVERY_DISPATCH,
-  LOGISTICS_DELIVERY_RECEIVE,
+  DELIVERY_RECEIVE_PERMISSIONS,
   LOGISTICS_DELIVERY_RETURN_APPROVE,
   LOGISTICS_DELIVERY_RETURN_REQUEST,
   LOGISTICS_DELIVERY_TRANSFER_APPROVE,
@@ -15,7 +15,6 @@ import {
   LOGISTICS_DELIVERY_TRANSFER_RECEIVE,
   LOGISTICS_MANAGE,
   LOGISTICS_PAGE_PERMISSIONS,
-  TRANSFERS_PAGE_PERMISSIONS,
   PULLOUT_APPROVE_PERMISSIONS,
   PULLOUT_CREATE_PERMISSIONS,
   PULLOUT_MANAGE_PERMISSIONS,
@@ -24,6 +23,7 @@ import {
   TRANSFER_PAGE_APPROVE_PERMISSIONS,
   TRANSFER_PAGE_CREATE_PERMISSIONS,
   TRANSFER_PAGE_RECEIVE_PERMISSIONS,
+  TRANSFERS_PAGE_PERMISSIONS,
 } from "@/features/logistics/constants/logistics-permissions";
 import { logisticsRepository } from "@/features/logistics/repositories/logistics.repository";
 import { deliveryPostingService } from "@/features/logistics/services/delivery-posting.service";
@@ -81,21 +81,11 @@ import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions"
 import { prisma } from "@/lib/database/client";
 import { parseListSearch } from "@/lib/shared/pagination";
 
-const DISPATCH_PERMISSIONS = [
-  LOGISTICS_DELIVERY_DISPATCH,
-  LOGISTICS_MANAGE,
-] as const;
+/** Closing a SAP-closed order sits with Check SAP on Deliveries: Dispatch or Manage. */
+const DISPATCH_PERMISSIONS = [LOGISTICS_DELIVERY_DISPATCH, LOGISTICS_MANAGE] as const;
 
-const DELIVERY_RECEIVE_PERMISSIONS = [
-  LOGISTICS_CREATE,
-  LOGISTICS_MANAGE,
-  "orders.create",
-  LOGISTICS_DELIVERY_RECEIVE,
-] as const;
-
-/** Pull-out create, including the older delivery and order aliases. */
 const PULLOUT_CREATE_GATES = PULLOUT_CREATE_PERMISSIONS;
-/** List edit, Send, and Check SAP. Does not include transfer or delivery Manage by itself. */
+/** List edit, Send, and Check SAP. */
 const PULLOUT_MANAGE_GATES = PULLOUT_MANAGE_PERMISSIONS;
 /** Reads the create and edit forms both need (serials, branches). */
 const PULLOUT_FORM_GATES = [...PULLOUT_CREATE_GATES, ...PULLOUT_MANAGE_GATES] as const;
@@ -313,7 +303,7 @@ export async function getDeliveryDetailAction(id: string) {
 }
 
 export async function createDeliveryAction(input: unknown) {
-  const session = await requireAnyPermission([LOGISTICS_CREATE, LOGISTICS_MANAGE]);
+  const session = await requirePermission(LOGISTICS_CREATE);
   const parsed = deliverySchema.safeParse(input);
   if (!parsed.success) return { error: "Invalid input" };
 
@@ -448,10 +438,7 @@ export async function listTransfersAction(input?: {
   );
 }
 
-const TRANSFER_RECEIVE_GATES = [
-  ...TRANSFER_PAGE_RECEIVE_PERMISSIONS,
-  ...TRANSFER_PAGE_APPROVE_PERMISSIONS,
-] as const;
+const TRANSFER_RECEIVE_GATES = TRANSFER_PAGE_RECEIVE_PERMISSIONS;
 
 function revalidateTransfer(id: string) {
   revalidateLogisticsPaths();
