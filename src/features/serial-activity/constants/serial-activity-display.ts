@@ -27,6 +27,34 @@ export const SERIAL_ACTIVITY_LABELS: Record<SerialActivityType, string> = {
   counted: "Counted",
 };
 
+/** Sale facts shown in View details. Customer number is the sale contact number. */
+export interface SerialActivityTransaction {
+  transactionNo: string | null;
+  transactionDate: string | null;
+  amount: string | null;
+  customerName: string | null;
+  customerNumber: string | null;
+}
+
+/** Returned unit and the unit that replaced it. Either side may be unknown. */
+export interface SerialActivitySerialPair {
+  returnedSerialNo: string | null;
+  replacedSerialNo: string | null;
+}
+
+/** One approval step: who did it, when (Manila), and the note they left. */
+export interface SerialActivityApproval {
+  action: string;
+  person: string | null;
+  when: string;
+  note: string | null;
+}
+
+export function formatSerialActivityApproval(approval: SerialActivityApproval): string {
+  const note = approval.note?.trim();
+  return `${approval.action}${approval.person ? ` by ${approval.person}` : ""} · ${approval.when}${note ? ` · Note: ${note}` : ""}`;
+}
+
 /** A single, flattened lifecycle event for one serialized unit. */
 export interface SerialActivityEvent {
   /** Stable per-event id, e.g. `sold:<txnId>`. */
@@ -60,6 +88,12 @@ export interface SerialActivityEvent {
   status: string | null;
   /** User who performed the transaction, when captured. */
   performedBy: { name: string | null; email: string } | null;
+  /** Transaction number, date, amount, customer, and customer number, when known. */
+  transaction?: SerialActivityTransaction | null;
+  /** Returned and replaced serials on a replacement event. */
+  serialPair?: SerialActivitySerialPair | null;
+  /** Approval steps with the person and the Manila date and time. */
+  approvals?: SerialActivityApproval[];
 }
 
 export function formatSerialActivityPerformedBy(

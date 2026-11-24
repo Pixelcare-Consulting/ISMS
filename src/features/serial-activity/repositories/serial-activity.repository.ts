@@ -20,6 +20,8 @@ import {
 import {
   SERIAL_ACTIVITY_LABELS,
   SERIAL_ACTIVITY_TYPES,
+  formatSerialActivityApproval,
+  type SerialActivityApproval,
   type SerialActivityEvent,
   type SerialActivityType,
 } from "@/features/serial-activity/constants/serial-activity-display";
@@ -28,14 +30,28 @@ import {
   approverIds,
   approverName,
   auditTrailLines,
+  decisionApproval,
   decisionReferenceLine,
   type ApproverRef,
   type AuditTrailEntry,
 } from "@/features/serial-activity/lib/approval-reference";
 import {
-  historyReplacementReference,
+  historyReplacementSerials,
+  replacementSerialReferenceLines,
   saleLineReplacementReference,
 } from "@/features/serial-activity/lib/replacement-reference";
+import {
+  distinctSerialPair,
+  officialSalesTransactionView,
+  presentTransaction,
+  replacementContextFromJson,
+  resolveReplacementContext,
+  transactionReferenceLines,
+  transactionSnapshotFromMetadata,
+  transactionSnapshotFromSale,
+  type ReplacementContext,
+  type TransactionSnapshot,
+} from "@/features/serial-activity/lib/transaction-snapshot";
 import { transferReferenceLines } from "@/features/serial-activity/lib/transfer-reference";
 import {
   DELIVERY_RETURN_HISTORY_PREFIX,
@@ -1035,6 +1051,58 @@ function auditMetadataString(
   return trimmed || null;
 }
 
+function officialSaleKey(transactionNo: string, serialNo: string): string {
+  return `${transactionNo}\0${serialNo}`;
+}
+
+/**
+ * Sales that are still on file, for Official Sales audits that never stored a date.
+ * Keyed by transaction number and serial. A deleted sale is simply absent.
+ */
+async function loadOfficialSaleSnapshots(
+  tenantId: string,
+  keys: readonly { serialNo: string; transactionNo: string }[],
+): Promise<Map<string, TransactionSnapshot>> {
+  const found = new Map<string, TransactionSnapshot>();
+  if (keys.length === 0) return found;
+  const details = await prisma.branchSalesTransactionDetail.findMany({
+    where: {
+      sale: { tenantId, transactionNo: { in: [...new Set(keys.map((key) => key.transactionNo))] } },
+      serialNumber: { serialNo: { in: [...new Set(keys.map((key) => key.serialNo))] } },
+    },
+    select: {
+      saleAmount: true,
+      amount: true,
+      serialNumber: { select: { serialNo: true } },
+      sale: {
+        select: {
+          transactionNo: true,
+          transactionDate: true,
+          customerName: true,
+          contactNo: true,
+        },
+      },
+    },
+  });
+  for (const detail of details) {
+    const serialNo = detail.serialNumber?.serialNo;
+    if (!serialNo) continue;
+    const key = officialSaleKey(detail.sale.transactionNo, serialNo);
+    if (found.has(key)) continue;
+    found.set(
+      key,
+      transactionSnapshotFromSale({
+        transactionNo: detail.sale.transactionNo,
+        transactionDate: detail.sale.transactionDate,
+        transactionAmount: detail.saleAmount ?? detail.amount,
+        customerName: detail.sale.customerName,
+        customerNumber: detail.sale.contactNo,
+      }),
+    );
+  }
+  return found;
+}
+
 function officialSalesActionKey(
   action: (typeof OFFICIAL_SALES_AUDIT_ACTIONS)[number],
   metadata: Record<string, unknown> | null,
@@ -1144,6 +1212,16 @@ async function officialSalesAuditSource(
     serialModels.map((row) => [row.serialNo, modelLabel(row.model)]),
   );
 
+  const fallbackKeys = rows.flatMap((row) => {
+    const metadata = auditMetadataRecord(row.metadata);
+    const serialNo = auditMetadataString(metadata, "serial");
+    const transactionNo = auditMetadataString(metadata, "transactionNo");
+    if (!serialNo || !transactionNo) return [];
+    if (transactionSnapshotFromMetadata(metadata).transactionDate) return [];
+    return [{ serialNo, transactionNo }];
+  });
+  const liveSales = await loadOfficialSaleSnapshots(tenantId, fallbackKeys);
+
   const qLower = q?.toLowerCase();
 
   return {
@@ -1174,6 +1252,11 @@ async function officialSalesAuditSource(
       const action =
         row.action as (typeof OFFICIAL_SALES_AUDIT_ACTIONS)[number];
       const actionKey = officialSalesActionKey(action, metadata);
+      const liveSale =
+        transactionNo && !transactionSnapshotFromMetadata(metadata).transactionDate
+          ? liveSales.get(officialSaleKey(transactionNo, serialNo)) ?? null
+          : null;
+      const saleView = officialSalesTransactionView(metadata, liveSale);
       const isStockAdj = action === "official_sales.stock_adj";
       const typeLabel = isStockAdj
         ? "Official Sales Stock Adj"
@@ -1217,11 +1300,11 @@ async function officialSalesAuditSource(
           serialNo,
           modelLabel: modelBySerial.get(serialNo) ?? "—",
           location: soldBranch ?? whseTo ?? restoredBranch,
-          reference: transactionNo,
+          reference: saleView.snapshot.transactionNo ?? transactionNo,
           referenceDetails: referenceDetails(
             isStockAdj ? "Stock Adj" : null,
             `Action Key: ${actionKey}`,
-            transactionNo ? `Transaction ${transactionNo}` : null,
+            ...saleView.lines,
             whseFrom && whseTo
               ? route(whseFrom, whseTo)
               : soldBranch && restoredBranch && soldBranch !== restoredBranch
@@ -1233,6 +1316,7 @@ async function officialSalesAuditSource(
           ),
           status: statusLabel,
           performedBy: performedByLabel(row.user),
+          ...(saleView.transaction ? { transaction: saleView.transaction } : {}),
         },
       ];
     }),
@@ -1358,61 +1442,102 @@ function timedLines(steps: { at: Date | null; line: string | null }[]): string[]
     .map((step) => step.line);
 }
 
-/** For sales return / replacement ledger rows: who moved the request through each step. */
+const returnApprovalSelect = {
+  id: true,
+  createdAt: true,
+  acceptedAt: true,
+  evaluatedAt: true,
+  approvedAt: true,
+  requestNotes: true,
+  evaluationNotes: true,
+  requestedBy: userSelect,
+  acceptedBy: userSelect,
+  evaluatedBy: userSelect,
+  approvedBy: userSelect,
+} as const;
+
+type ReturnApprovalRow = {
+  id: string;
+  createdAt: Date;
+  acceptedAt: Date | null;
+  evaluatedAt: Date | null;
+  approvedAt: Date | null;
+  requestNotes: string | null;
+  evaluationNotes: string | null;
+  requestedBy: { name: string | null; email: string } | null;
+  acceptedBy: { name: string | null; email: string } | null;
+  evaluatedBy: { name: string | null; email: string } | null;
+  approvedBy: { name: string | null; email: string } | null;
+};
+
+/** Requested, accepted, evaluated, and approved, oldest first. Steps that never happened drop out. */
+function returnRequestApprovalSteps(request: ReturnApprovalRow): SerialActivityApproval[] {
+  const steps: { at: Date | null; approval: SerialActivityApproval | null }[] = [
+    {
+      at: request.createdAt,
+      approval: decisionApproval(
+        "Requested",
+        approverName(request.requestedBy),
+        request.createdAt,
+        request.requestNotes,
+      ),
+    },
+    {
+      at: request.acceptedAt,
+      approval: decisionApproval("Accepted", approverName(request.acceptedBy), request.acceptedAt),
+    },
+    {
+      at: request.evaluatedAt,
+      approval: decisionApproval(
+        "Evaluated",
+        approverName(request.evaluatedBy),
+        request.evaluatedAt,
+        request.evaluationNotes,
+      ),
+    },
+    {
+      at: request.approvedAt,
+      approval: decisionApproval("Approved", approverName(request.approvedBy), request.approvedAt),
+    },
+  ];
+  return steps
+    .filter(
+      (step): step is { at: Date; approval: SerialActivityApproval } =>
+        Boolean(step.at && step.approval),
+    )
+    .sort((a, b) => a.at.getTime() - b.at.getTime())
+    .map((step) => step.approval);
+}
+
+/**
+ * Who moved a sales return or replacement through each step.
+ * A history request id that is not a branch return is read from the service center request.
+ */
 async function loadReturnRequestApprovals(
   tenantId: string,
   requestIds: (string | null)[],
-): Promise<Map<string, string[]>> {
+): Promise<Map<string, SerialActivityApproval[]>> {
   const ids = [...new Set(requestIds.filter((id): id is string => Boolean(id)))];
   if (ids.length === 0) return new Map();
 
   const requests = await prisma.branchReturnRequest.findMany({
     where: { tenantId, id: { in: ids } },
-    select: {
-      id: true,
-      createdAt: true,
-      acceptedAt: true,
-      evaluatedAt: true,
-      approvedAt: true,
-      requestNotes: true,
-      evaluationNotes: true,
-      requestedBy: userSelect,
-      acceptedBy: userSelect,
-      evaluatedBy: userSelect,
-      approvedBy: userSelect,
-    },
+    select: returnApprovalSelect,
   });
+  const found = new Set(requests.map((request) => request.id));
+  const missing = ids.filter((id) => !found.has(id));
+  const serviceRequests =
+    missing.length === 0
+      ? []
+      : await prisma.serviceCenterReturnRequest.findMany({
+          where: { tenantId, id: { in: missing } },
+          select: returnApprovalSelect,
+        });
+
   return new Map(
-    requests.map((request) => [
+    [...requests, ...serviceRequests].map((request) => [
       request.id,
-      timedLines([
-        {
-          at: request.createdAt,
-          line: decisionReferenceLine(
-            "Requested",
-            approverName(request.requestedBy),
-            request.createdAt,
-            request.requestNotes,
-          ),
-        },
-        {
-          at: request.acceptedAt,
-          line: decisionReferenceLine("Accepted", approverName(request.acceptedBy), request.acceptedAt),
-        },
-        {
-          at: request.evaluatedAt,
-          line: decisionReferenceLine(
-            "Evaluated",
-            approverName(request.evaluatedBy),
-            request.evaluatedAt,
-            request.evaluationNotes,
-          ),
-        },
-        {
-          at: request.approvedAt,
-          line: decisionReferenceLine("Approved", approverName(request.approvedBy), request.approvedAt),
-        },
-      ]),
+      returnRequestApprovalSteps(request),
     ]),
   );
 }
@@ -1593,6 +1718,106 @@ async function loadReplacementSerialPairs(
   ];
 }
 
+const liveSaleSelect = {
+  transactionNo: true,
+  transactionDate: true,
+  customerName: true,
+  contactNo: true,
+  details: {
+    select: { serialNumberId: true, saleAmount: true, amount: true },
+  },
+} as const;
+
+type LiveSaleHeader = {
+  transactionNo: string;
+  transactionDate: Date | null;
+  customerName: string | null;
+  contactNo: string | null;
+  details: {
+    serialNumberId: string | null;
+    saleAmount: unknown;
+    amount: unknown;
+  }[];
+};
+
+function pickLiveSale(
+  sales: readonly LiveSaleHeader[],
+  transactionNo: string,
+  serialNumberId: string,
+): LiveSaleHeader | null {
+  const matches = sales.filter((sale) => sale.transactionNo === transactionNo);
+  return (
+    matches.find((sale) =>
+      sale.details.some((detail) => detail.serialNumberId === serialNumberId),
+    ) ??
+    matches[0] ??
+    null
+  );
+}
+
+/**
+ * Live sale plus the replacement pair, for history rows whose context does not
+ * already hold the facts. Branch sales win over a service center copy.
+ */
+async function loadReplacementLiveContexts(
+  tenantId: string,
+  rows: readonly {
+    id: string;
+    txnType: string;
+    serialNumberId: string;
+    details: string | null;
+    context: unknown;
+  }[],
+  pairs: Parameters<typeof historyReplacementSerials>[0],
+): Promise<Map<string, ReplacementContext>> {
+  const contexts = new Map<string, ReplacementContext>();
+  const replacementRows = rows.filter((row) => row.txnType === "replacement");
+  const invoices = [
+    ...new Set(
+      replacementRows.flatMap((row) => {
+        const invoice = documentReferenceFromHistoryDetails(row.details);
+        return invoice ? [invoice] : [];
+      }),
+    ),
+  ];
+  if (replacementRows.length === 0 || invoices.length === 0) return contexts;
+
+  const [branchSales, serviceSales] = await Promise.all([
+    prisma.branchSalesTransaction.findMany({
+      where: { tenantId, transactionNo: { in: invoices } },
+      select: liveSaleSelect,
+    }),
+    prisma.serviceCenterSalesTransaction.findMany({
+      where: { tenantId, transactionNo: { in: invoices } },
+      select: liveSaleSelect,
+    }),
+  ]);
+
+  for (const row of replacementRows) {
+    const invoice = documentReferenceFromHistoryDetails(row.details);
+    if (!invoice) continue;
+    const sale =
+      pickLiveSale(branchSales, invoice, row.serialNumberId) ??
+      pickLiveSale(serviceSales, invoice, row.serialNumberId);
+    const pair = historyReplacementSerials(pairs, row.serialNumberId, invoice);
+    if (!sale && !pair) continue;
+    const line = sale?.details.find((detail) => detail.serialNumberId === row.serialNumberId);
+    const snapshot = transactionSnapshotFromSale({
+      transactionNo: sale?.transactionNo ?? invoice,
+      transactionDate: sale?.transactionDate,
+      transactionAmount: line ? (line.saleAmount ?? line.amount) : null,
+      customerName: sale?.customerName,
+      customerNumber: sale?.contactNo,
+    });
+    contexts.set(row.id, {
+      ...snapshot,
+      returnedSerialNo: pair?.returnedSerialNo ?? null,
+      replacedSerialNo: pair?.replacedSerialNo ?? null,
+    });
+  }
+  return contexts;
+}
+
 /**
  * Ledger rows the live tables do not already list. Reference is the document
  * number inside `details`; reference details are the full details text plus the
@@ -1634,6 +1859,7 @@ async function historyLedgerSource(
         serialNumberId: true,
         txnType: true,
         details: true,
+        context: true,
         status: true,
         createdAt: true,
         serialNumber: { select: { serialNo: true, model: modelSelect } },
@@ -1664,6 +1890,7 @@ async function historyLedgerSource(
     ),
     loadReplacementSerialPairs(tenantId, rows),
   ]);
+  const liveReplacements = await loadReplacementLiveContexts(tenantId, rows, replacementPairs);
 
   return {
     count,
@@ -1678,16 +1905,34 @@ async function historyLedgerSource(
         row.txnType === "defect"
           ? defectReportFor(defectReports.get(row.serialNumberId), row.createdAt)
           : null;
-      const approvals =
+      const approvalRecords =
+        requestId && row.txnType !== "delivery" ? returnApprovals.get(requestId) ?? [] : [];
+      const approvalLines =
         row.txnType === "delivery" && reference
           ? deliveryApprovals.get(reference) ?? []
-          : requestId
-            ? returnApprovals.get(requestId) ?? []
+          : approvalRecords.length > 0
+            ? approvalRecords.map((approval) => formatSerialActivityApproval(approval))
             : defect?.lines ?? [];
-      const replacementLine =
+      const replacement =
         row.txnType === "replacement"
-          ? historyReplacementReference(replacementPairs, row.serialNumberId, reference)
+          ? resolveReplacementContext(
+              replacementContextFromJson(row.context),
+              liveReplacements.get(row.id) ?? null,
+            )
           : null;
+      const transaction = replacement ? presentTransaction(replacement) : null;
+      const serialPair = replacement
+        ? distinctSerialPair(replacement.returnedSerialNo, replacement.replacedSerialNo)
+        : null;
+      const replacementLines = replacement
+        ? [
+            ...transactionReferenceLines(transaction),
+            ...replacementSerialReferenceLines(
+              serialPair?.returnedSerialNo,
+              serialPair?.replacedSerialNo,
+            ),
+          ]
+        : [];
       return [
         {
           id: `history:${row.id}`,
@@ -1698,9 +1943,12 @@ async function historyLedgerSource(
           modelLabel: serial.modelLabel,
           location: defect?.branchName ?? null,
           reference,
-          referenceDetails: referenceDetails(replacementLine, details, ...approvals),
+          referenceDetails: referenceDetails(...replacementLines, details, ...approvalLines),
           status: row.status?.trim() || null,
           performedBy: performedByLabel(row.createdBy),
+          ...(transaction ? { transaction } : {}),
+          ...(serialPair ? { serialPair } : {}),
+          ...(approvalRecords.length > 0 ? { approvals: approvalRecords } : {}),
         },
       ];
     }),

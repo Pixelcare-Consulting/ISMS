@@ -13,6 +13,7 @@ import {
   lockSerialNumbers,
 } from "@/features/inventory/services/serial-placement";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
+import { replacementContextRecord } from "@/features/serial-activity/lib/transaction-snapshot";
 import {
   isReplacementDocumentTypeName,
   isReturnDocumentTypeName,
@@ -100,6 +101,8 @@ const requestSelect = {
       id: true,
       transactionNo: true,
       transactionDate: true,
+      customerName: true,
+      contactNo: true,
       serviceCenterId: true,
       serviceCenter: { select: { id: true, name: true, sapCode: true } },
       sourceBranchSale: {
@@ -107,7 +110,14 @@ const requestSelect = {
       },
       details: {
         orderBy: { createdAt: "asc" as const },
-        select: { id: true, serialNumberId: true, brandId: true },
+        select: {
+          id: true,
+          serialNumberId: true,
+          brandId: true,
+          saleAmount: true,
+          amount: true,
+          serialNumber: { select: { serialNo: true } },
+        },
       },
     },
   },
@@ -161,6 +171,22 @@ function targetLine(request: ScServiceRequest) {
   const line = request.sale.details.find((detail) => detail.id === request.saleDetailId);
   if (!line?.serialNumberId) throw new Error("This sale line has no serial number to return");
   return { ...line, serialNumberId: line.serialNumberId };
+}
+
+function replacementContextForRequest(
+  request: ScServiceRequest,
+  serials: { returnedSerialNo?: string | null; replacedSerialNo?: string | null },
+) {
+  const line = request.sale.details.find((detail) => detail.id === request.saleDetailId);
+  return replacementContextRecord({
+    transactionNo: request.sale.transactionNo,
+    transactionDate: request.sale.transactionDate,
+    transactionAmount: line?.saleAmount ?? line?.amount,
+    customerName: request.sale.customerName,
+    customerNumber: request.sale.contactNo,
+    returnedSerialNo: serials.returnedSerialNo ?? line?.serialNumber?.serialNo,
+    replacedSerialNo: serials.replacedSerialNo,
+  });
 }
 
 async function requireLocation(serviceCenterId: string, serviceCenterLocationId: string) {
@@ -638,6 +664,17 @@ export const scServiceReturnService = {
         },
         select: { id: true, tenantId: true, createdAt: true },
       });
+      const requestedContext =
+        payload.actionType === "replacement"
+          ? replacementContextRecord({
+              transactionNo: sale.transactionNo,
+              transactionDate: sale.transactionDate,
+              transactionAmount: lineAmount,
+              customerName: sale.customerName,
+              customerNumber: sale.contactNo,
+              returnedSerialNo: line.serialNumber?.serialNo,
+            })
+          : null;
       await tx.serialNumberHistory.create({
         data: {
           tenantId,
@@ -646,6 +683,7 @@ export const scServiceReturnService = {
           details: `Service ${actionLabel.toLowerCase()} requested on ${sale.transactionNo} at ${sale.branch.name} · sent to ${scName} / ${center.holdLocation.code} · was ${priorCode} (request ${scRequest.id})`,
           status: RESERVE_ODRF_STATUS.name,
           createdById: userId,
+          ...(requestedContext ? { context: requestedContext } : {}),
         },
       });
       await recordReturnRequested(
@@ -963,6 +1001,10 @@ export const scServiceReturnService = {
         at: now,
       });
 
+      const replacementContext = replacementContextForRequest(request, {
+        returnedSerialNo: line.serialNumber?.serialNo,
+        replacedSerialNo: replacement.serialNo,
+      });
       await tx.serialNumberHistory.createMany({
         data: [
           {
@@ -973,6 +1015,7 @@ export const scServiceReturnService = {
             status: returnHistoryStatusLabel(true, "replacement"),
             createdById: actor.userId,
             createdAt: now,
+            context: replacementContext,
           },
           {
             tenantId: actor.tenantId,
@@ -982,6 +1025,7 @@ export const scServiceReturnService = {
             status: "SLD",
             createdById: actor.userId,
             createdAt: now,
+            context: replacementContext,
           },
         ],
       });
@@ -1112,6 +1156,12 @@ export const scServiceReturnService = {
       });
       await syncBranchSale(tx, request, { status: "rejected", atrStatus: "open", evaluationNotes: reason });
       await releaseHeldUnit(tx, { tenantId: actor.tenantId, serialNumberId: request.heldSerialNumberId, rsvCodeId, stkCodeId });
+      const rejectedContext =
+        actionOf(request) === "replacement"
+          ? replacementContextForRequest(request, {
+              returnedSerialNo: line.serialNumber?.serialNo,
+            })
+          : null;
       await tx.serialNumberHistory.create({
         data: {
           tenantId: actor.tenantId,
@@ -1120,6 +1170,7 @@ export const scServiceReturnService = {
           details: `Service request rejected on ${request.sale.transactionNo}: ${reason}${request.sale.sourceBranchSale ? ` · back to ${request.sale.sourceBranchSale.branch.name}` : ""} (request ${request.id})`,
           status: priorCode,
           createdById: actor.userId,
+          ...(rejectedContext ? { context: rejectedContext } : {}),
         },
       });
       await recordServiceInspectionDecided(tx, approvalRef(request, request.sale.transactionNo, line.serialNumberId), {

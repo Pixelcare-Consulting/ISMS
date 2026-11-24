@@ -3475,6 +3475,8 @@ model SerialNumberHistory {
   serialNumberId String               @map("serial_number_id")
   txnType        SerialHistoryTxnType @map("txn_type")
   details        String?
+  /// Sale facts copied when the row is written, so a later sale delete cannot wipe them.
+  context        Json?                @map("context")
   status         String?
   createdById    String?              @map("created_by_id")
   createdAt      DateTime             @default(now()) @map("created_at")

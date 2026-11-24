@@ -35,6 +35,7 @@ import {
   claimToFollowSaleLine,
 } from "@/features/sales/services/sale-serial-link";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
+import { replacementContextRecord } from "@/features/serial-activity/lib/transaction-snapshot";
 import {
   querySaleableSerials,
   resolveSaleableSerialPage,
@@ -1185,6 +1186,7 @@ export async function requestReturnAction(
       transactionNo: true,
       transactionDate: true,
       customerName: true,
+      contactNo: true,
       atrStatus: true,
       notes: true,
       branch: { select: { name: true } },
@@ -1281,6 +1283,17 @@ export async function requestReturnAction(
         holdCode: "RSV",
       });
       const actionLabel = data.actionType === "replacement" ? "Replacement" : "Return";
+      const replacementContext =
+        data.actionType === "replacement"
+          ? replacementContextRecord({
+              transactionNo: sale.transactionNo,
+              transactionDate: sale.transactionDate,
+              transactionAmount: targetDetail.saleAmount ?? targetDetail.amount,
+              customerName: sale.customerName,
+              customerNumber: sale.contactNo,
+              returnedSerialNo: targetDetail.serialNumber?.serialNo,
+            })
+          : null;
       await tx.serialNumberHistory.create({
         data: {
           tenantId: session.user.tenantId,
@@ -1294,6 +1307,7 @@ export async function requestReturnAction(
           ),
           status: returnHistoryStatusLabel(false, data.actionType),
           createdById: session.user.id,
+          ...(replacementContext ? { context: replacementContext } : {}),
         },
       });
     }
@@ -1399,6 +1413,8 @@ async function restoreOriginalSerialsAtBranchSold(
     historyDetails: string;
     /** Sale status label (Returned, Replaced, or the service label). Not the stock code. */
     historyStatus: string;
+    /** Copied sale facts for a replacement. Returns leave this unset. */
+    historyContext?: Record<string, string>;
   },
 ): Promise<number> {
   const now = new Date();
@@ -1410,6 +1426,7 @@ async function restoreOriginalSerialsAtBranchSold(
     status: string;
     createdById: string;
     createdAt: Date;
+    context?: Record<string, string>;
   }> = [];
 
   for (const serialNumberId of input.serialNumberIds) {
@@ -1466,6 +1483,7 @@ async function restoreOriginalSerialsAtBranchSold(
       status: input.historyStatus,
       createdById: input.userId,
       createdAt: now,
+      ...(input.historyContext ? { context: input.historyContext } : {}),
     });
   }
 
@@ -1930,6 +1948,7 @@ async function completeReplacementCore(input: {
               saleAmount: true,
               amount: true,
               deliveryNo: true,
+              serialNumber: { select: { serialNo: true } },
               deliveryDate: true,
               statusCodeId: true,
             },
@@ -2152,6 +2171,16 @@ async function completeReplacementCore(input: {
           isServiceDocumentTypeName(row.documentType?.name),
           row.actionType,
         ),
+        historyContext: replacementContextRecord({
+          transactionNo: row.sale.transactionNo,
+          transactionDate: row.sale.transactionDate,
+          transactionAmount:
+            targetDetail?.saleAmount ?? targetDetail?.amount ?? targetDetail?.modelPrice,
+          customerName: row.sale.customerName,
+          customerNumber: row.sale.contactNo,
+          returnedSerialNo: targetDetail?.serialNumber?.serialNo,
+          replacedSerialNo: replacementInv.serialNumber.serialNo,
+        }),
       });
 
       const replacementInvoiceNo =
@@ -2276,6 +2305,21 @@ async function completeReplacementCore(input: {
               : `Replacement sold on new invoice ${replacementInvoiceNo}`,
           status: "SLD",
           createdById: userId,
+          context: replacementContextRecord({
+            transactionNo: replacementInvoiceNo,
+            transactionDate: replacementInvoiceDate,
+            transactionAmount: replacementModelPrice,
+            customerName:
+              input.mode === "new_invoice"
+                ? validatedNewHeader?.customerName
+                : row.sale.customerName,
+            customerNumber:
+              input.mode === "new_invoice"
+                ? validatedNewHeader?.contactNo
+                : row.sale.contactNo,
+            returnedSerialNo: targetDetail?.serialNumber?.serialNo,
+            replacedSerialNo: replacementInv.serialNumber.serialNo,
+          }),
         },
       });
 

@@ -4,6 +4,7 @@ import { createColumnHelper } from "@tanstack/react-table";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { SerialActivityDetailsDialog } from "@/app/(app)/audit-logs/serial-numbers/_components/serial-activity-details-dialog";
 import {
   SERIAL_ACTIVITY_LABELS,
   SERIAL_ACTIVITY_TYPES,
@@ -107,6 +108,7 @@ export function SerialActivityTable({
   const sortDir = (
     (searchParams.get("dir") ?? initialSortDir) === "asc" ? "asc" : "desc"
   ) as SerialActivitySortDir;
+  const [detailsEvent, setDetailsEvent] = useState<SerialActivityEvent | null>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const committedQueryRef = useRef((currentSearch ?? "").trim());
   const appliedFiltersRef = useRef({
@@ -317,7 +319,7 @@ export function SerialActivityTable({
         header: "Reference",
         enableSorting: false,
         cell: ({ row }) => (
-          <div className="min-w-56 text-sm">
+          <div className="max-h-24 min-w-56 overflow-y-auto text-sm">
             {row.original.reference ? (
               <div className="font-medium tabular-nums">{row.original.reference}</div>
             ) : null}
@@ -340,11 +342,27 @@ export function SerialActivityTable({
         cell: ({ row }) => formatSerialActivityPerformedBy(row.original.performedBy),
         meta: { className: "text-muted-foreground" },
       }),
+      activityColumn.display({
+        id: "actions",
+        header: "Actions",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setDetailsEvent(row.original)}
+          >
+            View details
+          </Button>
+        ),
+      }),
     ];
     return cols;
   }, [indexOffset]);
 
   return (
+    <>
     <DataTable
       data={rows}
       columns={columns}
@@ -433,5 +451,14 @@ export function SerialActivityTable({
       }}
       pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
     />
+    {detailsEvent ? (
+      <SerialActivityDetailsDialog
+        event={detailsEvent}
+        onOpenChange={(open) => {
+          if (!open) setDetailsEvent(null);
+        }}
+      />
+    ) : null}
+    </>
   );
 }

@@ -68,122 +68,81 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
-    version: "0.95.23",
+    version: "0.95.24",
     date: "2026-11-24",
-    releasedAt: "2026-11-24T13:54:46+08:00",
-    title: "Signed out for being idle shows once",
-    highlights: ["The sign-in page stays put after an idle sign-out."],
-    changes: [
-      {
-        type: "fix",
-        description:
-          "After you are signed out for being idle, the sign-in page shows “You were signed out. Please sign in again.” once, then the address becomes the normal sign-in page so it does not keep reloading.",
-      },
+    releasedAt: "2026-11-24T15:50:00+08:00",
+    title: "Serial number logs keep the sale",
+    highlights: [
+      "Open View details on a serial number log.",
+      "The sale stays on the log after Official Sales adds or deletes it.",
     ],
-  },
-  {
-    version: "0.95.22",
-    date: "2026-11-24",
-    releasedAt: "2026-11-24T13:46:41+08:00",
-    title: "Return to your page after sign-in",
-    highlights: ["After sign-in you return to the page you were on."],
-    changes: [
-      {
-        type: "fix",
-        description: "Requests for hidden files are refused.",
-      },
-    ],
-  },
-  {
-    version: "0.95.21",
-    date: "2026-11-24",
-    releasedAt: "2026-11-24T13:46:41+08:00",
-    title: "New announcements show on Overview",
-    highlights: ["A new announcement shows on Overview when you publish it."],
-    changes: [
-      {
-        type: "fix",
-        description: "It appears at the Philippine time you set.",
-      },
-    ],
-  },
-  {
-    version: "0.95.20",
-    date: "2026-11-24",
-    releasedAt: "2026-11-24T13:46:41+08:00",
-    title: "Allow each P-COUNT action on Monthly SIR",
-    highlights: ["Monthly SIR permissions include each P-COUNT action."],
     changes: [
       {
         type: "feature",
         description:
-          "You can allow download template, scan serials, upload, generate variance, open P-Count, and approve on their own.",
+          "Serial number logs have View details, so you can read the full event while the row stays compact.",
       },
-    ],
-  },
-  {
-    version: "0.95.19",
-    date: "2026-11-24",
-    releasedAt: "2026-11-24T13:46:41+08:00",
-    title: "Filter orders by Team Leader",
-    highlights: ["Orders can be filtered by Team Leader."],
-    changes: [
+      {
+        type: "improvement",
+        description:
+          "Transaction details and the returned and replaced serials stay on the serial number log.",
+      },
       {
         type: "fix",
         description:
-          "The Team Leader you choose stays when you page, sort, or refresh.",
+          "The transaction date remains after Official Sales adds or deletes the sale.",
       },
     ],
   },
   {
-    version: "0.95.18",
+    version: "0.95.23",
     date: "2026-11-24",
-    releasedAt: "2026-11-24T13:46:41+08:00",
-    title: "See this unit's history",
-    highlights: ["Unit details show this unit's history."],
+    releasedAt: "2026-11-24T13:54:46+08:00",
+    title: "Hot fixes for sign-in, permissions, and more.",
+    highlights: [
+      "The sign-in page stays put after an idle sign-out., After sign-in you return to the page you were on.",
+      "Unit details show this unit's history.",
+      "Monthly SIR permissions include each P-COUNT action.",
+      "Orders can be filtered by Team Leader."
+    ],
     changes: [
       {
         type: "feature",
         description:
           "An approval names Supply Planning when Supply Planning approved it.",
       },
-    ],
-  },
-  {
-    version: "0.95.17",
-    date: "2026-11-24",
-    releasedAt: "2026-11-24T11:39:22+08:00",
-    title: "Stay signed in while you are using the app",
-    highlights: [
-      "You stay signed in while using the app, and you are signed out after 30 minutes with nothing happening.",
-    ],
-    changes: [
       {
-        type: "improvement",
+        type: "feature",
         description:
-          "You stay signed in while using the app, and you are signed out after 30 minutes with nothing happening.",
+          "You can allow download template, scan serials, upload, generate variance, open P-Count, and approve on their own.",
       },
-    ],
-  },
-  {
-    version: "0.95.16",
-    date: "2026-11-23",
-    releasedAt: "2026-11-23T15:20:00+08:00",
-    title: "Serial logs name both units in a replacement",
-    highlights: [
-      "Serial number logs name which unit replaced which.",
-      "Search on Serial number logs updates the list as you type.",
-    ],
-    changes: [
       {
         type: "improvement",
         description:
-          "Pick a suggestion or press Enter to search right away. Event and date filters still apply when you choose Apply filters.",
+          "Serial number logs search updates the list as you type. Pick a suggestion or press Enter to search right away. Event and date filters still apply when you choose Apply filters.",
+      },
+      {
+        type: "fix",
+        description: "A new announcement shows on Overview when you publish it.",
+      },
+      {
+        type: "fix",
+        description:
+          "The Team Leader you choose stays when you page, sort, or refresh.",
       },
       {
         type: "fix",
         description:
           "A replaced sale no longer looks like one unit was replaced by itself.",
+      },
+      {
+        type: "fix",
+        description:
+          "After you are signed out for being idle, the sign-in page shows “You were signed out. Please sign in again.” once, then the address becomes the normal sign-in page so it does not keep reloading.",
+      },
+      {
+        type: "fix",
+        description: "Minor bugs fixed.",
       },
     ],
   },

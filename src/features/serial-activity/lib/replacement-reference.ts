@@ -89,14 +89,15 @@ export function saleLineReplacementReference(
 }
 
 /**
- * Remark for a replacement ledger row. `invoice` is the document already parsed
- * from the history text. Pass pairs newest first when more than one could match.
+ * The replacement pair this ledger row belongs to.
+ * `invoice` is the document already parsed from the history text.
+ * Pass pairs newest first when more than one could match.
  */
-export function historyReplacementReference(
+function matchingHistoryPair(
   pairs: readonly HistoryReplacementPair[],
   serialNumberId: string,
   invoice: string | null | undefined,
-): string | null {
+): { row: HistoryReplacementPair; side: ReplacementSide } | null {
   const document = trimmed(invoice);
   if (!serialNumberId || !document) return null;
 
@@ -107,10 +108,58 @@ export function historyReplacementReference(
       row.replacementSerialNumberId === serialNumberId &&
       (replacementInvoice === document ||
         (replacementInvoice === "" && originalInvoice === document));
-    if (soldAsReplacement) return pairRemark(row, "replacement");
+    if (soldAsReplacement) return { row, side: "replacement" };
     const restoredOriginal =
       row.originalSerialNumberId === serialNumberId && originalInvoice === document;
-    if (restoredOriginal) return pairRemark(row, "original");
+    if (restoredOriginal) return { row, side: "original" };
   }
   return null;
+}
+
+/**
+ * Remark for a replacement ledger row. `invoice` is the document already parsed
+ * from the history text. Pass pairs newest first when more than one could match.
+ */
+export function historyReplacementReference(
+  pairs: readonly HistoryReplacementPair[],
+  serialNumberId: string,
+  invoice: string | null | undefined,
+): string | null {
+  const match = matchingHistoryPair(pairs, serialNumberId, invoice);
+  if (!match) return null;
+  return pairRemark(match.row, match.side);
+}
+
+/**
+ * Both serials of the matched pair. Identical serials return null so the log
+ * never says a unit replaced itself.
+ */
+export function historyReplacementSerials(
+  pairs: readonly HistoryReplacementPair[],
+  serialNumberId: string,
+  invoice: string | null | undefined,
+): { returnedSerialNo: string; replacedSerialNo: string } | null {
+  const match = matchingHistoryPair(pairs, serialNumberId, invoice);
+  if (!match) return null;
+  const returnedSerialNo = trimmed(match.row.originalSerialNo);
+  const replacedSerialNo = trimmed(match.row.replacementSerialNo);
+  if (!returnedSerialNo || !replacedSerialNo || returnedSerialNo === replacedSerialNo) return null;
+  return { returnedSerialNo, replacedSerialNo };
+}
+
+/**
+ * Reference lines that name both units. A blank side is left out.
+ * Matching serials are left out so the row does not point at itself.
+ */
+export function replacementSerialReferenceLines(
+  returnedSerialNo: string | null | undefined,
+  replacedSerialNo: string | null | undefined,
+): string[] {
+  const returned = trimmed(returnedSerialNo);
+  const replaced = trimmed(replacedSerialNo);
+  if (returned && replaced && returned === replaced) return [];
+  const lines: string[] = [];
+  if (returned) lines.push(`Returned SN: ${returned}`);
+  if (replaced && replaced !== returned) lines.push(`Replaced SN: ${replaced}`);
+  return lines;
 }

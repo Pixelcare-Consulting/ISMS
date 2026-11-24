@@ -11,6 +11,11 @@ import {
 } from "@/features/inventory/services/inventory-serial-moves";
 import { OFFICIAL_SALES_TRANSACTION_PREFIX } from "@/features/official-sales/constants/official-sales-import";
 import { officialSalesRepository } from "@/features/official-sales/repositories/official-sales.repository";
+import {
+  snapshotToMetadata,
+  transactionSnapshotFromSale,
+  type TransactionSnapshotInput,
+} from "@/features/serial-activity/lib/transaction-snapshot";
 import { isToFollowSerial } from "@/features/sales/constants/to-follow-serial";
 import { resolveModelPriceForSales } from "@/features/sales/services/model-price";
 import { prisma } from "@/lib/database/client";
@@ -187,6 +192,47 @@ const OFFICIAL_SALES_ACTION_KEY: Record<
   "official_sales.whse_add": "WHSE_ADD",
 };
 
+/**
+ * Facts copied onto the audit row before a sale line is removed.
+ * Official Sales imports have no customer, so those stay blank unless a sale is in hand.
+ */
+function officialSaleFacts(input: TransactionSnapshotInput): Record<string, string> {
+  return snapshotToMetadata(transactionSnapshotFromSale(input));
+}
+
+function factsFromSaleLine(
+  sale: {
+    transactionNo: string;
+    transactionDate: Date | null;
+    customerName: string | null;
+    contactNo: string | null;
+  },
+  line: { saleAmount?: unknown; amount?: unknown },
+  row: OfficialSalesProcessRow,
+): TransactionSnapshotInput {
+  return {
+    transactionNo: sale.transactionNo,
+    transactionDate: sale.transactionDate ?? resolveTransactionDate(row),
+    transactionAmount: line.saleAmount ?? line.amount ?? parseRowSaleAmount(row.saleAmount),
+    customerName: sale.customerName,
+    customerNumber: sale.contactNo,
+  };
+}
+
+function factsFromImportRow(
+  transactionNo: string,
+  transactionDate: Date | null,
+  transactionAmount: unknown,
+): TransactionSnapshotInput {
+  return {
+    transactionNo,
+    transactionDate,
+    transactionAmount,
+    customerName: null,
+    customerNumber: null,
+  };
+}
+
 /** Append-only Serial Number Logs trail for every successful ADD / DEL / WHSE_ADD. */
 async function logOfficialSalesTrail(input: {
   tenantId: string;
@@ -197,6 +243,7 @@ async function logOfficialSalesTrail(input: {
   serial: string;
   transactionNo?: string | null;
   soldBranch?: string | null;
+  facts?: TransactionSnapshotInput;
   metadata?: Record<string, unknown>;
 }) {
   await auditService.log({
@@ -208,12 +255,13 @@ async function logOfficialSalesTrail(input: {
     metadata: {
       serial: input.serial.trim(),
       actionKey: OFFICIAL_SALES_ACTION_KEY[input.action],
-      ...(input.transactionNo?.trim()
-        ? { transactionNo: input.transactionNo.trim() }
-        : {}),
       ...(input.soldBranch?.trim()
         ? { soldBranch: input.soldBranch.trim() }
         : {}),
+      ...officialSaleFacts({
+        transactionNo: input.transactionNo,
+        ...input.facts,
+      }),
       ...input.metadata,
     },
   });
@@ -579,6 +627,7 @@ async function processWhseAdd(
   );
   const whseFrom =
     whse.warehouseLocation.warehouse.name || whse.warehouseLocation.name;
+  const whseFacts = factsFromImportRow(transactionNo, transactionDate, commercial.saleAmount);
 
   await prisma.$transaction(async (tx) => {
     await lockSerialNumbers(tx, [whse.serialNumberId]);
@@ -604,6 +653,7 @@ async function processWhseAdd(
         notes: "OS CONFLICT / WHSE_ADD",
         action: "WHSE_ADD",
         actionKey: "WHSE_ADD",
+        ...officialSaleFacts(whseFacts),
       },
     });
 
@@ -656,6 +706,7 @@ async function processWhseAdd(
       serial: row.serial,
       transactionNo,
       soldBranch: soldBranch.name,
+      facts: whseFacts,
       metadata: {
         branchId: soldBranch.id,
         status: "OFS",
@@ -730,6 +781,7 @@ async function processAdd(
         serial: row.serial,
         transactionNo: detail.sale.transactionNo,
         soldBranch: soldBranch.name,
+        facts: factsFromSaleLine(detail.sale, detail, row),
         metadata: {
           processPath: "retag_no_inventory",
           status: "OFS",
@@ -812,6 +864,7 @@ async function processAdd(
             serial: row.serial,
             transactionNo: detail.sale.transactionNo,
             soldBranch: soldBranch.name,
+            facts: factsFromSaleLine(detail.sale, detail, row),
             metadata: {
               processPath: "inventory_align",
               status: "OFS",
@@ -857,6 +910,7 @@ async function processAdd(
         serial: row.serial,
         transactionNo: detail.sale.transactionNo,
         soldBranch: soldBranch.name,
+        facts: factsFromSaleLine(detail.sale, detail, row),
         metadata: {
           processPath: "retag",
           status: "OFS",
@@ -920,6 +974,7 @@ async function processAdd(
         serial: row.serial,
         transactionNo: duplicate.sale.transactionNo,
         soldBranch: soldBranch.name,
+        facts: factsFromSaleLine(duplicate.sale, duplicate, row),
         metadata: {
           processPath: "duplicate_retag",
           status: "OFS",
@@ -950,6 +1005,11 @@ async function processAdd(
     sellableTxnDate,
     cache,
   );
+  const sellableFacts = factsFromImportRow(
+    transactionNo,
+    sellableTxnDate,
+    sellableCommercial.saleAmount,
+  );
 
   await prisma.$transaction(async (tx) => {
     if (branchConflict) {
@@ -968,6 +1028,7 @@ async function processAdd(
           notes: "OS CONFLICT",
           action: "ADD",
           actionKey: "ADD",
+          ...officialSaleFacts(sellableFacts),
         },
       });
     }
@@ -1007,6 +1068,7 @@ async function processAdd(
       serial: row.serial,
       transactionNo,
       soldBranch: soldBranch.name,
+      facts: sellableFacts,
       metadata: {
         processPath: "sellable_create",
         branchId: soldBranch.id,
@@ -1050,6 +1112,7 @@ async function processDel(
 
     const toFollowPreviousStatus = toFollowStatus.code.toUpperCase();
     const toFollowTransactionNo = toFollowDetail.sale.transactionNo;
+    const toFollowFacts = factsFromSaleLine(toFollowDetail.sale, toFollowDetail, row);
 
     await prisma.$transaction(async (tx) => {
       await tx.branchSalesTransactionDetail.delete({
@@ -1074,6 +1137,7 @@ async function processDel(
         serial: row.serial,
         transactionNo: toFollowTransactionNo,
         soldBranch: soldBranch.name,
+        facts: toFollowFacts,
         metadata: {
           previousStatus: toFollowPreviousStatus,
           toFollowCleanup: true,
@@ -1115,6 +1179,7 @@ async function processDel(
     inventoryBefore != null && inventoryBefore.branchId !== soldBranchId
       ? inventoryBefore
       : null;
+  const delFacts = factsFromSaleLine(detail.sale, detail, row);
 
   await prisma.$transaction(async (tx) => {
     await tx.branchSalesTransactionDetail.delete({
@@ -1146,6 +1211,7 @@ async function processDel(
           notes: "OS CONFLICT / DEL",
           action: "DEL",
           actionKey: "DEL",
+          ...officialSaleFacts(delFacts),
         },
       });
     }
@@ -1170,6 +1236,7 @@ async function processDel(
       serial: row.serial,
       transactionNo: detail.sale.transactionNo,
       soldBranch: soldBranchName,
+      facts: delFacts,
       metadata: {
         previousStatus: detailCode,
         restored: "STK",

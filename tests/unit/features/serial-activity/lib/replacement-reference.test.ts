@@ -1,6 +1,8 @@
 import {
   historyReplacementReference,
+  historyReplacementSerials,
   replacedSnRemark,
+  replacementSerialReferenceLines,
   replacementSnRemark,
   saleLineReplacementReference,
   type HistoryReplacementPair,
@@ -27,6 +29,20 @@ const newInvoice: ReplacementSerialPair = {
   originalInvoiceNo: "test11111111",
   replacementInvoiceNo: "INV-200",
 };
+
+describe("replacementSerialReferenceLines", () => {
+  it("names both the returned serial and the replaced serial", () => {
+    expect(replacementSerialReferenceLines(ORIGINAL, REPLACEMENT)).toEqual([
+      `Returned SN: ${ORIGINAL}`,
+      `Replaced SN: ${REPLACEMENT}`,
+    ]);
+  });
+
+  it("does not refer to the unit itself when the serials match", () => {
+    expect(replacementSerialReferenceLines(ORIGINAL, ORIGINAL)).toEqual([]);
+    expect(replacementSerialReferenceLines(` ${ORIGINAL} `, ORIGINAL)).toEqual([]);
+  });
+});
 
 describe("replacement remarks", () => {
   it("names the other serial from each side", () => {
@@ -121,6 +137,20 @@ describe("historyReplacementReference", () => {
     expect(historyReplacementReference([laterPair, pair], "new-id", "INV-200")).toBe(
       ON_REPLACEMENT,
     );
+  });
+
+  it("returns both serials and omits a pair that names the same serial twice", () => {
+    expect(historyReplacementSerials([pair], "new-id", "INV-200")).toEqual({
+      returnedSerialNo: ORIGINAL,
+      replacedSerialNo: REPLACEMENT,
+    });
+    expect(
+      historyReplacementSerials(
+        [{ ...pair, replacementSerialNo: ORIGINAL }],
+        "new-id",
+        "INV-200",
+      ),
+    ).toBeNull();
   });
 
   it("omits the remark when the invoice or the pair is missing", () => {
