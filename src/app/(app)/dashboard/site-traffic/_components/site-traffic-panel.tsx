@@ -297,7 +297,7 @@ export function SiteTrafficPanel({
           <TrafficRing label="Login PS" value={kpis.loginPs} total={kpis.totalPs} tone="blue" />
         </div>
         {/* DO NOT UNCOMMENT THIS, NO NEED TO SHOW IN THE SITE TRAFFIC PANEL <p className="text-xs text-muted-foreground">
-          Orange is the total. Green is active. Blue is signed in within the last 5 minutes.
+          Orange is the total. Green is active. Blue is signed in within the last 30 minutes.
         </p> */}
       </div>
 

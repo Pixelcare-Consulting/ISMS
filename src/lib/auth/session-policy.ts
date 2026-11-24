@@ -2,7 +2,7 @@
  * No clicks, keys, scrolling, or page use for this long signs the person out.
  * This is not a session lifetime. `expiresAt` stays the normal length.
  */
-export const SESSION_IDLE_MS = 5 * 60 * 1000;
+export const SESSION_IDLE_MS = 30 * 60 * 1000;
 
 /** Sent with sign-in when the person chooses to replace the other device. */
 export const REPLACE_OTHER_SESSIONS_HEADER = "x-isms-replace-sessions";
@@ -14,7 +14,7 @@ export const SIGNED_OUT_ELSEWHERE_MESSAGE =
   "You were signed out because this account signed in somewhere else.";
 
 export const IDLE_SIGNOUT_MESSAGE =
-  "You were signed out after 5 minutes of inactivity.";
+  "You were signed out. Please sign in again.";
 
 export const DISABLED_ACCOUNT_MESSAGE =
   "This account is disabled. Ask an administrator to turn it back on.";
@@ -86,11 +86,11 @@ export type LiveSessionDecision = {
   state: LiveSessionState;
   /** Stamp to persist. An active request moves this to `now` before the idle check. */
   lastActiveAt: Date | null;
-  /** Unchanged. Five minutes never shortens the session lifetime. */
+  /** Unchanged. Thirty minutes never shortens the session lifetime. */
   expiresAt: Date | null;
 };
 
-/** Reject a missing row, an expired row, or one idle longer than 5 minutes. */
+/** Reject a missing row, an expired row, or one idle longer than 30 minutes. */
 export function evaluateLiveSession(input: {
   row: LiveSessionRow | null;
   now: Date;
@@ -129,7 +129,7 @@ function stampForRequest(input: {
 /**
  * Opening a page or running an action counts as activity, so `lastActiveAt`
  * moves to `now` before the idle check and the person stays signed in.
- * A request with no activity keeps the stored stamp: more than 5 minutes is idle.
+ * A request with no activity keeps the stored stamp: more than 30 minutes is idle.
  */
 export function resolveLiveSessionOnRequest(input: {
   row: LiveSessionRow | null;
@@ -164,7 +164,7 @@ export function resolveLiveSessionOnRequest(input: {
   };
 }
 
-/** True while the last click, key, scroll, or page use is still inside 5 minutes. */
+/** True while the last click, key, scroll, or page use is still inside 30 minutes. */
 export function isRecentPageUse(
   lastInputAt: number,
   now: number,
@@ -175,6 +175,41 @@ export function isRecentPageUse(
 
 export function isLoginPathname(pathname: string): boolean {
   return pathname === "/login" || pathname.startsWith("/login/");
+}
+
+export type ShownLoginNotice = {
+  message: string;
+  /** Same page, without the terminal error, so a later load does not request it. */
+  href: string;
+};
+
+/**
+ * A forced sign-out may open /login?error= once so the message can render.
+ * After that the address is /login. Asking again would keep fetching the error URL.
+ */
+export function shownLoginNotice(input: {
+  pathname: string;
+  search: string;
+}): ShownLoginNotice | null {
+  const params = new URLSearchParams(
+    input.search.startsWith("?") ? input.search.slice(1) : input.search,
+  );
+  const code = params.get("error");
+  if (!isTerminalLoginError(code)) return null;
+  const message = loginErrorMessage(code);
+  if (!message) return null;
+  params.delete("error");
+  const query = params.toString();
+  const pathname = input.pathname.length > 0 ? input.pathname : "/login";
+  return {
+    message,
+    href: query.length > 0 ? `${pathname}?${query}` : pathname,
+  };
+}
+
+/** True only before the person reaches the login page. The error URL is not opened again. */
+export function shouldOpenLoginError(pathname: string): boolean {
+  return !isLoginPathname(pathname);
 }
 
 export function isDisabledAccountMessage(message: string | null | undefined): boolean {

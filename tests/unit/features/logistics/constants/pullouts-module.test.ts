@@ -131,6 +131,12 @@ describe("pull-outs permission module", () => {
     }
     expect(groups.find((group) => group.moduleName === "Monthly SIR")?.permissions.map((item) => item.slug)).toEqual([
       "inventory.monthly_sir.view",
+      "inventory.monthly_sir.download_template",
+      "inventory.monthly_sir.scan_serials",
+      "inventory.monthly_sir.upload",
+      "inventory.monthly_sir.generate_variance",
+      "inventory.monthly_sir.open_pcount",
+      "inventory.monthly_sir.approve",
     ]);
     expect(groups.find((group) => group.moduleName === "Branch inventory")?.description).toBe(
       "Opens branch Inventory.",

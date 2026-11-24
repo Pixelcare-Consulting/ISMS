@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionCookie } from "better-auth/cookies";
 
 import { MAINTENANCE_MODE, MAINTENANCE_PATH } from "@/config/maintenance";
+import { isLoginProbePath, safeInternalPath } from "@/features/auth/lib/post-login-destination";
 import { isTerminalLoginError } from "@/lib/auth/session-policy";
 
 // Deny-by-default: every route requires auth except those listed here, so new
@@ -39,17 +40,27 @@ function handleMaintenance(request: NextRequest): NextResponse | null {
 }
 
 export default function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  const callbackUrl = request.nextUrl.searchParams.get("callbackUrl");
+
+  // Probes are not pages. Do not redirect them to login or store them as callbackUrl.
+  if (isLoginProbePath(pathname) || (pathname === "/login" && isLoginProbePath(callbackUrl))) {
+    return new NextResponse(null, { status: 404 });
+  }
+
   const maintenanceResponse = handleMaintenance(request);
   if (maintenanceResponse) return maintenanceResponse;
 
-  const { pathname } = request.nextUrl;
   const isPublic = PUBLIC_PATHS.has(pathname);
   const sessionCookie = getSessionCookie(request);
   const isLoggedIn = Boolean(sessionCookie);
 
   if (!isPublic && !isLoggedIn) {
     const loginUrl = new URL("/login", request.nextUrl.origin);
-    loginUrl.searchParams.set("callbackUrl", pathname);
+    const safeCallback = safeInternalPath(pathname);
+    if (safeCallback) {
+      loginUrl.searchParams.set("callbackUrl", safeCallback);
+    }
     return NextResponse.redirect(loginUrl);
   }
 

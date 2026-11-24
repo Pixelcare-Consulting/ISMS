@@ -1,4 +1,5 @@
 import {
+  IDLE_SIGNOUT_MESSAGE,
   SESSION_IDLE_MS,
   decideSessionCreate,
   evaluateLiveSession,
@@ -7,7 +8,9 @@ import {
   isTerminalLoginError,
   loginErrorMessage,
   resolveLiveSessionOnRequest,
+  shouldOpenLoginError,
   shouldRevokeBrowserSession,
+  shownLoginNotice,
 } from "@/lib/auth/session-policy";
 
 const now = new Date("2026-11-17T12:00:00.000Z");
@@ -54,11 +57,15 @@ describe("decideSessionCreate", () => {
 describe("evaluateLiveSession", () => {
   const expiresAt = new Date(now.getTime() + 60 * 60 * 1000);
 
-  it("rejects a session that has been idle longer than 5 minutes", () => {
+  it("uses a 30 minute idle window", () => {
+    expect(SESSION_IDLE_MS).toBe(30 * 60 * 1000);
+  });
+
+  it("rejects a session that has been idle longer than 30 minutes", () => {
     const state = evaluateLiveSession({
       row: {
         expiresAt,
-        lastActiveAt: new Date(now.getTime() - 5 * 60 * 1000 - 1),
+        lastActiveAt: new Date(now.getTime() - 30 * 60 * 1000 - 1),
       },
       now,
     });
@@ -66,11 +73,11 @@ describe("evaluateLiveSession", () => {
     expect(state).toBe("idle");
   });
 
-  it("keeps a session that was active 4 minutes ago", () => {
+  it("keeps a session that was active 29 minutes ago", () => {
     const state = evaluateLiveSession({
       row: {
         expiresAt,
-        lastActiveAt: new Date(now.getTime() - 4 * 60 * 1000),
+        lastActiveAt: new Date(now.getTime() - 29 * 60 * 1000),
       },
       now,
     });
@@ -78,7 +85,7 @@ describe("evaluateLiveSession", () => {
     expect(state).toBe("ok");
   });
 
-  it("keeps a session that was active exactly 5 minutes ago", () => {
+  it("keeps a session that was active exactly 30 minutes ago", () => {
     const state = evaluateLiveSession({
       row: {
         expiresAt,
@@ -94,9 +101,9 @@ describe("evaluateLiveSession", () => {
     expect(evaluateLiveSession({ row: null, now })).toBe("missing");
   });
 
-  it("keeps an active request inside the idle window signed in and treats no activity for more than 5 minutes as idle", () => {
+  it("keeps an active request inside the idle window signed in and treats no activity for more than 30 minutes as idle", () => {
     const expiresAt = new Date(now.getTime() + 60 * 60 * 1000);
-    const insideWindow = new Date(now.getTime() - 4 * 60 * 1000);
+    const insideWindow = new Date(now.getTime() - 29 * 60 * 1000);
     const pastWindow = new Date(now.getTime() - SESSION_IDLE_MS - 1);
 
     const active = resolveLiveSessionOnRequest({
@@ -130,7 +137,7 @@ describe("evaluateLiveSession", () => {
 
 describe("session expired dialog", () => {
   it("stays hidden while the person is using the page and on the login page", () => {
-    const lastInputAt = now.getTime() - 4 * 60 * 1000;
+    const lastInputAt = now.getTime() - 29 * 60 * 1000;
     expect(isRecentPageUse(lastInputAt, now.getTime())).toBe(true);
     expect(isRecentPageUse(now.getTime() - SESSION_IDLE_MS - 1, now.getTime())).toBe(
       false,
@@ -176,10 +183,36 @@ describe("isTerminalLoginError", () => {
     expect(isTerminalLoginError("signed-in-elsewhere")).toBe(true);
     expect(isTerminalLoginError("session-expired")).toBe(true);
     expect(isTerminalLoginError("disabled")).toBe(true);
-    expect(loginErrorMessage("idle")).toBe(
-      "You were signed out after 5 minutes of inactivity.",
-    );
+    expect(loginErrorMessage("idle")).toBe(IDLE_SIGNOUT_MESSAGE);
     expect(isTerminalLoginError(null)).toBe(false);
     expect(isTerminalLoginError("forbidden")).toBe(false);
+  });
+});
+
+describe("shownLoginNotice", () => {
+  it("does not request the idle URL again once the message has been shown", () => {
+    const shown = shownLoginNotice({
+      pathname: "/login",
+      search: "?error=idle",
+    });
+
+    expect(shown).toEqual({
+      message: IDLE_SIGNOUT_MESSAGE,
+      href: "/login",
+    });
+    expect(shown?.href.includes("error=idle")).toBe(false);
+    expect(shownLoginNotice({ pathname: "/login", search: "" })).toBeNull();
+    expect(shouldOpenLoginError("/dashboard")).toBe(true);
+    expect(shouldOpenLoginError("/login")).toBe(false);
+    expect(shouldOpenLoginError("/login/")).toBe(false);
+  });
+
+  it("keeps a safe callback when the idle error is removed", () => {
+    expect(
+      shownLoginNotice({
+        pathname: "/login",
+        search: "?error=idle&callbackUrl=%2Fdashboard",
+      })?.href,
+    ).toBe("/login?callbackUrl=%2Fdashboard");
   });
 });

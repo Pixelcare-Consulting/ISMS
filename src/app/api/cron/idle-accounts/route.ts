@@ -7,7 +7,7 @@ import { logger } from "@/lib/shared/logger";
  * Idle-account tick, called on a schedule by the `cron` container
  * (docker-compose.yml) together with the other `/api/cron/*` routes.
  *
- * Deletes sessions with no activity for 5 minutes, then disables accounts
+ * Deletes sessions with no activity for 30 minutes, then disables accounts
  * with no activity for 7 days. Super Admin is never disabled.
  */
 export const dynamic = "force-dynamic";

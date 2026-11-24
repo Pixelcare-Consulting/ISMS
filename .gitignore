@@ -47,6 +47,8 @@ yarn-error.log*
 !/scripts/generate-modules-workflow-excel.mjs
 !/scripts/grant-monthly-sir-view.ts
 !/scripts/monthly-sir-grant.ts
+!/scripts/grant-monthly-sir-actions.ts
+!/scripts/monthly-sir-actions-grant.ts
 !/scripts/grant-pullout-actions.ts
 !/scripts/pullout-actions-grant.ts
 .scripts/
@@ -55,6 +57,8 @@ yarn-error.log*
 !/scripts/generate-modules-workflow-excel.mjs
 !/scripts/grant-monthly-sir-view.ts
 !/scripts/monthly-sir-grant.ts
+!/scripts/grant-monthly-sir-actions.ts
+!/scripts/monthly-sir-actions-grant.ts
 !/scripts/grant-pullout-actions.ts
 !/scripts/pullout-actions-grant.ts
 

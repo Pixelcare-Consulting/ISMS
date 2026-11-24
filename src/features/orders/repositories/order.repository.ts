@@ -106,16 +106,16 @@ function orderPrismaOrderBy(
 
 export const orderRepository = {
   /**
-   * Team Leaders with at least one AOR branch, for the order list filter. With a branch
-   * scope, only TLs covering at least one of those branches.
+   * Every active Team Leader for the Orders filter. A leader with no branches is
+   * still listed. Choosing one limits orders to that person's branches.
    */
-  listTeamLeaderOptions(tenantId: string, branchIds: string[] | null) {
+  listTeamLeaderOptions(tenantId: string) {
     return prisma.user.findMany({
       where: {
         tenantId,
         deletedAt: null,
+        disabledAt: null,
         userRoles: { some: { role: { slug: TEAM_LEADER_ROLE_SLUG, deletedAt: null } } },
-        aors: { some: { tenantId, branchId: branchIds ? { in: branchIds } : { not: null } } },
       },
       select: { id: true, name: true, email: true },
       orderBy: [{ name: "asc" }, { email: "asc" }],

@@ -204,16 +204,12 @@ export async function listOrderBrandOptionsAction(orderType?: BranchOrderType) {
   return brands.map((brand) => ({ id: brand.id, name: brand.name }));
 }
 
-/** Team Leaders for the order list filter, limited to the viewer's branch scope. */
+/** Active Team Leaders for the Orders list filter. */
 export async function listOrderTeamLeadersAction(orderType?: BranchOrderType) {
   const session = orderType
     ? await requireOrderTypePageAccess(orderType)
     : await requireAnyPermission(anyOrderTypePermissions("view"));
-  return orderService.listTeamLeaderOptions(
-    session.user.tenantId,
-    session.user.id,
-    hasFullOrderAccess(session.user.permissions),
-  );
+  return orderService.listTeamLeaderOptions(session.user.tenantId);
 }
 
 export async function getOrdersKpisAction(
@@ -255,14 +251,10 @@ export async function getOrdersKpisAction(
   );
 }
 
-/** Team Leaders for the combined Manual and Special list. */
+/** Active Team Leaders for the combined Manual and Special list. */
 export async function listManualSpecialTeamLeadersAction() {
   const session = await requireManualSpecialListAccess();
-  return orderService.listTeamLeaderOptions(
-    session.user.tenantId,
-    session.user.id,
-    hasFullOrderAccess(session.user.permissions),
-  );
+  return orderService.listTeamLeaderOptions(session.user.tenantId);
 }
 
 export async function listActiveDealersForOrderAction(orderType?: BranchOrderType) {

@@ -212,14 +212,14 @@ export const appNavigation: NavEntry[] = [
             label: "P-Count Dashboard",
             icon: ClipboardList,
             anyPermissions: ["inventory.view", "reports.view"],
-            badge: "new",
+            // badge: "new",
           },
           {
             href: "/dashboard/site-traffic",
             label: "Site Traffic",
             icon: Users,
             anyPermissions: ["users.manage", "audit_logs.view"],
-            badge: "new",
+            // badge: "new",
           },
           {
             href: "/competitors",
@@ -722,7 +722,6 @@ export const appNavigation: NavEntry[] = [
             icon: LayoutGrid,
             anyPermissions: ["forecast.manage", "planogram.manage"],
             exact: true,
-            badge: "new",
           },
           // DO NOT UNCOMMENT THIS, NO NEED TO SHOW IN THE NAVIGATION {
           //   href: "/settings/planning/runs",
@@ -736,7 +735,6 @@ export const appNavigation: NavEntry[] = [
             label: "Planogram",
             icon: LayoutGrid,
             anyPermissions: ["planogram.view", "planogram.manage"],
-            badge: "new",
           },
           {
             href: "/settings/ordering",
@@ -780,28 +778,26 @@ export const appNavigation: NavEntry[] = [
             label: "Branches",
             icon: MapPin,
             permission: "branches.manage",
-            badge: "new",
+            
           },
           {
             href: "/settings/warehouses",
             label: "Warehouses",
             icon: Building2,
             permission: "warehouses.manage",
-            badge: "new",
+          
           },
           {
             href: "/settings/service-centers",
             label: "Service centers",
             icon: Building2,
             permission: "service_centers.manage",
-            badge: "new",
           },
           {
             href: "/settings/dealers",
             label: "Dealers",
             icon: Store,
             permission: "dealers.manage",
-            badge: "new",
           },
         ],
       },
