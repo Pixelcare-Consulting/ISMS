@@ -92,7 +92,7 @@ export async function isAccountDisabled(userId: string): Promise<boolean> {
 }
 
 /**
- * Remove sessions with no activity for 5 minutes.
+ * Remove sessions with no activity for 30 minutes.
  * Pass a user id to clear only that account. A closed browser then cannot block the next sign-in.
  * Pass `exceptSessionId` for the request in hand so that row is not deleted before its activity stamp is saved.
  */

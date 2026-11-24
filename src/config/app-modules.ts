@@ -247,8 +247,17 @@ export const appModules: AppModule[] = [
     slugPrefix: "inventory.monthly_sir",
     navPermission: "inventory.monthly_sir.view",
     area: "Inventory",
-    description: "Opens Monthly SIR in Inventory.",
-    actions: permissionActions("view"),
+    description:
+      "Opens Monthly SIR (P-COUNT, PCount) in Inventory. Download template, Scan serials, Upload P-COUNT, Generate variance, Open P-Count, and Approve each follow their own checkbox. Upload P-COUNT also covers Request to upload.",
+    actions: [
+      { value: "view", label: "View" },
+      { value: "download_template", label: "Download template" },
+      { value: "scan_serials", label: "Scan serials" },
+      { value: "upload", label: "Upload P-COUNT" },
+      { value: "generate_variance", label: "Generate variance" },
+      { value: "open_pcount", label: "Open P-Count" },
+      { value: "approve", label: "Approve" },
+    ],
   },
   {
     id: "logistics",

@@ -20,6 +20,7 @@ import {
   LOGIN_ERROR_SIGNED_IN_ELSEWHERE,
   isLoginPathname,
   isRecentPageUse,
+  shouldOpenLoginError,
   shouldRevokeBrowserSession,
 } from "@/lib/auth/session-policy";
 
@@ -39,9 +40,13 @@ async function readBrowserSessionId(): Promise<string | null> {
 }
 
 function goToLogin(error: string) {
-  // Full load so the login page does not reuse the signed-in app shell.
+  // Already on the login page: the notice effect clears ?error= so this must not load it again.
+  if (!shouldOpenLoginError(window.location.pathname)) return;
+  const href = `/login?error=${error}`;
+  if (`${window.location.pathname}${window.location.search}` === href) return;
+  // Replace so Back cannot reopen the app and request this URL again.
   // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- sign-out must not reuse the signed-in app shell
-  window.location.assign(`/login?error=${error}`);
+  window.location.replace(href);
 }
 
 /** Idle and expired kicks pause on the current page. The login page already explains them. */
@@ -53,7 +58,7 @@ function holdsForSessionExpiredDialog(error: string): boolean {
 }
 
 /**
- * Records clicks, keys, scrolling, and page use, and signs out after 5 idle minutes.
+ * Records clicks, keys, scrolling, and page use, and signs out after 30 idle minutes.
  * The SESSION EXPIRED dialog waits until that time, and it does not open on the login page.
  * A liveness read does not refresh last activity.
  */
@@ -115,7 +120,7 @@ export function SessionActivity() {
 
     async function leave(error: string) {
       if (stopped) return;
-      if (isLoginPathname(window.location.pathname)) {
+      if (!shouldOpenLoginError(window.location.pathname)) {
         stopped = true;
         return;
       }
@@ -187,7 +192,7 @@ export function SessionActivity() {
 
     const interval = window.setInterval(() => {
       if (stopped) return;
-      if (isLoginPathname(window.location.pathname)) return;
+      if (!shouldOpenLoginError(window.location.pathname)) return;
       if (!stillUsingPage()) {
         void leave(LOGIN_ERROR_IDLE);
         return;

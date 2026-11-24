@@ -380,10 +380,9 @@ export const orderService = {
     return orderRepository.listForTenant(tenantId, branchIds, pagination, sort);
   },
 
-  /** Team Leaders the viewer can filter the order list by. */
-  async listTeamLeaderOptions(tenantId: string, userId: string, hasFullAccess: boolean) {
-    const viewerBranchIds = hasFullAccess ? null : await getUserBranchIds(tenantId, userId);
-    const users = await orderRepository.listTeamLeaderOptions(tenantId, viewerBranchIds);
+  /** Every active Team Leader. Choosing one still limits orders to that person's branches. */
+  async listTeamLeaderOptions(tenantId: string) {
+    const users = await orderRepository.listTeamLeaderOptions(tenantId);
     return users.map((user) => ({ id: user.id, name: user.name.trim() || user.email }));
   },
 

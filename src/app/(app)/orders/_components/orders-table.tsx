@@ -156,7 +156,7 @@ interface OrdersTableProps {
   /** Base path for pagination links (defaults to `/orders`). */
   basePath?: string;
   initialSort?: string;
-  /** Team Leaders offered in the TL filter; hidden when empty. */
+  /** Active Team Leaders for the Orders filter. The dropdown is always shown. */
   teamLeaders?: { id: string; name: string }[];
   /** Brands for the filter that keeps orders with at least one line of that brand. */
   brands?: { id: string; name: string }[];
@@ -322,9 +322,8 @@ export function OrdersTable({
   const router = useRouter();
   const searchParams = useSearchParams();
   /**
-   * The TL filter reloads only the table: its page of orders replaces the server's until
-   * the server renders again (paging, sorting, a refresh after an action), which then
-   * already reads `tl` from the URL.
+   * The filter reloads this table's page until `router.replace` brings the server
+   * render back. That URL is what paging, sorting, and refresh keep.
    */
   const [filteredList, setFilteredList] = useState<{
     source: OrdersTableProps["result"];
@@ -334,7 +333,11 @@ export function OrdersTable({
     filteredList && filteredList.source === serverResult ? filteredList.result : serverResult;
   const [filtering, startFiltering] = useTransition();
   const filterRequest = useRef(0);
-  /** The TL / brand just picked, shown while its orders load; the URL takes over once they do. */
+  /**
+   * The Team Leader or brand just picked. It stays until the URL has the same
+   * values. Clearing it sooner snaps the dropdown back to All, because Next.js
+   * does not read a `pushState` URL.
+   */
   const [pickedFilters, setPickedFilters] = useState<OrdersListFilters | null>(null);
   const [query, setQuery] = useState("");
   const [workflowOrder, setWorkflowOrder] = useState<OrderRow | null>(null);
@@ -362,7 +365,13 @@ export function OrdersTable({
   const preservedType = urlType === "manual" || urlType === "special" ? urlType : null;
   const activeListFilter: ManualSpecialTypeFilter | undefined =
     listFilter === undefined ? undefined : preservedType ?? "all";
-  const listFilters: OrdersListFilters = { teamLeaderId, typeFilter: preservedType, brandId };
+  const urlFilters: OrdersListFilters = { teamLeaderId, typeFilter: preservedType, brandId };
+  const pickedMatchesUrl =
+    pickedFilters != null &&
+    (pickedFilters.teamLeaderId ?? "") === teamLeaderId &&
+    (pickedFilters.brandId ?? "") === brandId;
+  if (pickedMatchesUrl) setPickedFilters(null);
+  const listFilters = pickedMatchesUrl || pickedFilters === null ? urlFilters : pickedFilters;
   const teamLeaderOptions = useMemo(
     () => teamLeaders.map((leader) => ({ id: leader.id, label: leader.name })),
     [teamLeaders],
@@ -391,9 +400,9 @@ export function OrdersTable({
   }
 
   /**
-   * Server-side, since a TL covers more branches (and a brand more orders) than one page
-   * holds, but without a route navigation: that re-rendered the whole page. The URL still
-   * records the filter.
+   * A Team Leader covers more branches than one page holds, so the list is loaded
+   * again. `router.replace` stores the pick where Next.js will read it, which keeps
+   * paging, sorting, and refresh on that leader.
    */
   function handleListFilterChange(change: { teamLeaderId?: string; brandId?: string }) {
     const request = ++filterRequest.current;
@@ -424,11 +433,11 @@ export function OrdersTable({
         if (request !== filterRequest.current) return;
         setFilteredList({ source: serverResult, result: nextResult });
         setRowSelection({});
-        window.history.pushState(null, "", href);
+        router.replace(href);
       } catch {
-        if (request === filterRequest.current) toast.error("Could not load orders. Try again.");
-      } finally {
-        if (request === filterRequest.current) setPickedFilters(null);
+        if (request !== filterRequest.current) return;
+        toast.error("Could not load orders. Try again.");
+        setPickedFilters(null);
       }
     });
   }
@@ -738,14 +747,13 @@ export function OrdersTable({
         }}
         pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
         searchTrailing={
-          teamLeaderOptions.length > 0 || teamLeaderId || brandOptions.length > 0 || brandId ? (
-            <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
               {/* After search, so the list opens over the toolbar instead of the Type column. */}
               {brandOptions.length > 0 || brandId ? (
                 <SearchableSelect
                   id="orders-brand-filter"
                   options={brandOptions}
-                  value={pickedFilters?.brandId ?? brandId}
+                  value={listFilters.brandId ?? ""}
                   onChange={(next) => handleListFilterChange({ brandId: next })}
                   placeholder="All brands"
                   searchPlaceholder="Search brands…"
@@ -756,21 +764,19 @@ export function OrdersTable({
                   className="w-44"
                 />
               ) : null}
-              {teamLeaderOptions.length > 0 || teamLeaderId ? (
-                <SearchableSelect
-                  id="orders-team-leader-filter"
-                  options={teamLeaderOptions}
-                  value={pickedFilters?.teamLeaderId ?? teamLeaderId}
-                  onChange={(next) => handleListFilterChange({ teamLeaderId: next })}
-                  placeholder="All team leaders"
-                  searchPlaceholder="Search team leaders…"
-                  emptyMessage="No team leader matches."
-                  allowClear
-                  side="top"
-                  align="end"
-                  className="w-52"
-                />
-              ) : null}
+              <SearchableSelect
+                id="orders-team-leader-filter"
+                options={teamLeaderOptions}
+                value={listFilters.teamLeaderId ?? ""}
+                onChange={(next) => handleListFilterChange({ teamLeaderId: next })}
+                placeholder="All team leaders"
+                searchPlaceholder="Search team leaders…"
+                emptyMessage="No team leader matches."
+                allowClear
+                side="top"
+                align="end"
+                className="w-52"
+              />
               {/* Always mounted so screen readers announce the change. */}
               <span
                 role="status"
@@ -784,8 +790,7 @@ export function OrdersTable({
                   </>
                 ) : null}
               </span>
-            </div>
-          ) : null
+          </div>
         }
         toolbarActions={
           <>
@@ -839,9 +844,9 @@ export function OrdersTable({
         emptyMessage={
           query.trim()
             ? "No orders match your search."
-            : brandId
+            : listFilters.brandId
               ? "No orders with a line of this brand."
-              : teamLeaderId
+              : listFilters.teamLeaderId
                 ? "No orders from this team leader's branches."
                 : "No orders."
         }

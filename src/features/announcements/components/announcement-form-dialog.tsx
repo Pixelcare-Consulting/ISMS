@@ -9,6 +9,7 @@ import {
   updateAnnouncementAction,
 } from "@/features/announcements/actions/announcement.actions";
 import { AnnouncementRichEditor } from "@/features/announcements/components/announcement-rich-editor";
+import { announcementDateTimeLocalValue } from "@/features/announcements/lib/announcement-schedule";
 import { stripAnnouncementHtml } from "@/features/announcements/lib/sanitize-announcement-html";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -32,16 +33,8 @@ export type AnnouncementDialogRow = {
   isActive: boolean;
 };
 
-function toDatetimeLocalValue(value: string | Date | null | undefined): string {
-  if (!value) return "";
-  const date = typeof value === "string" ? new Date(value) : value;
-  if (Number.isNaN(date.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
 function defaultPublishedAt(): string {
-  return toDatetimeLocalValue(new Date());
+  return announcementDateTimeLocalValue(new Date());
 }
 
 function bodyHasContent(html: string): boolean {
@@ -83,8 +76,8 @@ export function AnnouncementFormDialog({
     if (announcement) {
       setTitle(announcement.title);
       setBody(announcement.body);
-      setPublishedAt(toDatetimeLocalValue(announcement.publishedAt));
-      setExpiresAt(toDatetimeLocalValue(announcement.expiresAt));
+      setPublishedAt(announcementDateTimeLocalValue(announcement.publishedAt));
+      setExpiresAt(announcementDateTimeLocalValue(announcement.expiresAt));
       setIsActive(announcement.isActive);
     } else {
       setTitle("");

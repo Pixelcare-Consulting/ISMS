@@ -159,7 +159,7 @@ export const auth = betterAuth({
      *
      * The cookie can stay warm for `maxAge` after the row is deleted. `requireAuth`
      * records the page or action as activity before the idle check. A browser that
-     * sends nothing for 5 minutes is removed on the next sign-in, so it cannot
+     * sends nothing for 30 minutes is removed on the next sign-in, so it cannot
      * block that sign-in. A second sign-in still ends this browser once that row is gone.
      */
     cookieCache: {

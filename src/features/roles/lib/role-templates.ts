@@ -1,3 +1,8 @@
+import {
+  MONTHLY_SIR_USE_SLUGS,
+  MONTHLY_SIR_VIEW_SLUG,
+} from "@/features/monthly-sir/constants/monthly-sir-permissions";
+
 /**
  * Starter permission sets for the create-role wizard.
  * Templates only prefill the UI — they are not DB entities.
@@ -36,7 +41,8 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     permissionSlugs: [
       "dashboard.manage",
       "inventory.view",
-      "inventory.monthly_sir.view",
+      MONTHLY_SIR_VIEW_SLUG,
+      ...MONTHLY_SIR_USE_SLUGS,
       "pullouts.view",
       "orders.manual.view",
       "orders.manual.create",
@@ -54,7 +60,8 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     permissionSlugs: [
       "dashboard.manage",
       "inventory.view",
-      "inventory.monthly_sir.view",
+      MONTHLY_SIR_VIEW_SLUG,
+      ...MONTHLY_SIR_USE_SLUGS,
       "pullouts.view",
       "orders.manual.view",
       "orders.manual.approve",

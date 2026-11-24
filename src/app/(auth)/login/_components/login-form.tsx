@@ -2,13 +2,14 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
-import { useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 
 import { loginSchema, type LoginInput } from "@/features/auth/schemas/auth.schema";
 import {
   resolvePostLoginDestination,
+  safeInternalPath,
   waitForValue,
 } from "@/features/auth/lib/post-login-destination";
 import { AppVersion } from "@/app/(auth)/_components/app-version";
@@ -33,6 +34,7 @@ import {
   isAlreadySignedInMessage,
   isDisabledAccountMessage,
   loginErrorMessage,
+  shownLoginNotice,
 } from "@/lib/auth/session-policy";
 import { cn } from "@/utils/cn";
 
@@ -70,13 +72,36 @@ async function readPostLoginUser(): Promise<PostLoginUser | null> {
 }
 
 export function LoginForm() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(
     loginErrorMessage(searchParams.get("error")),
   );
   const [alreadySignedIn, setAlreadySignedIn] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
-  const callbackUrl = searchParams.get("callbackUrl") ?? "/dashboard";
+  const cleanedNotice = useRef(false);
+  const callbackUrl = safeInternalPath(searchParams.get("callbackUrl")) ?? "/dashboard";
+
+  useEffect(() => {
+    if (cleanedNotice.current) return;
+    const visit = shownLoginNotice({
+      pathname: window.location.pathname,
+      search: window.location.search,
+    });
+    if (!visit) return;
+    cleanedNotice.current = true;
+    // Drop the error query in place so a refresh does not ask for ?error=idle again.
+    window.history.replaceState(window.history.state, "", visit.href);
+    void (async () => {
+      try {
+        // A leftover cookie would send a clean /login into the app, which signs out and returns here.
+        await authClient.signOut({ fetchOptions: { credentials: "include" } });
+      } catch {
+        // The notice still stands when the cookie is already gone.
+      }
+      router.replace(visit.href, { scroll: false });
+    })();
+  }, [router]);
 
   const form = useForm<LoginInput>({
     resolver: zodResolver(loginSchema),

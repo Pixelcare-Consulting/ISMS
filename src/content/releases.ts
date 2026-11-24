@@ -68,6 +68,104 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.95.23",
+    date: "2026-11-24",
+    releasedAt: "2026-11-24T13:54:46+08:00",
+    title: "Signed out for being idle shows once",
+    highlights: ["The sign-in page stays put after an idle sign-out."],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "After you are signed out for being idle, the sign-in page shows “You were signed out. Please sign in again.” once, then the address becomes the normal sign-in page so it does not keep reloading.",
+      },
+    ],
+  },
+  {
+    version: "0.95.22",
+    date: "2026-11-24",
+    releasedAt: "2026-11-24T13:46:41+08:00",
+    title: "Return to your page after sign-in",
+    highlights: ["After sign-in you return to the page you were on."],
+    changes: [
+      {
+        type: "fix",
+        description: "Requests for hidden files are refused.",
+      },
+    ],
+  },
+  {
+    version: "0.95.21",
+    date: "2026-11-24",
+    releasedAt: "2026-11-24T13:46:41+08:00",
+    title: "New announcements show on Overview",
+    highlights: ["A new announcement shows on Overview when you publish it."],
+    changes: [
+      {
+        type: "fix",
+        description: "It appears at the Philippine time you set.",
+      },
+    ],
+  },
+  {
+    version: "0.95.20",
+    date: "2026-11-24",
+    releasedAt: "2026-11-24T13:46:41+08:00",
+    title: "Allow each P-COUNT action on Monthly SIR",
+    highlights: ["Monthly SIR permissions include each P-COUNT action."],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "You can allow download template, scan serials, upload, generate variance, open P-Count, and approve on their own.",
+      },
+    ],
+  },
+  {
+    version: "0.95.19",
+    date: "2026-11-24",
+    releasedAt: "2026-11-24T13:46:41+08:00",
+    title: "Filter orders by Team Leader",
+    highlights: ["Orders can be filtered by Team Leader."],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "The Team Leader you choose stays when you page, sort, or refresh.",
+      },
+    ],
+  },
+  {
+    version: "0.95.18",
+    date: "2026-11-24",
+    releasedAt: "2026-11-24T13:46:41+08:00",
+    title: "See this unit's history",
+    highlights: ["Unit details show this unit's history."],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "An approval names Supply Planning when Supply Planning approved it.",
+      },
+    ],
+  },
+  {
+    version: "0.95.17",
+    date: "2026-11-24",
+    releasedAt: "2026-11-24T11:39:22+08:00",
+    title: "Stay signed in while you are using the app",
+    highlights: [
+      "You stay signed in while using the app, and you are signed out after 30 minutes with nothing happening.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "You stay signed in while using the app, and you are signed out after 30 minutes with nothing happening.",
+      },
+    ],
+  },
+  {
     version: "0.95.16",
     date: "2026-11-23",
     releasedAt: "2026-11-23T15:20:00+08:00",

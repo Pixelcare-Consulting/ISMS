@@ -1,11 +1,12 @@
 import { SectionPageLead } from "@/components/navigation/section-page-lead";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
-import { hasPermission, requirePermission } from "@/lib/auth/permissions";
+import { requirePermission } from "@/lib/auth/permissions";
 import {
   getPcountUploadAllowanceAction,
   listMonthlySirBranchesAction,
   listMonthlySirRequestsAction,
 } from "@/features/monthly-sir/actions/monthly-sir.actions";
+import { resolveMonthlySirCapabilities } from "@/features/monthly-sir/constants/monthly-sir-permissions";
 import { MonthlySirPanel } from "@/app/(app)/inventory/monthly-sir/_components/monthly-sir-panel";
 
 interface MonthlySirPageProps {
@@ -54,7 +55,7 @@ export default async function MonthlySirPage({
         branches={branches}
         tab={tab}
         branchId={params.branch ?? ""}
-        canManage={hasPermission(session.user.permissions, "inventory.manage")}
+        capabilities={resolveMonthlySirCapabilities(session.user.permissions)}
         initialAllowance={initialAllowance}
         initialAllowanceBranchId={allowanceBranchId}
       />
