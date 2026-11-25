@@ -269,11 +269,15 @@ function ScServiceReturnDrawerContent({
     id: model.id,
     label: `${model.name} (${model.count} in stock)`,
   }));
-  const serialOptions = (stock?.serials ?? []).map((serial) => ({
-    id: serial.id,
-    label: serial.held ? `${serial.serialNo} · held for this request` : serial.serialNo,
-    description: `Location ${serial.locationCode}`,
-  }));
+  const serialOptions = (stock?.serials ?? []).map((serial) => {
+    // Client format: {SN}-{special instruction}, the instruction read from the SAP DR line.
+    const unit = serial.specialInstructions ? `${serial.serialNo}-${serial.specialInstructions}` : serial.serialNo;
+    return {
+      id: serial.id,
+      label: serial.held ? `${unit} · held for this request` : unit,
+      description: `Location ${serial.locationCode}`,
+    };
+  });
   const locationOptions = (detail?.locations ?? []).map((location) => ({
     id: location.id,
     label: location.name,

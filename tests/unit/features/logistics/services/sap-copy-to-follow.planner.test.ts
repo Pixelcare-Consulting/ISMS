@@ -5,6 +5,7 @@ import {
   deliveryStatusAfterFollow,
   parseFollowedDocument,
   placementsToReplace,
+  specialInstructionsBySerial,
   type FollowedDocument,
 } from "@/features/logistics/services/sap-copy-to-follow.planner";
 
@@ -70,9 +71,35 @@ describe("parseFollowedDocument", () => {
           basedOnOrderDoc: true,
           baseEntry: 368865,
           serialNos: ["55QUHW01L082500150"],
+          specialInstructions: null,
         },
       ],
     });
+  });
+
+  it("reads each DR line's Special Instructions on one line, per serial", () => {
+    const doc = parsed(
+      {
+        DocEntry: 2,
+        DocNum: 176455,
+        DocumentLines: [
+          {
+            ItemCode: "A",
+            BaseType: 17,
+            BaseEntry: 94014,
+            U_Special_Instructions: "  For SI 0012\r\rCustomer J. Cruz ",
+            SerialNumbers: [{ InternalSerialNumber: "SN1" }, { InternalSerialNumber: "SN2" }],
+          },
+          { ItemCode: "B", BaseType: 17, BaseEntry: 94014, U_Special_Instructions: " ", SerialNumbers: [{ InternalSerialNumber: "SN3" }] },
+        ],
+      },
+      "DR",
+    );
+    expect(doc.lines.map((line) => line.specialInstructions)).toEqual(["For SI 0012 Customer J. Cruz", null]);
+    expect([...specialInstructionsBySerial(doc)]).toEqual([
+      ["SN1", "For SI 0012 Customer J. Cruz"],
+      ["SN2", "For SI 0012 Customer J. Cruz"],
+    ]);
   });
 
   it("shows a DR by its DR number and reads SAP's cancel flags", () => {

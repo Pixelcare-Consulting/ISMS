@@ -45,6 +45,8 @@ export interface FollowedLine {
   basedOnOrderDoc: boolean;
   baseEntry: number | null;
   serialNos: string[];
+  /** Row "Special Instructions" (`U_Special_Instructions`) on one line, or null when blank. */
+  specialInstructions: string | null;
 }
 
 export interface FollowedDocument {
@@ -88,6 +90,21 @@ export function dcsRemarksDrNo(value: unknown): string | null {
   return normalized || null;
 }
 
+/** A row's Special Instructions on one line (SAP keeps bare CRs), null when blank. */
+export function lineSpecialInstructions(value: unknown): string | null {
+  return text(value).replace(/\s+/g, " ") || null;
+}
+
+/** Special Instructions of the line each serial is on; serials on a blank line are left out. */
+export function specialInstructionsBySerial(doc: FollowedDocument): Map<string, string> {
+  const bySerial = new Map<string, string>();
+  for (const line of doc.lines) {
+    if (!line.specialInstructions) continue;
+    for (const serialNo of line.serialNos) bySerial.set(serialNo, line.specialInstructions);
+  }
+  return bySerial;
+}
+
 /** Turn a Service Layer StockTransfer / DeliveryNote into the fields the follow-up uses. */
 export function parseFollowedDocument(
   kind: FollowedDocKind,
@@ -107,6 +124,7 @@ export function parseFollowedDocument(
     serialNos: ((line.SerialNumbers as Record<string, unknown>[] | undefined) ?? [])
       .map((serial) => text(serial.InternalSerialNumber))
       .filter(Boolean),
+    specialInstructions: lineSpecialInstructions(line.U_Special_Instructions),
   }));
 
   const drNumber = kind === "DR" ? text(raw.U_DR_NUMBER) : "";

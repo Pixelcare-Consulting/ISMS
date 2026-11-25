@@ -3886,6 +3886,8 @@ model ServiceCenterDeliveryLine {
   acceptedAt     DateTime? @map("accepted_at")
   /// Set when the unit went back to SAP on a completed reject (SC delivery return).
   returnedAt     DateTime? @map("returned_at")
+  /// The SAP DR line's Special Instructions (`U_Special_Instructions`), read when Check SAP adds the DR.
+  sapSpecialInstructions String? @map("sap_special_instructions")
   createdAt      DateTime  @default(now()) @map("created_at")
 
   delivery     ServiceCenterDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)

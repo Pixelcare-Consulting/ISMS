@@ -216,6 +216,27 @@ async function inventoryCodeId(tenantId: string, code: string): Promise<string> 
 }
 
 /**
+ * The SAP DR Special Instructions each unit last arrived at this service center with. Only the
+ * latest delivery counts: an older one's note belongs to an earlier trip of the same serial.
+ */
+async function specialInstructionsForUnits(serviceCenterId: string, serialNumberIds: string[]): Promise<Map<string, string>> {
+  if (serialNumberIds.length === 0) return new Map();
+  const lines = await prisma.serviceCenterDeliveryLine.findMany({
+    where: { serialNumberId: { in: serialNumberIds }, returnedAt: null, delivery: { serviceCenterId } },
+    select: { serialNumberId: true, sapSpecialInstructions: true },
+    orderBy: { createdAt: "desc" },
+  });
+  const bySerial = new Map<string, string>();
+  const seen = new Set<string>();
+  for (const line of lines) {
+    if (seen.has(line.serialNumberId)) continue;
+    seen.add(line.serialNumberId);
+    if (line.sapSpecialInstructions) bySerial.set(line.serialNumberId, line.sapSpecialInstructions);
+  }
+  return bySerial;
+}
+
+/**
  * The returned unit, Reserve ODRF in this service center's stock, goes to `locationId` as
  * STK or DEF.
  */
@@ -886,6 +907,11 @@ export const scServiceReturnService = {
         : Promise.resolve([]),
     ]);
 
+    const instructions = await specialInstructionsForUnits(
+      request.sale.serviceCenterId,
+      serials.map((row) => row.serialNumberId),
+    );
+
     const models = new Map<string, { id: string; name: string; count: number }>();
     for (const row of modelGroups) {
       const model = row.serialNumber.model;
@@ -900,6 +926,7 @@ export const scServiceReturnService = {
         id: row.serialNumberId,
         serialNo: row.serialNumber.serialNo,
         locationCode: row.serviceCenterLocation.code,
+        specialInstructions: instructions.get(row.serialNumberId) ?? null,
         held: row.serialNumberId === request.heldSerialNumberId,
       })),
     };
