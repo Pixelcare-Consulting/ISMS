@@ -7,10 +7,15 @@ import {
   type SalesSource,
 } from "@/app/(app)/sales/_components/sales-source";
 import { getScSaleDetailsAction } from "@/features/service-center-ops/actions/sc-sales.actions";
+import {
+  listScProcessReturnLookupsAction,
+  requestScSaleReturnAction,
+} from "@/features/service-center-ops/actions/sc-service-returns.actions";
 
 /**
  * Sales Transactions → Service Center tab: copies of branch sales whose Service Return /
- * Replacement went to a service center. Read only, so no `edit`.
+ * Replacement went to a service center, and the sales a replacement creates for the new unit.
+ * No `edit`; an open sale takes a Service Return / Replacement that its service center finishes.
  */
 const SC_SALES_SOURCE: SalesSource = {
   listHref: "/sales",
@@ -24,6 +29,11 @@ const SC_SALES_SOURCE: SalesSource = {
     stockSourceDetail: "Location",
   },
   getSaleDetails: (saleId) => getScSaleDetailsAction(saleId),
+  processReturn: {
+    listLookups: () => listScProcessReturnLookupsAction(),
+    request: (saleId, payload) => requestScSaleReturnAction(saleId, payload),
+    sellerFinishes: true,
+  },
 };
 
 /** Wraps the shared sales table and details dialog so they read SC sales. */

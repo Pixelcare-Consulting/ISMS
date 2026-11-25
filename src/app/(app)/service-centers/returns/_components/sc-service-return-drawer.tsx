@@ -97,6 +97,11 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h3 className="text-sm font-semibold">{children}</h3>;
 }
 
+/** The replacement model the CSR picked in Process Return, else the sold model. */
+function requestedModelId(detail: ScServiceReturnDetail): string | null {
+  return detail.serviceModelId ?? detail.modelId;
+}
+
 interface ScServiceReturnDrawerProps {
   returnRequestId: string | null;
   onClose: () => void;
@@ -143,7 +148,7 @@ function ScServiceReturnDrawerContent({
       const onlyLocation = res.data.locations.length === 1 ? res.data.locations[0]!.id : "";
       setLocationId(onlyLocation);
       setOrderLocationId(onlyLocation);
-      setModelId(res.data.modelId ?? "");
+      setModelId(requestedModelId(res.data) ?? "");
     });
     return () => {
       cancelled = true;
@@ -224,7 +229,7 @@ function ScServiceReturnDrawerContent({
           () =>
             raiseScServiceSpecialOrderAction({
               returnRequestId: id,
-              modelId: detail.modelId ?? "",
+              modelId: requestedModelId(detail) ?? "",
               serviceCenterLocationId: orderLocationId || null,
               poNumber: poNumber.trim() || null,
             }),
@@ -253,8 +258,8 @@ function ScServiceReturnDrawerContent({
       toast.error("Choose the replacement model and serial");
       return;
     }
-    if (next === "special_order" && !detail?.modelId) {
-      toast.error("The sold model is unknown, so it cannot be ordered");
+    if (next === "special_order" && !(detail && requestedModelId(detail))) {
+      toast.error("The model is unknown, so it cannot be ordered");
       return;
     }
     if (next === "reject" && !rejectReason.trim()) {
@@ -282,8 +287,10 @@ function ScServiceReturnDrawerContent({
     id: location.id,
     label: location.name,
   }));
-  const soldModelInStock = Boolean(
-    detail?.modelId && stock?.models.some((model) => model.id === detail.modelId),
+  const wantedModelId = detail ? requestedModelId(detail) : null;
+  const wantedModelLabel = detail?.serviceModelLabel ?? detail?.modelLabel ?? null;
+  const wantedModelInStock = Boolean(
+    wantedModelId && stock?.models.some((model) => model.id === wantedModelId),
   );
   const copy = confirm ? CONFIRM_COPY[confirm] : null;
 
@@ -353,7 +360,7 @@ function ScServiceReturnDrawerContent({
                   {detail.classification ? <Detail label="Classification" value={detail.classification} /> : null}
                   {detail.natureOfTransaction ? <Detail label="Nature of transaction" value={detail.natureOfTransaction} /> : null}
                   {detail.refContactPo ? <Detail label="Ref / contact / PO" value={detail.refContactPo} /> : null}
-                  {detail.customerDealerBranch ? <Detail label="Customer / dealer / branch" value={detail.customerDealerBranch} /> : null}
+                  {detail.serviceModelLabel ? <Detail label="Requested replacement model" value={detail.serviceModelLabel} /> : null}
                 </dl>
                 {detail.atrOdrfUrl ? (
                   <a
@@ -473,10 +480,10 @@ function ScServiceReturnDrawerContent({
                           emptyMessage="No STK units of this model here."
                           disabled={!modelId || stockLoading}
                         />
-                        {!stockLoading && stock && !soldModelInStock ? (
+                        {!stockLoading && stock && !wantedModelInStock ? (
                           <p className="text-sm text-muted-foreground">
-                            The sold model is not in this service center&apos;s stock. Choose another model, or raise a
-                            special order below.
+                            {detail.serviceModelId ? "The requested model" : "The sold model"} is not in this service
+                            center&apos;s stock. Choose another model, or raise a special order below.
                           </p>
                         ) : null}
                         <Button
@@ -509,7 +516,7 @@ function ScServiceReturnDrawerContent({
                             <span id="sc-return-special">Not in stock: special order</span>
                           </SectionTitle>
                           <p className="text-sm text-muted-foreground">
-                            Orders one {detail.modelLabel ?? "unit of the sold model"} for this service center.
+                            Orders one {wantedModelLabel ?? "unit of the sold model"} for this service center.
                           </p>
                         </div>
                         <SearchableSelect
@@ -534,7 +541,7 @@ function ScServiceReturnDrawerContent({
                           type="button"
                           variant="outline"
                           className="w-full"
-                          disabled={pending || !detail.modelId}
+                          disabled={pending || !wantedModelId}
                           onClick={() => requestConfirm("special_order")}
                         >
                           Raise Special Order

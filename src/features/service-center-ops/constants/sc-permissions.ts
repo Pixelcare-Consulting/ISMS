@@ -27,6 +27,11 @@ export const SC_MANAGE = "service_centers.manage";
  * submit the return into SC stock, replace from SC stock, raise a special order, or reject.
  */
 export const SC_RETURNS_PROCESS = "service_centers.returns.process";
+/**
+ * Request a Service Return / Replacement on an open SC sale from the Service Center tab: the
+ * sale a replacement created for the new unit, or an older SC-encoded sale.
+ */
+export const SC_RETURN_REQUEST = "service_centers.return.request";
 
 /**
  * Sales Transactions → Service Center tab (read only). Create / update no longer encode or edit
@@ -68,8 +73,9 @@ export type ScLogisticsActionCapabilities = ResolvedCapabilities<
 
 /**
  * The Service Center tab uses the branch sales table and dialogs, so it resolves the same
- * capability shape, read only: its rows are copies of branch sales. Requests start on the
- * branch sale and the service center finishes them in SC Returns.
+ * capability shape. Rows are copies of branch sales and the sales replacements create for the
+ * new unit; an open row takes a Service Return / Replacement (its own checkbox), which the
+ * service center finishes in SC Returns. Nothing is encoded or edited here.
  */
 export function resolveScSalesCapabilities(
   permissions: string[] | undefined,
@@ -79,7 +85,7 @@ export function resolveScSalesCapabilities(
     canViewReturns: false,
     canCreateSale: false,
     canUpdateSaleHeader: false,
-    canRequestReturn: false,
+    canRequestReturn: hasPermission(permissions, SC_RETURN_REQUEST),
     canEvaluateReturn: false,
     canApproveReturn: false,
     canCompleteReturn: false,

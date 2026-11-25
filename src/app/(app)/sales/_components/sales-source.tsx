@@ -28,8 +28,9 @@ import type { PaginatedResult } from "@/lib/shared/pagination";
 /**
  * Where a sale list's rows come from. Branch Sales Transactions and the Service Center tab use
  * the same table and details dialog; a source supplies their server actions, links, and the
- * words for "sold place" and "stock source". Only branch sales can be encoded, edited, or
- * returned (`edit`); the Service Center tab lists copies and is read only.
+ * words for "sold place" and "stock source". Only branch sales can be encoded or edited
+ * (`edit`). Both offer Process Return (`processReturn`): on the Service Center tab it is for
+ * open SC sales, finished by the service center that holds them.
  */
 
 type ActionResult = { error?: string; success?: boolean };
@@ -138,6 +139,11 @@ export interface SalesEditActions {
 export interface SalesProcessReturnSource {
   listLookups: () => Promise<ProcessReturnLookups>;
   request: (saleId: string, payload: ProcessReturnPayload) => Promise<ActionResult>;
+  /**
+   * True on SC sales: the unit is already at the service center that finishes the request, so
+   * only Service Return / Replacement apply and there is no service center picker.
+   */
+  sellerFinishes?: boolean;
 }
 
 export interface SalesSource {
@@ -149,13 +155,14 @@ export interface SalesSource {
   proofHref: (saleId: string, index: number) => string;
   copy: SalesListCopy;
   getSaleDetails: (saleId: string) => Promise<SaleDetailsPayload | { error: string }>;
-  /** Encode, edit, and Process Return. Omitted: the list is read only. */
+  /** Encode and edit. Omitted: no sale can be encoded or edited. */
   edit?: {
     newHref: string;
     copy: SalesEncodeCopy;
     actions: SalesEditActions;
-    processReturn: SalesProcessReturnSource;
   };
+  /** Process Return on a sale line. Omitted: no returns from this list. */
+  processReturn?: SalesProcessReturnSource;
 }
 
 /** What the encode form and the edit / return dialogs read. */
@@ -164,7 +171,6 @@ export interface SalesEditSource {
   newHref: string;
   copy: SalesListCopy & SalesEncodeCopy;
   actions: SalesEditActions;
-  processReturn: SalesProcessReturnSource;
 }
 
 export const BRANCH_SALES_SOURCE: SalesSource = {
@@ -211,10 +217,10 @@ export const BRANCH_SALES_SOURCE: SalesSource = {
       countAgingSellableStock: ({ stockSourceId, modelId }) =>
         countAgingSellableStockAction({ branchId: stockSourceId, modelId }),
     },
-    processReturn: {
-      listLookups: () => listProcessReturnLookupsAction(),
-      request: (saleId, payload) => requestReturnAction(saleId, payload),
-    },
+  },
+  processReturn: {
+    listLookups: () => listProcessReturnLookupsAction(),
+    request: (saleId, payload) => requestReturnAction(saleId, payload),
   },
 };
 
@@ -236,8 +242,8 @@ export function useSalesSource(): SalesSource {
 }
 
 /**
- * Encode, edit, and return actions of the surrounding source. Those forms and dialogs open only
- * behind create / update / request capabilities, which read-only sources never grant.
+ * Encode and edit actions of the surrounding source. Those forms and dialogs open only behind
+ * create / update capabilities, which read-only sources never grant.
  */
 export function useSalesEditSource(): SalesEditSource {
   const source = useSalesSource();
@@ -248,6 +254,12 @@ export function useSalesEditSource(): SalesEditSource {
     newHref: edit.newHref,
     copy: { ...source.copy, ...edit.copy },
     actions: edit.actions,
-    processReturn: edit.processReturn,
   };
+}
+
+/** Process Return of the surrounding source; the dialog opens only behind `canRequestReturn`. */
+export function useSalesProcessReturn(): SalesProcessReturnSource {
+  const { processReturn } = useSalesSource();
+  if (!processReturn) throw new Error("This sales list takes no returns");
+  return processReturn;
 }

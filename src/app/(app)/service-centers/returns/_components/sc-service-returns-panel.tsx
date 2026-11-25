@@ -172,6 +172,21 @@ export function ScServiceReturnsPanel({
         cell: ({ row }) => row.original.stockStatusCode,
       }),
       column.display({
+        id: "atr",
+        header: "ATR/ODRF",
+        cell: ({ row }) =>
+          row.original.atrOdrfUrl ? (
+            <a
+              href={row.original.atrOdrfUrl}
+              className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+            >
+              Download
+            </a>
+          ) : (
+            <span className="text-sm text-muted-foreground">—</span>
+          ),
+      }),
+      column.display({
         id: "createdAt",
         header: "REQUESTED",
         cell: ({ row }) => formatDate(row.original.createdAt),
