@@ -19,7 +19,6 @@ export const metadata = pageMetadata(
 export default async function NewSalesTransactionPage() {
   const session = await requirePermission("sales.create");
 
-  const roleSlugs = session.user.roleSlugs ?? [];
   const unrestricted =
     hasPermission(session.user.permissions, "branches.manage") ||
     hasPermission(session.user.permissions, "master_data.manage");
@@ -51,7 +50,7 @@ export default async function NewSalesTransactionPage() {
       listBrandsForSalesAction(),
     ]);
 
-  const autoResolveBranch = roleSlugs.includes("ps") && branches.length === 1;
+  const autoResolveBranch = branches.length === 1;
 
   return (
     <NewSalesTransactionForm

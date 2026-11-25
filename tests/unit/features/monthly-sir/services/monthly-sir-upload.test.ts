@@ -51,8 +51,7 @@ describe("monthlySirService.previewUpload", () => {
       userId: "user-1",
       requestId: "req-1",
       unrestricted: true,
-      permissions: ["inventory.view"],
-      roleSlugs: ["tl"],
+      permissions: ["inventory.view", "inventory.monthly_sir.upload_slots"],
       file: Buffer.from("xlsx"),
     });
 

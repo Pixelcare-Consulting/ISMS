@@ -23,6 +23,7 @@ export type LogisticsPostingAction =
   | "pullout.updateList"
   | "pullout.finalize"
   | "pullout.checkSap"
+  | "pullout.cancel"
   | "pullout.complete";
 
 const DENIED = "You do not have permission for this logistics action";
@@ -51,6 +52,7 @@ export function postingPermissionError(
     case "pullout.updateList":
     case "pullout.finalize":
     case "pullout.checkSap":
+    case "pullout.cancel":
     case "pullout.complete":
       return pullouts.canManage ? null : DENIED;
     case "transfer.receive":

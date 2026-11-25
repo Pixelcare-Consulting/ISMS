@@ -22,7 +22,6 @@ import {
   SC_LOGISTICS_APPROVE,
   SC_LOGISTICS_CREATE,
   SC_LOGISTICS_MANAGE,
-  SC_ORDERS_APPROVE,
 } from "@/features/service-center-ops/constants/sc-permissions";
 import {
   scOpsRepository,
@@ -34,6 +33,7 @@ import { resolveScIdsForUser } from "@/features/service-center-ops/services/sc-s
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
+import { parseListSearch } from "@/lib/shared/pagination";
 
 /**
  * Service center pull-outs. Same actions as branch pull-outs (`logistics.actions`), gated by
@@ -41,8 +41,10 @@ import { prisma } from "@/lib/database/client";
  * then follows the IT/Return and any redelivery DR, as on branch pull-outs.
  */
 
-const CREATE_PERMISSIONS = [SC_LOGISTICS_CREATE, SC_LOGISTICS_MANAGE] as const;
-const TL_PERMISSIONS = [SC_LOGISTICS_APPROVE, SC_ORDERS_APPROVE, SC_LOGISTICS_MANAGE] as const;
+const CREATE_PERMISSIONS = [SC_LOGISTICS_CREATE] as const;
+/** Reads the create and list-edit forms both need (centers, serials, checklist options). */
+const FORM_PERMISSIONS = [SC_LOGISTICS_CREATE, SC_LOGISTICS_MANAGE] as const;
+const TL_PERMISSIONS = [SC_LOGISTICS_APPROVE] as const;
 const SORT_FIELDS = new Set<ScPulloutListSort>(["pulloutNo", "serviceCenter", "reason", "status"]);
 
 const scPulloutSchema = z.object({
@@ -54,13 +56,12 @@ const scPulloutSchema = z.object({
 type ActionResult = { success: true } | { error: string };
 
 function actor(session: {
-  user: { tenantId: string; id: string; permissions?: string[]; roleSlugs?: string[] };
+  user: { tenantId: string; id: string; permissions?: string[] };
 }): PostingActor {
   return {
     tenantId: session.user.tenantId,
     userId: session.user.id,
     permissions: session.user.permissions,
-    roleSlugs: session.user.roleSlugs,
   };
 }
 
@@ -87,6 +88,7 @@ export async function listScPulloutsAction(input?: {
   limit?: number;
   sort?: string;
   sortDir?: string;
+  q?: string;
 }) {
   const session = await requireAnyPermission([...SC_LOGISTICS_ACCESS]);
   return scOpsRepository.listPullouts(
@@ -97,6 +99,7 @@ export async function listScPulloutsAction(input?: {
       field: parseSort(input?.sort),
       dir: input?.sortDir === "asc" || input?.sortDir === "desc" ? input.sortDir : undefined,
     },
+    parseListSearch(input?.q),
   );
 }
 
@@ -134,7 +137,7 @@ export async function getScPulloutDetailAction(id: string) {
 
 /** Service centers for the create form: the person's area of responsibility. */
 export async function listScCentersForPulloutsAction() {
-  const session = await requireAnyPermission([...CREATE_PERMISSIONS]);
+  const session = await requireAnyPermission([...FORM_PERMISSIONS]);
   const scope = await scopeOf(session);
   return prisma.serviceCenter.findMany({
     where: {
@@ -149,7 +152,7 @@ export async function listScCentersForPulloutsAction() {
 }
 
 export async function listScPulloutSerialsAction(serviceCenterId: string) {
-  const session = await requireAnyPermission([...CREATE_PERMISSIONS]);
+  const session = await requireAnyPermission([...FORM_PERMISSIONS]);
   try {
     const serials = await scPulloutPostingService.listSerials(actor(session), serviceCenterId);
     return { success: true as const, serials };
@@ -161,7 +164,7 @@ export async function listScPulloutSerialsAction(serviceCenterId: string) {
 export async function listScPulloutChecklistOptionsAction(): Promise<
   PulloutChecklistOptions & { error?: string }
 > {
-  const session = await requireAnyPermission([...CREATE_PERMISSIONS]);
+  const session = await requireAnyPermission([...FORM_PERMISSIONS]);
   try {
     return await loadPulloutChecklistOptions(session.user.tenantId);
   } catch (error) {
@@ -296,5 +299,18 @@ export async function checkScPulloutSapAction(id: string) {
     return { success: true as const, result };
   } catch (error) {
     return actionError(error, "Failed to check SAP");
+  }
+}
+
+/** Cancels an SC pull-out after Team Lead approval: SAP first (Returns closed, ITs cancelled). */
+export async function cancelScPulloutAction(id: string) {
+  const session = await requirePermission(SC_LOGISTICS_MANAGE);
+  if (!id) return { error: "Choose a pull-out" };
+  try {
+    const result = await scPulloutPostingService.cancel(actor(session), id);
+    revalidateScPullout(id);
+    return { success: true as const, sapDone: result.sapDone };
+  } catch (error) {
+    return actionError(error, "Failed to cancel the pull-out");
   }
 }

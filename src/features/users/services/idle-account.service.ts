@@ -4,7 +4,7 @@ import { deleteIdleSessions } from "@/lib/auth/session-liveness";
 import { prisma } from "@/lib/database/client";
 
 /**
- * Drop sessions idle longer than 5 minutes, then turn off accounts with no
+ * Drop sessions idle longer than 30 minutes, then turn off accounts with no
  * activity for 7 days. Super Admin is skipped. Activity is `User.lastActiveAt`,
  * which is the newest session activity kept after the session row is deleted,
  * or `createdAt` when they never signed in.

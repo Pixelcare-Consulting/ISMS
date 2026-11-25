@@ -24,11 +24,15 @@ const OPEN_SALE_DETAIL_SELECT = {
   modelId: true,
   packageTypeId: true,
   modelPrice: true,
+  saleAmount: true,
+  amount: true,
   sale: {
     select: {
       id: true,
       transactionNo: true,
       transactionDate: true,
+      customerName: true,
+      contactNo: true,
       atrStatus: true,
       branchId: true,
       alternateBranchId: true,

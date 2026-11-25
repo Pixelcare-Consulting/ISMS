@@ -19,6 +19,8 @@ export const LOGISTICS_DELIVERY_DISPATCH = "logistics.delivery.dispatch";
 export const LOGISTICS_DELIVERY_RECEIVE = "logistics.delivery.receive";
 export const LOGISTICS_DELIVERY_RETURN_REQUEST = "logistics.delivery_return.request";
 export const LOGISTICS_DELIVERY_RETURN_APPROVE = "logistics.delivery_return.approve";
+/** Opens Transfers read only. Each button keeps its own checkbox. */
+export const LOGISTICS_DELIVERY_TRANSFER_VIEW = "logistics.delivery_transfer.view";
 export const LOGISTICS_DELIVERY_TRANSFER_CREATE = "logistics.delivery_transfer.create";
 export const LOGISTICS_DELIVERY_TRANSFER_APPROVE = "logistics.delivery_transfer.approve";
 export const LOGISTICS_DELIVERY_TRANSFER_RECEIVE = "logistics.delivery_transfer.receive";
@@ -29,58 +31,42 @@ export const PULLOUTS_APPROVE = "pullouts.approve";
 export const PULLOUTS_MANAGE = "pullouts.manage";
 
 /**
- * Pull-out Create. Visible transfer Create uses {@link TRANSFER_PAGE_CREATE_PERMISSIONS}
- * so a pull-out checkbox does not start a transfer.
+ * Every action button and its server action checks only its own checkbox in Settings → Roles.
+ * No other checkbox and no hidden legacy slug (`orders.*`) unlocks it, so unticking a box
+ * always removes the button.
  */
-export const PULLOUT_CREATE_PERMISSIONS = [
-  PULLOUTS_CREATE,
-  LOGISTICS_CREATE,
-  LOGISTICS_MANAGE,
-  "orders.create",
-] as const;
+export const PULLOUT_CREATE_PERMISSIONS = [PULLOUTS_CREATE] as const;
 
-/** Pull-out Approve and Reject. Transfer Approve uses the Branch transfers checkbox. */
-export const PULLOUT_APPROVE_PERMISSIONS = [
-  PULLOUTS_APPROVE,
-  "orders.approve",
-  LOGISTICS_MANAGE,
-] as const;
+/** Pull-out Approve and Reject. */
+export const PULLOUT_APPROVE_PERMISSIONS = [PULLOUTS_APPROVE] as const;
 
-/** Pull-out list edit, Send, and Check SAP. Delivery and transfer Manage stay on logistics.manage. */
-export const PULLOUT_MANAGE_PERMISSIONS = [PULLOUTS_MANAGE, LOGISTICS_MANAGE] as const;
+/** Pull-out list edit, Send, and Check SAP. */
+export const PULLOUT_MANAGE_PERMISSIONS = [PULLOUTS_MANAGE] as const;
 
-/** Visible Transfers page Create, plus the aliases that already started a transfer. */
-export const TRANSFER_PAGE_CREATE_PERMISSIONS = [
-  LOGISTICS_DELIVERY_TRANSFER_CREATE,
-  LOGISTICS_CREATE,
-  LOGISTICS_MANAGE,
-  "orders.create",
-] as const;
+/** Transfers page Create. */
+export const TRANSFER_PAGE_CREATE_PERMISSIONS = [LOGISTICS_DELIVERY_TRANSFER_CREATE] as const;
 
-/** Visible Transfers page Approve and Reject. */
-export const TRANSFER_PAGE_APPROVE_PERMISSIONS = [
-  LOGISTICS_DELIVERY_TRANSFER_APPROVE,
-  "orders.approve",
-  LOGISTICS_MANAGE,
-] as const;
+/** Transfers page Approve and Reject. */
+export const TRANSFER_PAGE_APPROVE_PERMISSIONS = [LOGISTICS_DELIVERY_TRANSFER_APPROVE] as const;
 
-/** Visible Transfers page Receive, plus the aliases that already received a transfer. */
-export const TRANSFER_PAGE_RECEIVE_PERMISSIONS = [
-  LOGISTICS_DELIVERY_TRANSFER_RECEIVE,
-  LOGISTICS_CREATE,
-  LOGISTICS_MANAGE,
-  "orders.create",
-] as const;
+/** Transfers page Receive and per-serial reject at receipt. */
+export const TRANSFER_PAGE_RECEIVE_PERMISSIONS = [LOGISTICS_DELIVERY_TRANSFER_RECEIVE] as const;
 
-/** "Check SAP now": Logistics on Deliveries, and order approvers on Orders. */
+/** Delivery Receive (accept units at the branch). */
+export const DELIVERY_RECEIVE_PERMISSIONS = [LOGISTICS_DELIVERY_RECEIVE] as const;
+
+/**
+ * "Check SAP now" has no checkbox of its own. It sits next to Dispatch and Manage on Deliveries,
+ * and next to Approve on Orders, so each of those checkboxes shows it.
+ */
 export const SAP_CHECK_PERMISSIONS = [
   LOGISTICS_DELIVERY_DISPATCH,
   LOGISTICS_MANAGE,
   ...anyOrderTypePermissions("approve"),
 ];
 
-/** Any of these grants Logistics nav + list access. */
-export const LOGISTICS_ACCESS_PERMISSIONS = [
+/** Any of these opens Deliveries and Transfers (lists, KPIs, details). */
+export const LOGISTICS_PAGE_PERMISSIONS = [
   LOGISTICS_VIEW,
   LOGISTICS_CREATE,
   LOGISTICS_MANAGE,
@@ -88,24 +74,20 @@ export const LOGISTICS_ACCESS_PERMISSIONS = [
 ] as const;
 
 /**
- * Legacy order slugs kept for one release so PS/TL who only have orders.*
- * can still open deliveries / transfers / pull-outs.
+ * Opens Transfers (list, detail, KPIs): any Branch transfers checkbox, or Branch deliveries
+ * View/Create/Manage/Receive. Branch transfers View alone is read only (e.g. Accounting).
  */
-export const LOGISTICS_READ_ALIASES = [
-  "orders.create",
-  "orders.view",
-] as const;
-
-/** Page / list / KPI gate: logistics.* or legacy order aliases. */
-export const LOGISTICS_PAGE_PERMISSIONS = [
-  ...LOGISTICS_ACCESS_PERMISSIONS,
-  ...LOGISTICS_READ_ALIASES,
+export const TRANSFERS_PAGE_PERMISSIONS = [
+  LOGISTICS_DELIVERY_TRANSFER_VIEW,
+  LOGISTICS_DELIVERY_TRANSFER_CREATE,
+  LOGISTICS_DELIVERY_TRANSFER_APPROVE,
+  LOGISTICS_DELIVERY_TRANSFER_RECEIVE,
+  ...LOGISTICS_PAGE_PERMISSIONS,
 ] as const;
 
 /**
  * Capability map for deliveries and the Transfers page.
- * Pull-out buttons use {@link PULLOUT_ACTION_CAPABILITIES} so those checkboxes
- * do not unlock a delivery or a transfer. Older slugs stay as fallbacks.
+ * Pull-out buttons use {@link PULLOUT_ACTION_CAPABILITIES}.
  * Hidden unit transfers stay on `canCreateDeliveryTransfer` and its siblings.
  */
 export const LOGISTICS_ACTION_CAPABILITIES = {
@@ -113,18 +95,13 @@ export const LOGISTICS_ACTION_CAPABILITIES = {
   canManage: LOGISTICS_MANAGE,
   canApproveTl: TRANSFER_PAGE_APPROVE_PERMISSIONS,
   canRejectTransfer: TRANSFER_PAGE_APPROVE_PERMISSIONS,
-  canDispatch: [LOGISTICS_DELIVERY_DISPATCH, LOGISTICS_MANAGE],
-  canAcceptDelivery: [
-    LOGISTICS_CREATE,
-    LOGISTICS_MANAGE,
-    "orders.create",
-    LOGISTICS_DELIVERY_RECEIVE,
-  ],
-  canRequestDeliveryReturn: [LOGISTICS_DELIVERY_RETURN_REQUEST],
-  canApproveDeliveryReturn: [LOGISTICS_DELIVERY_RETURN_APPROVE],
-  canCreateDeliveryTransfer: [LOGISTICS_DELIVERY_TRANSFER_CREATE],
-  canApproveDeliveryTransfer: [LOGISTICS_DELIVERY_TRANSFER_APPROVE],
-  canReceiveDeliveryTransfer: [LOGISTICS_DELIVERY_TRANSFER_RECEIVE],
+  canDispatch: LOGISTICS_DELIVERY_DISPATCH,
+  canAcceptDelivery: DELIVERY_RECEIVE_PERMISSIONS,
+  canRequestDeliveryReturn: LOGISTICS_DELIVERY_RETURN_REQUEST,
+  canApproveDeliveryReturn: LOGISTICS_DELIVERY_RETURN_APPROVE,
+  canCreateDeliveryTransfer: LOGISTICS_DELIVERY_TRANSFER_CREATE,
+  canApproveDeliveryTransfer: LOGISTICS_DELIVERY_TRANSFER_APPROVE,
+  canReceiveDeliveryTransfer: LOGISTICS_DELIVERY_TRANSFER_RECEIVE,
   canExecuteTransfer: LOGISTICS_MANAGE,
   canReceiveTransfer: TRANSFER_PAGE_RECEIVE_PERMISSIONS,
   canSchedulePullout: PULLOUT_MANAGE_PERMISSIONS,

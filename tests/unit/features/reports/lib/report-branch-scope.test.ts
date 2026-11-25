@@ -17,7 +17,17 @@ describe("resolveReportBranchScope", () => {
   });
 
   it("gives order approvers every branch", async () => {
-    await expect(resolveReportBranchScope(viewer(["orders.approve"]), "NO_BRANCHES")).resolves.toBeUndefined();
+    await expect(resolveReportBranchScope(viewer(["orders.manual.approve_sp"]), "NO_BRANCHES")).resolves.toBeUndefined();
+  });
+
+  it("ignores the hidden old per-type order Approve", async () => {
+    aor.mockResolvedValue(["b1"]);
+    await expect(resolveReportBranchScope(viewer(["orders.manual.approve"]), "NO_BRANCHES")).resolves.toEqual(["b1"]);
+  });
+
+  it("ignores the hidden legacy orders.approve slug", async () => {
+    aor.mockResolvedValue(["b1"]);
+    await expect(resolveReportBranchScope(viewer(["orders.approve"]), "NO_BRANCHES")).resolves.toEqual(["b1"]);
   });
 
   it("limits everyone else to their AOR branches", async () => {

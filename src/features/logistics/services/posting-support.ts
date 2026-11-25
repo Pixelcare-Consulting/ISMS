@@ -23,7 +23,6 @@ export interface PostingActor {
   tenantId: string;
   userId: string;
   permissions?: string[];
-  roleSlugs?: string[];
 }
 
 export type PostingDb = Prisma.TransactionClient;

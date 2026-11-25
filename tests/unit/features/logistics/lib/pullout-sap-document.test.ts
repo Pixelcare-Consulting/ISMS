@@ -22,6 +22,7 @@ function doc(overrides: Partial<PulloutSapDocument> = {}): PulloutSapDocument {
     docNum: 494405,
     docDate: "2026-11-12",
     cancelled: false,
+    closed: false,
     lines: [docLine({ serialNos: ["SN-1", "SN-2"] })],
     ...overrides,
   };
@@ -71,6 +72,7 @@ describe("parsing SAP documents", () => {
       docNum: 494405,
       docDate: "2026-11-12",
       cancelled: false,
+      closed: false,
       lines: [{ pulloutRef: "PLT-1", baseType: -1, baseEntry: null, branchCode: "", serialNos: ["SN-1"] }],
     });
   });

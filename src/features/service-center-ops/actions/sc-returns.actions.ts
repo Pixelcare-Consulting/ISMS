@@ -17,20 +17,12 @@ import {
   RETURNS_COMPLETE,
   RETURNS_EVALUATE,
   RETURNS_SERVICE_VIEW_PERMISSIONS,
+  returnsRejectPermissions,
 } from "@/features/returns/constants/returns-permissions";
-import {
-  SC_LOGISTICS_MANAGE,
-  SC_ORDERS_APPROVE,
-  SC_RETURN_APPROVE,
-  SC_RETURN_COMPLETE,
-  SC_RETURN_EVALUATE,
-  SC_SALES_CREATE,
-  scReturnRejectPermissions,
-} from "@/features/service-center-ops/constants/sc-permissions";
 import { scSalesRepository } from "@/features/service-center-ops/repositories/sc-sales.repository";
 import { resolveScIdsForUser } from "@/features/service-center-ops/services/sc-scope";
 import { placeServiceCenterUnit } from "@/features/service-center-ops/services/service-center-placement";
-import { hasPermission, requireAnyPermission } from "@/lib/auth/permissions";
+import { hasPermission, requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
 
 /**
@@ -95,7 +87,7 @@ export async function listScReturnsAction(input?: {
 }
 
 export async function evaluateScReturnAction(returnRequestId: string, notes?: string) {
-  const session = await requireAnyPermission([RETURNS_EVALUATE, SC_RETURN_EVALUATE]);
+  const session = await requirePermission(RETURNS_EVALUATE);
   const row = await prisma.serviceCenterReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
     include: { sale: { select: saleSerialsSelect } },
@@ -134,11 +126,7 @@ export async function evaluateScReturnAction(returnRequestId: string, notes?: st
 }
 
 export async function approveScReturnAction(returnRequestId: string) {
-  const session = await requireAnyPermission([
-    RETURNS_APPROVE,
-    SC_RETURN_APPROVE,
-    SC_ORDERS_APPROVE,
-  ]);
+  const session = await requirePermission(RETURNS_APPROVE);
   const row = await prisma.serviceCenterReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
     include: { sale: { select: saleSerialsSelect } },
@@ -172,14 +160,7 @@ export async function approveScReturnAction(returnRequestId: string) {
 }
 
 export async function rejectScReturnAction(returnRequestId: string, notes?: string) {
-  const session = await requireAnyPermission([
-    RETURNS_EVALUATE,
-    RETURNS_APPROVE,
-    SC_RETURN_EVALUATE,
-    SC_RETURN_APPROVE,
-    SC_SALES_CREATE,
-    SC_ORDERS_APPROVE,
-  ]);
+  const session = await requireAnyPermission([RETURNS_EVALUATE, RETURNS_APPROVE]);
   const row = await prisma.serviceCenterReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
     include: { sale: { select: saleSerialsSelect } },
@@ -188,7 +169,7 @@ export async function rejectScReturnAction(returnRequestId: string, notes?: stri
     return { error: "Return request cannot be rejected" as const };
   }
 
-  const allowed = scReturnRejectPermissions(row.status);
+  const allowed = returnsRejectPermissions(row.status);
   if (!allowed.some((slug) => hasPermission(session.user.permissions, slug))) {
     return { error: "You do not have permission to reject this return" as const };
   }
@@ -223,12 +204,7 @@ export async function rejectScReturnAction(returnRequestId: string, notes?: stri
 
 /** Every real serial on the sale goes back to STK at the sale's SC location. */
 export async function completeScReturnRestoreAction(returnRequestId: string) {
-  const session = await requireAnyPermission([
-    RETURNS_COMPLETE,
-    SC_RETURN_COMPLETE,
-    SC_LOGISTICS_MANAGE,
-    SC_SALES_CREATE,
-  ]);
+  const session = await requirePermission(RETURNS_COMPLETE);
   const row = await prisma.serviceCenterReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
     include: {

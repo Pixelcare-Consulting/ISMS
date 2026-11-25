@@ -54,6 +54,7 @@ import {
   MONTHLY_SIR_STATUS_LABELS,
   MONTHLY_SIR_STATUS_VARIANTS,
 } from "@/features/monthly-sir/constants/monthly-sir";
+import type { MonthlySirCapabilities } from "@/features/monthly-sir/constants/monthly-sir-permissions";
 import type { PcountUploadAllowance } from "@/features/monthly-sir/lib/pcount-upload-allowance";
 import { cn } from "@/utils/cn";
 
@@ -102,7 +103,7 @@ interface MonthlySirPanelProps {
   branches: { id: string; name: string; sapCode: string }[];
   tab: "all" | "approval";
   branchId: string;
-  canManage: boolean;
+  capabilities: MonthlySirCapabilities;
   initialAllowance?: PcountUploadAllowance | null;
   initialAllowanceBranchId?: string;
 }
@@ -142,7 +143,7 @@ export function MonthlySirPanel({
   branches,
   tab,
   branchId,
-  canManage,
+  capabilities,
   initialAllowance = null,
   initialAllowanceBranchId = "",
 }: MonthlySirPanelProps) {
@@ -176,6 +177,14 @@ export function MonthlySirPanel({
   const allowanceLoading = Boolean(
     selectedBranchId && allowanceBranchId !== selectedBranchId,
   );
+  const {
+    canDownloadTemplate,
+    canScanSerials,
+    canUpload,
+    canGenerateVariance,
+    canOpenPcount,
+    canApprove,
+  } = capabilities;
   const canDirectUpload = allowanceForBranch?.canDirectUpload ?? false;
   const startMode = canDirectUpload ? "direct" : "request";
   const psUploadClosed =
@@ -486,49 +495,55 @@ export function MonthlySirPanel({
           const request = row.original;
           return (
             <div className="flex flex-wrap gap-2">
-              {request.status === "pending" && canManage ? (
+              {request.status === "pending" && canApprove ? (
                 <Button size="sm" onClick={() => setReviewRow(request)}>
                   Review
                 </Button>
               ) : null}
               {request.status === "approved" ? (
                 <>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={downloadKind === "template"}
-                    onClick={() => downloadTemplate(request)}
-                  >
-                    Download template
-                  </Button>
+                  {canDownloadTemplate ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={downloadKind === "template"}
+                      onClick={() => downloadTemplate(request)}
+                    >
+                      Download template
+                    </Button>
+                  ) : null}
                   {request.stockCountSession?.status === "in_progress" ? (
                     <>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setScans([]);
-                          setScanInput("");
-                          setScanRow(request);
-                        }}
-                      >
-                        Scan serials
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={psUploadClosed}
-                        title={
-                          psUploadClosed
-                            ? allowanceForBranch?.message ?? undefined
-                            : undefined
-                        }
-                        onClick={() => setUploadRow(request)}
-                      >
-                        Upload P-COUNT
-                      </Button>
+                      {canScanSerials ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setScans([]);
+                            setScanInput("");
+                            setScanRow(request);
+                          }}
+                        >
+                          Scan serials
+                        </Button>
+                      ) : null}
+                      {canUpload ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={psUploadClosed}
+                          title={
+                            psUploadClosed
+                              ? allowanceForBranch?.message ?? undefined
+                              : undefined
+                          }
+                          onClick={() => setUploadRow(request)}
+                        >
+                          Upload P-COUNT
+                        </Button>
+                      ) : null}
                     </>
-                  ) : (
+                  ) : canGenerateVariance ? (
                     <Button
                       size="sm"
                       variant="outline"
@@ -537,26 +552,28 @@ export function MonthlySirPanel({
                     >
                       Generate variance
                     </Button>
-                  )}
-                  {request.stockCountSession ? (
-                    <Button asChild size="sm" variant="outline">
-                      <Link href={`/inventory/stock-count/${request.stockCountSession.id}`}>
+                  ) : null}
+                  {canOpenPcount ? (
+                    request.stockCountSession ? (
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={`/inventory/stock-count/${request.stockCountSession.id}`}>
+                          Open P-Count
+                        </Link>
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          toast.error(
+                            "No P-Count session is linked. Ask a Team Leader to re-approve this request.",
+                          )
+                        }
+                      >
                         Open P-Count
-                      </Link>
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() =>
-                        toast.error(
-                          "No P-Count session is linked. Ask a Team Leader to re-approve this request.",
-                        )
-                      }
-                    >
-                      Open P-Count
-                    </Button>
-                  )}
+                      </Button>
+                    )
+                  ) : null}
                 </>
               ) : null}
             </div>
@@ -567,7 +584,12 @@ export function MonthlySirPanel({
     return cols;
   }, [
     allowanceForBranch?.message,
-    canManage,
+    canApprove,
+    canDownloadTemplate,
+    canGenerateVariance,
+    canOpenPcount,
+    canScanSerials,
+    canUpload,
     downloadKind,
     indexOffset,
     psUploadClosed,
@@ -663,7 +685,8 @@ export function MonthlySirPanel({
         </div>
         <div className="flex flex-col items-stretch gap-1 sm:items-end">
           <div className="flex flex-wrap items-center justify-end gap-2">
-            {allowanceForBranch &&
+            {canUpload &&
+            allowanceForBranch &&
             !allowanceForBranch.unlimited &&
             (allowanceForBranch.role === "tl" ||
               allowanceForBranch.role === "ps") ? (
@@ -671,12 +694,14 @@ export function MonthlySirPanel({
                 {allowanceBadgeLabel(allowanceForBranch)}
               </Badge>
             ) : null}
-            <Button
-              disabled={!selectedBranchId || allowanceLoading}
-              onClick={() => setRequestOpen(true)}
-            >
-              {canDirectUpload ? "Upload P-COUNT" : "Request to upload P-COUNT"}
-            </Button>
+            {canUpload ? (
+              <Button
+                disabled={!selectedBranchId || allowanceLoading}
+                onClick={() => setRequestOpen(true)}
+              >
+                {canDirectUpload ? "Upload P-COUNT" : "Request to upload P-COUNT"}
+              </Button>
+            ) : null}
           </div>
         </div>
       </div>

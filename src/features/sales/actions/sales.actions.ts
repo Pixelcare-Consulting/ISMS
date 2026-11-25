@@ -35,6 +35,7 @@ import {
   claimToFollowSaleLine,
 } from "@/features/sales/services/sale-serial-link";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
+import { replacementContextRecord } from "@/features/serial-activity/lib/transaction-snapshot";
 import {
   querySaleableSerials,
   resolveSaleableSerialPage,
@@ -110,17 +111,11 @@ import {
 } from "@/features/sales/services/sale-encode";
 import {
   SALES_ACCESS_PERMISSIONS,
-  SALES_CREATE,
   SALES_LIST_PERMISSIONS,
   SALES_LOOKUP_PERMISSIONS,
   SALE_ENCODE_PERMISSIONS,
   SALE_MASTER_LOOKUP_PERMISSIONS,
-  SALES_RETURN_APPROVE,
-  SALES_RETURN_COMPLETE,
-  SALES_RETURN_EVALUATE,
-  SALES_RETURN_REQUEST,
   SALES_UPDATE,
-  salesReturnRejectPermissions,
 } from "@/features/sales/constants/sales-permissions";
 import {
   RETURNS_APPROVE,
@@ -172,10 +167,38 @@ const updateSaleHeaderSchema = saleHeaderFieldsSchema.extend({
   saleId: z.string().min(1),
 });
 
+const createSaleContactNo = z
+  .string()
+  .trim()
+  .min(1, "Contact number is required")
+  .max(50);
+
+const createSaleTransactionDate = z
+  .string()
+  .trim()
+  .min(1, "Transaction date is required");
+
+/**
+ * Create only. Header edits keep contact and date optional so an older sale
+ * with a blank contact or date can still be saved.
+ */
 const saleSchema = saleHeaderFieldsSchema.extend({
   ...branchStockSourceSchema.shape,
+  contactNo: createSaleContactNo,
+  transactionDate: createSaleTransactionDate,
   details: z.array(saleDetailSchema).min(1),
 });
+
+function requiredCreateSaleMessage(error: z.ZodError): string | null {
+  for (const issue of error.issues) {
+    const field = issue.path[0];
+    if (field !== "transactionDate" && field !== "contactNo") continue;
+    if (issue.code === "too_big") continue;
+    if (field === "transactionDate") return "Transaction date is required";
+    return "Contact number is required";
+  }
+  return null;
+}
 
 const SALES_PROOF_PREFIX = "sales-proofs";
 
@@ -461,13 +484,8 @@ export async function listSalesReturnsAction(input?: {
   };
 }
 
-/** Who may finish an approved replacement (Same Invoice or New Invoice). */
-const REPLACEMENT_COMPLETE_PERMISSIONS = [
-  RETURNS_COMPLETE,
-  SALES_RETURN_COMPLETE,
-  "logistics.manage",
-  SALES_CREATE,
-] as const;
+/** Who may finish an approved replacement (Same Invoice or New Invoice): Returns Complete. */
+const REPLACEMENT_COMPLETE_PERMISSIONS = [RETURNS_COMPLETE] as const;
 
 export async function getSaleDetailsAction(saleId: string) {
   const session = await requireAnyPermission([
@@ -889,7 +907,9 @@ export async function uploadSaleProofAction(formData: FormData) {
 export async function createSaleAction(input: unknown) {
   const session = await requirePermission("sales.create");
   const parsed = saleSchema.safeParse(input);
-  if (!parsed.success) return { error: "Invalid sale" };
+  if (!parsed.success) {
+    return { error: requiredCreateSaleMessage(parsed.error) ?? "Invalid sale" };
+  }
   const tenantId = session.user.tenantId;
 
   try {
@@ -1081,11 +1101,7 @@ export async function createSaleAction(input: unknown) {
 }
 
 export async function listProcessReturnLookupsAction(): Promise<ProcessReturnLookups> {
-  const session = await requireAnyPermission([
-    RETURNS_REQUEST,
-    SALES_RETURN_REQUEST,
-    SALES_CREATE,
-  ]);
+  const session = await requirePermission(RETURNS_REQUEST);
   return loadProcessReturnLookups(session.user.tenantId);
 }
 
@@ -1104,11 +1120,7 @@ export async function requestReturnAction(
   saleId: string,
   payload: ProcessReturnPayload | string,
 ) {
-  const session = await requireAnyPermission([
-    RETURNS_REQUEST,
-    SALES_RETURN_REQUEST,
-    SALES_CREATE,
-  ]);
+  const session = await requirePermission(RETURNS_REQUEST);
 
   // Legacy callers may still pass a free-text reason string — reject with guidance.
   if (typeof payload === "string") {
@@ -1185,6 +1197,7 @@ export async function requestReturnAction(
       transactionNo: true,
       transactionDate: true,
       customerName: true,
+      contactNo: true,
       atrStatus: true,
       notes: true,
       branch: { select: { name: true } },
@@ -1281,6 +1294,17 @@ export async function requestReturnAction(
         holdCode: "RSV",
       });
       const actionLabel = data.actionType === "replacement" ? "Replacement" : "Return";
+      const replacementContext =
+        data.actionType === "replacement"
+          ? replacementContextRecord({
+              transactionNo: sale.transactionNo,
+              transactionDate: sale.transactionDate,
+              transactionAmount: targetDetail.saleAmount ?? targetDetail.amount,
+              customerName: sale.customerName,
+              customerNumber: sale.contactNo,
+              returnedSerialNo: targetDetail.serialNumber?.serialNo,
+            })
+          : null;
       await tx.serialNumberHistory.create({
         data: {
           tenantId: session.user.tenantId,
@@ -1294,6 +1318,7 @@ export async function requestReturnAction(
           ),
           status: returnHistoryStatusLabel(false, data.actionType),
           createdById: session.user.id,
+          ...(replacementContext ? { context: replacementContext } : {}),
         },
       });
     }
@@ -1399,6 +1424,8 @@ async function restoreOriginalSerialsAtBranchSold(
     historyDetails: string;
     /** Sale status label (Returned, Replaced, or the service label). Not the stock code. */
     historyStatus: string;
+    /** Copied sale facts for a replacement. Returns leave this unset. */
+    historyContext?: Record<string, string>;
   },
 ): Promise<number> {
   const now = new Date();
@@ -1410,6 +1437,7 @@ async function restoreOriginalSerialsAtBranchSold(
     status: string;
     createdById: string;
     createdAt: Date;
+    context?: Record<string, string>;
   }> = [];
 
   for (const serialNumberId of input.serialNumberIds) {
@@ -1466,6 +1494,7 @@ async function restoreOriginalSerialsAtBranchSold(
       status: input.historyStatus,
       createdById: input.userId,
       createdAt: now,
+      ...(input.historyContext ? { context: input.historyContext } : {}),
     });
   }
 
@@ -1586,10 +1615,7 @@ async function salesReturnApproval(
 }
 
 export async function evaluateReturnAction(returnRequestId: string, notes?: string) {
-  const session = await requireAnyPermission([
-    RETURNS_EVALUATE,
-    SALES_RETURN_EVALUATE,
-  ]);
+  const session = await requirePermission(RETURNS_EVALUATE);
   const row = await prisma.branchReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
     select: {
@@ -1654,11 +1680,7 @@ export async function evaluateReturnAction(returnRequestId: string, notes?: stri
 }
 
 export async function approveReturnAction(returnRequestId: string) {
-  const session = await requireAnyPermission([
-    RETURNS_APPROVE,
-    SALES_RETURN_APPROVE,
-    "orders.approve",
-  ]);
+  const session = await requirePermission(RETURNS_APPROVE);
   const row = await prisma.branchReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
     include: { sale: { select: { transactionNo: true } } },
@@ -1694,14 +1716,7 @@ export async function approveReturnAction(returnRequestId: string) {
 }
 
 export async function rejectReturnAction(returnRequestId: string, notes?: string) {
-  const session = await requireAnyPermission([
-    RETURNS_EVALUATE,
-    RETURNS_APPROVE,
-    SALES_RETURN_EVALUATE,
-    SALES_RETURN_APPROVE,
-    SALES_CREATE,
-    "orders.approve",
-  ]);
+  const session = await requireAnyPermission([RETURNS_EVALUATE, RETURNS_APPROVE]);
   const row = await prisma.branchReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
     include: { sale: true },
@@ -1710,10 +1725,7 @@ export async function rejectReturnAction(returnRequestId: string, notes?: string
     return { error: "Return request cannot be rejected" };
   }
 
-  const allowed = [
-    ...salesReturnRejectPermissions(row.status),
-    ...returnsRejectPermissions(row.status),
-  ];
+  const allowed = returnsRejectPermissions(row.status);
   if (!allowed.some((slug) => hasPermission(session.user.permissions, slug))) {
     return { error: "You do not have permission to reject this return" };
   }
@@ -1761,12 +1773,7 @@ export async function rejectReturnAction(returnRequestId: string, notes?: string
 }
 
 export async function completeReturnRestoreAction(returnRequestId: string) {
-  const session = await requireAnyPermission([
-    RETURNS_COMPLETE,
-    SALES_RETURN_COMPLETE,
-    "logistics.manage",
-    SALES_CREATE,
-  ]);
+  const session = await requirePermission(RETURNS_COMPLETE);
   const row = await prisma.branchReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
     select: {
@@ -1930,6 +1937,7 @@ async function completeReplacementCore(input: {
               saleAmount: true,
               amount: true,
               deliveryNo: true,
+              serialNumber: { select: { serialNo: true } },
               deliveryDate: true,
               statusCodeId: true,
             },
@@ -2152,6 +2160,16 @@ async function completeReplacementCore(input: {
           isServiceDocumentTypeName(row.documentType?.name),
           row.actionType,
         ),
+        historyContext: replacementContextRecord({
+          transactionNo: row.sale.transactionNo,
+          transactionDate: row.sale.transactionDate,
+          transactionAmount:
+            targetDetail?.saleAmount ?? targetDetail?.amount ?? targetDetail?.modelPrice,
+          customerName: row.sale.customerName,
+          customerNumber: row.sale.contactNo,
+          returnedSerialNo: targetDetail?.serialNumber?.serialNo,
+          replacedSerialNo: replacementInv.serialNumber.serialNo,
+        }),
       });
 
       const replacementInvoiceNo =
@@ -2276,6 +2294,21 @@ async function completeReplacementCore(input: {
               : `Replacement sold on new invoice ${replacementInvoiceNo}`,
           status: "SLD",
           createdById: userId,
+          context: replacementContextRecord({
+            transactionNo: replacementInvoiceNo,
+            transactionDate: replacementInvoiceDate,
+            transactionAmount: replacementModelPrice,
+            customerName:
+              input.mode === "new_invoice"
+                ? validatedNewHeader?.customerName
+                : row.sale.customerName,
+            customerNumber:
+              input.mode === "new_invoice"
+                ? validatedNewHeader?.contactNo
+                : row.sale.contactNo,
+            returnedSerialNo: targetDetail?.serialNumber?.serialNo,
+            replacedSerialNo: replacementInv.serialNumber.serialNo,
+          }),
         },
       });
 
@@ -2850,7 +2883,7 @@ export async function updateSaleSerialAction(input: unknown) {
 }
 
 export async function listStkSerialsForBranchAction(branchId: string) {
-  const session = await requireAnyPermission(["logistics.manage", "orders.create", "sales.create"]);
+  const session = await requireAnyPermission(["logistics.manage", "sales.create"]);
 
   const stkCodeId = await reasonStatusService.requireCodeId(
     session.user.tenantId,

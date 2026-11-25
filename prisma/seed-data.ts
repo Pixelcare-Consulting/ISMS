@@ -1,3 +1,14 @@
+import {
+  MONTHLY_SIR_APPROVE_SLUG,
+  MONTHLY_SIR_PERMISSION_CATALOG,
+  MONTHLY_SIR_USE_SLUGS,
+  MONTHLY_SIR_VIEW_SLUG,
+} from "@/features/monthly-sir/constants/monthly-sir-permissions";
+import {
+  WORKFLOW_STEP_PERMISSION_CATALOG,
+  WORKFLOW_STEP_SEED_GRANTS,
+} from "@/features/roles/constants/workflow-step-permissions";
+
 /** Shared seed constants — no DB access. */
 
 export const DEMO_PASSWORD = "DemoPass123";
@@ -91,7 +102,7 @@ export const PERMISSIONS = [
   { slug: "aors.view", name: "View areas of responsibility" },
   { slug: "aors.manage", name: "Manage areas of responsibility" },
   { slug: "inventory.view", name: "View inventory" },
-  { slug: "inventory.monthly_sir.view", name: "View Monthly SIR" },
+  ...MONTHLY_SIR_PERMISSION_CATALOG,
   { slug: "inventory.manage", name: "Manage inventory" },
   { slug: "orders.view", name: "View branch orders" },
   { slug: "orders.create", name: "Create branch orders" },
@@ -116,6 +127,7 @@ export const PERMISSIONS = [
   { slug: "logistics.delivery.receive", name: "Accept delivered units" },
   { slug: "logistics.delivery_return.request", name: "Request full delivery return" },
   { slug: "logistics.delivery_return.approve", name: "Approve delivery return" },
+  { slug: "logistics.delivery_transfer.view", name: "View branch transfers" },
   { slug: "logistics.delivery_transfer.create", name: "Create transfer for units not accepted" },
   { slug: "logistics.delivery_transfer.approve", name: "Approve transfer lines for units not accepted" },
   { slug: "logistics.delivery_transfer.receive", name: "Receive transferred units" },
@@ -146,6 +158,7 @@ export const PERMISSIONS = [
   { slug: "announcements.manage", name: "Manage announcements" },
   { slug: "competitors.view", name: "View competitor observations" },
   { slug: "competitors.manage", name: "Manage competitor observations" },
+  ...WORKFLOW_STEP_PERMISSION_CATALOG,
 ] as const;
 
 /** Settings-style view grants that pair with *.manage (additive, equivalent until retuned). */
@@ -210,6 +223,7 @@ const DELIVERY_FLOW_PERMISSIONS = [
   "logistics.delivery.receive",
   "logistics.delivery_return.request",
   "logistics.delivery_return.approve",
+  "logistics.delivery_transfer.view",
   "logistics.delivery_transfer.create",
   "logistics.delivery_transfer.approve",
   "logistics.delivery_transfer.receive",
@@ -223,7 +237,7 @@ const ORDERS_APPROVE_ALL = [
   "orders.auto_replenish.approve",
 ] as const;
 
-export const ROLES = [
+const BASE_ROLES = [
   {
     slug: "super_admin",
     name: "Super Admin",
@@ -263,7 +277,9 @@ export const ROLES = [
       "ordering_settings.manage",
       "aors.manage",
       "inventory.view",
-      "inventory.monthly_sir.view",
+      MONTHLY_SIR_VIEW_SLUG,
+      ...MONTHLY_SIR_USE_SLUGS,
+      MONTHLY_SIR_APPROVE_SLUG,
       "inventory.manage",
       ...ORDERS_VIEW_ALL,
       ...ORDERS_CREATE_ALL,
@@ -381,10 +397,14 @@ export const ROLES = [
       "dashboard.manage",
       "ai.assist",
       "inventory.view",
-      "inventory.monthly_sir.view",
+      MONTHLY_SIR_VIEW_SLUG,
+      ...MONTHLY_SIR_USE_SLUGS,
       ...ORDERS_VIEW_ALL,
       "pullouts.view",
       "pullouts.create",
+      "logistics.delivery.receive",
+      "logistics.delivery_transfer.create",
+      "logistics.delivery_transfer.receive",
       ...ORDERS_CREATE_ALL,
       "sales.view",
       "sales.create",
@@ -414,11 +434,13 @@ export const ROLES = [
       "dashboard.manage",
       "ai.assist",
       "inventory.view",
-      "inventory.monthly_sir.view",
+      MONTHLY_SIR_VIEW_SLUG,
+      ...MONTHLY_SIR_USE_SLUGS,
       "logistics.view",
       "pullouts.view",
       "pullouts.approve",
       "logistics.delivery_return.approve",
+      "logistics.delivery_transfer.approve",
       ...ORDERS_VIEW_ALL,
       ...ORDERS_APPROVE_ALL,
       "sales.view",
@@ -460,7 +482,8 @@ export const ROLES = [
       "master_data.view",
       "master_data.manage",
       "inventory.view",
-      "inventory.monthly_sir.view",
+      MONTHLY_SIR_VIEW_SLUG,
+      ...MONTHLY_SIR_USE_SLUGS,
       ...ORDERS_VIEW_ALL,
       "pullouts.view",
       "pullouts.approve",
@@ -485,7 +508,8 @@ export const ROLES = [
       "dashboard.manage",
       "ai.assist",
       "inventory.view",
-      "inventory.monthly_sir.view",
+      MONTHLY_SIR_VIEW_SLUG,
+      ...MONTHLY_SIR_USE_SLUGS,
       ...ORDERS_VIEW_ALL,
       "pullouts.view",
       "pullouts.approve",
@@ -555,7 +579,8 @@ export const ROLES = [
     permissions: [
       "dashboard.manage",
       "inventory.view",
-      "inventory.monthly_sir.view",
+      MONTHLY_SIR_VIEW_SLUG,
+      ...MONTHLY_SIR_USE_SLUGS,
       "warehouses.view",
       "logistics.view",
       "pullouts.view",
@@ -573,9 +598,12 @@ export const ROLES = [
     description: "Accepts transfers and deliveries at a branch",
     permissions: [
       "inventory.view",
-      "inventory.monthly_sir.view",
+      MONTHLY_SIR_VIEW_SLUG,
+      ...MONTHLY_SIR_USE_SLUGS,
       "logistics.view",
       "logistics.create",
+      "logistics.delivery.receive",
+      "logistics.delivery_transfer.receive",
       "pullouts.view",
       "pullouts.create",
     ],
@@ -588,7 +616,8 @@ export const ROLES = [
       "dashboard.manage",
       "ai.assist",
       "inventory.view",
-      "inventory.monthly_sir.view",
+      MONTHLY_SIR_VIEW_SLUG,
+      ...MONTHLY_SIR_USE_SLUGS,
       ...ORDERS_VIEW_ALL,
       ...ORDERS_APPROVE_ALL,
       "logistics.view",
@@ -631,7 +660,8 @@ export const ROLES = [
       "dashboard.manage",
       "ai.assist",
       "inventory.view",
-      "inventory.monthly_sir.view",
+      MONTHLY_SIR_VIEW_SLUG,
+      ...MONTHLY_SIR_USE_SLUGS,
       ...ORDERS_VIEW_ALL,
       "pullouts.view",
       "reports.view",
@@ -657,7 +687,9 @@ export const ROLES = [
       "dashboard.manage",
       "ai.assist",
       "inventory.view",
-      "inventory.monthly_sir.view",
+      MONTHLY_SIR_VIEW_SLUG,
+      ...MONTHLY_SIR_USE_SLUGS,
+      "logistics.delivery_transfer.view",
       "sales.view",
       "sales.update",
       "service_centers.sales.update",
@@ -674,6 +706,12 @@ export const ROLES = [
     ],
   },
 ] as const;
+
+/** Seeded roles plus their workflow-step checkboxes (Super Admin already has the catalog). */
+export const ROLES = BASE_ROLES.map((role) => ({
+  ...role,
+  permissions: [...role.permissions, ...(WORKFLOW_STEP_SEED_GRANTS[role.slug] ?? [])],
+}));
 
 export const DEPARTMENTS = ["Compliance", "Engineering", "Human Resources", "Operations"] as const;
 

@@ -7,13 +7,6 @@ import {
   RETURNS_APPROVE,
   RETURNS_REQUEST,
 } from "@/features/returns/constants/returns-permissions";
-import {
-  SALES_RETURN_APPROVE,
-  SALES_RETURN_COMPLETE,
-  SALES_RETURN_EVALUATE,
-  SALES_RETURN_REQUEST,
-  SALES_RETURN_VIEW,
-} from "@/features/sales/constants/sales-permissions";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/auth/permissions";
 import { toAppSession } from "@/lib/auth/session";
@@ -30,11 +23,6 @@ const DOWNLOAD_PERMISSIONS = [
   RETURNS_EVALUATE,
   RETURNS_APPROVE,
   RETURNS_COMPLETE,
-  SALES_RETURN_VIEW,
-  SALES_RETURN_REQUEST,
-  SALES_RETURN_EVALUATE,
-  SALES_RETURN_APPROVE,
-  SALES_RETURN_COMPLETE,
 ] as const;
 
 export async function GET(_request: Request, context: RouteContext) {

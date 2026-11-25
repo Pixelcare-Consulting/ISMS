@@ -68,24 +68,106 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
-    version: "0.95.16",
-    date: "2026-11-23",
-    releasedAt: "2026-11-23T15:20:00+08:00",
-    title: "Serial logs name both units in a replacement",
+    version: "0.95.25",
+    date: "2026-11-24",
+    releasedAt: "2026-11-24T17:50:00+08:00",
+    title: "Clearer serial logs and required sale details",
     highlights: [
-      "Serial number logs name which unit replaced which.",
-      "Search on Serial number logs updates the list as you type.",
+      "Serial number statuses show as badges.",
+      "A new sale needs a transaction date and a contact number.",
     ],
     changes: [
       {
         type: "improvement",
+        description: "Statuses on a serial number log, including Replaced, show as badges.",
+      },
+      {
+        type: "improvement",
         description:
-          "Pick a suggestion or press Enter to search right away. Event and date filters still apply when you choose Apply filters.",
+          "Creating a sale now requires the transaction date and the contact number.",
+      },
+      {
+        type: "fix",
+        description: "A replacement shows its branch when that branch is already known.",
+      },
+    ],
+  },
+  {
+    version: "0.95.24",
+    date: "2026-11-24",
+    releasedAt: "2026-11-24T15:50:00+08:00",
+    title: "Serial number logs keep the sale",
+    highlights: [
+      "Open View details on a serial number log.",
+      "The sale stays on the log after Official Sales adds or deletes it.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Serial number logs have View details, so you can read the full event while the row stays compact.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Transaction details and the returned and replaced serials stay on the serial number log.",
+      },
+      {
+        type: "fix",
+        description:
+          "The transaction date remains after Official Sales adds or deletes the sale.",
+      },
+    ],
+  },
+  {
+    version: "0.95.23",
+    date: "2026-11-24",
+    releasedAt: "2026-11-24T13:54:46+08:00",
+    title: "Hot fixes for sign-in, permissions, and more.",
+    highlights: [
+      "The sign-in page stays put after an idle sign-out., After sign-in you return to the page you were on.",
+      "Unit details show this unit's history.",
+      "Monthly SIR permissions include each P-COUNT action.",
+      "Orders can be filtered by Team Leader."
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "An approval names Supply Planning when Supply Planning approved it.",
+      },
+      {
+        type: "feature",
+        description:
+          "You can allow download template, scan serials, upload, generate variance, open P-Count, and approve on their own.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Serial number logs search updates the list as you type. Pick a suggestion or press Enter to search right away. Event and date filters still apply when you choose Apply filters.",
+      },
+      {
+        type: "fix",
+        description: "A new announcement shows on Overview when you publish it.",
+      },
+      {
+        type: "fix",
+        description:
+          "The Team Leader you choose stays when you page, sort, or refresh.",
       },
       {
         type: "fix",
         description:
           "A replaced sale no longer looks like one unit was replaced by itself.",
+      },
+      {
+        type: "fix",
+        description:
+          "After you are signed out for being idle, the sign-in page shows “You were signed out. Please sign in again.” once, then the address becomes the normal sign-in page so it does not keep reloading.",
+      },
+      {
+        type: "fix",
+        description: "Minor bugs fixed.",
       },
     ],
   },

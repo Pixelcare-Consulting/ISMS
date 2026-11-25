@@ -79,6 +79,7 @@ import {
   formatPulloutSapDoc,
   type PulloutSapCheckResult,
 } from "@/features/logistics/lib/pullout-sap-document";
+import { isPulloutCancellable, pulloutCancelNeedsSap } from "@/features/logistics/lib/pullout-cancel";
 import { PULLOUT_LINE_DECISION } from "@/features/logistics/services/pullout-posting.planner";
 import type { PulloutDetail } from "@/features/logistics/services/pullout-posting.service";
 
@@ -686,6 +687,7 @@ type PulloutSaveConfirm =
   | { kind: "send" }
   | { kind: "approve-all" }
   | { kind: "reject" }
+  | { kind: "cancel"; sent: boolean }
   | { kind: "approve-unit"; serialNumberId: string; serialNo: string };
 
 function pulloutSaveConfirmCopy(confirm: PulloutSaveConfirm): { question: string; detail: string } {
@@ -709,6 +711,13 @@ function pulloutSaveConfirmCopy(confirm: PulloutSaveConfirm): { question: string
       return {
         question: "Are you sure you want to reject this pull-out?",
         detail: "This pull-out is rejected and the units go back to where they were pulled from.",
+      };
+    case "cancel":
+      return {
+        question: "Are you sure you want to cancel this pull-out?",
+        detail: confirm.sent
+          ? "ISMS checks SAP first. A linked IT is cancelled in SAP and its units go back to STK or DEF. A linked Return is closed in SAP and its units stay Pulled out. Units not in SAP yet go back to STK or DEF. Nothing changes if a SAP document also holds other units or is not linked yet."
+          : "The pull-out becomes Cancelled and its units go back to STK or DEF. Nothing is in SAP yet.",
       };
     case "approve-unit":
       return {
@@ -885,6 +894,8 @@ export function PulloutDetailView({
   const showApprove = isReserve && capabilities.canApproveTl;
   const showReject = showApprove && capabilities.canRejectTransfer;
   const showSend = canEditList && detail.status.code === PULLOUT_WORKFLOW_CODE.pending_logistics;
+  const canCancel =
+    capabilities.canManage && inScope(placeScope, detail.place.id) && isPulloutCancellable(detail.status.code);
   const inTransit = detail.status.code === PULLOUT_WORKFLOW_CODE.in_transit;
   // Receipts and in-transit rejections only exist on pull-outs from before receiving was dropped.
   const showReceipts = detail.lines.some((line) => line.receivedAt || line.rejectedAt);
@@ -967,6 +978,27 @@ export function PulloutDetailView({
     setSaveConfirm({ kind: "reject" });
   }
 
+  function requestCancel() {
+    if (!canCancel || pending) return;
+    setSaveConfirm({ kind: "cancel", sent: pulloutCancelNeedsSap(detail.status.code) });
+  }
+
+  function cancelPullout() {
+    startTransition(async () => {
+      const result = await actions.cancel(detail.id);
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(
+        result.sapDone.length > 0
+          ? `Pull-out cancelled. ${result.sapDone.join(", ")} in SAP.`
+          : "Pull-out cancelled",
+      );
+      router.refresh();
+    });
+  }
+
   function requestApproveUnit(row: ItemRow) {
     if (pending || row.decision === PULLOUT_LINE_DECISION.accepted) return;
     setSaveConfirm({
@@ -992,6 +1024,9 @@ export function PulloutDetailView({
         return;
       case "reject":
         run(() => actions.reject(detail.id), "Pull-out rejected");
+        return;
+      case "cancel":
+        cancelPullout();
         return;
       case "approve-unit":
         run(() => actions.approveLine(detail.id, next.serialNumberId), "Unit approved");
@@ -1328,6 +1363,11 @@ export function PulloutDetailView({
         actions={
           <>
             {headerActions()}
+            {canCancel ? (
+              <Button type="button" variant="outline" disabled={pending} onClick={requestCancel}>
+                Cancel pull-out
+              </Button>
+            ) : null}
             <SlipPrintButton slips={returnSlip ? [returnSlip] : null} />
           </>
         }

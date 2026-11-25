@@ -60,7 +60,14 @@ import {
   type PulloutDetail,
   type PulloutSerialOption,
 } from "@/features/logistics/services/pullout-posting.service";
+import {
+  groupRestores,
+  pulloutCancelHistoryText,
+  type PulloutCancelLine,
+} from "@/features/logistics/lib/pullout-cancel";
+import { settlePulloutCancelInSap } from "@/features/logistics/services/pullout-cancel.runner";
 import { recordedProblemsBySerial } from "@/features/logistics/services/pullout-recorded-problems";
+import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { resolveScPulloutCapabilities } from "@/features/service-center-ops/constants/sc-permissions";
 import {
   assertScInScope,
@@ -83,7 +90,7 @@ const DENIED = "You do not have permission for this service center pull-out acti
 const NOT_FOUND = "Pull-out not found";
 const UPDATED_ELSEWHERE = "This pull-out was updated by someone else";
 
-type ScPulloutAction = "create" | "approve" | "reject" | "updateList" | "finalize" | "checkSap";
+type ScPulloutAction = "create" | "approve" | "reject" | "updateList" | "finalize" | "checkSap" | "cancel";
 
 export interface ScPulloutCreateInput {
   serviceCenterId: string;
@@ -123,6 +130,7 @@ function permissionError(actor: PostingActor, action: ScPulloutAction): string |
     case "updateList":
     case "finalize":
     case "checkSap":
+    case "cancel":
       return caps.canManage ? null : DENIED;
     default: {
       const unreachable: never = action;
@@ -331,6 +339,7 @@ async function loadPullout(db: PostingDb | typeof prisma, tenantId: string, pull
       courierName: true,
       scheduledAt: true,
       notes: true,
+      statusCodeId: true,
       statusCode: { select: { code: true } },
       details: {
         select: {
@@ -338,6 +347,9 @@ async function loadPullout(db: PostingDb | typeof prisma, tenantId: string, pull
           decision: true,
           serialNumber: { select: { serialNo: true } },
           priorStatusCode: { select: { code: true } },
+          sapDocType: true,
+          sapDocEntry: true,
+          redeliveryDeliveryId: true,
         },
       },
     },
@@ -353,12 +365,16 @@ async function loadPullout(db: PostingDb | typeof prisma, tenantId: string, pull
       })
     : [];
   const inventoryBySerial = new Map(inventory.map((row) => [row.serialNumberId, row]));
-  const lines: (PulloutDecisionLineView & { serialNo: string })[] = pullout.details.map((line) => ({
+  const lines: (PulloutDecisionLineView & PulloutCancelLine)[] = pullout.details.map((line) => ({
     serialNumberId: line.serialNumberId,
     serialNo: line.serialNumber.serialNo,
     decision: line.decision,
     priorCode: asHoldCode(line.priorStatusCode?.code),
     inventoryCode: asInventoryCode(inventoryBySerial.get(line.serialNumberId)?.statusCode?.code),
+    linked: line.sapDocType ? { type: line.sapDocType, docEntry: line.sapDocEntry } : null,
+    redelivered: line.redeliveryDeliveryId !== null,
+    // SC pull-outs never had the old receiving step.
+    legacySettled: false,
   }));
   return { ...pullout, status, lines };
 }
@@ -843,6 +859,91 @@ export const scPulloutPostingService = {
       throw postingError(error, "Failed to reject pull-out");
     }
     return { id: current.id };
+  },
+
+  /**
+   * Cancels a pull-out after Team Lead approval, as for branch pull-outs (rules in
+   * `lib/pullout-cancel.ts`): SAP first (Returns closed, ITs cancelled), then units back to
+   * STK/DEF except those on a Return, and the header Cancelled, in one transaction.
+   */
+  async cancel(actor: PostingActor, pulloutId: string) {
+    const current = await requirePullout(prisma, actor.tenantId, pulloutId);
+    await authorizeScPullout(actor, "cancel", current.serviceCenterId);
+    if (current.status === "cancelled") return { id: current.id, sapDone: [] as string[] };
+    if (!current.statusCodeId) throw new Error(UPDATED_ELSEWHERE);
+    const fromStatusId = current.statusCodeId;
+
+    const { plan, sapDone } = await settlePulloutCancelInSap(actor.tenantId, {
+      id: current.id,
+      pulloutNo: current.pulloutNo,
+      status: current.status,
+      lines: current.lines,
+    });
+
+    const [codes, pulledOutId, cancelledId] = await Promise.all([
+      pulloutInventoryIds(actor.tenantId),
+      reasonStatusService.requireCodeId(actor.tenantId, "inventory_system", "PO"),
+      pulloutWorkflowId(actor.tenantId, "cancelled"),
+    ]);
+    const codeIds: Record<string, string> = { ...codes, PO: pulledOutId };
+    const details = pulloutCancelHistoryText(current.pulloutNo, sapDone);
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        await lockSerialsThenScRows(
+          tx,
+          actor.tenantId,
+          current.serviceCenterId,
+          plan.restores.map((row) => row.serialNumberId),
+        );
+        for (const group of groupRestores(plan.restores)) {
+          const fromId = codeIds[group.fromCode];
+          if (!fromId) throw new Error(`Status code not configured: inventory_system/${group.fromCode}`);
+          await claimScInventory(tx, {
+            tenantId: actor.tenantId,
+            serviceCenterId: current.serviceCenterId,
+            serialNumberIds: group.serialNumberIds,
+            fromStatusCodeId: fromId,
+            toStatusCodeId: codeIds[group.restoreCode],
+            message: "A serial on this pull-out changed. Reload and try again.",
+          });
+          await writePulloutHistory(tx, {
+            tenantId: actor.tenantId,
+            userId: actor.userId,
+            pulloutNo: current.pulloutNo,
+            serialNumberIds: group.serialNumberIds,
+            status: group.restoreCode,
+            details,
+          });
+        }
+        await writePulloutHistory(tx, {
+          tenantId: actor.tenantId,
+          userId: actor.userId,
+          pulloutNo: current.pulloutNo,
+          serialNumberIds: plan.keptPulledOutIds,
+          status: null,
+          details,
+        });
+        await claimScPulloutHeader(tx, {
+          id: current.id,
+          tenantId: actor.tenantId,
+          fromStatusCodeIds: [fromStatusId],
+          toStatusCodeId: cancelledId,
+        });
+        await audit(tx, actor, current.id, "pullout.cancelled", {
+          pulloutNo: current.pulloutNo,
+          from: current.status,
+          restoredSerialIds: plan.restores.map((row) => row.serialNumberId),
+          keptPulledOutSerialIds: plan.keptPulledOutIds,
+          sapDone,
+        });
+      });
+    } catch (error) {
+      const failure = postingError(error, "Failed to cancel the pull-out");
+      if (sapDone.length === 0) throw failure;
+      throw new Error(`${sapDone.join(", ")} in SAP, but ISMS could not save the cancel (${failure.message}). Try again.`);
+    }
+    return { id: current.id, sapDone };
   },
 
   async addAttachment(actor: PostingActor, pulloutId: string, file: File) {

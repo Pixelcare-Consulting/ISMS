@@ -21,6 +21,7 @@ import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { ModuleGuide } from "@/components/module-guide";
 import { INVENTORY_MODULE_GUIDE } from "@/content/module-guides/inventory";
 import { canSyncFromSap } from "@/features/sap/constants/sap-permissions";
+import { getUserBranchIds } from "@/lib/aor/scope";
 import { requirePermission } from "@/lib/auth/permissions";
 import { InventoryGroupedTable } from "@/app/(app)/inventory/_components/inventory-grouped-table";
 import { InventoryTable } from "@/app/(app)/inventory/_components/inventory-table";
@@ -56,13 +57,13 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
     offPlanogram,
   };
 
-  const hideBranch = (session.user.roleSlugs ?? []).includes("ps");
   const canSync = canSyncFromSap(session.user.permissions);
-  const approvalBranchIds = await defectApprovalBranchIds(
-    session.user.tenantId,
-    session.user.id,
-    session.user.roleSlugs,
-  );
+  const [approvalBranchIds, scopeBranchIds] = await Promise.all([
+    defectApprovalBranchIds(session.user.tenantId, session.user.id, session.user.permissions),
+    getUserBranchIds(session.user.tenantId, session.user.id),
+  ]);
+  // One branch in scope: the Branch column says nothing.
+  const hideBranch = scopeBranchIds?.length === 1;
 
   const [seriesSummary, kpis] = await Promise.all([
     getInventorySeriesSummaryAction(summaryFilters),

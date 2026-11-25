@@ -3,7 +3,6 @@ import {
   inventoryApprovalLedger,
   type InventoryApprovalDocument,
 } from "@/features/inventory-approvals/services/inventory-approval-ledger";
-import { aorRepository } from "@/features/aors/repositories/aor.repository";
 import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
 import { notificationService } from "@/features/notifications/services/notification.service";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
@@ -24,6 +23,7 @@ import { nextTransferNo } from "@/features/logistics/lib/transfer-number";
 import {
   canApproveTransferAt,
   NOT_TRANSFER_APPROVER_MESSAGE,
+  TRANSFER_APPROVE_PERMISSION,
   transferApprovalBranchIds,
 } from "@/features/logistics/lib/transfer-approver";
 import { transferDecisionPrefix } from "@/features/serial-activity/lib/transfer-reference";
@@ -62,7 +62,7 @@ import {
   type TransferReceivePlan,
   type TransferStatus,
 } from "@/features/logistics/services/transfer-posting.planner";
-import { TEAM_LEADER_ROLE_SLUG } from "@/features/orders/constants/order-workflow";
+import { listUserIdsWithPermission } from "@/lib/auth/permission-holders";
 import { STOCK_COUNT_FREEZE_SESSION_STATUSES } from "@/features/stock-audit/constants/stock-count-workflow";
 import { getUserBranchIds } from "@/lib/aor/scope";
 import { prisma } from "@/lib/database/client";
@@ -179,7 +179,7 @@ async function assertTransferVisible(
 
 async function assertTransferApprover(actor: PostingActor, fromBranchId: string): Promise<void> {
   const assignedBranchIds = await getUserBranchIds(actor.tenantId, actor.userId);
-  const approvalBranchIds = transferApprovalBranchIds(actor.roleSlugs, assignedBranchIds);
+  const approvalBranchIds = transferApprovalBranchIds(actor.permissions, assignedBranchIds);
   if (!canApproveTransferAt(approvalBranchIds, fromBranchId)) {
     throw new Error(NOT_TRANSFER_APPROVER_MESSAGE);
   }
@@ -191,10 +191,10 @@ async function notifyTransferApprovers(
   transfer: { id: string; transferNo: string; fromBranchId: string; toBranchId: string },
 ): Promise<void> {
   try {
-    const approverIds = await aorRepository.listUserIdsForBranchByRole(
+    const approverIds = await listUserIdsWithPermission(
       actor.tenantId,
-      transfer.fromBranchId,
-      TEAM_LEADER_ROLE_SLUG,
+      TRANSFER_APPROVE_PERMISSION,
+      { aorBranchId: transfer.fromBranchId },
     );
     const recipients = approverIds.filter((userId) => userId !== actor.userId);
     if (recipients.length === 0) return;

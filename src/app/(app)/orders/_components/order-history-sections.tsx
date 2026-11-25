@@ -2,7 +2,7 @@
 
 import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 
 import {
   DocumentDetailBand,
@@ -85,6 +85,7 @@ export function OrderRecordPage({
   lines,
   history,
   delivery = null,
+  actions = null,
 }: {
   backHref: string;
   backLabel: string;
@@ -107,6 +108,8 @@ export function OrderRecordPage({
   lines: OrderRecordLine[];
   history: LogisticsActivity[];
   delivery?: OrderOpenDeliveryLink | null;
+  /** Header buttons, e.g. Supply Planning's Cancel on an approved order. */
+  actions?: ReactNode;
 }) {
   const modelIds = useMemo(() => lines.map((line) => line.modelId), [lines]);
   const worksheet = useOrderWorksheet({
@@ -150,6 +153,7 @@ export function OrderRecordPage({
         backLabel={backLabel}
         title={orderNumber}
         statusLine={`${context} · ${BRANCH_ORDER_STATUS_LABELS[status]}`}
+        actions={actions}
       />
 
       <RecordSheet>

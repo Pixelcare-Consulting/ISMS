@@ -7,7 +7,7 @@ import { auditService } from "@/features/audit/services/audit.service";
 import {
   LOGISTICS_CREATE,
   LOGISTICS_DELIVERY_DISPATCH,
-  LOGISTICS_DELIVERY_RECEIVE,
+  DELIVERY_RECEIVE_PERMISSIONS,
   LOGISTICS_DELIVERY_RETURN_APPROVE,
   LOGISTICS_DELIVERY_RETURN_REQUEST,
   LOGISTICS_DELIVERY_TRANSFER_APPROVE,
@@ -23,6 +23,7 @@ import {
   TRANSFER_PAGE_APPROVE_PERMISSIONS,
   TRANSFER_PAGE_CREATE_PERMISSIONS,
   TRANSFER_PAGE_RECEIVE_PERMISSIONS,
+  TRANSFERS_PAGE_PERMISSIONS,
 } from "@/features/logistics/constants/logistics-permissions";
 import { logisticsRepository } from "@/features/logistics/repositories/logistics.repository";
 import { deliveryPostingService } from "@/features/logistics/services/delivery-posting.service";
@@ -78,22 +79,13 @@ import { reasonStatusService } from "@/features/reason-status/services/reason-st
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
+import { parseListSearch } from "@/lib/shared/pagination";
 
-const DISPATCH_PERMISSIONS = [
-  LOGISTICS_DELIVERY_DISPATCH,
-  LOGISTICS_MANAGE,
-] as const;
+/** Closing a SAP-closed order sits with Check SAP on Deliveries: Dispatch or Manage. */
+const DISPATCH_PERMISSIONS = [LOGISTICS_DELIVERY_DISPATCH, LOGISTICS_MANAGE] as const;
 
-const DELIVERY_RECEIVE_PERMISSIONS = [
-  LOGISTICS_CREATE,
-  LOGISTICS_MANAGE,
-  "orders.create",
-  LOGISTICS_DELIVERY_RECEIVE,
-] as const;
-
-/** Pull-out create, including the older delivery and order aliases. */
 const PULLOUT_CREATE_GATES = PULLOUT_CREATE_PERMISSIONS;
-/** List edit, Send, and Check SAP. Does not include transfer or delivery Manage by itself. */
+/** List edit, Send, and Check SAP. */
 const PULLOUT_MANAGE_GATES = PULLOUT_MANAGE_PERMISSIONS;
 /** Reads the create and edit forms both need (serials, branches). */
 const PULLOUT_FORM_GATES = [...PULLOUT_CREATE_GATES, ...PULLOUT_MANAGE_GATES] as const;
@@ -191,13 +183,12 @@ function revalidateDelivery(id: string) {
 }
 
 function postingActor(session: {
-  user: { tenantId: string; id: string; permissions?: string[]; roleSlugs?: string[] };
+  user: { tenantId: string; id: string; permissions?: string[] };
 }): PostingActor {
   return {
     tenantId: session.user.tenantId,
     userId: session.user.id,
     permissions: session.user.permissions,
-    roleSlugs: session.user.roleSlugs,
   };
 }
 
@@ -249,7 +240,7 @@ export async function getDeliveryKpisAction(): Promise<LogisticsKpis> {
 }
 
 export async function getTransferKpisAction(): Promise<LogisticsKpis> {
-  const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
+  const session = await requireAnyPermission([...TRANSFERS_PAGE_PERMISSIONS]);
   const tid = session.user.tenantId;
   const where = transferListWhere(
     await resolveLogisticsBranchScope({
@@ -312,7 +303,7 @@ export async function getDeliveryDetailAction(id: string) {
 }
 
 export async function createDeliveryAction(input: unknown) {
-  const session = await requireAnyPermission([LOGISTICS_CREATE, LOGISTICS_MANAGE]);
+  const session = await requirePermission(LOGISTICS_CREATE);
   const parsed = deliverySchema.safeParse(input);
   if (!parsed.success) return { error: "Invalid input" };
 
@@ -428,7 +419,7 @@ export async function listTransfersAction(input?: {
   sort?: string;
   sortDir?: string;
 }) {
-  const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
+  const session = await requireAnyPermission([...TRANSFERS_PAGE_PERMISSIONS]);
   const where = transferListWhere(
     await resolveLogisticsBranchScope({
       tenantId: session.user.tenantId,
@@ -447,10 +438,7 @@ export async function listTransfersAction(input?: {
   );
 }
 
-const TRANSFER_RECEIVE_GATES = [
-  ...TRANSFER_PAGE_RECEIVE_PERMISSIONS,
-  ...TRANSFER_PAGE_APPROVE_PERMISSIONS,
-] as const;
+const TRANSFER_RECEIVE_GATES = TRANSFER_PAGE_RECEIVE_PERMISSIONS;
 
 function revalidateTransfer(id: string) {
   revalidateLogisticsPaths();
@@ -467,7 +455,7 @@ function revalidatePullout(id: string) {
 }
 
 export async function getTransferDetailAction(id: string) {
-  const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
+  const session = await requireAnyPermission([...TRANSFERS_PAGE_PERMISSIONS]);
   try {
     const detail = await transferPostingService.getDetail(postingActor(session), id);
     return { success: true as const, detail };
@@ -592,6 +580,7 @@ export async function listPulloutsAction(input?: {
   limit?: number;
   sort?: string;
   sortDir?: string;
+  q?: string;
 }) {
   const session = await requirePermission(PULLOUTS_VIEW);
   return logisticsRepository.listPullouts(
@@ -601,6 +590,7 @@ export async function listPulloutsAction(input?: {
       limit: parseTablePageSize(input?.limit),
     },
     { field: parsePulloutSort(input?.sort), dir: parseSortDir(input?.sortDir) },
+    parseListSearch(input?.q),
   );
 }
 
@@ -776,6 +766,22 @@ export async function checkPulloutSapAction(id: string) {
     return { success: true as const, result };
   } catch (error) {
     return actionError(error, "Failed to check SAP");
+  }
+}
+
+/**
+ * Cancels a pull-out after Team Lead approval. When sent, its linked Returns are closed and
+ * ITs cancelled in SAP first; units go back to STK/DEF except those on a Return.
+ */
+export async function cancelPulloutAction(id: string) {
+  const session = await requireAnyPermission([...PULLOUT_MANAGE_GATES]);
+  if (!id) return { error: "Choose a pull-out" };
+  try {
+    const result = await pulloutPostingService.cancel(postingActor(session), id);
+    revalidatePullout(id);
+    return { success: true as const, sapDone: result.sapDone };
+  } catch (error) {
+    return actionError(error, "Failed to cancel the pull-out");
   }
 }
 

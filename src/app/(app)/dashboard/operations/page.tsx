@@ -43,7 +43,6 @@ export default async function DashboardOperationsPage() {
     redirect("/dashboard");
   }
 
-  const roleSlugs = session.user.roleSlugs ?? [];
   const canAssist = canUseAiAssist(permissions);
 
   const [opsKpis, analytics, salesAnalytics, briefingResult] = await Promise.all([
@@ -61,7 +60,6 @@ export default async function DashboardOperationsPage() {
 
   const view = buildDashboardViewModel({
     permissions,
-    roleSlugs,
     kpis: opsKpis,
     analytics,
     salesAnalytics,

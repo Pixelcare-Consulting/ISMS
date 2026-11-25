@@ -1,23 +1,26 @@
 import {
+  approverBranchIds,
   canApproveTransferAt,
-  transferApprovalBranchIds,
 } from "@/features/logistics/lib/transfer-approver";
 import { getUserBranchIds } from "@/lib/aor/scope";
 
+export const DEFECT_APPROVE_PERMISSION = "inventory.defect.approve";
+
 export const NOT_DEFECT_APPROVER_MESSAGE =
-  "Only the team leader for this branch can decide this defect report";
+  "Only an approver assigned to this branch can decide this defect report";
 
 /**
- * Branches this person can approve or reject a defect for.
- * `null` means every branch (Super Admin). Same area-of-responsibility rule as transfers.
+ * Branches this person can approve or reject a defect for. `null` means every branch.
+ * Same area-of-responsibility rule as transfers, on the "Approve defect reports" checkbox.
  */
 export async function defectApprovalBranchIds(
   tenantId: string,
   userId: string,
-  roleSlugs: string[] | undefined,
+  permissions: readonly string[] | undefined,
 ): Promise<string[] | null> {
+  if (!permissions?.includes(DEFECT_APPROVE_PERMISSION)) return [];
   const assignedBranchIds = await getUserBranchIds(tenantId, userId);
-  return transferApprovalBranchIds(roleSlugs, assignedBranchIds);
+  return approverBranchIds(permissions, DEFECT_APPROVE_PERMISSION, assignedBranchIds);
 }
 
 export function assertDefectApprover(

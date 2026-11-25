@@ -1,4 +1,8 @@
 import { approvalRoleLabel } from "@/features/orders/lib/order-approval-timeline";
+import {
+  formatSerialActivityApproval,
+  type SerialActivityApproval,
+} from "@/features/serial-activity/constants/serial-activity-display";
 
 /** One approval level of a transfer, pull-out or order, as the approval tables store it. */
 export interface ApprovalLevelRef {
@@ -41,15 +45,29 @@ export function approverName(approver: ApproverRef | null | undefined): string |
  * One decision as a reference line: `Approved by Juan · Oct 23, 2026, 2:15 PM · Note: …`.
  * Null when the step has not happened.
  */
+export function decisionApproval(
+  action: string,
+  by: string | null,
+  at: Date | null | undefined,
+  note?: string | null,
+): SerialActivityApproval | null {
+  if (!at) return null;
+  return {
+    action,
+    person: by,
+    when: formatApprovalTime(at),
+    note: note?.trim() || null,
+  };
+}
+
 export function decisionReferenceLine(
   action: string,
   by: string | null,
   at: Date | null | undefined,
   note?: string | null,
 ): string | null {
-  if (!at) return null;
-  const comment = note?.trim();
-  return `${action}${by ? ` by ${by}` : ""} · ${formatApprovalTime(at)}${comment ? ` · Note: ${comment}` : ""}`;
+  const approval = decisionApproval(action, by, at, note);
+  return approval ? formatSerialActivityApproval(approval) : null;
 }
 
 function decidedBy(

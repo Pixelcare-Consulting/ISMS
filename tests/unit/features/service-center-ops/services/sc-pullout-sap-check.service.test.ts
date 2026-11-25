@@ -85,6 +85,7 @@ const returnDoc = {
   docNum: 12631,
   docDate: "2026-11-12",
   cancelled: false,
+  closed: false,
   lines: [{ pulloutRef: "SCP-1", baseType: null, baseEntry: null, branchCode: "", serialNos: ["S1", "S2"] }],
 };
 

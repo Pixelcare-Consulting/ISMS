@@ -119,7 +119,7 @@ export async function notifyScSpecialOrderOutcome(input: {
   serviceCenterId: string;
   transactionNo: string;
   orderNumber: string;
-  outcome: "DELIVERED" | "REJECTED";
+  outcome: "DELIVERED" | "REJECTED" | "CANCELLED";
 }): Promise<void> {
   try {
     const userIds = await listScProcessorIds(input.tenantId, input.serviceCenterId);
@@ -131,7 +131,7 @@ export async function notifyScSpecialOrderOutcome(input: {
       title: `Service Replacement · ${input.transactionNo}`,
       body: delivered
         ? `Special order ${input.orderNumber} arrived. The unit is held for this replacement.`
-        : `Special order ${input.orderNumber} was rejected. Choose a replacement or raise another order.`,
+        : `Special order ${input.orderNumber} was ${input.outcome === "CANCELLED" ? "cancelled" : "rejected"}. Choose a replacement or raise another order.`,
       href: scServiceReturnHref(input.returnRequestId),
       returnRequestId: input.returnRequestId,
     });

@@ -238,45 +238,50 @@ export function resolveDashboardCapabilities(
   };
 }
 
-export function resolveDashboardPersona(
-  roleSlugs: string[] | undefined,
-  caps: DashboardCapabilities,
-): { persona: DashboardPersona; label: string } {
-  const slugs = roleSlugs ?? [];
+/** Workflow checkboxes that mark whose home dashboard a person gets, checked in order. */
+const PERSONA_WORK_CHECKBOXES: readonly { persona: DashboardPersona; anyOf: readonly string[] }[] = [
+  { persona: "ps", anyOf: ["orders.manual.create"] },
+  { persona: "tl", anyOf: ["orders.auto_replenish.approve_tl"] },
+  {
+    persona: "planning",
+    anyOf: [
+      "orders.manual.approve_sp",
+      "orders.special.approve_sp",
+      "orders.auto_replenish.approve_sp",
+      "service_centers.orders.approve_sp",
+    ],
+  },
+  { persona: "logistics", anyOf: ["logistics.delivery.dispatch"] },
+];
 
+/**
+ * Home dashboard from the person's checkboxes. No role name decides it: admin first
+ * (Manage users), then the main workflow checkbox (Manual create, Team Leader review,
+ * Supply Planning approval, Dispatch), then what the dashboard can show.
+ */
+export function resolveDashboardPersona(
+  caps: DashboardCapabilities,
+  permissions: readonly string[] | undefined,
+): { persona: DashboardPersona; label: string } {
+  const perms = permissions ?? [];
   let persona: DashboardPersona = "ops";
+
+  const byWork = PERSONA_WORK_CHECKBOXES.find((rule) =>
+    rule.anyOf.some((slug) => perms.includes(slug)),
+  )?.persona;
 
   if (!caps.hasOps) {
     persona = "compliance";
-  } else if (
-    slugs.some((s) => s === "super_admin" || s === "tenant_admin") ||
-    caps.showRecentUsers
-  ) {
+  } else if (caps.showRecentUsers) {
     persona = "admin";
-  } else if (slugs.includes("ps")) {
-    persona = "ps";
-  } else if (slugs.includes("tl")) {
-    persona = "tl";
-  } else if (
-    slugs.some(
-      (s) =>
-        s === "sp" ||
-        s === "spa" ||
-        s === "supply_planning" ||
-        s === "supply_planning_associate",
-    )
-  ) {
-    persona = "planning";
-  } else if (slugs.includes("logistics")) {
-    persona = "logistics";
-  } else if (slugs.includes("ae")) {
-    persona = "ae";
+  } else if (byWork) {
+    persona = byWork;
   } else if (caps.showAllocationGaps || caps.showDraftSuggested) {
     persona = "planning";
-  } else if (caps.showDeliveryInTransit && !caps.showOpenAtr) {
-    persona = "logistics";
   } else if (caps.showPendingApprovals && caps.showReports && !caps.showOpenAtr) {
     persona = "ae";
+  } else if (caps.showDeliveryInTransit && !caps.showOpenAtr) {
+    persona = "logistics";
   } else if (caps.showStock && caps.showOpenAtr && !caps.showPendingApprovals) {
     persona = "ps";
   } else if (caps.showPendingApprovals) {

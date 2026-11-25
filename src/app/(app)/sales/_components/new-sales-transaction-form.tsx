@@ -341,6 +341,14 @@ export function NewSalesTransactionForm({
       toast.error("Customer name is required");
       return;
     }
+    if (!transactionDate.trim()) {
+      toast.error("Transaction date is required");
+      return;
+    }
+    if (!contactNo.trim()) {
+      toast.error("Contact number is required");
+      return;
+    }
     if (!paymentTypeId) {
       toast.error("Payment type is required");
       return;
@@ -368,7 +376,7 @@ export function NewSalesTransactionForm({
         soldId: branchId,
         stockSourceId: alternateBranchId,
         customerName: customerName.trim(),
-        contactNo: contactNo.trim() || undefined,
+        contactNo: contactNo.trim(),
         // SI/Trans mirrors transaction number — field removed from the form as redundant.
         siTrans: transactionNo.trim(),
         paymentTypeId,
@@ -377,7 +385,7 @@ export function NewSalesTransactionForm({
         infoSlipVsoRrReleased: infoSlipVsoRrReleased.trim() || undefined,
         rrReceiveDeliver: rrReceiveDeliver.trim() || undefined,
         proof: proofs.length > 0 ? proofs.map((p) => p.path) : undefined,
-        transactionDate: transactionDate || undefined,
+        transactionDate,
         reserved,
         details: details.map((d) => ({
           packageTypeId: d.packageTypeId,
@@ -490,7 +498,7 @@ export function NewSalesTransactionForm({
             />
           </div>
           <div className="space-y-2">
-            <Label className="font-normal text-muted-foreground" htmlFor="sale-date">Transaction date</Label>
+            <Label className="font-normal text-muted-foreground" htmlFor="sale-date">Transaction date *</Label>
             <Input
               id="sale-date"
               type="date"
@@ -509,7 +517,7 @@ export function NewSalesTransactionForm({
             />
           </div>
           <div className="space-y-2">
-            <Label className="font-normal text-muted-foreground" htmlFor="sale-contact">Contact no.</Label>
+            <Label className="font-normal text-muted-foreground" htmlFor="sale-contact">Contact no. *</Label>
             <Input
               id="sale-contact"
               type="tel"

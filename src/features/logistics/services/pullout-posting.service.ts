@@ -13,6 +13,13 @@ import {
   PULLOUT_SETTLED_CODES,
   PULLOUT_WORKFLOW_CODE,
 } from "@/features/logistics/constants/workflow-codes";
+import {
+  groupRestores,
+  pulloutCancelHistoryText,
+  type PulloutCancelLine,
+  type PulloutCancelPlan,
+} from "@/features/logistics/lib/pullout-cancel";
+import { settlePulloutCancelInSap } from "@/features/logistics/services/pullout-cancel.runner";
 import type { PulloutSapDocType } from "@/features/logistics/lib/pullout-sap-document";
 import { recordedProblemsBySerial } from "@/features/logistics/services/pullout-recorded-problems";
 import type { AllocatableSerial } from "@/features/logistics/services/posting-planner-types";
@@ -59,6 +66,7 @@ import {
   type PostingActor,
   type PostingDb,
 } from "@/features/logistics/services/posting-support";
+import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { STOCK_COUNT_FREEZE_SESSION_STATUSES } from "@/features/stock-audit/constants/stock-count-workflow";
 import { prisma } from "@/lib/database/client";
 import { buildPulloutAttachmentPath, getObjectStorage } from "@/lib/storage";
@@ -253,6 +261,9 @@ async function loadPullout(db: PostingDb | typeof prisma, tenantId: string, pull
           serialNumber: { select: { serialNo: true } },
           priorStatusCodeId: true,
           priorStatusCode: { select: { code: true } },
+          sapDocType: true,
+          sapDocEntry: true,
+          redeliveryDeliveryId: true,
         },
       },
     },
@@ -273,6 +284,8 @@ async function loadPullout(db: PostingDb | typeof prisma, tenantId: string, pull
     rejected: boolean;
     priorStatusCodeId: string | null;
     serialNo: string;
+    linked: PulloutCancelLine["linked"];
+    redelivered: boolean;
   })[] = pullout.lines.map((line) => ({
     serialNumberId: line.serialNumberId,
     serialNo: line.serialNumber.serialNo,
@@ -282,6 +295,8 @@ async function loadPullout(db: PostingDb | typeof prisma, tenantId: string, pull
     priorCode: asHoldCode(line.priorStatusCode?.code),
     priorStatusCodeId: line.priorStatusCodeId,
     inventoryCode: asInventoryCode(inventoryBySerial.get(line.serialNumberId)?.statusCode.code),
+    linked: line.sapDocType ? { type: line.sapDocType, docEntry: line.sapDocEntry } : null,
+    redelivered: line.redeliveryDeliveryId !== null,
   }));
   return { ...pullout, status, lines };
 }
@@ -309,6 +324,35 @@ export async function writePulloutHistory(
       status: input.status,
       createdById: input.userId,
     })),
+  });
+}
+
+/** Restored units log their STK/DEF; units kept on a Return log the cancel with no status change. */
+async function writePulloutCancelHistory(
+  tx: PostingDb,
+  actor: PostingActor,
+  pulloutNo: string,
+  plan: PulloutCancelPlan,
+  sapDone: readonly string[],
+) {
+  const details = pulloutCancelHistoryText(pulloutNo, sapDone);
+  for (const restoreCode of ["STK", "DEF"] as const) {
+    await writePulloutHistory(tx, {
+      tenantId: actor.tenantId,
+      userId: actor.userId,
+      pulloutNo,
+      serialNumberIds: plan.restores.filter((row) => row.restoreCode === restoreCode).map((row) => row.serialNumberId),
+      status: restoreCode,
+      details,
+    });
+  }
+  await writePulloutHistory(tx, {
+    tenantId: actor.tenantId,
+    userId: actor.userId,
+    pulloutNo,
+    serialNumberIds: plan.keptPulledOutIds,
+    status: null,
+    details,
   });
 }
 
@@ -988,6 +1032,93 @@ export const pulloutPostingService = {
     }
 
     return { id: current.id, idempotent: false };
+  },
+
+  /**
+   * Cancels a pull-out after Team Lead approval (rules in `lib/pullout-cancel.ts`). SAP goes
+   * first: linked Returns are closed, linked ITs cancelled. Then one transaction puts units
+   * back to STK or DEF (units on a Return stay Pulled out) and makes the header Cancelled.
+   */
+  async cancel(actor: PostingActor, pulloutId: string) {
+    const current = await loadPullout(prisma, actor.tenantId, pulloutId);
+    if (!current) throw new Error("Pull-out not found");
+    await authorizePosting(actor, "pullout.cancel", current.branchId);
+    if (current.status === "cancelled") return { id: current.id, idempotent: true, sapDone: [] as string[] };
+
+    const { plan, sapDone } = await settlePulloutCancelInSap(actor.tenantId, {
+      id: current.id,
+      pulloutNo: current.pulloutNo,
+      status: current.status,
+      lines: current.lines.map((line) => ({
+        serialNumberId: line.serialNumberId,
+        serialNo: line.serialNo,
+        priorCode: line.priorCode,
+        inventoryCode: line.inventoryCode,
+        linked: line.linked,
+        redelivered: line.redelivered,
+        legacySettled: line.received || line.rejected,
+      })),
+    });
+
+    const [codes, pulledOutId, cancelledId] = await Promise.all([
+      pulloutInventoryIds(actor.tenantId),
+      reasonStatusService.requireCodeId(actor.tenantId, "inventory_system", "PO"),
+      pulloutWorkflowId(actor.tenantId, "cancelled"),
+    ]);
+    const codeIds: Record<string, string> = { ...codes, PO: pulledOutId };
+    const groups = groupRestores(plan.restores);
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        await lockSerialNumbers(
+          tx,
+          plan.restores.map((row) => row.serialNumberId),
+        );
+        for (const group of groups) {
+          const fromId = codeIds[group.fromCode];
+          if (!fromId) throw new Error(`Status code not configured: inventory_system/${group.fromCode}`);
+          await claimInventory(tx, {
+            tenantId: actor.tenantId,
+            branchId: current.branchId,
+            serialNumberIds: group.serialNumberIds,
+            fromStatusCodeId: fromId,
+            toStatusCodeId: codeIds[group.restoreCode],
+            userId: actor.userId,
+            message: "A serial on this pull-out changed. Reload and try again.",
+          });
+        }
+        await claimHeader(tx, "branchPullout", {
+          id: current.id,
+          tenantId: actor.tenantId,
+          fromStatusCodeIds: [current.statusCodeId],
+          toStatusCodeId: cancelledId,
+          message: "This pull-out was updated by someone else",
+        });
+        await writePulloutCancelHistory(tx, actor, current.pulloutNo, plan, sapDone);
+        await tx.auditLog.create({
+          data: {
+            tenantId: actor.tenantId,
+            userId: actor.userId,
+            action: "pullout.cancelled",
+            entityType: "BranchPullout",
+            entityId: current.id,
+            metadata: {
+              pulloutNo: current.pulloutNo,
+              from: current.status,
+              restoredSerialIds: plan.restores.map((row) => row.serialNumberId),
+              keptPulledOutSerialIds: plan.keptPulledOutIds,
+              sapDone,
+            },
+          },
+        });
+      });
+    } catch (error) {
+      const failure = postingError(error, "Failed to cancel the pull-out");
+      if (sapDone.length === 0) throw failure;
+      throw new Error(`${sapDone.join(", ")} in SAP, but ISMS could not save the cancel (${failure.message}). Try again.`);
+    }
+
+    return { id: current.id, idempotent: false, sapDone };
   },
 
   async updateList(

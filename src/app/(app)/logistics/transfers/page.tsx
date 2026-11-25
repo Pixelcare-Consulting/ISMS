@@ -13,10 +13,7 @@ import {
   listTransfersAction,
 } from "@/features/logistics/actions/logistics.actions";
 import {
-  LOGISTICS_DELIVERY_TRANSFER_APPROVE,
-  LOGISTICS_DELIVERY_TRANSFER_CREATE,
-  LOGISTICS_DELIVERY_TRANSFER_RECEIVE,
-  LOGISTICS_PAGE_PERMISSIONS,
+  TRANSFERS_PAGE_PERMISSIONS,
   resolveLogisticsCapabilities,
 } from "@/features/logistics/constants/logistics-permissions";
 import {
@@ -30,13 +27,6 @@ import { isBranchScopeUnrestricted } from "@/features/logistics/services/logisti
 import { getUserBranchIds } from "@/lib/aor/scope";
 import { hasPermission, requireAnyPermission } from "@/lib/auth/permissions";
 
-const UNIT_TRANSFER_PAGE_PERMISSIONS = [
-  ...LOGISTICS_PAGE_PERMISSIONS,
-  LOGISTICS_DELIVERY_TRANSFER_CREATE,
-  LOGISTICS_DELIVERY_TRANSFER_APPROVE,
-  LOGISTICS_DELIVERY_TRANSFER_RECEIVE,
-] as const;
-
 interface TransfersPageProps {
   searchParams: Promise<{
     tab?: string;
@@ -48,7 +38,7 @@ interface TransfersPageProps {
 }
 
 function canViewBranchTransfers(permissions: string[] | undefined): boolean {
-  return LOGISTICS_PAGE_PERMISSIONS.some((slug) => hasPermission(permissions, slug));
+  return TRANSFERS_PAGE_PERMISSIONS.some((slug) => hasPermission(permissions, slug));
 }
 
 function visibleTabs(permissions: string[] | undefined): readonly TransfersPageTab[] {
@@ -59,7 +49,7 @@ function visibleTabs(permissions: string[] | undefined): readonly TransfersPageT
 }
 
 export default async function TransfersPage({ searchParams }: TransfersPageProps) {
-  const session = await requireAnyPermission([...UNIT_TRANSFER_PAGE_PERMISSIONS]);
+  const session = await requireAnyPermission([...TRANSFERS_PAGE_PERMISSIONS]);
   const params = await searchParams;
   const page = Number(params.page) || 1;
   const limit = parseTablePageSize(params.limit);

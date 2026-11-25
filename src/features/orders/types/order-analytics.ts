@@ -289,4 +289,6 @@ export interface OrderHistoryDetail extends Omit<OrderHistoryRow, "lines" | "sta
   /** Null when this order has no delivery. Not an overall fulfillment status. */
   delivery: OrderHistoryLinkedDelivery | null;
   attachments: string[];
+  /** The viewer may cancel this approved order, closing its ITR/SO in SAP. */
+  canCancel: boolean;
 }

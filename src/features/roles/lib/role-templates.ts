@@ -1,3 +1,8 @@
+import {
+  MONTHLY_SIR_USE_SLUGS,
+  MONTHLY_SIR_VIEW_SLUG,
+} from "@/features/monthly-sir/constants/monthly-sir-permissions";
+
 /**
  * Starter permission sets for the create-role wizard.
  * Templates only prefill the UI — they are not DB entities.
@@ -36,14 +41,18 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     permissionSlugs: [
       "dashboard.manage",
       "inventory.view",
-      "inventory.monthly_sir.view",
+      MONTHLY_SIR_VIEW_SLUG,
+      ...MONTHLY_SIR_USE_SLUGS,
       "pullouts.view",
       "orders.manual.view",
       "orders.manual.create",
       "orders.special.view",
       "orders.auto_replenish.view",
       "orders.auto_replenish.create",
+      "orders.manual.edit_pending",
+      "inventory.monthly_sir.upload_scheduled",
       "sales.create",
+      "returns.request",
       "planogram.view",
     ],
   },
@@ -54,15 +63,20 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     permissionSlugs: [
       "dashboard.manage",
       "inventory.view",
-      "inventory.monthly_sir.view",
+      MONTHLY_SIR_VIEW_SLUG,
+      ...MONTHLY_SIR_USE_SLUGS,
       "pullouts.view",
       "orders.manual.view",
-      "orders.manual.approve",
+      "orders.manual.edit_pending",
+      "orders.manual.view_all",
       "orders.special.view",
       "orders.special.create",
-      "orders.special.approve",
+      "orders.special.view_all",
       "orders.auto_replenish.view",
-      "orders.auto_replenish.approve",
+      "orders.auto_replenish.approve_tl",
+      "logistics.delivery_transfer.approve",
+      "inventory.defect.approve",
+      "inventory.monthly_sir.upload_slots",
       "planogram.view",
       "reports.view",
     ],

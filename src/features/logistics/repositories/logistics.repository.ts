@@ -95,6 +95,20 @@ function pulloutPrismaOrderBy(
   }
 }
 
+/** Matches a pull-out by its number, branch, reason, status, or the serial of any of its units. */
+function pulloutSearchWhere(q: string): Prisma.BranchPulloutWhereInput {
+  const contains = { contains: q, mode: "insensitive" as const };
+  return {
+    OR: [
+      { pulloutNo: contains },
+      { branch: { name: contains } },
+      { reasonStatusCode: { OR: [{ name: contains }, { code: contains }] } },
+      { statusCode: { OR: [{ name: contains }, { code: contains }] } },
+      { lines: { some: { serialNumber: { serialNo: contains } } } },
+    ],
+  };
+}
+
 export const logisticsRepository = {
   countDeliveriesByStatus(tenantId: string) {
     return prisma.branchDelivery.groupBy({
@@ -212,9 +226,12 @@ export const logisticsRepository = {
     tenantId: string,
     pagination?: { page?: number; limit?: number },
     sort?: { field?: PulloutListSort; dir?: LogisticsListSortDir },
+    q?: string,
   ) {
     const { limit, page, skip } = resolvePagination(pagination);
-    const where: Prisma.BranchPulloutWhereInput = { tenantId };
+    const where: Prisma.BranchPulloutWhereInput = q
+      ? { tenantId, ...pulloutSearchWhere(q) }
+      : { tenantId };
     const orderBy = sort?.field
       ? pulloutPrismaOrderBy(sort.field, sort.dir ?? "desc")
       : { createdAt: "desc" as const };

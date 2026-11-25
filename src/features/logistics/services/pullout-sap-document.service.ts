@@ -87,6 +87,17 @@ function refFilter(lines: string, pulloutNo: string): string {
   return `${lines}/${PULLOUT_REF_UDF} eq ${pulloutRefLiteral(pulloutNo)}`;
 }
 
+/** One IT or Return by DocEntry, e.g. a linked one whose rows no longer carry the pull-out number. */
+export async function readPulloutSapDocument(
+  creds: SapServiceLayerCredentials,
+  type: PulloutSapDocType,
+  docEntry: number,
+): Promise<PulloutSapDocument> {
+  const parsed = parsePulloutSapDocument(type, await readDocument(creds, PULLOUT_SAP_DOC_ENTITY[type], docEntry));
+  if ("error" in parsed) throw new Error(parsed.error);
+  return parsed;
+}
+
 /** Every IT and Return with a row carrying this pull-out number. */
 export async function findPulloutSapDocuments(
   creds: SapServiceLayerCredentials,

@@ -9,6 +9,7 @@ import {
 import {
   approveScPulloutAction,
   approveScPulloutLineAction,
+  cancelScPulloutAction,
   checkScPulloutSapAction,
   createScPulloutAction,
   deleteScPulloutLineAction,
@@ -61,6 +62,7 @@ const SC_PULLOUT_SOURCE: PulloutSource = {
     updateList: (pulloutId, input) => updateScPulloutListAction(pulloutId, input),
     release: (pulloutId) => releaseScPulloutAction(pulloutId),
     checkSap: (pulloutId) => checkScPulloutSapAction(pulloutId),
+    cancel: (pulloutId) => cancelScPulloutAction(pulloutId),
   },
 };
 

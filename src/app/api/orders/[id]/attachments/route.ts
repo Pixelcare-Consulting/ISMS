@@ -25,7 +25,6 @@ export async function GET(request: Request, context: RouteContext) {
       tenantId: session.user.tenantId,
       userId: session.user.id,
       permissions: session.user.permissions,
-      roleSlugs: session.user.roleSlugs ?? [],
     },
     id,
     index,

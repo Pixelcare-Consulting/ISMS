@@ -8,10 +8,10 @@ import { hasPermission } from "@/lib/auth/permissions";
  * Returns / Replacement action-button permissions.
  *
  * Recipe: see `src/lib/auth/action-capabilities.ts`.
- * Legacy `sales.return.*` and `service_centers.return.*` remain aliases.
+ * The hidden legacy `sales.return.*` and `service_centers.return.*` slugs grant nothing.
  *
  * Tab visibility:
- * - Branch → `returns.branch.view` (or umbrella `returns.view` / legacy); lists every
+ * - Branch → `returns.branch.view` (or umbrella `returns.view`); lists every
  *   branch sale return, Service Return / Replacement document types included
  * - There is no Service tab: SC Service Returns are finished under Service → SC Returns
  * - Approvals → evaluate / approve / complete (no separate approvals.view key)
@@ -36,15 +36,6 @@ export const RETURNS_ACCESS_PERMISSIONS = [
   RETURNS_EVALUATE,
   RETURNS_APPROVE,
   RETURNS_COMPLETE,
-  "sales.return.view",
-  "sales.return.request",
-  "sales.return.evaluate",
-  "sales.return.approve",
-  "sales.return.complete",
-  "service_centers.return.request",
-  "service_centers.return.evaluate",
-  "service_centers.return.approve",
-  "service_centers.return.complete",
 ] as const;
 
 /** Branch Returns tab (and branch list server action). */
@@ -52,78 +43,38 @@ export const RETURNS_BRANCH_VIEW_PERMISSIONS = [
   RETURNS_BRANCH_VIEW,
   RETURNS_VIEW,
   RETURNS_REQUEST,
-  "sales.return.view",
-  "sales.return.request",
 ] as const;
 
 /** Legacy SC return list server action (the Service tab was removed). */
 export const RETURNS_SERVICE_VIEW_PERMISSIONS = [
   RETURNS_SERVICE_VIEW,
   RETURNS_VIEW,
-  "service_centers.return.request",
-  "service_centers.return.evaluate",
-  "service_centers.return.approve",
-  "service_centers.return.complete",
 ] as const;
 
 /**
  * Approvals tab — reuses workflow perms (evaluate / approve / complete).
- * Umbrella `returns.view` keeps legacy “see everything” roles working.
+ * Umbrella `returns.view` ("View both tabs") also opens it.
  */
 export const RETURNS_APPROVALS_VIEW_PERMISSIONS = [
   RETURNS_VIEW,
   RETURNS_EVALUATE,
   RETURNS_APPROVE,
   RETURNS_COMPLETE,
-  "sales.return.evaluate",
-  "sales.return.approve",
-  "sales.return.complete",
-  "service_centers.return.evaluate",
-  "service_centers.return.approve",
-  "service_centers.return.complete",
 ] as const;
 
+/**
+ * Each workflow button checks only its own Returns checkbox, for branch and service center
+ * returns alike. Sales, Orders, Logistics, and the hidden `sales.return.*` /
+ * `service_centers.return.*` slugs no longer unlock them.
+ */
 export const RETURNS_ACTION_CAPABILITIES = {
-  canViewReturns: [
-    RETURNS_VIEW,
-    RETURNS_BRANCH_VIEW,
-    RETURNS_SERVICE_VIEW,
-    "sales.return.view",
-    "service_centers.return.request",
-    "service_centers.return.evaluate",
-    "service_centers.return.approve",
-    "service_centers.return.complete",
-  ],
+  canViewReturns: [RETURNS_VIEW, RETURNS_BRANCH_VIEW, RETURNS_SERVICE_VIEW],
   canViewBranchReturns: [...RETURNS_BRANCH_VIEW_PERMISSIONS],
   canViewApprovals: [...RETURNS_APPROVALS_VIEW_PERMISSIONS],
-  canRequestReturn: [
-    RETURNS_REQUEST,
-    "sales.return.request",
-    "sales.create",
-    "service_centers.return.request",
-    "service_centers.sales.create",
-  ],
-  canEvaluateReturn: [
-    RETURNS_EVALUATE,
-    "sales.return.evaluate",
-    "service_centers.return.evaluate",
-  ],
-  canApproveReturn: [
-    RETURNS_APPROVE,
-    "sales.return.approve",
-    "orders.approve",
-    "service_centers.return.approve",
-    "service_centers.orders.approve",
-  ],
-  canCompleteReturn: [
-    RETURNS_COMPLETE,
-    "sales.return.complete",
-    "logistics.manage",
-    "sales.create",
-    "service_centers.return.complete",
-    "service_centers.logistics.manage",
-    "service_centers.sales.create",
-  ],
+  canRequestReturn: RETURNS_REQUEST,
+  canEvaluateReturn: RETURNS_EVALUATE,
+  canApproveReturn: RETURNS_APPROVE,
+  canCompleteReturn: RETURNS_COMPLETE,
 } as const;
 
 export type ReturnsActionCapabilities = ResolvedCapabilities<
@@ -182,36 +133,9 @@ export function resolveReturnsActiveTab(
   return allowed[0] ?? null;
 }
 
-/** Reject at pending_cs → evaluate; at pending_tl → approve (plus aliases). */
+/** Reject at pending_cs → Evaluate; at pending_tl → Approve. */
 export function returnsRejectPermissions(status: string): string[] {
-  if (status === "pending_cs") {
-    return [
-      RETURNS_EVALUATE,
-      "sales.return.evaluate",
-      "service_centers.return.evaluate",
-      "sales.create",
-      "service_centers.sales.create",
-    ];
-  }
-  if (status === "pending_tl") {
-    return [
-      RETURNS_APPROVE,
-      "sales.return.approve",
-      "service_centers.return.approve",
-      "orders.approve",
-      "service_centers.orders.approve",
-    ];
-  }
-  return [
-    RETURNS_EVALUATE,
-    RETURNS_APPROVE,
-    "sales.return.evaluate",
-    "sales.return.approve",
-    "service_centers.return.evaluate",
-    "service_centers.return.approve",
-    "sales.create",
-    "service_centers.sales.create",
-    "orders.approve",
-    "service_centers.orders.approve",
-  ];
+  if (status === "pending_cs") return [RETURNS_EVALUATE];
+  if (status === "pending_tl") return [RETURNS_APPROVE];
+  return [RETURNS_EVALUATE, RETURNS_APPROVE];
 }

@@ -6,6 +6,14 @@ import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { aorService } from "@/features/aors/services/aor.service";
 import { branchRepository } from "@/features/branches/repositories/branch.repository";
 import {
+  MONTHLY_SIR_APPROVE_SLUG,
+  MONTHLY_SIR_DOWNLOAD_TEMPLATE_SLUG,
+  MONTHLY_SIR_GENERATE_VARIANCE_SLUG,
+  MONTHLY_SIR_SCAN_SERIALS_SLUG,
+  MONTHLY_SIR_UPLOAD_SLUG,
+  MONTHLY_SIR_VIEW_SLUG,
+} from "@/features/monthly-sir/constants/monthly-sir-permissions";
+import {
   createMonthlySirRequestSchema,
   monthlySirScansSchema,
   monthlySirUploadSchema,
@@ -19,7 +27,6 @@ import {
 } from "@/lib/auth/permissions";
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
-const MONTHLY_SIR_VIEW = "inventory.monthly_sir.view";
 
 function isUnrestricted(permissions: string[] | undefined) {
   return (
@@ -55,7 +62,7 @@ export async function listMonthlySirRequestsAction(input?: {
   page?: number;
   limit?: number;
 }) {
-  const session = await requirePermission(MONTHLY_SIR_VIEW);
+  const session = await requirePermission(MONTHLY_SIR_VIEW_SLUG);
   return monthlySirService.list(
     session.user.tenantId,
     session.user.id,
@@ -70,7 +77,7 @@ export async function listMonthlySirRequestsAction(input?: {
 }
 
 export async function listMonthlySirBranchesAction() {
-  const session = await requirePermission(MONTHLY_SIR_VIEW);
+  const session = await requirePermission(MONTHLY_SIR_VIEW_SLUG);
   const unrestricted = isUnrestricted(session.user.permissions);
   const branches = await branchRepository.listByTenant(session.user.tenantId);
   if (unrestricted) {
@@ -86,7 +93,7 @@ export async function listMonthlySirBranchesAction() {
 }
 
 export async function getPcountUploadAllowanceAction(input: unknown) {
-  const session = await requirePermission(MONTHLY_SIR_VIEW);
+  const session = await requirePermission(MONTHLY_SIR_VIEW_SLUG);
   const parsed = pcountUploadAllowanceSchema.safeParse(input);
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid branch" };
@@ -97,7 +104,6 @@ export async function getPcountUploadAllowanceAction(input: unknown) {
       userId: session.user.id,
       branchId: parsed.data.branchId,
       permissions: session.user.permissions,
-      roleSlugs: session.user.roleSlugs,
       unrestricted: isUnrestricted(session.user.permissions),
     });
     return { success: true as const, allowance };
@@ -107,7 +113,7 @@ export async function getPcountUploadAllowanceAction(input: unknown) {
 }
 
 export async function createMonthlySirRequestAction(input: unknown) {
-  const session = await requirePermission(MONTHLY_SIR_VIEW);
+  const session = await requirePermission(MONTHLY_SIR_UPLOAD_SLUG);
   const parsed = createMonthlySirRequestSchema.safeParse(input);
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid request" };
@@ -118,7 +124,6 @@ export async function createMonthlySirRequestAction(input: unknown) {
       userId: session.user.id,
       unrestricted: isUnrestricted(session.user.permissions),
       permissions: session.user.permissions,
-      roleSlugs: session.user.roleSlugs,
       ...parsed.data,
     });
     revalidateMonthlySir(request.stockCountSessionId ?? undefined);
@@ -139,7 +144,7 @@ export async function createMonthlySirRequestAction(input: unknown) {
 }
 
 export async function reviewMonthlySirRequestAction(input: unknown) {
-  const session = await requirePermission("inventory.manage");
+  const session = await requirePermission(MONTHLY_SIR_APPROVE_SLUG);
   const parsed = reviewMonthlySirRequestSchema.safeParse(input);
   if (!parsed.success) return { error: "Invalid review details" };
   try {
@@ -162,7 +167,7 @@ export async function reviewMonthlySirRequestAction(input: unknown) {
 }
 
 export async function downloadMonthlySirTemplateAction(requestId: string) {
-  const session = await requirePermission(MONTHLY_SIR_VIEW);
+  const session = await requirePermission(MONTHLY_SIR_DOWNLOAD_TEMPLATE_SLUG);
   try {
     const result = await monthlySirService.buildTemplate({
       tenantId: session.user.tenantId,
@@ -178,7 +183,7 @@ export async function downloadMonthlySirTemplateAction(requestId: string) {
 }
 
 export async function validateMonthlySirScansAction(input: unknown) {
-  const session = await requirePermission(MONTHLY_SIR_VIEW);
+  const session = await requirePermission(MONTHLY_SIR_SCAN_SERIALS_SLUG);
   const parsed = monthlySirScansSchema.safeParse(input);
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid scanned serials" };
@@ -196,7 +201,7 @@ export async function validateMonthlySirScansAction(input: unknown) {
 }
 
 export async function buildMonthlySirTemplateFromScansAction(input: unknown) {
-  const session = await requirePermission(MONTHLY_SIR_VIEW);
+  const session = await requirePermission(MONTHLY_SIR_SCAN_SERIALS_SLUG);
   const parsed = monthlySirScansSchema.safeParse(input);
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid scanned serials" };
@@ -216,7 +221,7 @@ export async function buildMonthlySirTemplateFromScansAction(input: unknown) {
 }
 
 export async function previewMonthlySirUploadAction(formData: FormData) {
-  const session = await requirePermission(MONTHLY_SIR_VIEW);
+  const session = await requirePermission(MONTHLY_SIR_UPLOAD_SLUG);
   const parsed = monthlySirUploadSchema.safeParse({
     requestId: formData.get("requestId"),
   });
@@ -229,7 +234,6 @@ export async function previewMonthlySirUploadAction(formData: FormData) {
       requestId: parsed.data.requestId,
       unrestricted: isUnrestricted(session.user.permissions),
       permissions: session.user.permissions,
-      roleSlugs: session.user.roleSlugs,
       file,
     });
   } catch (error) {
@@ -238,7 +242,7 @@ export async function previewMonthlySirUploadAction(formData: FormData) {
 }
 
 export async function applyMonthlySirUploadAction(formData: FormData) {
-  const session = await requirePermission(MONTHLY_SIR_VIEW);
+  const session = await requirePermission(MONTHLY_SIR_UPLOAD_SLUG);
   const parsed = monthlySirUploadSchema.safeParse({
     requestId: formData.get("requestId"),
   });
@@ -251,7 +255,6 @@ export async function applyMonthlySirUploadAction(formData: FormData) {
       requestId: parsed.data.requestId,
       unrestricted: isUnrestricted(session.user.permissions),
       permissions: session.user.permissions,
-      roleSlugs: session.user.roleSlugs,
       file,
     });
     revalidateMonthlySir();
@@ -262,7 +265,7 @@ export async function applyMonthlySirUploadAction(formData: FormData) {
 }
 
 export async function generateMonthlySirVarianceAction(requestId: string) {
-  const session = await requirePermission(MONTHLY_SIR_VIEW);
+  const session = await requirePermission(MONTHLY_SIR_GENERATE_VARIANCE_SLUG);
   try {
     const result = await monthlySirService.buildVariance({
       tenantId: session.user.tenantId,

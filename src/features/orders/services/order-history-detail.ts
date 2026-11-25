@@ -14,7 +14,11 @@ import {
   hasAnyOrderPermission,
   orderTypeAccessPermissions,
 } from "@/features/orders/constants/order-permissions";
-import { mayViewOrderAsProductSpecialist } from "@/features/orders/constants/order-workflow";
+import {
+  canCancelApprovedOrder,
+  mayViewOrder,
+} from "@/features/orders/constants/order-workflow";
+import { DELIVERY_WORKFLOW_CODE } from "@/features/logistics/constants/workflow-codes";
 import { orderRepository } from "@/features/orders/repositories/order.repository";
 import { orderAttachmentStoragePrefix } from "@/features/orders/utils/order-attachment-paths";
 import {
@@ -114,8 +118,9 @@ export async function getOrderHistoryDetail(
     case "manual":
     case "special":
       if (
-        !mayViewOrderAsProductSpecialist({
-          roleSlugs: session.user.roleSlugs ?? [],
+        !mayViewOrder({
+          orderType,
+          permissions: session.user.permissions,
           viewerUserId: session.user.id,
           createdById: order.createdById,
         })
@@ -209,6 +214,10 @@ export async function getOrderHistoryDetail(
         : null,
     })),
     delivery,
+    // The delivery check here only hides the button; cancel re-checks it and asks SAP.
+    canCancel:
+      canCancelApprovedOrder(order, session.user.permissions) &&
+      (delivery === null || delivery.status.code === DELIVERY_WORKFLOW_CODE.approved),
   };
 }
 
@@ -278,8 +287,9 @@ export async function getSubmittedOrderSummary(
   if (order.orderType !== "manual" && order.orderType !== "special") return null;
   if (!canAccessOrderType(session.user.permissions, order.orderType)) return null;
   if (
-    !mayViewOrderAsProductSpecialist({
-      roleSlugs: session.user.roleSlugs ?? [],
+    !mayViewOrder({
+      orderType: order.orderType,
+      permissions: session.user.permissions,
       viewerUserId: session.user.id,
       createdById: order.createdById,
     })
@@ -341,7 +351,7 @@ export async function getSubmittedOrderSummary(
  * Specialist own-orders rule. Null when the viewer cannot open that order.
  */
 export async function findViewableOrderAttachment(
-  viewer: { tenantId: string; userId: string; permissions: string[]; roleSlugs: string[] },
+  viewer: { tenantId: string; userId: string; permissions: string[] },
   attachmentId: string,
 ): Promise<{ fileName: string; storagePath: string; mimeType: string } | null> {
   const attachment = await prisma.branchOrderAttachment.findFirst({
@@ -363,9 +373,9 @@ export async function findViewableOrderAttachment(
   );
   if (branchScope !== null && !branchScope.includes(order.branchId)) return null;
   if (
-    order.orderType !== "auto_replenish" &&
-    !mayViewOrderAsProductSpecialist({
-      roleSlugs: viewer.roleSlugs,
+    !mayViewOrder({
+      orderType: order.orderType,
+      permissions: viewer.permissions,
       viewerUserId: viewer.userId,
       createdById: order.createdById,
     })
@@ -384,7 +394,7 @@ export async function findViewableOrderAttachment(
  * Same access as opening the order. Null when the index is missing or out of scope.
  */
 export async function findViewableOrderAttachmentFile(
-  viewer: { tenantId: string; userId: string; permissions: string[]; roleSlugs: string[] },
+  viewer: { tenantId: string; userId: string; permissions: string[] },
   orderId: string,
   index: number,
 ): Promise<{ fileName: string; storagePath: string; mimeType: string } | null> {
@@ -407,9 +417,9 @@ export async function findViewableOrderAttachmentFile(
   );
   if (branchScope !== null && !branchScope.includes(order.branchId)) return null;
   if (
-    order.orderType !== "auto_replenish" &&
-    !mayViewOrderAsProductSpecialist({
-      roleSlugs: viewer.roleSlugs,
+    !mayViewOrder({
+      orderType: order.orderType,
+      permissions: viewer.permissions,
       viewerUserId: viewer.userId,
       createdById: order.createdById,
     })

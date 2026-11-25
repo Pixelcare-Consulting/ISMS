@@ -12,8 +12,8 @@ jest.mock("@/lib/auth/permissions", () => ({
 jest.mock("@/lib/aor/scope", () => ({
   getUserBranchIds: jest.fn(),
 }));
-jest.mock("@/features/aors/repositories/aor.repository", () => ({
-  aorRepository: { listUserIdsForBranchByRole: jest.fn() },
+jest.mock("@/lib/auth/permission-holders", () => ({
+  listUserIdsWithPermission: jest.fn(),
 }));
 jest.mock("@/features/notifications/services/notification.service", () => ({
   notificationService: { createNotification: jest.fn() },
@@ -48,7 +48,6 @@ jest.mock("@/features/reason-status/services/reason-status.service", () => ({
   reasonStatusService: { requireCodeId: jest.fn() },
 }));
 
-import { aorRepository } from "@/features/aors/repositories/aor.repository";
 import { aorService } from "@/features/aors/services/aor.service";
 import { auditService } from "@/features/audit/services/audit.service";
 import { defectRepository } from "@/features/inventory/repositories/defect.repository";
@@ -56,6 +55,9 @@ import { defectService } from "@/features/inventory/services/defect.service";
 import { notificationService } from "@/features/notifications/services/notification.service";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { getUserBranchIds } from "@/lib/aor/scope";
+import { listUserIdsWithPermission } from "@/lib/auth/permission-holders";
+
+const DEFECT_APPROVE = "inventory.defect.approve";
 import { prisma } from "@/lib/database/client";
 
 const findInventory = prisma.branchInventory.findFirst as jest.Mock;
@@ -63,7 +65,7 @@ const transaction = prisma.$transaction as jest.Mock;
 const approvalRows = prisma.inventoryApproval as unknown as { createMany: jest.Mock; updateMany: jest.Mock };
 const getBranchIds = aorService.getBranchIdsForUser as jest.Mock;
 const approvalBranchIds = getUserBranchIds as jest.Mock;
-const notifyLeaders = aorRepository.listUserIdsForBranchByRole as jest.Mock;
+const notifyLeaders = listUserIdsWithPermission as jest.Mock;
 
 const baseInventory = {
   id: "inv-1",
@@ -177,7 +179,9 @@ describe("defectService.reportDefect", () => {
       reason: "Screen crack",
     });
 
-    expect(notifyLeaders).toHaveBeenCalledWith("t1", "branch-1", "tl");
+    expect(notifyLeaders).toHaveBeenCalledWith("t1", "inventory.defect.approve", {
+      aorBranchId: "branch-1",
+    });
     expect(notificationService.createNotification).toHaveBeenCalledTimes(1);
     expect(notificationService.createNotification).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -264,7 +268,7 @@ describe("defectService.approveDefect", () => {
     const result = await defectService.approveDefect({
       tenantId: "t1",
       actorUserId: "mgr-1",
-      roleSlugs: ["tl"],
+      permissions: [DEFECT_APPROVE],
       reportId: "report-1",
       decisionRemarks: "Confirmed damage",
     });
@@ -288,7 +292,7 @@ describe("defectService.approveDefect", () => {
     expect(result?.status).toBe("approved");
   });
 
-  it("refuses a product specialist and a manager who is not the team leader", async () => {
+  it("refuses people without Approve defect reports, whatever their role", async () => {
     (defectRepository.findById as jest.Mock).mockReset();
     (defectRepository.findById as jest.Mock).mockResolvedValue(pendingReport);
 
@@ -296,24 +300,24 @@ describe("defectService.approveDefect", () => {
       defectService.approveDefect({
         tenantId: "t1",
         actorUserId: "ps-1",
-        roleSlugs: ["ps"],
+        permissions: ["inventory.view"],
         reportId: "report-1",
       }),
-    ).rejects.toThrow(/team leader for this branch/);
+    ).rejects.toThrow(/approver assigned to this branch/);
 
     await expect(
       defectService.approveDefect({
         tenantId: "t1",
         actorUserId: "mgr-1",
-        roleSlugs: ["manager"],
+        permissions: ["tl", "inventory.manage"],
         reportId: "report-1",
       }),
-    ).rejects.toThrow(/team leader for this branch/);
+    ).rejects.toThrow(/approver assigned to this branch/);
 
     expect(transaction).not.toHaveBeenCalled();
   });
 
-  it("refuses a team leader from another branch", async () => {
+  it("refuses an approver from another branch", async () => {
     (defectRepository.findById as jest.Mock).mockReset();
     (defectRepository.findById as jest.Mock).mockResolvedValue(pendingReport);
     approvalBranchIds.mockResolvedValue(["other-branch"]);
@@ -322,13 +326,13 @@ describe("defectService.approveDefect", () => {
       defectService.approveDefect({
         tenantId: "t1",
         actorUserId: "tl-2",
-        roleSlugs: ["tl"],
+        permissions: [DEFECT_APPROVE],
         reportId: "report-1",
       }),
-    ).rejects.toThrow(/team leader for this branch/);
+    ).rejects.toThrow(/approver assigned to this branch/);
   });
 
-  it("lets a super admin decide any branch", async () => {
+  it("lets Manage branches decide any branch", async () => {
     (defectRepository.findById as jest.Mock).mockReset();
     (defectRepository.findById as jest.Mock)
       .mockResolvedValueOnce(pendingReport)
@@ -338,7 +342,7 @@ describe("defectService.approveDefect", () => {
     const result = await defectService.approveDefect({
       tenantId: "t1",
       actorUserId: "admin-1",
-      roleSlugs: ["super_admin"],
+      permissions: [DEFECT_APPROVE, "branches.manage"],
       reportId: "report-1",
     });
 
@@ -357,7 +361,7 @@ describe("defectService.rejectDefect", () => {
     const result = await defectService.rejectDefect({
       tenantId: "t1",
       actorUserId: "mgr-1",
-      roleSlugs: ["tl"],
+      permissions: [DEFECT_APPROVE],
       reportId: "report-1",
     });
 
@@ -394,7 +398,7 @@ describe("defectService.rejectDefect", () => {
     await defectService.rejectDefect({
       tenantId: "t1",
       actorUserId: "tl-1",
-      roleSlugs: ["tl"],
+      permissions: [DEFECT_APPROVE],
       reportId: "report-1",
     });
 

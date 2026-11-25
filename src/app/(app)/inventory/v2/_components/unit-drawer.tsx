@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import {
@@ -26,6 +26,8 @@ import {
   markBranchInventoryStatusReadAction,
   type InventoryListItem,
 } from "@/features/inventory/actions/inventory.actions";
+import { listUnitHistoryAction } from "@/features/inventory/actions/unit-history.actions";
+import type { UnitHistoryEvent } from "@/features/inventory/lib/unit-history-events";
 import { useInventoryApprovalBranchIds } from "@/features/inventory/components/inventory-unit-status-cell";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import {
@@ -86,6 +88,69 @@ function unitAfterDecision(unit: InventoryListItem, decision: DefectDecision): I
   };
 }
 
+type HistoryState = {
+  serialId: string;
+  status: "loading" | "ready" | "error";
+  events: UnitHistoryEvent[];
+  error: string | null;
+};
+
+function historyMeta(event: UnitHistoryEvent): string {
+  const when = formatInventoryStatusUpdated(event.at);
+  return event.actor ? `${event.actor} · ${when}` : when;
+}
+
+function UnitHistoryTimeline({
+  loading,
+  error,
+  events,
+}: {
+  loading: boolean;
+  error: string | null;
+  events: UnitHistoryEvent[];
+}) {
+  let body: ReactNode;
+  if (loading) {
+    body = (
+      <p className="text-sm text-muted-foreground" role="status">
+        Loading history…
+      </p>
+    );
+  } else if (error) {
+    body = (
+      <p className="text-sm text-muted-foreground" role="status">
+        {error}
+      </p>
+    );
+  } else if (events.length === 0) {
+    body = (
+      <p className="text-sm text-muted-foreground" role="status">
+        No history recorded for this unit yet.
+      </p>
+    );
+  } else {
+    body = (
+      <ol className="space-y-3 border-l border-border pl-3">
+        {events.map((event) => (
+          <li key={event.id} className="space-y-0.5">
+            <p className="text-sm">{event.label}</p>
+            <p className="text-xs text-muted-foreground">{historyMeta(event)}</p>
+          </li>
+        ))}
+      </ol>
+    );
+  }
+
+  return (
+    <section aria-label="Unit history" className="space-y-2">
+      <h2 className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+        History
+      </h2>
+      {body}
+    </section>
+  );
+}
+
 function statusChangeReason(block: BranchSerialSelectionBlock): string {
   switch (block) {
     case "defective":
@@ -115,10 +180,56 @@ export function BranchInventoryUnitDrawer({
   const approvalBranchIds = useInventoryApprovalBranchIds();
   const inventoryId = unit?.id ?? null;
   const statusCode = unit?.statusCode.code ?? null;
+  const serialId = unit?.serialNumber.id ?? null;
+  const requestedSerialId = serialId ?? "";
+  const [history, setHistory] = useState<HistoryState>({
+    serialId: requestedSerialId,
+    status: "loading",
+    events: [],
+    error: null,
+  });
   const [pendingUnitId, setPendingUnitId] = useState<string | null>(null);
   const [applied, setApplied] = useState<{ unitId: string; kind: DefectDecision } | null>(null);
   const busy = pendingUnitId != null && pendingUnitId === inventoryId;
   const decision = applied?.unitId === inventoryId ? applied.kind : null;
+
+  // Fresh loading row when the open serial changes, including close then reopen.
+  // Adjust during render so the effect never calls setState synchronously.
+  if (history.serialId !== requestedSerialId) {
+    setHistory({
+      serialId: requestedSerialId,
+      status: "loading",
+      events: [],
+      error: null,
+    });
+  }
+
+  useEffect(() => {
+    if (!serialId) return;
+    let active = true;
+    void listUnitHistoryAction(serialId).then(
+      (result) => {
+        if (!active) return;
+        if ("error" in result) {
+          setHistory({ serialId, status: "error", events: [], error: result.error });
+          return;
+        }
+        setHistory({ serialId, status: "ready", events: result.events, error: null });
+      },
+      () => {
+        if (!active) return;
+        setHistory({
+          serialId,
+          status: "error",
+          events: [],
+          error: "Could not load history.",
+        });
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [serialId]);
 
   useEffect(() => {
     if (!inventoryId || !statusCode) return;
@@ -241,6 +352,11 @@ export function BranchInventoryUnitDrawer({
                   }
                 />
               </dl>
+              <UnitHistoryTimeline
+                loading={history.serialId !== serialId || history.status === "loading"}
+                error={history.serialId === serialId ? history.error : null}
+                events={history.serialId === serialId ? history.events : []}
+              />
             </div>
 
             <SheetFooter className="flex-col gap-2 border-t px-4 py-4 sm:flex-col">

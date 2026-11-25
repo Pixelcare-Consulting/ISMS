@@ -144,7 +144,7 @@ export async function answerCopilotQuestion(input: {
   }
 
   const caps = resolveDashboardCapabilities(input.session.user.permissions);
-  const { persona, label } = resolveDashboardPersona(input.session.user.roleSlugs, caps);
+  const { persona, label } = resolveDashboardPersona(caps, input.session.user.permissions);
   const hits = searchHelpCorpus(lastUser.content, 6);
 
   try {

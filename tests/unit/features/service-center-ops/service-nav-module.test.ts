@@ -19,7 +19,7 @@ describe("Service center pages in the main menus", () => {
   });
 
   it("shows Service Center Orders under Orders", () => {
-    const entry = visibleGroup(["service_centers.orders.approve"], "Orders");
+    const entry = visibleGroup(["service_centers.orders.approve_sp"], "Orders");
     if (entry?.type !== "group") throw new Error("Orders menu is not visible");
 
     expect(flattenNavLinks(entry.items).map((link) => link.href)).toEqual([

@@ -115,7 +115,6 @@ export function isNavSubGroup(child: NavGroupChild): child is NavSubGroupItem {
 
 const OPERATIONS_DASHBOARD_PERMISSIONS = [
   "inventory.view",
-  "orders.view",
   "orders.manual.view",
   "orders.special.view",
   "orders.auto_replenish.view",
@@ -163,7 +162,7 @@ const SC_SALES_ACCESS = [
 const SC_ORDERS_ACCESS = [
   "service_centers.orders.view",
   "service_centers.orders.create",
-  "service_centers.orders.approve",
+  "service_centers.orders.approve_sp",
 ] as const;
 
 const SC_LOGISTICS_ACCESS = [
@@ -212,14 +211,14 @@ export const appNavigation: NavEntry[] = [
             label: "P-Count Dashboard",
             icon: ClipboardList,
             anyPermissions: ["inventory.view", "reports.view"],
-            badge: "new",
+            // badge: "new",
           },
           {
             href: "/dashboard/site-traffic",
             label: "Site Traffic",
             icon: Users,
             anyPermissions: ["users.manage", "audit_logs.view"],
-            badge: "new",
+            // badge: "new",
           },
           {
             href: "/competitors",
@@ -403,10 +402,18 @@ export const appNavigation: NavEntry[] = [
             href: "/logistics/transfers",
             label: "Transfers",
             icon: ArrowLeftRight,
-            // The unit-transfer permissions no longer open this page: its Unit transfers tab is
-            // hidden (see HIDDEN_TRANSFERS_PAGE_TABS). orders.create is how a PS reaches the
-            // transfers they accept.
-            anyPermissions: ["logistics.view", "logistics.create", "logistics.manage", "orders.create"],
+            // Same list as TRANSFERS_PAGE_PERMISSIONS: any Branch transfers checkbox opens it
+            // (View alone is read only), or Branch deliveries View, Create, Manage, or Receive.
+            anyPermissions: [
+              "logistics.delivery_transfer.view",
+              "logistics.delivery_transfer.create",
+              "logistics.delivery_transfer.approve",
+              "logistics.delivery_transfer.receive",
+              "logistics.view",
+              "logistics.create",
+              "logistics.manage",
+              "logistics.delivery.receive",
+            ],
             countBadgeKey: "logisticsTransfers",
             activePathPrefixes: ["/logistics/delivery-transfers"],
           },
@@ -466,7 +473,6 @@ export const appNavigation: NavEntry[] = [
             icon: ClipboardList,
             anyPermissions: [
               "reports.view",
-              "orders.view",
               "orders.manual.view",
               "orders.special.view",
               "orders.auto_replenish.view",
@@ -478,7 +484,6 @@ export const appNavigation: NavEntry[] = [
             icon: ClipboardList,
             anyPermissions: [
               "reports.view",
-              "orders.view",
               "orders.manual.view",
               "orders.special.view",
               "orders.auto_replenish.view",
@@ -490,7 +495,6 @@ export const appNavigation: NavEntry[] = [
             icon: Package,
             anyPermissions: [
               "reports.view",
-              "orders.view",
               "orders.manual.view",
               "orders.special.view",
               "orders.auto_replenish.view",
@@ -722,7 +726,6 @@ export const appNavigation: NavEntry[] = [
             icon: LayoutGrid,
             anyPermissions: ["forecast.manage", "planogram.manage"],
             exact: true,
-            badge: "new",
           },
           // DO NOT UNCOMMENT THIS, NO NEED TO SHOW IN THE NAVIGATION {
           //   href: "/settings/planning/runs",
@@ -736,7 +739,6 @@ export const appNavigation: NavEntry[] = [
             label: "Planogram",
             icon: LayoutGrid,
             anyPermissions: ["planogram.view", "planogram.manage"],
-            badge: "new",
           },
           {
             href: "/settings/ordering",
@@ -780,28 +782,26 @@ export const appNavigation: NavEntry[] = [
             label: "Branches",
             icon: MapPin,
             permission: "branches.manage",
-            badge: "new",
+            
           },
           {
             href: "/settings/warehouses",
             label: "Warehouses",
             icon: Building2,
             permission: "warehouses.manage",
-            badge: "new",
+          
           },
           {
             href: "/settings/service-centers",
             label: "Service centers",
             icon: Building2,
             permission: "service_centers.manage",
-            badge: "new",
           },
           {
             href: "/settings/dealers",
             label: "Dealers",
             icon: Store,
             permission: "dealers.manage",
-            badge: "new",
           },
         ],
       },
