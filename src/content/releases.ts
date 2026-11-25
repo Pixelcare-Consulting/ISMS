@@ -68,6 +68,33 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.98.0",
+    date: "2026-11-25",
+    releasedAt: "2026-11-25T17:00:00+08:00",
+    title: "Replaced units can be returned again",
+    highlights: [
+      "After a Service Replacement, the new unit gets its own sale on the Service Center tab and can be returned or replaced again.",
+      "SC Returns and Replacement has an ATR/ODRF column to download the form.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "When a service center finishes a Service Replacement, a new sale with the same transaction number and the new unit appears on Sales, Service Center tab. Request Return on it sends a Service Return or Service Replacement to the same service center, which finishes it in SC Returns and Replacement.",
+      },
+      {
+        type: "improvement",
+        description:
+          "SC Returns and Replacement lists an ATR/ODRF column with a Download link for each request, like branch Returns.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The model and customer name entered in Process Return now carry to the service center: the request shows that customer, the ATR/ODRF prints it, and the replacement model is already selected when the service center replaces the unit or raises a special order.",
+      },
+    ],
+  },
+  {
     version: "0.97.1",
     date: "2026-11-25",
     releasedAt: "2026-11-25T12:32:00+08:00",
