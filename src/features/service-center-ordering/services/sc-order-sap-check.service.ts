@@ -7,6 +7,7 @@ import { resolveSerials } from "@/features/logistics/services/sap-copy-to-follow
 import {
   checkFollowedDocument,
   parseFollowedDocument,
+  specialInstructionsBySerial,
   type FollowedDocument,
 } from "@/features/logistics/services/sap-copy-to-follow.planner";
 import {
@@ -167,6 +168,11 @@ async function applyDeliveryNote(
     }
 
     const deliveryNo = scDeliveryNoForDr(doc.docEntry);
+    const instructionsBySerial = specialInstructionsBySerial(doc);
+    const lineData = [...idBySerial].map(([serialNo, serialNumberId]) => ({
+      serialNumberId,
+      sapSpecialInstructions: instructionsBySerial.get(serialNo) ?? null,
+    }));
     const delivery = await tx.serviceCenterDelivery.create({
       data: {
         tenantId,
@@ -179,7 +185,7 @@ async function applyDeliveryNote(
         sapDocNum: doc.docNum,
         sapDocNo: doc.displayNo,
         sapDocDate: doc.docDate ? new Date(doc.docDate) : null,
-        lines: { createMany: { data: serialIds.map((serialNumberId) => ({ serialNumberId })) } },
+        lines: { createMany: { data: lineData } },
       },
       select: { id: true },
     });
