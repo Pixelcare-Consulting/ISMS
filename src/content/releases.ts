@@ -68,6 +68,92 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.97.1",
+    date: "2026-11-25",
+    releasedAt: "2026-11-25T12:32:00+08:00",
+    title: "SAP special instructions on replacement units",
+    highlights: [
+      "Picking a Service Replacement unit shows the special instruction typed in SAP beside its serial number.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "On SC Returns and Replacement, the replacement serial list shows each unit as serial number, then the special instruction from its SAP delivery (for example SN123-For SI 0012). The instruction is read when Check SAP brings in the delivery. Units with no instruction show only the serial number.",
+      },
+    ],
+  },
+  {
+    version: "0.97.0",
+    date: "2026-11-24",
+    releasedAt: "2026-11-24T22:18:00+08:00",
+    title: "Each workflow step has its own checkbox",
+    highlights: [
+      "Access is set only by the checkboxes on Settings, Roles.",
+      "Each approval step has its own checkbox, named after the step.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Roles has a checkbox for each workflow step, such as Supply Planning approval and Team Leader approval of an order, editing a pending order, approving a defect, and Monthly SIR uploads. Ticking a box gives that step to the role, whatever its name.",
+      },
+      {
+        type: "feature",
+        description:
+          "Branch transfers has a View checkbox, so a role such as Accounting can open transfers without approving or receiving them.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Every button now follows only its own checkbox. Unticking a box removes the button, even when the role has other access in the same module.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Pull-out Approve follows only the pull-out Approve checkbox.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The service center orders Approve checkbox is gone from Roles. Service center orders are approved through the Supply Planning approval checkbox.",
+      },
+    ],
+  },
+  {
+    version: "0.96.0",
+    date: "2026-11-24",
+    releasedAt: "2026-11-24T17:18:00+08:00",
+    title: "Cancel approved orders and pull-outs",
+    highlights: [
+      "Supply Planning can cancel an approved order, and ISMS closes its ITR or SO in SAP.",
+      "An approved pull-out can be cancelled, and ISMS stops its IT or Return in SAP.",
+      "Search pull-outs by serial number.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Approved branch and service center orders have Cancel order. ISMS closes the ITR or SO in SAP first, then cancels the order. It is refused once SAP has an IT or DR made from the order.",
+      },
+      {
+        type: "feature",
+        description:
+          "Approved pull-outs have Cancel, for branches and service centers. Before Send, the units go back to STK or DEF. After Send, a linked IT is cancelled in SAP and its units go back to STK or DEF, and a linked Return is closed in SAP while its units stay Pulled out. Nothing changes if a SAP document also holds other units or is not linked yet.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Pull-outs search finds a pull-out by serial number on every page, for branches and service centers.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Cancelling a service center order raised for a Service Replacement sends the request back to the service center.",
+      },
+    ],
+  },
+  {
     version: "0.95.25",
     date: "2026-11-24",
     releasedAt: "2026-11-24T17:50:00+08:00",
