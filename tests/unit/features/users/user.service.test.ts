@@ -16,7 +16,8 @@ jest.mock("@/features/users/repositories/user.repository", () => ({
     update: jest.fn(),
     updatePasswordHash: jest.fn(),
     deleteSessions: jest.fn(),
-    setDisabledAt: jest.fn(),
+    disable: jest.fn(),
+    enable: jest.fn(),
     softDelete: jest.fn(),
     restore: jest.fn(),
   },
@@ -56,7 +57,8 @@ const assignRole = userRepository.assignRole as jest.Mock;
 const setRoles = userRepository.setRoles as jest.Mock;
 const update = userRepository.update as jest.Mock;
 const deleteSessions = userRepository.deleteSessions as jest.Mock;
-const setDisabledAt = userRepository.setDisabledAt as jest.Mock;
+const disable = userRepository.disable as jest.Mock;
+const enable = userRepository.enable as jest.Mock;
 const softDelete = userRepository.softDelete as jest.Mock;
 const restore = userRepository.restore as jest.Mock;
 
@@ -220,7 +222,8 @@ describe("userService sessions and access", () => {
       userRoles: [{ role: { slug: "cashier" } }],
     });
     deleteSessions.mockResolvedValue(1);
-    setDisabledAt.mockResolvedValue({});
+    disable.mockResolvedValue({});
+    enable.mockResolvedValue({});
     softDelete.mockResolvedValue({});
   });
 
@@ -290,7 +293,7 @@ describe("userService sessions and access", () => {
       }),
     ).rejects.toThrow("This user cannot be disabled");
 
-    expect(setDisabledAt).not.toHaveBeenCalled();
+    expect(disable).not.toHaveBeenCalled();
     expect(deleteSessions).not.toHaveBeenCalled();
   });
 
@@ -301,22 +304,18 @@ describe("userService sessions and access", () => {
       userId: "user-1",
     });
 
-    expect(setDisabledAt).toHaveBeenCalledWith(
-      "tenant-1",
-      "user-1",
-      expect.any(Date),
-    );
+    expect(disable).toHaveBeenCalledWith("tenant-1", "user-1");
     expect(deleteSessions).toHaveBeenCalledWith("user-1");
   });
 
-  it("clears disabledAt when an account is enabled", async () => {
+  it("enables an account through the repo method that restarts its idle clock", async () => {
     await userService.enableUser({
       tenantId: "tenant-1",
       actorUserId: "actor-1",
       userId: "user-1",
     });
 
-    expect(setDisabledAt).toHaveBeenCalledWith("tenant-1", "user-1", null);
+    expect(enable).toHaveBeenCalledWith("tenant-1", "user-1");
     expect(deleteSessions).not.toHaveBeenCalled();
   });
 });

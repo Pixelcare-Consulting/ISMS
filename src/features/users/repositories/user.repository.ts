@@ -147,15 +147,29 @@ export const userRepository = {
         departmentId: data.departmentId ?? null,
         deletedAt: null,
         disabledAt: null,
+        // Fresh idle clock, or the idle-accounts cron turns a long-quiet account straight back off.
+        lastActiveAt: new Date(),
         mustChangePassword: false,
       },
     });
   },
 
-  setDisabledAt(tenantId: string, id: string, disabledAt: Date | null) {
+  disable(tenantId: string, id: string) {
     return prisma.user.update({
       where: { id, tenantId },
-      data: { disabledAt },
+      data: { disabledAt: new Date() },
+    });
+  },
+
+  /**
+   * Turns the account on and restarts its 7-day idle clock. Without the reset, an account
+   * that was quiet for over 7 days (or never signed in) is disabled again on the next
+   * idle-accounts cron run, minutes after an admin enabled it.
+   */
+  enable(tenantId: string, id: string) {
+    return prisma.user.update({
+      where: { id, tenantId },
+      data: { disabledAt: null, lastActiveAt: new Date() },
     });
   },
 

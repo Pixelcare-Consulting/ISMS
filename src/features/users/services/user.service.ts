@@ -343,7 +343,7 @@ export const userService = {
       throw new Error(denied);
     }
 
-    await userRepository.setDisabledAt(input.tenantId, input.userId, new Date());
+    await userRepository.disable(input.tenantId, input.userId);
     const cleared = await userRepository.deleteSessions(user.id);
 
     await auditService.log({
@@ -367,7 +367,7 @@ export const userService = {
       throw new Error("User not found");
     }
 
-    await userRepository.setDisabledAt(input.tenantId, input.userId, null);
+    await userRepository.enable(input.tenantId, input.userId);
 
     await auditService.log({
       tenantId: input.tenantId,
