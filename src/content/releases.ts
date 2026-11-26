@@ -68,6 +68,34 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.98.1",
+    date: "2026-11-25",
+    releasedAt: "2026-11-25T17:30:00+08:00",
+    title: "One brand on a new order",
+    highlights: [
+      "A new Manual or Special order opens on Devant, and the order is for that one brand.",
+      "You cannot start a second order for the same branch and brand while one is still open.",
+      "Mode of payment on a new order comes from the dealer.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "The model list on a new order opens on Devant. If that branch has no Devant models, it opens on the first brand. Quantities, totals, and extra items stay with the brand you selected.",
+      },
+      {
+        type: "improvement",
+        description:
+          "If that branch and brand already have an order that is not yet approved, rejected, or cancelled, creating another one is blocked until that order is finished. This includes an auto replenish order.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Mode of payment is taken from the dealer and stays with that dealer. If the dealer has none, set it on the dealer before continuing.",
+      },
+    ],
+  },
+  {
     version: "0.98.0",
     date: "2026-11-25",
     releasedAt: "2026-11-25T17:00:00+08:00",

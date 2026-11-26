@@ -1,4 +1,5 @@
 import {
+  defaultCreateOrderBrandId,
   paginateWorksheetLines,
   requestedLinesFirst,
   visibleWorksheetLines,
@@ -167,5 +168,31 @@ describe("Supply Planning approvals beyond the request", () => {
     expect(worksheetLineTag(line(0, 2))).toBe("Added");
     expect(worksheetLineTag(line(0, 0))).toBeNull();
     expect(worksheetLineTag(line(0, null))).toBeNull();
+  });
+});
+
+describe("defaultCreateOrderBrandId", () => {
+  const brands = [
+    { id: "lg", name: "LG" },
+    { id: "devant", name: "Devant" },
+    { id: "sony", name: "Sony" },
+  ];
+
+  it("chooses Devant when that brand is on the list", () => {
+    expect(defaultCreateOrderBrandId(brands)).toBe("devant");
+    expect(defaultCreateOrderBrandId([{ id: "devant", name: "DEVANT" }, ...brands.slice(0, 1)])).toBe(
+      "devant",
+    );
+  });
+
+  it("chooses the first brand when Devant is not on the list", () => {
+    expect(
+      defaultCreateOrderBrandId([
+        { id: "lg", name: "LG" },
+        { id: "sony", name: "Sony" },
+        { id: "proche", name: "Devant Pro" },
+      ]),
+    ).toBe("lg");
+    expect(defaultCreateOrderBrandId([])).toBe("");
   });
 });

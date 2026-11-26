@@ -45,6 +45,11 @@ import type {
 } from "@/features/orders/repositories/order.repository";
 import { manualSpecialQueueStatusKeys } from "@/features/orders/lib/manual-special-order-scope";
 import {
+  MISSING_ORDER_BRAND_MESSAGE,
+  MIXED_ORDER_BRAND_MESSAGE,
+  openBranchBrandOrderMessage,
+} from "@/features/orders/lib/open-branch-brand-order";
+import {
   hasQueryableTypeScopes,
   type OrderTypeScope,
 } from "@/features/orders/lib/order-scope-where";
@@ -274,6 +279,49 @@ async function notifyOrderStep(input: {
         }),
       ),
   );
+}
+
+function isManualOrSpecialOrder(orderType: BranchOrderType): boolean {
+  switch (orderType) {
+    case "manual":
+    case "special":
+      return true;
+    case "auto_replenish":
+      return false;
+    default: {
+      const _exhaustive: never = orderType;
+      return _exhaustive;
+    }
+  }
+}
+
+/** Manual and Special are one brand, and cannot start while that brand already has an open order. */
+async function assertManualSpecialCreateBrand(
+  tenantId: string,
+  data: {
+    orderType: BranchOrderType;
+    branchId: string;
+    brandId?: string | null;
+    details: { modelId: string }[];
+  },
+): Promise<void> {
+  if (!isManualOrSpecialOrder(data.orderType)) return;
+
+  const brandId = data.brandId?.trim() ?? "";
+  if (!brandId) throw new Error(MISSING_ORDER_BRAND_MESSAGE);
+
+  for (const line of data.details) {
+    const model = await masterDataRepository.findModel(tenantId, line.modelId);
+    if (!model) throw new Error(`Model not found: ${line.modelId}`);
+    if (model.brandId !== brandId) throw new Error(MIXED_ORDER_BRAND_MESSAGE);
+  }
+
+  const open = await orderRepository.findOpenOrderForBranchBrand(
+    tenantId,
+    data.branchId,
+    brandId,
+  );
+  if (open) throw new Error(openBranchBrandOrderMessage(open));
 }
 
 function pendingApprovalEmail(status: BranchOrderStatus, orderType: BranchOrderType) {
@@ -509,6 +557,8 @@ export const orderService = {
         );
       }
     }
+
+    await assertManualSpecialCreateBrand(tenantId, data);
 
     const [policy, scheduleCtx] = await Promise.all([
       orderingPolicyService.getPolicy(tenantId),

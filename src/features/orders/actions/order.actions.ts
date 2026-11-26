@@ -26,6 +26,7 @@ import { masterDataRepository } from "@/features/master-data/repositories/master
 import { orderingPolicyService } from "@/features/ordering/services/ordering-policy.service";
 import { SapOrderPostRejectedError } from "@/features/orders/lib/sap-order-rejection";
 import { checkOrderingAllowed } from "@/features/orders/utils/order-window";
+import type { OpenBranchBrandOrder } from "@/features/orders/lib/open-branch-brand-order";
 import {
   anyOrderTypePermissions,
   hasAnyOrderPermission,
@@ -358,6 +359,28 @@ export async function checkOrderWindowAction(
       : null,
   });
   return { blocked: reason !== null, reason };
+}
+
+/** Open order for this branch and brand, if one would block a new Manual or Special order. */
+export async function findOpenBranchBrandOrderAction(input: {
+  branchId: string;
+  brandId: string;
+  orderType: "manual" | "special";
+}): Promise<{ success: true; order: OpenBranchBrandOrder | null } | { error: string }> {
+  const session = await requireOrderTypePermission(input.orderType, "create");
+  const branchId = input.branchId.trim();
+  const brandId = input.brandId.trim();
+  if (!branchId || !brandId) return { success: true, order: null };
+  try {
+    const order = await orderRepository.findOpenOrderForBranchBrand(
+      session.user.tenantId,
+      branchId,
+      brandId,
+    );
+    return { success: true, order };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Could not check open orders" };
+  }
 }
 
 export async function listOrderSuggestionsAction(input: {

@@ -40,6 +40,7 @@ import { formatPeso } from "@/utils/format-currency";
 import {
   checkOrderWindowAction,
   createOrderAction,
+  findOpenBranchBrandOrderAction,
   listActiveDealersForOrderAction,
   listBranchesForOrderAction,
   listModesOfPaymentForOrderAction,
@@ -62,9 +63,15 @@ import {
 } from "@/features/orders/lib/order-party";
 import { worksheetFiguresForBrand } from "@/features/orders/lib/order-worksheet";
 import {
+  defaultCreateOrderBrandId,
   planogramBrandOptions,
   worksheetOrderTotals,
 } from "@/features/orders/lib/order-worksheet-filters";
+import {
+  isOpenBranchBrandOrderMessage,
+  OPEN_BRANCH_BRAND_ORDER_TITLE,
+  openBranchBrandOrderMessage,
+} from "@/features/orders/lib/open-branch-brand-order";
 import { formatWorksheetCbm } from "@/features/orders/lib/order-worksheet-metrics";
 import {
   EMPTY_WORKSHEET_DRAFT,
@@ -87,6 +94,14 @@ const SPECIAL_ORDER_NOTICE =
   "This order is Special because it has items that are not on the shelf plan. Supply Planning approves it. Remove those items to make it Manual again.";
 
 type CreatableOrderType = "manual" | "special";
+
+/** Result of the open-order lookup for one branch, brand, and base type. */
+interface OpenOrderLookup {
+  branchId: string;
+  brandId: string;
+  orderType: CreatableOrderType;
+  message: string | null;
+}
 
 interface SpecialModelOption {
   id: string;
@@ -157,7 +172,7 @@ function confirmCopy(pending: PendingConfirm): { title: string; description: str
       return {
         title: "Clear the lines on this order?",
         description:
-          "Changing the mode of payment, dealer, or branch clears quantities and extra items. The note and attachments for this order stay.",
+          "Changing the dealer or branch clears quantities and extra items. The note and attachments for this order stay.",
         action: "Continue",
       };
     case "leave":
@@ -214,6 +229,8 @@ export function CreateOrderForm({
   const [additionalIds, setAdditionalIds] = useState<string[]>([]);
   const [removedIds, setRemovedIds] = useState<string[]>([]);
   const [brandId, setBrandId] = useState("");
+  const [openOrderLookup, setOpenOrderLookup] = useState<OpenOrderLookup | null>(null);
+  const [openOrderDialogOpen, setOpenOrderDialogOpen] = useState(false);
   const [windowBlock, setWindowBlock] = useState<string | null>(null);
   const [catalog, setCatalog] = useState<SpecialModelOption[]>([]);
   const [additionalOpen, setAdditionalOpen] = useState(false);
@@ -222,10 +239,49 @@ export function CreateOrderForm({
   const additionalKey = additionalIds.join("\n");
   /** Manual unless the user may only create special orders. Lookups use it for permissions. */
   const baseType: CreatableOrderType = canCreateManual ? "manual" : "special";
-  // The order type follows the lines: an off-plan (additional) item makes it Special,
-  // removing the last one makes it Manual again. Entered quantities are kept either way.
-  const hasAdditionalItem =
-    additionalIds.length > 0 || Object.values(drafts).some((draft) => draft?.additionalItem);
+  const sheetLines = useMemo(() => {
+    if (!worksheet) return [];
+    const removed = new Set(removedIds);
+    return worksheet.lines.filter((line) => !removed.has(line.modelId));
+  }, [removedIds, worksheet]);
+  // One brand. Devant when this branch has it; otherwise the first planogram brand.
+  const activeBrandId = useMemo(() => {
+    if (!worksheet) return "";
+    const options = planogramBrandOptions(worksheet.brands, sheetLines);
+    if (options.some((brand) => brand.id === brandId)) return brandId;
+    return defaultCreateOrderBrandId(options);
+  }, [brandId, sheetLines, worksheet]);
+  // Idle when branch or brand is missing: nothing to look up, so this is not a check
+  // and it does not keep a previous selection's dialog on screen.
+  const openOrderLookupCurrent =
+    openOrderLookup !== null &&
+    openOrderLookup.branchId === branchId &&
+    openOrderLookup.brandId === activeBrandId &&
+    openOrderLookup.orderType === baseType
+      ? openOrderLookup
+      : null;
+  const checkingOpenOrder = Boolean(branchId && activeBrandId) && openOrderLookupCurrent === null;
+  const openOrderMessage = openOrderLookupCurrent?.message ?? null;
+  const brandByModelId = useMemo(() => {
+    const brands = new Map<string, string | null>();
+    for (const line of worksheet?.lines ?? []) brands.set(line.modelId, line.brandId);
+    for (const model of catalog) {
+      if (!brands.has(model.id)) brands.set(model.id, model.brandId);
+    }
+    return brands;
+  }, [catalog, worksheet]);
+  // An off-plan item of the selected brand makes the order Special. Other brands do not.
+  const hasAdditionalItem = useMemo(() => {
+    if (!activeBrandId) return false;
+    const ids = new Set(additionalIds);
+    for (const [modelId, draft] of Object.entries(drafts)) {
+      if (draft?.additionalItem) ids.add(modelId);
+    }
+    for (const modelId of ids) {
+      if (brandByModelId.get(modelId) === activeBrandId) return true;
+    }
+    return false;
+  }, [activeBrandId, additionalIds, brandByModelId, drafts]);
   const orderType: CreatableOrderType =
     hasAdditionalItem && canCreateSpecial ? "special" : baseType;
   const branchIdRef = useRef(branchId);
@@ -237,47 +293,43 @@ export function CreateOrderForm({
     if (!worksheet) return [];
     return projectWorksheetLines(worksheet.lines, drafts, orderType, "create");
   }, [drafts, orderType, worksheet]);
-  const createDetails = useMemo(
-    () => buildOrderCreateDetails(projectedLines, new Set(removedIds)),
-    [projectedLines, removedIds],
+  const brandProjectedLines = useMemo(
+    () =>
+      activeBrandId ? projectedLines.filter((line) => line.brandId === activeBrandId) : [],
+    [activeBrandId, projectedLines],
   );
-  const sheetLines = useMemo(() => {
-    if (!worksheet) return [];
-    const removed = new Set(removedIds);
-    return worksheet.lines.filter((line) => !removed.has(line.modelId));
-  }, [removedIds, worksheet]);
-  // A brand whose last line was removed falls back to all brands.
-  const activeBrandId = useMemo(() => {
-    if (!worksheet) return "";
-    const options = planogramBrandOptions(worksheet.brands, sheetLines);
-    return options.some((brand) => brand.id === brandId) ? brandId : "";
-  }, [brandId, sheetLines, worksheet]);
-  // Uses every loaded line: removing a model from the order leaves its stock at the branch.
+  const createDetails = useMemo(
+    () => buildOrderCreateDetails(brandProjectedLines, new Set(removedIds)),
+    [brandProjectedLines, removedIds],
+  );
+  // Removed models stay in this list so their stock still counts for the selected brand.
   const planningFigures = useMemo(() => {
-    if (!worksheet) return null;
+    if (!worksheet || !activeBrandId) return null;
     return worksheetFiguresForBrand({
-      lines: projectedLines,
+      lines: brandProjectedLines,
       brandId: activeBrandId,
       brandQuotas: worksheet.brandQuotas,
       daysElapsed: worksheet.summary.daysElapsed,
     });
-  }, [activeBrandId, projectedLines, worksheet]);
-  const asideLines = useMemo(
-    () => projectWorksheetLines(sheetLines, drafts, orderType, "create"),
-    [drafts, orderType, sheetLines],
-  );
+  }, [activeBrandId, brandProjectedLines, worksheet]);
+  const asideLines = useMemo(() => {
+    const lines = activeBrandId
+      ? sheetLines.filter((line) => line.brandId === activeBrandId)
+      : [];
+    return projectWorksheetLines(lines, drafts, orderType, "create");
+  }, [activeBrandId, drafts, orderType, sheetLines]);
   const asideTotals = useMemo(
     () => worksheetOrderTotals(asideLines, { includeApproved: false }),
     [asideLines],
   );
   const submitLines = useMemo(() => {
     const quantityByModel = new Map(createDetails.map((line) => [line.modelId, line.quantity]));
-    return projectedLines.flatMap((line) => {
+    return brandProjectedLines.flatMap((line) => {
       const quantity = quantityByModel.get(line.modelId);
       if (quantity == null || quantity < 1) return [];
       return [{ skuCode: line.skuCode, quantity }];
     });
-  }, [createDetails, projectedLines]);
+  }, [brandProjectedLines, createDetails]);
   const submitQuantity = submitLines.reduce((sum, line) => sum + line.quantity, 0);
 
   const modeOfPayment = modesOfPayment.find((mode) => mode.id === modeOfPaymentId) ?? null;
@@ -520,10 +572,49 @@ export function CreateOrderForm({
     };
   }, [branchId, canCreateSpecial]);
 
+  useEffect(() => {
+    if (!branchId || !activeBrandId) return;
+    let cancelled = false;
+    const requestedBranchId = branchId;
+    const requestedBrandId = activeBrandId;
+    const requestedOrderType = baseType;
+    void findOpenBranchBrandOrderAction({
+      branchId: requestedBranchId,
+      brandId: requestedBrandId,
+      orderType: requestedOrderType,
+    }).then((result) => {
+      if (cancelled) return;
+      if ("error" in result) {
+        toast.error(result.error);
+        setOpenOrderLookup({
+          branchId: requestedBranchId,
+          brandId: requestedBrandId,
+          orderType: requestedOrderType,
+          message: null,
+        });
+        return;
+      }
+      const message = result.order ? openBranchBrandOrderMessage(result.order) : null;
+      setOpenOrderLookup({
+        branchId: requestedBranchId,
+        brandId: requestedBrandId,
+        orderType: requestedOrderType,
+        message,
+      });
+      if (message) setOpenOrderDialogOpen(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeBrandId, baseType, branchId]);
+
   const addableModels = useMemo(() => {
+    if (!activeBrandId) return [];
     const onSheet = new Set(sheetLines.map((line) => line.modelId));
-    return catalog.filter((model) => !onSheet.has(model.id));
-  }, [catalog, sheetLines]);
+    return catalog.filter(
+      (model) => !onSheet.has(model.id) && model.brandId === activeBrandId,
+    );
+  }, [activeBrandId, catalog, sheetLines]);
 
   function updateDraft(modelId: string, patch: Partial<WorksheetDraftInput>) {
     setTouched(true);
@@ -633,10 +724,12 @@ export function CreateOrderForm({
 
   function submit() {
     if (submitStarted.current || pending || attachmentUploading) return;
-    if (!worksheet || createDetails.length === 0) return;
+    if (!worksheet || !activeBrandId || createDetails.length === 0 || openOrderMessage) return;
     submitStarted.current = true;
     const orderedIds = new Set(createDetails.map((line) => line.modelId));
-    const zeroSrp = projectedLines.filter((line) => orderedIds.has(line.modelId) && line.srp <= 0);
+    const zeroSrp = brandProjectedLines.filter(
+      (line) => orderedIds.has(line.modelId) && line.srp <= 0,
+    );
     startTransition(async () => {
       if (zeroSrp.length > 0) {
         const labels = zeroSrp.map((line) => line.skuCode).join(", ");
@@ -650,6 +743,7 @@ export function CreateOrderForm({
       const result = await createOrderAction({
         branchId,
         orderType,
+        brandId: activeBrandId,
         modeOfPaymentId: modeOfPaymentId || null,
         notes: notes.trim() || undefined,
         attachments:
@@ -660,6 +754,16 @@ export function CreateOrderForm({
       if (waitMs > 0) await delay(waitMs);
       if (result.error) {
         submitStarted.current = false;
+        if (isOpenBranchBrandOrderMessage(result.error)) {
+          setOpenOrderLookup({
+            branchId,
+            brandId: activeBrandId,
+            orderType: baseType,
+            message: result.error,
+          });
+          setOpenOrderDialogOpen(true);
+          return;
+        }
         toast.error(result.error);
         return;
       }
@@ -681,6 +785,9 @@ export function CreateOrderForm({
     attachmentUploading ||
     !typeAllowed ||
     !loaded ||
+    !activeBrandId ||
+    checkingOpenOrder ||
+    openOrderMessage !== null ||
     partyBlock !== null ||
     windowBlock !== null ||
     loadingWorksheet ||
@@ -936,6 +1043,20 @@ export function CreateOrderForm({
         />
       ) : null}
       <AlertDialog
+        open={openOrderDialogOpen && openOrderMessage != null}
+        onOpenChange={setOpenOrderDialogOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{OPEN_BRANCH_BRAND_ORDER_TITLE}</AlertDialogTitle>
+            <AlertDialogDescription>{openOrderMessage}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction>OK</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
         open={pendingConfirm !== null}
         onOpenChange={(open) => {
           if (!open) setPendingConfirm(null);
@@ -1063,14 +1184,10 @@ export function CreateOrderSetupDialog({
   // the user may create, for their permission checks.
   const draftType: CreatableOrderType = canCreateManual ? "manual" : "special";
   const [draftBranchId, setDraftBranchId] = useState(initialBranchId);
-  const [draftPaymentId, setDraftPaymentId] = useState(initialModeOfPaymentId);
   const [dealers, setDealers] = useState<OrderDealerOption[]>([]);
   const [branches, setBranches] = useState<OrderBranchOption[]>([]);
   const [modesOfPayment, setModesOfPayment] = useState<OrderModeOfPaymentOption[]>([]);
   const [loaded, setLoaded] = useState(false);
-
-  const modeOfPayment = modesOfPayment.find((mode) => mode.id === draftPaymentId) ?? null;
-  const paymentKind = modeOfPayment?.kind ?? null;
 
   useEffect(() => {
     if (!open) {
@@ -1080,9 +1197,8 @@ export function CreateOrderSetupDialog({
     if (wasOpen.current) return;
     wasOpen.current = true;
     setDraftBranchId(initialBranchId);
-    setDraftPaymentId(initialModeOfPaymentId);
     setLoaded(false);
-  }, [initialBranchId, initialModeOfPaymentId, open]);
+  }, [initialBranchId, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -1108,42 +1224,49 @@ export function CreateOrderSetupDialog({
 
   const branch = branches.find((option) => option.id === draftBranchId) ?? null;
   const dealer = branchDealer(branch, dealers);
+  // A new branch fills mode of payment from its dealer. There is no per-order override.
+  // Until the branch list has loaded, keep the payment this dialog opened with.
+  const draftPaymentId =
+    open && loaded
+      ? defaultModeOfPaymentId(dealer, modesOfPayment)
+      : initialModeOfPaymentId;
+  const modeOfPayment = modesOfPayment.find((mode) => mode.id === draftPaymentId) ?? null;
+  const paymentKind = modeOfPayment?.kind ?? null;
   const dealerById = useMemo(
     () => new Map(dealers.map((row) => [row.id, row.name])),
     [dealers],
   );
   const dealerDefaultPaymentId = defaultModeOfPaymentId(dealer, modesOfPayment);
-  const partyBlock = orderPartyBlock({ kind: paymentKind, branch });
+  const paymentFromDealer = Boolean(dealerDefaultPaymentId);
+  const partyBlock =
+    branch && paymentFromDealer ? orderPartyBlock({ kind: paymentKind, branch }) : null;
   const typeAllowed = canCreateManual || canCreateSpecial;
-  const canContinue = loaded && typeAllowed && partyBlock === null;
+  const canContinue =
+    loaded && typeAllowed && Boolean(draftBranchId) && paymentFromDealer && partyBlock === null;
+  const paymentLabel = modeOfPayment
+    ? `${modeOfPayment.name}${paymentKind ? ` (${MODE_OF_PAYMENT_KIND_LABELS[paymentKind]})` : ""}`
+    : "Not set";
+  const paymentNote = !branch
+    ? null
+    : !dealer
+      ? "This branch has no dealer. Set the dealer and its mode of payment before creating an order."
+      : !paymentFromDealer
+        ? `${dealer.name} has no mode of payment set. Set it on the dealer.`
+        : "From the dealer.";
 
   function continueWithChoice() {
+    if (!dealerDefaultPaymentId) return;
     onContinue({
       dealerId: paymentKind === "CONSIGNMENT" ? (branch?.dealerId ?? "") : "",
       branchId: draftBranchId,
-      modeOfPaymentId: draftPaymentId,
+      modeOfPaymentId: dealerDefaultPaymentId,
     });
   }
 
-  // A new branch brings its dealer's mode of payment; the user may still change it after.
   function changeBranch(next: string) {
     if (next === draftBranchId) return;
     setDraftBranchId(next);
-    const nextBranch = branches.find((option) => option.id === next) ?? null;
-    setDraftPaymentId(defaultModeOfPaymentId(branchDealer(nextBranch, dealers), modesOfPayment));
   }
-
-  const paymentHint = !branch
-    ? undefined
-    : !dealerDefaultPaymentId
-      ? dealer
-        ? `${dealer.name} has no mode of payment set. Choose one for this order.`
-        : "This branch has no dealer. Choose a mode of payment for this order."
-      : draftPaymentId === dealerDefaultPaymentId
-        ? "From the dealer. You can change it for this order."
-        : `Changed for this order. The dealer's is ${
-            modesOfPayment.find((mode) => mode.id === dealerDefaultPaymentId)?.name ?? "another mode"
-          }.`;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1151,8 +1274,7 @@ export function CreateOrderSetupDialog({
         <DialogHeader>
           <DialogTitle>Create order</DialogTitle>
           <DialogDescription>
-            Choose the branch. Its dealer and mode of payment fill in, and you can change the
-            mode of payment.
+            Choose the branch. Its dealer and mode of payment fill in from the dealer.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -1182,22 +1304,9 @@ export function CreateOrderSetupDialog({
                 <>
                   <OrderReadout label="Dealer" value={dealer?.name ?? "No dealer"} />
                   <div className="space-y-1.5">
-                    <SearchableSelect
-                      label="Mode of payment"
-                      className="w-full"
-                      options={modesOfPayment.map((mode) => ({
-                        id: mode.id,
-                        label: mode.name,
-                        description: mode.kind ? MODE_OF_PAYMENT_KIND_LABELS[mode.kind] : undefined,
-                      }))}
-                      value={draftPaymentId}
-                      onChange={setDraftPaymentId}
-                      placeholder="Select mode of payment…"
-                      searchPlaceholder="Search modes of payment…"
-                      emptyMessage="No mode of payment has a type yet. Set one in Settings, Master data."
-                    />
-                    {paymentHint ? (
-                      <p className="text-xs leading-relaxed text-muted-foreground">{paymentHint}</p>
+                    <OrderReadout label="Mode of payment" value={paymentLabel} />
+                    {paymentNote ? (
+                      <p className="text-xs leading-relaxed text-muted-foreground">{paymentNote}</p>
                     ) : null}
                   </div>
                   {paymentKind === "OUTRIGHT" && branch.bpCode ? (
