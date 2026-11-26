@@ -4,7 +4,10 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import type { SaleDetailsPayload } from "@/app/(app)/sales/_components/sale-details-dialog";
-import { useSalesEditSource } from "@/app/(app)/sales/_components/sales-source";
+import {
+  useSalesProcessReturn,
+  useSalesSource,
+} from "@/app/(app)/sales/_components/sales-source";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -48,6 +51,9 @@ type LookupOption = { id: string; name: string };
 const SERVICE_NEXT_STEP =
   "The sale is copied to the selected service center, and the unit goes there as Reserve ODRF. The service center finishes the request in SC Returns and Replacement.";
 
+const SELLER_FINISHES_NEXT_STEP =
+  "The unit is Reserve ODRF at this service center, which finishes the request in SC Returns and Replacement.";
+
 type ProcessReturnDialogProps = {
   sale: SaleDetailsPayload;
   /** Sale line targeted for this return / replacement. */
@@ -77,7 +83,9 @@ export function ProcessReturnDialog({
   onOpenChange,
   onSubmitted,
 }: ProcessReturnDialogProps) {
-  const { processReturn } = useSalesEditSource();
+  const processReturn = useSalesProcessReturn();
+  const { copy } = useSalesSource();
+  const sellerFinishes = processReturn.sellerFinishes === true;
   const [pending, startTransition] = useTransition();
   const [loading, setLoading] = useState(true);
   const [confirmAction, setConfirmAction] = useState<
@@ -135,7 +143,12 @@ export function ProcessReturnDialog({
       try {
         const lookups = await processReturn.listLookups();
         if (cancelled) return;
-        setDocumentTypes(lookups.documentTypes);
+        // SC sales only take Service Return / Replacement.
+        setDocumentTypes(
+          sellerFinishes
+            ? lookups.documentTypes.filter((d) => isServiceDocumentTypeName(d.name))
+            : lookups.documentTypes,
+        );
         setProblems(lookups.problemDescriptions);
         setServiceCenters(lookups.serviceCenters);
         setModels(lookups.models);
@@ -149,7 +162,7 @@ export function ProcessReturnDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, processReturn]);
+  }, [open, processReturn, sellerFinishes]);
 
   function toggleProblem(id: string) {
     setProblemIds((prev) =>
@@ -162,7 +175,7 @@ export function ProcessReturnDialog({
     if (!documentTypeId) return "Document type is required";
     if (!stockStatusCode) return "Stock status is required";
     if (problemIds.length === 0) return "Select at least one problem description";
-    if (showServiceExtras && !serviceCenterId) {
+    if (showServiceExtras && !sellerFinishes && !serviceCenterId) {
       return "Service center is required for Service Return";
     }
     return null;
@@ -186,7 +199,9 @@ export function ProcessReturnDialog({
   }
 
   function approvalNote(documentTypeName: string | null | undefined): string {
-    if (isServiceDocumentTypeName(documentTypeName)) return SERVICE_NEXT_STEP;
+    if (isServiceDocumentTypeName(documentTypeName)) {
+      return sellerFinishes ? SELLER_FINISHES_NEXT_STEP : SERVICE_NEXT_STEP;
+    }
     if (isDealerInitiatedDocumentTypeName(documentTypeName)) {
       return "This request waits for the Team Leader Approval.";
     }
@@ -206,7 +221,7 @@ export function ProcessReturnDialog({
       actionType,
       problemDescriptionIds: problemIds,
       serviceCenterId:
-        showServiceExtras ? serviceCenterId || null : null,
+        showServiceExtras && !sellerFinishes ? serviceCenterId || null : null,
       classification: showServiceExtras ? classification || null : null,
       serviceModelId: showServiceExtras ? serviceModelId || null : null,
       customerDealerBranch: showServiceExtras
@@ -263,7 +278,7 @@ export function ProcessReturnDialog({
                 <dd className="font-mono font-medium">{sale.transactionNo}</dd>
               </div>
               <div className="flex justify-between gap-2 sm:block">
-                <dt className="text-xs text-muted-foreground">Branch</dt>
+                <dt className="text-xs text-muted-foreground">{copy.soldDetail}</dt>
                 <dd>{sale.branch.name}</dd>
               </div>
               <div className="flex justify-between gap-2 sm:block">
@@ -319,18 +334,20 @@ export function ProcessReturnDialog({
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Service Return
                   </p>
-                  <SearchableSelect
-                    label="Service Center *"
-                    options={serviceCenters.map((s) => ({
-                      id: s.id,
-                      label: s.name,
-                    }))}
-                    value={serviceCenterId}
-                    onChange={setServiceCenterId}
-                    placeholder="Select service center…"
-                    disabled={pending}
-                    popoverClassName="z-70"
-                  />
+                  {sellerFinishes ? null : (
+                    <SearchableSelect
+                      label="Service Center *"
+                      options={serviceCenters.map((s) => ({
+                        id: s.id,
+                        label: s.name,
+                      }))}
+                      value={serviceCenterId}
+                      onChange={setServiceCenterId}
+                      placeholder="Select service center…"
+                      disabled={pending}
+                      popoverClassName="z-70"
+                    />
+                  )}
                   <SearchableSelect
                     label="Classification"
                     options={RETURN_CLASSIFICATION_OPTIONS.map((name) => ({

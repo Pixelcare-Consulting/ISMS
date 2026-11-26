@@ -148,7 +148,8 @@ export interface OrderWorksheetProps {
   /**
    * When set, the brand filter belongs to the parent.
    * Supply Planning keeps it on the left rail. Create Order keeps it on the form so the
-   * summary follows it. An empty string is all brands.
+   * summary follows it. An empty string is all brands on review sheets.
+   * The create list does not offer All brands.
    */
   brandId?: string;
   onBrandIdChange?: (brandId: string) => void;
@@ -668,9 +669,8 @@ function CreateLineToolbar({
           options={brands.map((brand) => ({ id: brand.id, label: brand.name }))}
           value={filter.brandId}
           onChange={(brandId) => onChange({ ...filter, brandId })}
-          allowClear
           disabled={brands.length === 0}
-          placeholder="All brands"
+          placeholder="Brand"
           searchPlaceholder="Search brands…"
           emptyMessage="No brands on this planogram."
         />

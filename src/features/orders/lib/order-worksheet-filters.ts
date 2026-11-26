@@ -45,6 +45,21 @@ export function planogramBrandOptions(
   return listed;
 }
 
+const DEFAULT_CREATE_ORDER_BRAND_NAME = "devant";
+
+/**
+ * Brand a new Manual or Special order opens on.
+ * Devant when that branch's planogram has it; otherwise the first brand in the list.
+ */
+export function defaultCreateOrderBrandId(
+  brands: readonly { id: string; name: string }[],
+): string {
+  const devant = brands.find(
+    (brand) => brand.name.trim().toLowerCase() === DEFAULT_CREATE_ORDER_BRAND_NAME,
+  );
+  return devant?.id ?? brands[0]?.id ?? "";
+}
+
 /** Fixed worksheet page size. The sheet does not offer a larger page. */
 export const WORKSHEET_PAGE_SIZE = 10;
 

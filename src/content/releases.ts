@@ -68,6 +68,61 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.98.1",
+    date: "2026-11-25",
+    releasedAt: "2026-11-25T17:30:00+08:00",
+    title: "One brand on a new order",
+    highlights: [
+      "A new Manual or Special order opens on Devant, and the order is for that one brand.",
+      "You cannot start a second order for the same branch and brand while one is still open.",
+      "Mode of payment on a new order comes from the dealer.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "The model list on a new order opens on Devant. If that branch has no Devant models, it opens on the first brand. Quantities, totals, and extra items stay with the brand you selected.",
+      },
+      {
+        type: "improvement",
+        description:
+          "If that branch and brand already have an order that is not yet approved, rejected, or cancelled, creating another one is blocked until that order is finished. This includes an auto replenish order.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Mode of payment is taken from the dealer and stays with that dealer. If the dealer has none, set it on the dealer before continuing.",
+      },
+    ],
+  },
+  {
+    version: "0.98.0",
+    date: "2026-11-25",
+    releasedAt: "2026-11-25T17:00:00+08:00",
+    title: "Replaced units can be returned again",
+    highlights: [
+      "After a Service Replacement, the new unit gets its own sale on the Service Center tab and can be returned or replaced again.",
+      "SC Returns and Replacement has an ATR/ODRF column to download the form.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "When a service center finishes a Service Replacement, a new sale with the same transaction number and the new unit appears on Sales, Service Center tab. Request Return on it sends a Service Return or Service Replacement to the same service center, which finishes it in SC Returns and Replacement.",
+      },
+      {
+        type: "improvement",
+        description:
+          "SC Returns and Replacement lists an ATR/ODRF column with a Download link for each request, like branch Returns.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The model and customer name entered in Process Return now carry to the service center: the request shows that customer, the ATR/ODRF prints it, and the replacement model is already selected when the service center replaces the unit or raises a special order.",
+      },
+    ],
+  },
+  {
     version: "0.97.1",
     date: "2026-11-25",
     releasedAt: "2026-11-25T12:32:00+08:00",

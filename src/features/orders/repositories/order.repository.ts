@@ -21,6 +21,10 @@ import {
   orderNumberPrefix,
   SALES_ORDER_NUMBER_EXHAUSTED_MESSAGE,
 } from "@/features/orders/utils/next-sales-order-number";
+import {
+  openBranchBrandOrderWhere,
+  type OpenBranchBrandOrder,
+} from "@/features/orders/lib/open-branch-brand-order";
 import type { BranchOrderStatus, BranchOrderType, Prisma, SapOrderDocType } from "@prisma/client";
 
 /** Shown when approval is attempted against a row that changed after it was opened. */
@@ -400,6 +404,46 @@ export const orderRepository = {
       mainWarehouse,
       orderModeOfPayment: order?.modeOfPayment ?? null,
       storedCardCode: order?.sapCardCode ?? null,
+    };
+  },
+
+  /**
+   * Newest in-progress order for this branch and brand.
+   * Matches the order's own brand or any line whose model is that brand,
+   * so an older order saved without a brand still counts.
+   */
+  async findOpenOrderForBranchBrand(
+    tenantId: string,
+    branchId: string,
+    brandId: string,
+  ): Promise<OpenBranchBrandOrder | null> {
+    const order = await prisma.branchOrder.findFirst({
+      where: openBranchBrandOrderWhere(tenantId, branchId, brandId),
+      orderBy: { createdAt: "desc" },
+      select: {
+        orderNumber: true,
+        orderType: true,
+        branch: { select: { name: true } },
+        brand: { select: { name: true } },
+      },
+    });
+    if (!order) return null;
+
+    const brandName =
+      order.brand?.name ??
+      (
+        await prisma.brand.findFirst({
+          where: { id: brandId, tenantId },
+          select: { name: true },
+        })
+      )?.name ??
+      "this brand";
+
+    return {
+      orderNumber: order.orderNumber,
+      orderType: order.orderType,
+      branchName: order.branch.name,
+      brandName,
     };
   },
 

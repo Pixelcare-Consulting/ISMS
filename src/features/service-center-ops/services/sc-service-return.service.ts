@@ -96,6 +96,7 @@ const requestSelect = {
   heldSerialNumberId: true,
   specialOrderId: true,
   priorStatusCode: true,
+  customerDealerBranch: true,
   sale: {
     select: {
       id: true,
@@ -376,6 +377,102 @@ async function recordBranchSaleReplacement(
   });
 }
 
+/**
+ * After a replacement, the new unit is the customer's: a new SC sale on the same transaction no.
+ * holds it (open, Sold at the SC), so it can be returned or replaced again from the Service
+ * Center tab. The finished sale keeps the returned unit for the record.
+ */
+async function createReplacementSale(
+  tx: Tx,
+  input: {
+    request: ScServiceRequest;
+    userId: string;
+    originalLineId: string;
+    replacement: { id: string; serialNo: string; model: { id: string; brandId: string | null } };
+    sldCodeId: string;
+  },
+) {
+  const { request, replacement } = input;
+  const [header, line, unit] = await Promise.all([
+    tx.serviceCenterSalesTransaction.findUniqueOrThrow({
+      where: { id: request.sale.id },
+      select: {
+        packageTypeId: true,
+        paymentTypeId: true,
+        saleTypeId: true,
+        promoTypeId: true,
+        customerDeliveryMethodId: true,
+        transactionDate: true,
+        contactNo: true,
+        siTrans: true,
+        infoSlipVsoRrReleased: true,
+        rrReceiveDeliver: true,
+        proof: true,
+        modelPrice: true,
+        amount: true,
+      },
+    }),
+    tx.serviceCenterSalesTransactionDetail.findUniqueOrThrow({
+      where: { id: input.originalLineId },
+      select: {
+        packageTypeId: true,
+        promoTypeId: true,
+        deliveryNo: true,
+        deliveryDate: true,
+        modelPrice: true,
+        saleAmount: true,
+        amount: true,
+      },
+    }),
+    tx.serviceCenterInventory.findFirst({
+      where: { tenantId: request.tenantId, serviceCenterId: request.sale.serviceCenterId, serialNumberId: replacement.id },
+      select: { serviceCenterLocationId: true },
+    }),
+  ]);
+  const customerName = request.customerDealerBranch?.trim() || request.sale.customerName;
+  return tx.serviceCenterSalesTransaction.create({
+    data: {
+      tenantId: request.tenantId,
+      serviceCenterId: request.sale.serviceCenterId,
+      serviceCenterLocationId: unit?.serviceCenterLocationId ?? null,
+      packageTypeId: header.packageTypeId,
+      paymentTypeId: header.paymentTypeId,
+      saleTypeId: header.saleTypeId,
+      promoTypeId: header.promoTypeId,
+      customerDeliveryMethodId: header.customerDeliveryMethodId,
+      transactionNo: request.sale.transactionNo,
+      transactionDate: header.transactionDate,
+      customerName,
+      contactNo: header.contactNo,
+      siTrans: header.siTrans,
+      infoSlipVsoRrReleased: header.infoSlipVsoRrReleased,
+      rrReceiveDeliver: header.rrReceiveDeliver,
+      proof: header.proof,
+      modelPrice: header.modelPrice,
+      amount: header.amount,
+      atrStatus: "open",
+      notes: `Replacement unit ${replacement.serialNo} for ${request.sale.transactionNo} (request ${request.id})`,
+      createdById: input.userId,
+      details: {
+        create: {
+          packageTypeId: line.packageTypeId,
+          brandId: replacement.model.brandId,
+          promoTypeId: line.promoTypeId,
+          modelId: replacement.model.id,
+          serialNumberId: replacement.id,
+          statusCodeId: input.sldCodeId,
+          deliveryNo: line.deliveryNo,
+          deliveryDate: line.deliveryDate,
+          modelPrice: line.modelPrice,
+          saleAmount: line.saleAmount,
+          amount: line.amount,
+        },
+      },
+    },
+    select: { id: true },
+  });
+}
+
 /** Rejected: the Reserve ODRF unit leaves the service center and is back at the branch sold. */
 async function returnUnitToBranch(
   tx: Tx,
@@ -567,6 +664,9 @@ export const scServiceReturnService = {
     const actionLabel = payload.actionType === "replacement" ? "Replacement" : "Return";
     const summaryNote = `[${actionLabel} requested] ${checked.documentType.name} · ${payload.stockStatusCode} · ${checked.problemDescriptionText}`;
     const scName = scLabel(center);
+    // The customer the CSR typed in Process Return (prefilled from the sale) is the one the
+    // service center deals with, so the SC copy and the ATR/ODRF carry it.
+    const customerName = payload.customerDealerBranch?.trim() || sale.customerName;
     const serviceFields = {
       actionType: payload.actionType,
       stockStatusCode: payload.stockStatusCode,
@@ -640,7 +740,7 @@ export const scServiceReturnService = {
           customerDeliveryMethodId: sale.customerDeliveryMethodId,
           transactionNo: sale.transactionNo,
           transactionDate: sale.transactionDate,
-          customerName: sale.customerName,
+          customerName,
           contactNo: sale.contactNo,
           siTrans: sale.siTrans,
           infoSlipVsoRrReleased: sale.infoSlipVsoRrReleased,
@@ -727,7 +827,7 @@ export const scServiceReturnService = {
           transactionNo: sale.transactionNo,
           transactionDate: sale.transactionDate ? sale.transactionDate.toLocaleDateString() : null,
           branchName: sale.branch.name,
-          customerName: sale.customerName,
+          customerName,
           documentTypeName: checked.documentType.name,
           stockStatusCode: payload.stockStatusCode,
           problemDescriptionText: checked.problemDescriptionText,
@@ -802,6 +902,199 @@ export const scServiceReturnService = {
       serialNo: line.serialNumber?.serialNo ?? null,
     });
     return { branchReturnRequestId: created.branchRequestId, scReturnRequestId: created.scRequestId };
+  },
+
+  /**
+   * CSR, Sales → Service Center tab: a Service Return / Replacement on an open SC sale, such as
+   * the sale an earlier replacement created for the new unit. The unit is already at that
+   * service center, so it only becomes Reserve ODRF there; the same service center finishes it.
+   */
+  async requestOnScSale(
+    actor: ScServiceReturnActor,
+    input: { saleId: string; payload: ProcessReturnPayload; requesterName: string },
+  ): Promise<{ id: string }> {
+    const { payload } = input;
+    const checked = await validateRequestInput(actor.tenantId, payload);
+
+    const sale = await prisma.serviceCenterSalesTransaction.findFirst({
+      where: { id: input.saleId, tenantId: actor.tenantId },
+      select: {
+        id: true,
+        transactionNo: true,
+        transactionDate: true,
+        customerName: true,
+        atrStatus: true,
+        notes: true,
+        serviceCenterId: true,
+        serviceCenter: { select: { name: true, sapCode: true } },
+        returnRequest: { select: { id: true } },
+        details: {
+          select: {
+            id: true,
+            serialNumberId: true,
+            saleAmount: true,
+            amount: true,
+            model: { select: { skuCode: true, name: true } },
+            serialNumber: { select: { serialNo: true } },
+          },
+        },
+      },
+    });
+    if (!sale) throw new Error("Sale not found");
+    assertScInScope(sale.serviceCenterId, actor.scopedServiceCenterIds);
+    if (sale.returnRequest) throw new Error("Return already requested");
+    if (sale.atrStatus !== "open") throw new Error("Sale is not eligible for return");
+    const line = sale.details.find((detail) => detail.id === payload.saleDetailId);
+    if (!line) throw new Error("Selected sale line does not belong to this transaction");
+    if (!line.serialNumberId) throw new Error("Encode the serial number on this line before requesting a return");
+    const serialNumberId = line.serialNumberId;
+    const lineAmount = line.saleAmount ?? line.amount ?? 0;
+
+    const odrfCodeId = await reasonStatusService.findCodeId(actor.tenantId, "inventory_system", RESERVE_ODRF_CODE);
+    if (!odrfCodeId) throw new Error("Status code not configured: inventory_system/ODRF");
+
+    const actionLabel = payload.actionType === "replacement" ? "Replacement" : "Return";
+    const summaryNote = `[${actionLabel} requested] ${checked.documentType.name} · ${payload.stockStatusCode} · ${checked.problemDescriptionText}`;
+    const scName = scLabel(sale.serviceCenter);
+    const customerName = payload.customerDealerBranch?.trim() || sale.customerName;
+
+    const created = await prisma.$transaction(async (tx) => {
+      await lockSerialNumbers(tx, [serialNumberId]);
+      const unit = await tx.serviceCenterInventory.findFirst({
+        where: { tenantId: actor.tenantId, serviceCenterId: sale.serviceCenterId, serialNumberId },
+        select: { id: true, statusCode: { select: { code: true } } },
+      });
+      const priorCode = unit?.statusCode?.code;
+      if (!unit || !isSoldCode(priorCode)) {
+        throw new Error(`${line.serialNumber?.serialNo ?? "This unit"} is not Sold at ${sale.serviceCenter.name}`);
+      }
+      // Claimed against the sold code just read, so a concurrent change fails here.
+      const held = await tx.serviceCenterInventory.updateMany({
+        where: { id: unit.id, statusCode: { code: priorCode } },
+        data: { statusCodeId: odrfCodeId },
+      });
+      if (held.count !== 1) throw new Error(STALE_REQUEST);
+
+      const request = await tx.serviceCenterReturnRequest.create({
+        data: {
+          tenantId: actor.tenantId,
+          saleId: sale.id,
+          saleDetailId: line.id,
+          status: "pending_sc",
+          requestedById: actor.userId,
+          actionType: payload.actionType,
+          stockStatusCode: payload.stockStatusCode,
+          documentTypeId: checked.documentType.id,
+          problemDescriptionId: checked.problemDescriptionId,
+          problemDescriptionText: checked.problemDescriptionText,
+          priorStatusCode: priorCode,
+          classification: payload.classification?.trim() || null,
+          serviceModelId: checked.serviceModel?.id ?? null,
+          customerDealerBranch: payload.customerDealerBranch?.trim() || null,
+          natureOfTransaction: payload.natureOfTransaction?.trim() || null,
+          refContactPo: payload.refContactPo?.trim() || null,
+          warehouseLocationId: checked.warehouseLocation?.id ?? null,
+          requestNotes: summaryNote,
+        },
+        select: { id: true, tenantId: true, createdAt: true },
+      });
+      await tx.serviceCenterSalesTransaction.update({
+        where: { id: sale.id },
+        data: { atrStatus: "reserve", notes: [sale.notes, summaryNote].filter(Boolean).join("\n") },
+      });
+      await tx.serialNumberHistory.create({
+        data: {
+          tenantId: actor.tenantId,
+          serialNumberId,
+          txnType: payload.actionType === "replacement" ? "replacement" : "return",
+          details: `Service ${actionLabel.toLowerCase()} requested on ${sale.transactionNo} at ${scName} · was ${priorCode} (request ${request.id})`,
+          status: RESERVE_ODRF_STATUS.name,
+          createdById: actor.userId,
+        },
+      });
+      await recordReturnRequested(
+        tx,
+        approvalRef(request, sale.transactionNo, serialNumberId),
+        { requestedById: actor.userId, problemDescription: checked.problemDescriptionText },
+        "INSPECTION",
+      );
+      return request;
+    });
+
+    // Best effort: the request stands even when the PDF cannot be stored.
+    try {
+      const path = await generateAndStoreAtrOdrfPdf({
+        tenantId: actor.tenantId,
+        returnRequestId: created.id,
+        data: {
+          documentTitle: "ATR / ODRF",
+          actionTypeLabel: actionLabel,
+          transactionNo: sale.transactionNo,
+          transactionDate: sale.transactionDate ? sale.transactionDate.toLocaleDateString() : null,
+          branchName: sale.serviceCenter.name,
+          customerName,
+          documentTypeName: checked.documentType.name,
+          stockStatusCode: payload.stockStatusCode,
+          problemDescriptionText: checked.problemDescriptionText,
+          requestedByName: input.requesterName,
+          requestedAt: created.createdAt.toLocaleString(),
+          serviceCenterName: scName,
+          classification: payload.classification,
+          serviceModelLabel: checked.serviceModel
+            ? checked.serviceModel.skuCode
+              ? `${checked.serviceModel.skuCode} · ${checked.serviceModel.name}`
+              : checked.serviceModel.name
+            : null,
+          customerDealerBranch: payload.customerDealerBranch,
+          natureOfTransaction: payload.natureOfTransaction,
+          refContactPo: payload.refContactPo,
+          warehouseLocationLabel: checked.warehouseLocation
+            ? [
+                checked.warehouseLocation.warehouse.code || checked.warehouseLocation.warehouse.name,
+                checked.warehouseLocation.code || checked.warehouseLocation.name,
+              ]
+                .filter(Boolean)
+                .join(" · ")
+            : null,
+          lines: [
+            {
+              modelLabel: line.model ? line.model.skuCode || line.model.name || "—" : "—",
+              serialNo: line.serialNumber?.serialNo ?? TO_FOLLOW_SERIAL_LABEL,
+              saleAmount: lineAmount.toString(),
+            },
+          ],
+        },
+      });
+      await prisma.serviceCenterReturnRequest.update({ where: { id: created.id }, data: { atrOdrfPdfPath: path } });
+    } catch (error) {
+      logger.warn({ tenantId: actor.tenantId, returnRequestId: created.id, err: error }, "sc service return ATR/ODRF PDF failed");
+    }
+
+    await auditService.log({
+      tenantId: actor.tenantId,
+      userId: actor.userId,
+      action: "sc_sale.service_return_requested",
+      entityType: "ServiceCenterSalesTransaction",
+      entityId: sale.id,
+      metadata: {
+        transactionNo: sale.transactionNo,
+        returnRequestId: created.id,
+        actionType: payload.actionType,
+        stockStatusCode: payload.stockStatusCode,
+        documentTypeId: checked.documentType.id,
+        saleDetailId: line.id,
+      },
+    });
+    await notifyScServiceReturnRequested({
+      tenantId: actor.tenantId,
+      actorUserId: actor.userId,
+      returnRequestId: created.id,
+      serviceCenterId: sale.serviceCenterId,
+      transactionNo: sale.transactionNo,
+      actionType: payload.actionType,
+      serialNo: line.serialNumber?.serialNo ?? null,
+    });
+    return { id: created.id };
   },
 
   /** 8a. No replacement: the returned unit goes into SC stock; the request completes. */
@@ -968,7 +1261,7 @@ export const scServiceReturnService = {
 
     const now = new Date();
     const scName = scLabel(request.sale.serviceCenter);
-    await prisma.$transaction(async (tx) => {
+    const created = await prisma.$transaction(async (tx) => {
       await claimRequest(tx, request.id, {
         status: "completed",
         completedAt: now,
@@ -1027,6 +1320,13 @@ export const scServiceReturnService = {
         replacementSerialNumberId: replacement.id,
         at: now,
       });
+      const replacementSale = await createReplacementSale(tx, {
+        request,
+        userId: actor.userId,
+        originalLineId: line.id,
+        replacement,
+        sldCodeId,
+      });
 
       const replacementContext = replacementContextForRequest(request, {
         returnedSerialNo: line.serialNumber?.serialNo,
@@ -1060,6 +1360,7 @@ export const scServiceReturnService = {
         status: "APPROVED",
         decidedById: actor.userId,
       });
+      return { replacementSaleId: replacementSale.id };
     });
 
     await auditService.log({
@@ -1074,6 +1375,7 @@ export const scServiceReturnService = {
         serviceCenterLocationId: location.id,
         stockStatusCode: stockStatus,
         replacementSerialNumberId: replacement.id,
+        replacementSaleId: created.replacementSaleId,
       },
     });
     await afterDecision(actor, request, "COMPLETED");
